@@ -105,17 +105,27 @@ class AutonomousExplorer:
                 {"role": "user", "content": "开始执行自主探索任务"}
             ]
 
-            response = await self.agent.gateway.chat(
+            response = await self.agent.gateway.chat_completion(
+                model_id=self.agent.model_id,
                 messages=messages,
-                model=self.agent.model_id,
-                tools=self.agent.tools.get_all_schemas()
+                tools=self.agent.tools.get_schemas()
             )
+
+            # 提取响应内容
+            response_text = ""
+            choices = response.get("choices", [])
+            if choices:
+                message = choices[0].get("message", {})
+                response_text = message.get("content", "")
 
             # 回调完成通知
             if self.on_explore_complete:
-                await self.on_explore_complete(response)
+                if asyncio.iscoroutinefunction(self.on_explore_complete):
+                    await self.on_explore_complete(response_text)
+                else:
+                    self.on_explore_complete(response_text)
 
-            logger.info(f"Autonomous exploration completed: {response[:200]}...")
+            logger.info(f"Autonomous exploration completed: {response_text[:200]}...")
 
         except Exception as e:
             logger.exception(f"Autonomous exploration failed: {e}")

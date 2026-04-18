@@ -54,26 +54,25 @@ async def main(args=None):
         gateway = LLMGateway(config_path)
         agent = AgentLoop(gateway=gateway, system_prompt=system_prompt)
 
-        # 启动自主探索监控（交互模式）
+        # One-shot chat mode：不启动自主探索
+        if args and args.chat:
+            try:
+                response = await agent.run(args.chat)
+                print(response)
+            except Exception as e:
+                logger.exception("One-shot chat failed")
+            return
+
+        # 交互模式：启动自主探索监控
         explorer = AutonomousExplorer(agent, on_explore_complete=on_autonomous_complete)
         await explorer.start()
 
         print("Agent initialized successfully. Type 'exit' to quit.\n")
+        print("Starting interactive loop (自主探索: 15分钟空闲触发)...")
     except Exception as e:
         logger.exception("Failed to initialize agent")
         return
 
-    # One-shot chat mode
-    if args and args.chat:
-        await explorer.stop()  # 单聊模式不启动自主探索
-        try:
-            response = await agent.run(args.chat)
-            print(response)
-        except Exception as e:
-            logger.exception("One-shot chat failed")
-        return
-
-    print("Starting interactive loop (自主探索: 15分钟空闲触发)...")
     while True:
         try:
             user_input = input("You: ")
