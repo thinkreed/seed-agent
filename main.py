@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import sys
 import os
@@ -27,7 +28,7 @@ logger = logging.getLogger("seed_agent")
 from agent_loop import AgentLoop
 from client import LLMGateway
 
-async def main():
+async def main(args=None):
     """交互式主循环入口"""
     config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.json')
     
@@ -46,6 +47,15 @@ async def main():
         print("Agent initialized successfully. Type 'exit' to quit.\n")
     except Exception as e:
         logger.exception("Failed to initialize agent")
+        return
+
+    # One-shot chat mode
+    if args and args.chat:
+        try:
+            response = await agent.run(args.chat)
+            print(response)
+        except Exception as e:
+            logger.exception("One-shot chat failed")
         return
 
     print("Starting interactive loop...")
@@ -75,4 +85,7 @@ async def main():
             logger.exception("Error occurred during interaction")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Seed Agent CLI")
+    parser.add_argument('--chat', '-c', type=str, help="One-shot chat message")
+    args = parser.parse_args()
+    asyncio.run(main(args))

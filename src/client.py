@@ -66,6 +66,10 @@ class LLMGateway:
         client = self.get_client(model_id)
         model_config = self.get_model_config(model_id)
         
+        # DashScope rejects 'tools': [], remove if empty or None
+        if not kwargs.get('tools'):
+            kwargs.pop('tools', None)
+        
         response = await client.chat.completions.create(
             model=model_config.id,
             messages=messages,
