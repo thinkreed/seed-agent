@@ -1,7 +1,8 @@
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError
 from typing import List, Dict, Optional
 import json
+import sys
 
 class ModelConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
@@ -12,6 +13,7 @@ class ModelConfig(BaseModel):
     compat: Optional[Dict] = None
 
 class ProviderConfig(BaseModel):
+    model_config = ConfigDict(extra='ignore')
     baseUrl: str
     apiKey: str
     api: str = "openai-completions"
@@ -23,29 +25,46 @@ class ProviderConfig(BaseModel):
         return v.strip() if v else v
 
 class AgentModelConfig(BaseModel):
+    model_config = ConfigDict(extra='ignore')
     primary: str
 
 class AgentConfig(BaseModel):
+    model_config = ConfigDict(extra='ignore')
     defaults: AgentModelConfig
 
 class FullConfig(BaseModel):
+    model_config = ConfigDict(extra='ignore')
     models: Dict[str, ProviderConfig]
     agents: Dict[str, AgentConfig]
 
 def load_config(config_path: str) -> FullConfig:
-    with open(config_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+    """加载并解析配置文件，支持旧版 JSON 结构自动迁移"""
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        raise ValueError(f"Failed to load config file {config_path}: {e}")
 
-    if 'models' in data and 'providers' in data['models']:
+    # 迁移逻辑: 适配旧版 JSON 结构
+    # 1. 处理 models.providers -> models
+    if 'models' in data and isinstance(data['models'], dict) and 'providers' in data['models']:
         data['models'] = data['models']['providers']
 
-    if 'agents' in data and 'defaults' in data['agents']:
-        agent_defaults = data['agents']['defaults']
-        if 'model' in agent_defaults:
-            data['agents'] = {
-                'defaults': {
-                    'defaults': agent_defaults['model']
+    # 2. 处理 agents.defaults.model -> agents.defaults.defaults
+    if 'agents' in data and isinstance(data['agents'], dict):
+        agent_section = data['agents']
+        if 'defaults' in agent_section and isinstance(agent_section['defaults'], dict):
+            defaults = agent_section['defaults']
+            if 'model' in defaults:
+                # 将 {"defaults": {"model": "..."}} 转换为 {"defaults": {"primary": "..."}}
+                agent_section['defaults'] = {
+                    'defaults': {'primary': defaults['model']}
                 }
-            }
 
-    return FullConfig(**data)
+    try:
+        return FullConfig(**data)
+    except ValidationError as e:
+        print(f"Configuration validation error in {config_path}:", file=sys.stderr)
+        for error in e.errors():
+            print(f"  - Field: {'.'.join(map(str, error['loc']))}, Error: {error['msg']}", file=sys.stderr)
+        raise
