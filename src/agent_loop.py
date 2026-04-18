@@ -9,7 +9,6 @@ def estimate_content_length(content: str) -> int:
     """简单估算内容长度 (字符数 * 1.5 粗略模拟 token 消耗，中英文混排)"""
     if not content:
         return 0
-    # 粗略估算：中文约等于1 token，英文单词约等于1-1.3 token。这里直接用 len 做简单截断基准
     return len(content)
 
 class MaxIterationsExceeded(Exception):
@@ -27,25 +26,40 @@ class ToolNotFoundError(Exception):
 class AgentLoop:
     """Agent 主循环"""
 
+    SUMMARY_PROMPT = """请将以下对话历史压缩成简洁的摘要，保留关键信息：
+1. 用户的核心需求和意图
+2. 已完成的关键操作和结果
+3. 重要发现或决策
+4. 未完成的任务或待处理事项
+
+对话历史：
+{history}
+
+请用简洁的要点形式输出摘要（不超过300字）："""
+
     def __init__(
         self,
         gateway: LLMGateway,
         model_id: str = None,
         system_prompt: str = None,
-        max_iterations: int = 10
+        max_iterations: int = 10,
+        summary_interval: int = 10
     ):
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
+        self.summary_interval = summary_interval
 
         self.history: List[Dict] = []
+        self._conversation_rounds: int = 0  # 用户消息计数
+        self._last_summary: Optional[str] = None  # 最近一次摘要
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
-        self._pending_user_input: Optional[str] = None  # 待处理的用户输入
+        self._pending_user_input: Optional[str] = None
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
@@ -66,13 +80,66 @@ class AgentLoop:
             return content[:max_len//2] + "\n... [Context Truncated] ...\n" + content[-max_len//4:]
         return content
 
+    async def _summarize_history(self) -> Optional[str]:
+        """使用 LLM 总结对话历史"""
+        if not self.history:
+            return None
+
+        # 格式化历史为文本
+        history_text = ""
+        for msg in self.history:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            if msg.get('tool_calls'):
+                tc_names = [tc['function']['name'] for tc in msg['tool_calls'] if tc.get('function')]
+                content = f"[Tool Calls: {', '.join(tc_names)}]"
+            if content:
+                history_text += f"{role}: {content}\n"
+
+        if not history_text.strip():
+            return None
+
+        # 调用 LLM 生成摘要
+        prompt = self.SUMMARY_PROMPT.format(history=history_text)
+        try:
+            response = await self.gateway.chat_completion(
+                self.model_id,
+                [{"role": "user", "content": prompt}],
+                tools=None  # 摘要不需要工具
+            )
+            summary = response['choices'][0]['message']['content']
+            return summary.strip()
+        except Exception:
+            return None
+
+    async def _maybe_summarize(self):
+        """检查是否需要总结历史，并执行总结"""
+        if self._conversation_rounds < self.summary_interval:
+            return
+
+        # 生成摘要
+        summary = await self._summarize_history()
+        if not summary:
+            return
+
+        # 保留最近2轮对话 + 摘要
+        keep_count = 4  # 最近的 user + assistant + tool calls + results
+        preserved = self.history[-keep_count:] if len(self.history) > keep_count else self.history
+
+        # 用摘要替换旧历史
+        self.history = [
+            {"role": "system", "content": f"[对话摘要]\n{summary}"}
+        ] + preserved
+
+        self._last_summary = summary
+        self._conversation_rounds = 0  # 重置计数
+
     def _trim_history(self):
         """智能裁剪历史消息：优先压缩工具输出，其次移除旧对话"""
         if not self.history:
             return
 
-        # 1. 预处理：压缩过长的工具调用结果 (Tool Results)
-        # 工具输出通常占用大量 context，压缩它们可以显著节省空间
+        # 1. 预处理：压缩过长的工具调用结果
         for msg in self.history:
             if msg.get('role') == 'tool':
                 content = msg.get('content', '')
@@ -90,54 +157,39 @@ class AgentLoop:
         system_len = estimate_content_length(self.system_prompt) if self.system_prompt else 0
         available = max(500, limit - system_len)
 
-        # 计算长度 (包含所有 keys)
         total_len = sum(estimate_content_length(str(msg)) for msg in self.history)
 
         if total_len > available:
             removed_count = 0
-            # 移除旧消息，保留最新的一条 (当前用户输入) 和最近的上下文
             while total_len > available and len(self.history) > 1:
                 msg = self.history.pop(0)
                 total_len -= estimate_content_length(str(msg))
                 removed_count += 1
 
-            # 插入上下文截断提示
             if removed_count > 0 and self.history:
-                # 避免连续插入
                 first_msg = self.history[0]
                 if not (first_msg.get('role') == 'system' and 'truncated' in str(first_msg.get('content', '')).lower()):
-                     self.history.insert(0, {
+                    self.history.insert(0, {
                         "role": "system",
                         "content": "[System Note: Previous conversation history was truncated to manage context window size.]"
                     })
 
     async def run(self, user_input: str) -> str:
-        """处理用户输入,返回最终响应
-
-        用户消息优先原则:
-        - 在处理过程中收到新的用户输入,立即中断当前处理
-        - 优先响应新的用户消息
-
-        Args:
-            user_input: 用户输入文本
-        Returns:
-            Agent 的最终响应文本
-        """
-        # 1. 添加用户输入到历史
+        """处理用户输入,返回最终响应"""
         self.history.append({"role": "user", "content": user_input})
+        self._conversation_rounds += 1
 
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
 
-            # 检查是否有新的用户输入(中断机制)
             if self._pending_user_input:
                 new_input = self._pending_user_input
                 self._pending_user_input = None
                 self.history.append({"role": "user", "content": new_input})
-                iteration = 0  # 重置迭代计数
+                self._conversation_rounds += 1
+                iteration = 0
 
-            # 2. 调用 LLM
             messages = self._build_messages()
             response = await self.gateway.chat_completion(
                 self.model_id,
@@ -145,20 +197,16 @@ class AgentLoop:
                 tools=self.tools.get_schemas()
             )
 
-            # 3. 解析响应
             choice = response['choices'][0]
             message = choice['message']
-
-            # 添加到历史
             self.history.append(message)
 
-            # 4. 检查是否有工具调用
             if message.get('tool_calls'):
                 tool_results = await self._execute_tool_calls(message['tool_calls'])
                 self.history.extend(tool_results)
-                # 继续循环,让 LLM 处理工具结果
             else:
-                # 5. 无工具调用,返回最终响应
+                # 对话完成，检查是否需要总结
+                await self._maybe_summarize()
                 return message.get('content', '')
 
         raise MaxIterationsExceeded(
@@ -166,14 +214,9 @@ class AgentLoop:
         )
 
     async def stream_run(self, user_input: str) -> AsyncGenerator[Dict, None]:
-        """流式处理用户输入
-
-        Yields:
-            {"type": "chunk", "content": "..."}  # 文本块
-            {"type": "final", "content": "..."}  # 最终响应
-            {"type": "tool_call", "name": "...", "args": {...}}  # 工具调用
-        """
+        """流式处理用户输入"""
         self.history.append({"role": "user", "content": user_input})
+        self._conversation_rounds += 1
 
         iteration = 0
         while iteration < self.max_iterations:
@@ -181,51 +224,42 @@ class AgentLoop:
 
             messages = self._build_messages()
             full_content = ""
-            # 用于累积流式工具调用
-            tool_calls_accumulator: Dict[int, Dict] = {}  # index -> tool_call data
+            tool_calls_accumulator: Dict[int, Dict] = {}
 
-            # 流式获取响应
             async for chunk in self.gateway.stream_chat_completion(
                 self.model_id,
                 messages,
                 tools=self.tools.get_schemas()
             ):
-                # 提取内容
                 delta = chunk['choices'][0].get('delta', {})
                 content = delta.get('content')
                 if content:
                     full_content += content
                     yield {"type": "chunk", "content": content}
 
-                # 提取工具调用 (流式增量传输，需要累积)
                 tc_list = delta.get('tool_calls')
                 if tc_list:
                     for tc in tc_list:
                         idx = tc.get('index', 0)
                         if idx not in tool_calls_accumulator:
-                            # 初始化新的工具调用
                             tool_calls_accumulator[idx] = {
                                 'id': tc.get('id'),
                                 'type': tc.get('type', 'function'),
                                 'function': {'name': '', 'arguments': ''}
                             }
                         acc = tool_calls_accumulator[idx]
-                        # 累积 id 和 type
                         if tc.get('id'):
                             acc['id'] = tc['id']
                         if tc.get('type'):
                             acc['type'] = tc['type']
-                        # 累积 function 信息
                         func = tc.get('function', {})
                         if func.get('name'):
                             acc['function']['name'] = func['name']
                         if func.get('arguments'):
                             acc['function']['arguments'] += func['arguments']
 
-            # 构建完整的工具调用列表
             tool_calls = [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())] if tool_calls_accumulator else []
 
-            # 构建助手消息
             assistant_message = {
                 "role": "assistant",
                 "content": full_content or None,
@@ -233,27 +267,21 @@ class AgentLoop:
             }
             self.history.append(assistant_message)
 
-            # 处理工具调用
             if tool_calls:
                 yield {"type": "tool_call", "calls": tool_calls}
                 tool_results = await self._execute_tool_calls(tool_calls)
                 self.history.extend(tool_results)
             else:
+                # 对话完成，检查是否需要总结
+                await self._maybe_summarize()
                 yield {"type": "final", "content": full_content}
                 return
 
     async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
-        """批量并行执行工具调用
-
-        Args:
-            tool_calls: LLM 返回的工具调用列表
-        Returns:
-            工具结果消息列表 (role: "tool")
-        """
+        """批量并行执行工具调用"""
         async def _run_single_call(tool_call: Dict) -> Dict:
             tool_id = tool_call['id']
             tool_name = tool_call['function']['name']
-            # Handle potential dict or string for arguments
             raw_args = tool_call['function']['arguments']
             if isinstance(raw_args, str):
                 tool_args = json.loads(raw_args) if raw_args.strip() else {}
@@ -274,20 +302,14 @@ class AgentLoop:
                     "content": f"Error: {str(e)}"
                 }
 
-        # Execute all tool calls concurrently
         return await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
 
     def clear_history(self):
         """清空对话历史"""
         self.history.clear()
+        self._conversation_rounds = 0
+        self._last_summary = None
 
     def interrupt(self, user_input: str):
-        """中断当前处理,优先响应用户输入
-
-        当 agent 正在处理(如执行工具调用)时,
-        用户可以通过此方法发送新的指令并优先处理。
-
-        Args:
-            user_input: 新的用户输入
-        """
+        """中断当前处理,优先响应用户输入"""
         self._pending_user_input = user_input

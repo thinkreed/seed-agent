@@ -13,9 +13,10 @@ def run_code(code: str, cwd: str = "."):
     try:
         result = subprocess.run(
             ["python", "-c", code],
-            capture_output=True, text=True, timeout=60, cwd=cwd
+            capture_output=True, text=True, timeout=60, cwd=cwd,
+            encoding='utf-8', errors='replace'
         )
-        
+
         output = result.stdout
         if result.stderr:
             output += "\nStderr:\n" + result.stderr
@@ -212,8 +213,9 @@ def list_processes(filter_keyword: str = None, limit: int = 50):
     try:
         is_windows = os.name == 'nt'
         cmd = ['tasklist', '/NH', '/FO', 'CSV'] if is_windows else ['ps', '-eo', 'pid,comm,state']
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10,
+                                encoding='utf-8', errors='replace')
         output = result.stdout.strip()
         if not output:
             return "Could not retrieve process list."
@@ -257,7 +259,8 @@ def run_shell(command: str, shell_type: str = "powershell", cwd: str = ".", time
         shell = "powershell" if shell_type == "powershell" else "bash"
         result = subprocess.run(
             [shell, "-Command" if shell_type == "powershell" else "-c", command],
-            capture_output=True, text=True, timeout=timeout, cwd=cwd
+            capture_output=True, text=True, timeout=timeout, cwd=cwd,
+            encoding='utf-8', errors='replace'
         )
         output = result.stdout
         if result.stderr:
