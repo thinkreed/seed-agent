@@ -129,6 +129,58 @@ def get_current_time() -> str:
     """
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
 
+import shutil
+
+def download_file(url: str, save_path: str, headers: dict = None, timeout: int = 30):
+    """Download a file from a URL.
+    Args:
+        url: URL of the file.
+        save_path: Local path to save the file.
+        headers: Optional dict of headers.
+        timeout: Download timeout in seconds.
+    """
+    try:
+        req = urllib.request.Request(url)
+        if headers:
+            for key, value in headers.items():
+                req.add_header(key, value)
+        else:
+            req.add_header('User-Agent', 'Mozilla/5.0 (SeedAgent/1.0)')
+        
+        Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(req, timeout=timeout) as response, open(save_path, 'wb') as out_file:
+            out_file.write(response.read())
+        return f"Successfully downloaded to {save_path}"
+    except Exception as e:
+        return f"Error downloading file: {str(e)}"
+
+def compress_files(files: list, output_zip: str):
+    """Compress files into a zip archive.
+    Args:
+        files: List of file paths to compress.
+        output_zip: Path to the output zip file.
+    """
+    try:
+        with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for file in files:
+                zf.write(file)
+        return f"Successfully created zip archive: {output_zip}"
+    except Exception as e:
+        return f"Error creating zip: {str(e)}"
+
+def decompress_files(zip_path: str, extract_dir: str = "."):
+    """Decompress a zip archive.
+    Args:
+        zip_path: Path to the zip file.
+        extract_dir: Directory to extract files to.
+    """
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(extract_dir)
+        return f"Successfully extracted to {extract_dir}"
+    except Exception as e:
+        return f"Error extracting zip: {str(e)}"
+
 def run_shell(command: str, shell_type: str = "powershell", cwd: str = ".", timeout: int = 60):
     """Execute a shell command.
     Args:
@@ -161,4 +213,7 @@ def register_builtin_tools(registry):
     registry.register("fetch_url", fetch_url)
     registry.register("get_system_info", get_system_info)
     registry.register("get_current_time", get_current_time)
+    registry.register("download_file", download_file)
+    registry.register("compress_files", compress_files)
+    registry.register("decompress_files", decompress_files)
     registry.register("run_shell", run_shell)
