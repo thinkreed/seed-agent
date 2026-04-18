@@ -27,11 +27,20 @@ logger = logging.getLogger("seed_agent")
 
 from agent_loop import AgentLoop
 from client import LLMGateway
+from autonomous import AutonomousExplorer
+
+
+def on_autonomous_complete(response: str):
+    """自主探索完成回调"""
+    print("\n[自主探索完成] " + "-" * 40)
+    print(response[:500] if len(response) > 500 else response)
+    print("-" * 50 + "\nYou: ", end="", flush=True)
+
 
 async def main(args=None):
     """交互式主循环入口"""
     config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.json')
-    
+
     # Load system prompt
     prompt_path = os.path.join(os.path.dirname(__file__), 'core_principles', 'system_prompts_en.md')
     system_prompt = None
@@ -44,6 +53,11 @@ async def main(args=None):
         # 初始化网关和 Agent
         gateway = LLMGateway(config_path)
         agent = AgentLoop(gateway=gateway, system_prompt=system_prompt)
+
+        # 启动自主探索监控（交互模式）
+        explorer = AutonomousExplorer(agent, on_explore_complete=on_autonomous_complete)
+        await explorer.start()
+
         print("Agent initialized successfully. Type 'exit' to quit.\n")
     except Exception as e:
         logger.exception("Failed to initialize agent")
@@ -51,6 +65,7 @@ async def main(args=None):
 
     # One-shot chat mode
     if args and args.chat:
+        await explorer.stop()  # 单聊模式不启动自主探索
         try:
             response = await agent.run(args.chat)
             print(response)
@@ -58,34 +73,39 @@ async def main(args=None):
             logger.exception("One-shot chat failed")
         return
 
-    print("Starting interactive loop...")
+    print("Starting interactive loop (自主探索: 15分钟空闲触发)...")
     while True:
         try:
             user_input = input("You: ")
             if user_input.lower() in ['exit', 'quit']:
+                await explorer.stop()
                 break
             if not user_input.strip():
                 continue
-            
+
+            # 记录用户活动
+            explorer.record_activity()
+
             print("Agent: ⏳", end="", flush=True)
             is_first_chunk = True
-            
+
             # 使用流式输出提升交互体验
             async for chunk in agent.stream_run(user_input):
                 if is_first_chunk:
                     # 清除 loading 提示
                     sys.stdout.write('\b \b')
                     is_first_chunk = False
-                
+
                 if chunk['type'] == 'chunk':
                     print(chunk['content'], end="", flush=True)
                 elif chunk['type'] == 'final':
                     print() # 响应结束换行
-            
+
             print("-" * 50) # 分隔符
-            
+
         except KeyboardInterrupt:
             print("\nInterrupted by user.")
+            await explorer.stop()
             break
         except Exception as e:
             logger.exception("Error occurred during interaction")
