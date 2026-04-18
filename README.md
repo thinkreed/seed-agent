@@ -53,3 +53,7 @@ seed-agent/
 ## Usage Example
 
 See `examples/simple_agent.py` for a programmatic example using tools.
+
+## Acknowledgments
+
+Special thanks to [GenericAgent](https://github.com/lsdefine/GenericAgent) for inspiration and contributions to this project.
