@@ -5,9 +5,9 @@ import os
 from pathlib import Path
 import re
 
-# 默认工作目录为 .seed 目录
+# 默认工作目录为 ~/.seed 目录
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_WORK_DIR = PROJECT_ROOT / ".seed"
+DEFAULT_WORK_DIR = Path(os.path.expanduser("~")) / ".seed"
 
 
 def _resolve_path(path: str) -> str:

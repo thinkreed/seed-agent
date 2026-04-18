@@ -9,9 +9,11 @@ import logging
 
 logger = logging.getLogger("seed_agent")
 
+# 项目根目录（当前文件所在目录的父目录）
+PROJECT_ROOT = Path(__file__).parent.parent
 # SOP 文档路径
-SOP_PATH = Path(__file__).parent.parent / "auto" / "自主探索 SOP.md"
-SEED_DIR = Path(__file__).parent.parent / ".seed"
+SOP_PATH = PROJECT_ROOT / "auto" / "自主探索 SOP.md"
+SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
 
 
 class AutonomousExplorer:

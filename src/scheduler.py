@@ -1,7 +1,7 @@
 """定时任务管理模块：Agent 自主创建和管理定时任务
 
 参考 GenericAgent scheduler.py 设计
-任务存储在 .seed/tasks/ 目录
+任务存储在 ~/.seed/tasks/ 目录
 """
 
 import os
@@ -16,7 +16,7 @@ from datetime import datetime
 logger = logging.getLogger("seed_agent")
 
 # 任务存储路径
-TASKS_DIR = Path(__file__).parent.parent.parent / ".seed" / "tasks"
+TASKS_DIR = Path(os.path.expanduser("~")) / ".seed" / "tasks"
 TASKS_FILE = TASKS_DIR / "scheduled_tasks.json"
 
 

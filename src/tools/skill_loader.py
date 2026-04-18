@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 from pathlib import Path
 
 # Skills 目录路径
-SKILLS_DIR = Path(__file__).parent.parent.parent / ".seed" / "memory" / "skills"
+SKILLS_DIR = Path(os.path.expanduser("~")) / ".seed" / "memory" / "skills"
 
 
 class SkillLoader:

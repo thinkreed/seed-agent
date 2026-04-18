@@ -4,9 +4,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-# 定位项目根目录下的 .seed/memory
-# src/tools/memory_tools.py -> 上两级 -> root -> .seed/memory
-MEMORY_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.seed', 'memory'))
+# 定位 ~/.seed/memory
+MEMORY_ROOT = os.path.join(os.path.expanduser("~"), ".seed", "memory")
 SESSIONS_DIR = os.path.join(MEMORY_ROOT, 'raw', 'sessions')
 
 def write_memory(level: str, content: str, title: str = "", metadata: str = "") -> str:

@@ -12,8 +12,8 @@ load_dotenv()
 # Add src to path to allow imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-# Setup cross-platform logging to .seed/logs
-LOG_DIR = Path(__file__).parent / ".seed" / "logs"
+# Setup cross-platform logging to ~/.seed/logs
+LOG_DIR = Path(os.path.expanduser("~")) / ".seed" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.WARNING,
@@ -76,7 +76,9 @@ async def main(args=None):
 
     while True:
         try:
-            user_input = input("You: ")
+            # 使用 asyncio.to_thread 避免 input() 阻塞事件循环
+            # 这样自主探索的空闲监控任务才能正常运行
+            user_input = await asyncio.to_thread(input, "You: ")
             if user_input.lower() in ['exit', 'quit']:
                 await explorer.stop()
                 await agent.scheduler.stop()
