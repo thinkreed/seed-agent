@@ -38,55 +38,79 @@ class ToolRegistry:
         return func(**kwargs)
     
     def _infer_schema(self, func: Callable) -> Dict:
-        """从函数签名推断 JSON Schema，支持类型推断和 Docstring 解析"""
+        """从函数签名推断 JSON Schema，支持嵌套类型(List, Dict)推断及更好的 Docstring 解析"""
         import typing
         import re
+        import inspect
 
         sig = inspect.signature(func)
         params = sig.parameters
         
-        # 解析 docstring 以获取参数描述
+        # 解析 docstring 以获取参数描述 (支持 Args: 块格式)
         param_descriptions = {}
         if func.__doc__:
-            # 简单匹配 "param_name: description" 格式
-            matches = re.findall(r'\s+(\w+):\s+(.+?)(?=\n\s*\w+:|\Z)', func.__doc__, re.DOTALL)
-            for p_name, p_desc in matches:
-                param_descriptions[p_name] = p_desc.strip()
+            # 逐行解析以兼容缩进不一致或混合格式
+            skip_headers = {"args", "returns", "raises", "yields", "note", "example"}
+            for line in func.__doc__.split('\n'):
+                line = line.strip()
+                if not line or line.endswith(':'):
+                    continue
+                match = re.match(r'([a-zA-Z_]\w*)\s*:\s*(.+)', line)
+                if match:
+                    name, desc = match.group(1), match.group(2).strip()
+                    if name.lower() not in skip_headers:
+                        param_descriptions[name] = desc
 
         properties = {}
         required = []
         
-        def _resolve_type(ann):
-            """将 Python 类型转换为 JSON Schema 类型字符串"""
-            if ann is inspect.Parameter.empty:
-                return "string"
-            if ann is str: return "string"
-            if ann is int: return "integer"
-            if ann is float: return "number"
-            if ann is bool: return "boolean"
-            if ann is list or typing.get_origin(ann) is list:
-                return "array"
-            if ann is dict or typing.get_origin(ann) is dict:
-                return "object"
-            if typing.get_origin(ann) is typing.Union or typing.get_origin(ann) is typing.Optional:
-                # 简单处理 Optional，取第一个非 None 参数
-                args = typing.get_args(ann)
-                for a in args:
-                    if a is not type(None):
-                        return _resolve_type(a)
-            return "string"
+        def _resolve_type_to_schema(ann):
+            """将 Python 类型转换为 JSON Schema 结构"""
+            origin = typing.get_origin(ann)
+            args = typing.get_args(ann)
+
+            # 处理 List[T]
+            if ann is list or origin is list:
+                item_schema = {"type": "string"} # Default
+                if args:
+                    item_schema = _resolve_type_to_schema(args[0])
+                return {"type": "array", "items": item_schema}
+            
+            # 处理 Dict
+            if ann is dict or origin is dict:
+                return {"type": "object"}
+
+            # 处理 Union (包括 Optional[T] -> Union[T, None])
+            if origin is typing.Union:
+                non_none = [a for a in args if a is not type(None)]
+                if len(non_none) == 1:
+                    return _resolve_type_to_schema(non_none[0])
+                # 复杂 Union 默认返回 string
+                return {"type": "string"}
+
+            # 基础类型
+            type_map = {
+                str: {"type": "string"},
+                int: {"type": "integer"},
+                float: {"type": "number"},
+                bool: {"type": "boolean"},
+            }
+            return type_map.get(ann, {"type": "string"})
 
         for param_name, param in params.items():
-            if param_name == "self" or param_name == "cls":
+            if param_name in ("self", "cls"):
                 continue
             
-            param_type = _resolve_type(param.annotation)
-            description = param_descriptions.get(param_name, f"The {param_name} parameter")
-                
-            properties[param_name] = {
-                "type": param_type,
-                "description": description
-            }
+            # 生成类型 schema
+            param_schema = _resolve_type_to_schema(param.annotation)
+            
+            # 添加描述
+            description = param_descriptions.get(param_name, "")
+            if not description:
+                description = f"The {param_name} parameter"
+            param_schema["description"] = description
+            
+            properties[param_name] = param_schema
             
             if param.default is inspect.Parameter.empty:
                 required.append(param_name)
