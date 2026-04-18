@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 LOG_DIR = Path(__file__).parent / ".seed" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
         logging.StreamHandler(),
@@ -67,10 +67,16 @@ async def main(args=None):
             if not user_input.strip():
                 continue
             
-            print("Agent: ", end="", flush=True)
+            print("Agent: ⏳", end="", flush=True)
+            is_first_chunk = True
             
             # 使用流式输出提升交互体验
             async for chunk in agent.stream_run(user_input):
+                if is_first_chunk:
+                    # 清除 loading 提示
+                    sys.stdout.write('\b \b')
+                    is_first_chunk = False
+                
                 if chunk['type'] == 'chunk':
                     print(chunk['content'], end="", flush=True)
                 elif chunk['type'] == 'final':
