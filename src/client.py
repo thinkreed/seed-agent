@@ -1,6 +1,6 @@
 import os
 from typing import List, Dict, AsyncGenerator, Any
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
 from models import load_config, FullConfig, ProviderConfig, ModelConfig
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -54,7 +54,7 @@ class LLMGateway:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(Exception) # Placeholder for specific network errors
+        retry=retry_if_exception_type((APIConnectionError, RateLimitError))
     )
     async def chat_completion(
         self, 

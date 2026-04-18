@@ -38,32 +38,54 @@ class ToolRegistry:
         return func(**kwargs)
     
     def _infer_schema(self, func: Callable) -> Dict:
-        """从函数签名推断 JSON Schema(简化版)"""
+        """从函数签名推断 JSON Schema，支持类型推断和 Docstring 解析"""
+        import typing
+        import re
+
         sig = inspect.signature(func)
         params = sig.parameters
         
+        # 解析 docstring 以获取参数描述
+        param_descriptions = {}
+        if func.__doc__:
+            # 简单匹配 "param_name: description" 格式
+            matches = re.findall(r'\s+(\w+):\s+(.+?)(?=\n\s*\w+:|\Z)', func.__doc__, re.DOTALL)
+            for p_name, p_desc in matches:
+                param_descriptions[p_name] = p_desc.strip()
+
         properties = {}
         required = []
         
+        def _resolve_type(ann):
+            """将 Python 类型转换为 JSON Schema 类型字符串"""
+            if ann is inspect.Parameter.empty:
+                return "string"
+            if ann is str: return "string"
+            if ann is int: return "integer"
+            if ann is float: return "number"
+            if ann is bool: return "boolean"
+            if ann is list or typing.get_origin(ann) is list:
+                return "array"
+            if ann is dict or typing.get_origin(ann) is dict:
+                return "object"
+            if typing.get_origin(ann) is typing.Union or typing.get_origin(ann) is typing.Optional:
+                # 简单处理 Optional，取第一个非 None 参数
+                args = typing.get_args(ann)
+                for a in args:
+                    if a is not type(None):
+                        return _resolve_type(a)
+            return "string"
+
         for param_name, param in params.items():
             if param_name == "self" or param_name == "cls":
                 continue
             
-            param_type = "string" # 默认简化处理，实际可根据 type 映射
-            if param.annotation is not inspect.Parameter.empty:
-                type_map = {
-                    str: "string",
-                    int: "integer",
-                    float: "number",
-                    bool: "boolean",
-                    list: "array",
-                    dict: "object"
-                }
-                param_type = type_map.get(param.annotation, "string")
+            param_type = _resolve_type(param.annotation)
+            description = param_descriptions.get(param_name, f"The {param_name} parameter")
                 
             properties[param_name] = {
                 "type": param_type,
-                "description": f"Parameter {param_name}"
+                "description": description
             }
             
             if param.default is inspect.Parameter.empty:
@@ -73,7 +95,7 @@ class ToolRegistry:
             "type": "function",
             "function": {
                 "name": func.__name__,
-                "description": func.__doc__ or f"Execute {func.__name__}",
+                "description": (func.__doc__ or f"Execute {func.__name__}").strip(),
                 "parameters": {
                     "type": "object",
                     "properties": properties,
