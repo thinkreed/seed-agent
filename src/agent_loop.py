@@ -60,40 +60,56 @@ class AgentLoop:
         messages.extend(self.history)
         return messages
 
+    def _compress_content(self, content: str, max_len: int = 1500) -> str:
+        """截断过长内容以优化上下文，保留首尾关键信息"""
+        if len(content) > max_len:
+            return content[:max_len//2] + "\n... [Context Truncated] ...\n" + content[-max_len//4:]
+        return content
+
     def _trim_history(self):
-        """根据模型上下文窗口限制，裁剪历史消息"""
+        """智能裁剪历史消息：优先压缩工具输出，其次移除旧对话"""
         if not self.history:
             return
 
+        # 1. 预处理：压缩过长的工具调用结果 (Tool Results)
+        # 工具输出通常占用大量 context，压缩它们可以显著节省空间
+        for msg in self.history:
+            if msg.get('role') == 'tool':
+                content = msg.get('content', '')
+                if len(content) > 3000:
+                    msg['content'] = self._compress_content(content, 2000)
+
+        # 2. 检查长度并移除旧消息
         try:
             model_config = self.gateway.get_model_config(self.model_id)
             max_context = model_config.contextWindow
         except Exception:
             max_context = 8000
 
-        # 限制在 contextWindow 的 80% 以内，预留响应空间
         limit = int(max_context * 0.8)
         system_len = estimate_content_length(self.system_prompt) if self.system_prompt else 0
         available = max(500, limit - system_len)
 
-        # 估算历史总长度
-        total_len = sum(estimate_content_length(msg.get('content', '')) for msg in self.history)
+        # 计算长度 (包含所有 keys)
+        total_len = sum(estimate_content_length(str(msg)) for msg in self.history)
         
         if total_len > available:
-            # 逆序保留最近的消息
-            messages_to_keep = []
-            current_len = 0
-            for msg in reversed(self.history):
-                length = estimate_content_length(msg.get('content', ''))
-                if current_len + length > available:
-                    # 如果还没保留任何消息，强制保留最后一条（通常是用户最新的输入）
-                    if not messages_to_keep:
-                        messages_to_keep.append(msg)
-                    break
-                current_len += length
-                messages_to_keep.append(msg)
+            removed_count = 0
+            # 移除旧消息，保留最新的一条 (当前用户输入) 和最近的上下文
+            while total_len > available and len(self.history) > 1:
+                msg = self.history.pop(0)
+                total_len -= estimate_content_length(str(msg))
+                removed_count += 1
             
-            self.history = list(reversed(messages_to_keep))
+            # 插入上下文截断提示
+            if removed_count > 0 and self.history:
+                # 避免连续插入
+                first_msg = self.history[0]
+                if not (first_msg.get('role') == 'system' and 'truncated' in str(first_msg.get('content', '')).lower()):
+                     self.history.insert(0, {
+                        "role": "system", 
+                        "content": "[System Note: Previous conversation history was truncated to manage context window size.]"
+                    })
 
     async def run(self, user_input: str) -> str:
         """处理用户输入,返回最终响应
