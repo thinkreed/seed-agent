@@ -5,13 +5,35 @@ import os
 from pathlib import Path
 import re
 
+# 默认工作目录为 .seed 目录
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+DEFAULT_WORK_DIR = PROJECT_ROOT / ".seed"
+
+
+def _resolve_path(path: str) -> str:
+    """解析路径，相对路径默认从 .seed 目录解析"""
+    if os.path.isabs(path):
+        return path
+
+    # 相对路径：优先从 .seed 目录解析，如果不存在再从项目根目录解析
+    seed_path = DEFAULT_WORK_DIR / path
+    if seed_path.exists():
+        return str(seed_path)
+
+    project_path = PROJECT_ROOT / path
+    if project_path.exists():
+        return str(project_path)
+
+    # 如果都不存在，使用 .seed 目录作为默认目标
+    return str(seed_path)
+
 
 def file_read(path: str, start: int = 1, count: int = 100) -> str:
     """
     Read file content with line numbers.
 
     Args:
-        path: File path to read (absolute or relative).
+        path: File path to read (absolute or relative to .seed directory).
         start: Start line number (1-based).
         count: Number of lines to read.
 
@@ -19,15 +41,9 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
         File content with line numbers, or error message.
     """
     try:
-        # 支持相对路径，自动补全
-        if not os.path.isabs(path):
-            # 尝试从项目根目录解析
-            project_root = Path(__file__).parent.parent.parent
-            full_path = project_root / path
-            if full_path.exists():
-                path = str(full_path)
+        resolved_path = _resolve_path(path)
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(resolved_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
 
         total_lines = len(lines)
@@ -39,7 +55,7 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
             return f"Empty range: lines {start}-{start+count-1} (file has {total_lines} lines)"
 
         result = "".join(f"{i+start_idx+1}|{line}" for i, line in enumerate(selected))
-        result += f"\n--- File: {path}, Lines: {start}-{end_idx}/{total_lines} ---"
+        result += f"\n--- File: {resolved_path}, Lines: {start}-{end_idx}/{total_lines} ---"
         return result
 
     except FileNotFoundError:
@@ -53,7 +69,7 @@ def file_write(path: str, content: str, mode: str = "overwrite") -> str:
     Write content to a file.
 
     Args:
-        path: File path to write (absolute or relative).
+        path: File path to write (absolute or relative to .seed directory).
         content: Content to write.
         mode: Write mode - 'overwrite' (default) or 'append'.
 
@@ -61,21 +77,16 @@ def file_write(path: str, content: str, mode: str = "overwrite") -> str:
         Success message or error.
     """
     try:
-        # 支持相对路径
-        if not os.path.isabs(path):
-            project_root = Path(__file__).parent.parent.parent
-            full_path = project_root / path
-            if not path.startswith('.'):
-                path = str(full_path)
+        resolved_path = _resolve_path(path)
 
         write_mode = 'w' if mode == "overwrite" else 'a'
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(resolved_path).parent.mkdir(parents=True, exist_ok=True)
 
-        with open(path, write_mode, encoding='utf-8') as f:
+        with open(resolved_path, write_mode, encoding='utf-8') as f:
             f.write(content)
 
         action = "written" if mode == "overwrite" else "appended"
-        return f"Successfully {action} to {path} ({len(content)} chars)"
+        return f"Successfully {action} to {resolved_path} ({len(content)} chars)"
 
     except Exception as e:
         return f"Error writing file: {str(e)}"
@@ -86,7 +97,7 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
     Edit file by replacing text.
 
     Args:
-        path: File path to edit.
+        path: File path to edit (absolute or relative to .seed directory).
         old_str: Text to find and replace (must be exact match).
         new_str: New text to insert.
         replace_all: If True, replace all occurrences; else replace first.
@@ -95,13 +106,9 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
         Success message with change details, or error.
     """
     try:
-        if not os.path.isabs(path):
-            project_root = Path(__file__).parent.parent.parent
-            full_path = project_root / path
-            if full_path.exists():
-                path = str(full_path)
+        resolved_path = _resolve_path(path)
 
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(resolved_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
         if old_str not in content:
@@ -114,10 +121,10 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
             count = 1
             new_content = content.replace(old_str, new_str, 1)
 
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(resolved_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
 
-        return f"Successfully edited {path}: replaced {count} occurrence(s)"
+        return f"Successfully edited {resolved_path}: replaced {count} occurrence(s)"
 
     except FileNotFoundError:
         return f"Error: File not found - {path}"
@@ -125,26 +132,29 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
         return f"Error editing file: {str(e)}"
 
 
-def code_as_policy(code: str, language: str = "python", cwd: str = ".", timeout: int = 60) -> str:
+def code_as_policy(code: str, language: str = "python", cwd: str = None, timeout: int = 60) -> str:
     """
     Execute code in various languages (python, js, shell, bash, powershell).
 
     Args:
         code: Code string to execute.
         language: Language type - 'python', 'javascript'/'js', 'shell'/'bash', 'powershell'/'ps'.
-        cwd: Working directory for execution.
+        cwd: Working directory for execution (default: .seed directory).
         timeout: Execution timeout in seconds.
 
     Returns:
         Execution output (stdout + stderr), or error message.
     """
     try:
-        # 支持相对路径
-        if not os.path.isabs(cwd):
-            project_root = Path(__file__).parent.parent.parent
-            full_cwd = project_root / cwd
-            if full_cwd.exists():
-                cwd = str(full_cwd)
+        # 默认工作目录为 .seed
+        if cwd is None:
+            cwd = str(DEFAULT_WORK_DIR)
+        elif not os.path.isabs(cwd):
+            seed_cwd = DEFAULT_WORK_DIR / cwd
+            if seed_cwd.exists():
+                cwd = str(seed_cwd)
+            else:
+                cwd = str(PROJECT_ROOT / cwd)
 
         language = language.lower()
 
