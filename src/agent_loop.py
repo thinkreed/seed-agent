@@ -3,6 +3,7 @@ import json
 from typing import List, Dict, Optional, AsyncGenerator
 from tools import ToolRegistry
 from tools.memory_tools import save_session_history, _generate_session_filename
+from tools.skill_loader import SkillLoader
 from client import LLMGateway
 
 
@@ -43,7 +44,6 @@ class AgentLoop:
     ):
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
-        self.system_prompt = system_prompt
         self.max_iterations = max_iterations
         self.summary_interval = summary_interval
 
@@ -54,8 +54,19 @@ class AgentLoop:
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
+        from tools.skill_loader import register_skill_tools
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
+        register_skill_tools(self.tools)
+
+        # 加载 skills 并注入到 system prompt
+        self.skill_loader = SkillLoader()
+        skills_prompt = self.skill_loader.get_skills_prompt()
+        if system_prompt:
+            self.system_prompt = system_prompt + "\n\n" + skills_prompt
+        else:
+            self.system_prompt = skills_prompt
+
         self._pending_user_input: Optional[str] = None
 
     def _get_primary_model(self) -> str:
