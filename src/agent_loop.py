@@ -127,14 +127,15 @@ class AgentLoop:
             ):
                 # 提取内容
                 delta = chunk['choices'][0].get('delta', {})
-                if 'content' in delta:
-                    content = delta['content']
+                content = delta.get('content')
+                if content:
                     full_content += content
                     yield {"type": "chunk", "content": content}
                 
                 # 提取工具调用
-                if 'tool_calls' in delta:
-                    tool_calls.extend(delta['tool_calls'])
+                tc = delta.get('tool_calls')
+                if tc:
+                    tool_calls.extend(tc)
             
             # 构建助手消息
             assistant_message = {
