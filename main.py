@@ -63,12 +63,13 @@ async def main(args=None):
                 logger.exception("One-shot chat failed")
             return
 
-        # 交互模式：启动自主探索监控
+        # 交互模式：启动自主探索监控和定时任务调度
         explorer = AutonomousExplorer(agent, on_explore_complete=on_autonomous_complete)
         await explorer.start()
+        await agent.scheduler.start()
 
         print("Agent initialized successfully. Type 'exit' to quit.\n")
-        print("Starting interactive loop (自主探索: 15分钟空闲触发)...")
+        print("Starting interactive loop (自主探索: 15分钟空闲触发, 定时任务: 自动执行)...")
     except Exception as e:
         logger.exception("Failed to initialize agent")
         return
@@ -78,6 +79,7 @@ async def main(args=None):
             user_input = input("You: ")
             if user_input.lower() in ['exit', 'quit']:
                 await explorer.stop()
+                await agent.scheduler.stop()
                 break
             if not user_input.strip():
                 continue

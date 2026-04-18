@@ -6,6 +6,7 @@ from pathlib import Path
 from tools import ToolRegistry
 from tools.memory_tools import save_session_history, _generate_session_filename
 from tools.skill_loader import SkillLoader
+from scheduler import TaskScheduler
 from client import LLMGateway
 
 
@@ -57,9 +58,14 @@ class AgentLoop:
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
         from tools.skill_loader import register_skill_tools
+        from scheduler import register_scheduler_tools
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
         register_skill_tools(self.tools)
+        register_scheduler_tools(self.tools)
+
+        # 初始化定时任务调度器
+        self.scheduler = TaskScheduler(self)
 
         # 加载 skills 并注入到 system prompt
         self.skill_loader = SkillLoader()
