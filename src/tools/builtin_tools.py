@@ -181,6 +181,33 @@ def decompress_files(zip_path: str, extract_dir: str = "."):
     except Exception as e:
         return f"Error extracting zip: {str(e)}"
 
+import fnmatch
+
+def search_files(keyword: str, path: str = ".", pattern: str = "*"):
+    """Search files in a directory tree for a specific keyword.
+    Args:
+        keyword: Text to search for (case-insensitive).
+        path: Root directory to start searching.
+        pattern: File name pattern (glob style, e.g., '*.py').
+    Returns:
+        List of file paths containing the keyword.
+    """
+    matches = []
+    ignore_dirs = {'.git', '__pycache__', 'venv', 'node_modules', '.tox', 'dist', 'build'}
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if d not in ignore_dirs]
+        for file in files:
+            if fnmatch.fnmatch(file, pattern):
+                full_path = os.path.join(root, file)
+                try:
+                    with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        if keyword.lower() in content.lower():
+                            matches.append(full_path)
+                except Exception:
+                    pass
+    return matches if matches else "No matches found."
+
 def run_shell(command: str, shell_type: str = "powershell", cwd: str = ".", timeout: int = 60):
     """Execute a shell command.
     Args:
@@ -216,4 +243,5 @@ def register_builtin_tools(registry):
     registry.register("download_file", download_file)
     registry.register("compress_files", compress_files)
     registry.register("decompress_files", decompress_files)
+    registry.register("search_files", search_files)
     registry.register("run_shell", run_shell)
