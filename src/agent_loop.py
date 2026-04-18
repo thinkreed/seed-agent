@@ -123,6 +123,10 @@ class AgentLoop:
 
     async def _maybe_summarize(self):
         """检查是否需要总结历史，并执行总结"""
+        # 无论是否达到总结间隔，都先保存会话历史到 L4
+        if self.history:
+            save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
+
         if self._conversation_rounds < self.summary_interval:
             return
 
@@ -131,8 +135,8 @@ class AgentLoop:
         if not summary:
             return
 
-        # 保存历史到 L4 raw/sessions (JSONL)
-        save_session_history(self.history, summary=summary, session_id=self.session_id)
+        # 更新元数据中的摘要
+        save_session_history([], summary=summary, session_id=self.session_id)
 
         # 保留最近2轮对话 + 摘要
         keep_count = 4  # 最近的 user + assistant + tool calls + results
