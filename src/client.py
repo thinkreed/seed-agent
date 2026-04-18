@@ -26,8 +26,8 @@ class LLMGateway:
         """解析 API Key,支持环境变量引用"""
         if api_key.startswith("${") and api_key.endswith("}"):
             env_var = api_key[2:-1]
-            return os.environ.get(env_var, "")
-        return api_key
+            return os.environ.get(env_var, "").strip()
+        return api_key.strip()
     
     def get_client(self, model_id: str) -> AsyncOpenAI:
         """根据 model_id 获取客户端
