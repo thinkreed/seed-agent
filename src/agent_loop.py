@@ -5,11 +5,6 @@ from tools import ToolRegistry
 from tools.memory_tools import save_session_history, _generate_session_filename
 from client import LLMGateway
 
-def estimate_content_length(content: str) -> int:
-    """简单估算内容长度 (字符数 * 1.5 粗略模拟 token 消耗，中英文混排)"""
-    if not content:
-        return 0
-    return len(content)
 
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数异常"""
@@ -68,19 +63,12 @@ class AgentLoop:
         return self.gateway.config.agents['defaults'].defaults.primary
 
     def _build_messages(self) -> List[Dict]:
-        """构建完整的消息列表，包含上下文自动截断"""
-        self._trim_history()
+        """构建完整的消息列表"""
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
         messages.extend(self.history)
         return messages
-
-    def _compress_content(self, content: str, max_len: int = 1500) -> str:
-        """截断过长内容以优化上下文，保留首尾关键信息"""
-        if len(content) > max_len:
-            return content[:max_len//2] + "\n... [Context Truncated] ...\n" + content[-max_len//4:]
-        return content
 
     async def _summarize_history(self) -> Optional[str]:
         """使用 LLM 总结对话历史"""
@@ -138,46 +126,6 @@ class AgentLoop:
 
         self._last_summary = summary
         self._conversation_rounds = 0  # 重置计数
-
-    def _trim_history(self):
-        """智能裁剪历史消息：优先压缩工具输出，其次移除旧对话"""
-        if not self.history:
-            return
-
-        # 1. 预处理：压缩过长的工具调用结果
-        for msg in self.history:
-            if msg.get('role') == 'tool':
-                content = msg.get('content', '')
-                if len(content) > 3000:
-                    msg['content'] = self._compress_content(content, 2000)
-
-        # 2. 检查长度并移除旧消息
-        try:
-            model_config = self.gateway.get_model_config(self.model_id)
-            max_context = model_config.contextWindow
-        except Exception:
-            max_context = 8000
-
-        limit = int(max_context * 0.8)
-        system_len = estimate_content_length(self.system_prompt) if self.system_prompt else 0
-        available = max(500, limit - system_len)
-
-        total_len = sum(estimate_content_length(str(msg)) for msg in self.history)
-
-        if total_len > available:
-            removed_count = 0
-            while total_len > available and len(self.history) > 1:
-                msg = self.history.pop(0)
-                total_len -= estimate_content_length(str(msg))
-                removed_count += 1
-
-            if removed_count > 0 and self.history:
-                first_msg = self.history[0]
-                if not (first_msg.get('role') == 'system' and 'truncated' in str(first_msg.get('content', '')).lower()):
-                    self.history.insert(0, {
-                        "role": "system",
-                        "content": "[System Note: Previous conversation history was truncated to manage context window size.]"
-                    })
 
     async def run(self, user_input: str) -> str:
         """处理用户输入,返回最终响应"""
