@@ -107,8 +107,40 @@ def search_memory(keyword: str, levels: list = ["L1", "L2", "L3"]) -> str:
                     except: pass
     return "\n".join(results) if results else "No matching memory found."
 
+
+def start_long_term_update(args, **kwargs):
+    """
+    Triggered when the agent believes a task is complete. 
+    Returns a prompt asking the agent to summarize verified experience and call write_memory.
+    Includes SOP constraints to ensure memory quality.
+    """
+    sop_rules = """# [记忆执行SOP]
+## 层级定义
+- L2 (skills): 存储可直接执行的操作步骤、环境配置、代码技巧、成功事实。标题以技能名或事实概括为主。
+- L3 (knowledge): 存储通用知识、原理、避坑指南、失败教训。标题以问题或知识点概括为主。
+## 写入约束
+- **仅存验证事实**: 严禁存储臆测、常识、未执行计划。
+- **禁止易变信息**: 不存储临时PID、时间戳、绝对路径、密钥。
+- **行动验证**: 写入内容必须是经过实际操作验证成功的经验或确定的教训。
+## 执行指引
+请根据本次任务产出的有效信息，分类撰写 Markdown 内容，并通过 `write_memory` 工具分别保存。
+若本次无值得沉淀的经验，可跳过。"""
+    
+    return f"""### [经验提炼] 任务即将结束，请提炼并保存本次任务中的有效经验。
+
+{ sop_rules }
+
+请总结以下内容：
+1. **环境事实/配置**: 经过验证的路径 (相对)、依赖、配置 (Level: L2)。
+2. **SOP/技能**: 成功的操作步骤、代码片段、重试策略 (Level: L2)。
+3. **避坑/知识**: 失败原因、解决方案、通用规则 (Level: L3)。
+4. **用户偏好**: 特定的需求或习惯 (Level: L2)。
+
+使用 `write_memory` 保存。"""
+
 def register_memory_tools(registry):
     """Register memory tools to the Agent system."""
     registry.register("write_memory", write_memory)
     registry.register("read_memory_index", read_memory_index)
     registry.register("search_memory", search_memory)
+    registry.register("start_long_term_update", start_long_term_update)
