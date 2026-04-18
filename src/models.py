@@ -64,7 +64,4 @@ def load_config(config_path: str) -> FullConfig:
     try:
         return FullConfig(**data)
     except ValidationError as e:
-        print(f"Configuration validation error in {config_path}:", file=sys.stderr)
-        for error in e.errors():
-            print(f"  - Field: {'.'.join(map(str, error['loc']))}, Error: {error['msg']}", file=sys.stderr)
         raise

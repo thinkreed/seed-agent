@@ -94,8 +94,7 @@ class AgentLoop:
                 messages_to_keep.append(msg)
             
             self.history = list(reversed(messages_to_keep))
-            print(f"[Context Trimmed]: History reduced to {len(self.history)} messages.")
-    
+
     async def run(self, user_input: str) -> str:
         """处理用户输入,返回最终响应
         
