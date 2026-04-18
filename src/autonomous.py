@@ -85,9 +85,8 @@ class AutonomousExplorer:
             return
 
         try:
-            # 构建自主探索 prompt
+            # 构建自主探索 prompt（包含完整上下文）
             todo_path = SEED_DIR / "TODO.md"
-            history_path = SEED_DIR / "memory" / "raw" / "history.md"
 
             # 检查是否有 TODO
             has_todo = todo_path.exists()
@@ -96,12 +95,21 @@ class AutonomousExplorer:
                 with open(todo_path, 'r', encoding='utf-8') as f:
                     todo_content = f.read()
 
-            # 构建 prompt
+            # 构建完整 prompt（注入 system prompt + skills + SOP）
             prompt = self._build_autonomous_prompt(todo_content, has_todo)
 
-            # 执行自主任务
+            # 执行自主任务（使用 gateway 直接调用，不依赖 agent history）
             logger.info("Executing autonomous exploration...")
-            response = await self.agent.run(prompt)
+            messages = [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "开始执行自主探索任务"}
+            ]
+
+            response = await self.agent.gateway.chat(
+                messages=messages,
+                model=self.agent.model_id,
+                tools=self.agent.tools.get_all_schemas()
+            )
 
             # 回调完成通知
             if self.on_explore_complete:
@@ -113,11 +121,42 @@ class AutonomousExplorer:
             logger.exception(f"Autonomous exploration failed: {e}")
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
-        """构建自主探索 prompt"""
+        """构建自主探索 prompt（包含完整 system prompt + skills + SOP）"""
+        # 获取 agent 的 system prompt（已包含 skills）
+        base_system_prompt = self.agent.system_prompt or ""
+
+        # 获取 skills prompt（从 skill_loader）
+        skills_prompt = ""
+        if hasattr(self.agent, 'skill_loader') and self.agent.skill_loader:
+            skills_prompt = self.agent.skill_loader.get_skills_prompt()
+
+        # 构建 SOP 内容
+        sop_prompt = f"""## 自主探索 SOP
+
+{self._sop_content}
+
+"""
+
+        # 构建任务指令
+        task_prompt = self._build_task_instruction(todo_content, has_todo)
+
+        # 组合完整 prompt
+        parts = []
+        if base_system_prompt:
+            parts.append(base_system_prompt)
+        if skills_prompt and skills_prompt not in base_system_prompt:
+            parts.append(skills_prompt)
+        parts.append(sop_prompt)
+        parts.append(task_prompt)
+
+        return "\n\n".join(parts)
+
+    def _build_task_instruction(self, todo_content: str, has_todo: bool) -> str:
+        """构建任务指令部分"""
         prompt_parts = [
             "# 自主探索任务触发",
             "",
-            "根据自主探索 SOP，当前空闲15分钟，开始执行自主任务。",
+            "当前空闲15分钟，开始执行自主任务。",
             "",
             "## 当前状态",
             f"- TODO状态: {'有待执行任务' if has_todo else '无TODO，进入规划模式'}",

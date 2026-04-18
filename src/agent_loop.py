@@ -8,9 +8,6 @@ from tools.memory_tools import save_session_history, _generate_session_filename
 from tools.skill_loader import SkillLoader
 from client import LLMGateway
 
-# 自主探索 SOP 路径
-SOP_PATH = Path(__file__).parent.parent / "auto" / "自主探索 SOP.md"
-
 
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数异常"""
@@ -67,88 +64,12 @@ class AgentLoop:
         # 加载 skills 并注入到 system prompt
         self.skill_loader = SkillLoader()
         skills_prompt = self.skill_loader.get_skills_prompt()
-
-        # 加载自主探索 SOP
-        autonomous_prompt = self._load_autonomous_sop()
-
-        # 组合 system prompt
-        combined_parts = []
         if system_prompt:
-            combined_parts.append(system_prompt)
-        if skills_prompt:
-            combined_parts.append(skills_prompt)
-        if autonomous_prompt:
-            combined_parts.append(autonomous_prompt)
-
-        self.system_prompt = "\n\n".join(combined_parts) if combined_parts else ""
+            self.system_prompt = system_prompt + "\n\n" + skills_prompt
+        else:
+            self.system_prompt = skills_prompt
 
         self._pending_user_input: Optional[str] = None
-
-    def _load_autonomous_sop(self) -> str:
-        """加载自主探索 SOP 内容"""
-        if not SOP_PATH.exists():
-            return ""
-
-        with open(SOP_PATH, 'r', encoding='utf-8') as f:
-            sop_content = f.read()
-
-        # 提取核心原则部分作为 prompt
-        return f"""## 自主探索 SOP
-
-当空闲15分钟后，自动触发自主探索任务。核心原则：
-
-{self._extract_sop_core(sop_content)}"""
-
-    def _extract_sop_core(self, sop_content: str) -> str:
-        """提取 SOP 核心原则"""
-        # 提取关键章节：目标排序、选择原则、核心禁忌
-        sections = []
-        lines = sop_content.split('\n')
-
-        # 提取目标排序（三）
-        in_section = False
-        section_content = []
-        for line in lines:
-            if line.startswith('# 三、目标排序'):
-                in_section = True
-                section_content = [line]
-            elif line.startswith('# 四、'):
-                if in_section:
-                    sections.append('\n'.join(section_content))
-                break
-            elif in_section:
-                section_content.append(line)
-
-        # 提取选择原则（五）
-        in_section = False
-        section_content = []
-        for line in lines:
-            if line.startswith('# 五、选择原则'):
-                in_section = True
-                section_content = [line]
-            elif line.startswith('# 六、'):
-                if in_section:
-                    sections.append('\n'.join(section_content))
-                break
-            elif in_section:
-                section_content.append(line)
-
-        # 提取核心禁忌（七）
-        in_section = False
-        section_content = []
-        for line in lines:
-            if line.startswith('# 七、核心禁忌'):
-                in_section = True
-                section_content = [line]
-            elif line.startswith('>'):
-                if in_section:
-                    section_content.append(line)
-                    sections.append('\n'.join(section_content))
-                break
-            elif in_section:
-                section_content.append(line)
-
-        return '\n\n'.join(sections) if sections else sop_content[:1500]
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
