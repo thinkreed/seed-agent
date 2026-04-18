@@ -3,6 +3,7 @@ import json
 from typing import List, Dict, Optional, AsyncGenerator
 from tools import ToolRegistry
 from tools.builtin_tools import run_code, read_file, write_file, list_files
+from tools.memory_tools import save_session_history, _generate_session_filename
 from client import LLMGateway
 
 def estimate_content_length(content: str) -> int:
@@ -43,7 +44,8 @@ class AgentLoop:
         model_id: str = None,
         system_prompt: str = None,
         max_iterations: int = 10,
-        summary_interval: int = 10
+        summary_interval: int = 10,
+        session_id: str = None
     ):
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
@@ -54,6 +56,7 @@ class AgentLoop:
         self.history: List[Dict] = []
         self._conversation_rounds: int = 0  # 用户消息计数
         self._last_summary: Optional[str] = None  # 最近一次摘要
+        self.session_id: str = session_id or _generate_session_filename()  # 当前会话ID
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
@@ -121,6 +124,9 @@ class AgentLoop:
         summary = await self._summarize_history()
         if not summary:
             return
+
+        # 保存历史到 L4 raw/sessions (JSONL)
+        save_session_history(self.history, summary=summary, session_id=self.session_id)
 
         # 保留最近2轮对话 + 摘要
         keep_count = 4  # 最近的 user + assistant + tool calls + results
@@ -304,11 +310,14 @@ class AgentLoop:
 
         return await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
 
-    def clear_history(self):
-        """清空对话历史"""
+    def clear_history(self, save_current: bool = True):
+        """清空对话历史，可选保存当前历史到 L4"""
+        if save_current and self.history:
+            save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
         self.history.clear()
         self._conversation_rounds = 0
         self._last_summary = None
+        self.session_id = _generate_session_filename()  # 新会话ID
 
     def interrupt(self, user_input: str):
         """中断当前处理,优先响应用户输入"""
