@@ -81,162 +81,49 @@ class AutonomousExplorer:
             await asyncio.sleep(30)
 
     async def _execute_autonomous_task(self):
-        """执行自主探索任务（带工具调用迭代循环 + 容错重试）"""
+        """执行自主探索任务（复用 Agent Loop）"""
         if not self._sop_content:
             logger.warning("No SOP loaded, skipping autonomous exploration")
             return
 
-        max_iterations = 20  # 防止无限循环
-        max_consecutive_failures = 3  # 连续失败次数上限
-
         # 构建自主探索 prompt（包含完整上下文）
         todo_path = SEED_DIR / "TODO.md"
-
-        # 检查是否有 TODO
         has_todo = todo_path.exists()
         todo_content = ""
         if has_todo:
             with open(todo_path, 'r', encoding='utf-8') as f:
                 todo_content = f.read()
 
-        # 构建完整 prompt（注入 system prompt + skills + SOP）
+        # 构建完整 prompt
         prompt = self._build_autonomous_prompt(todo_content, has_todo)
 
-        # 初始化消息历史
-        messages = [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": "开始执行自主探索任务"}
-        ]
+        logger.info("Starting autonomous exploration via Agent Loop")
 
-        consecutive_failures = 0
+        # 保存原始 system prompt 和 history，以便恢复
+        original_system_prompt = self.agent.system_prompt
+        original_history = list(self.agent.history)
 
-        # 工具调用迭代循环
-        for iteration in range(max_iterations):
-            logger.info(f"Autonomous iteration {iteration + 1}/{max_iterations}")
-
-            try:
-                # 调用 LLM（带重试）
-                response = await self._call_llm_with_retry(
-                    messages, max_retries=3
-                )
-
-                if response is None:
-                    consecutive_failures += 1
-                    if consecutive_failures >= max_consecutive_failures:
-                        logger.warning(f"Consecutive LLM failures reached {max_consecutive_failures}, stopping")
-                        break
-                    continue
-
-                # 重置连续失败计数
-                consecutive_failures = 0
-
-                # 提取响应内容
-                choices = response.get("choices", [])
-                if not choices:
-                    logger.warning("LLM returned no choices, ending exploration")
-                    break
-
-                message = choices[0].get("message", {})
-                content = message.get("content", "")
-                tool_calls = message.get("tool_calls", [])
-
-                # 将助手消息加入历史
-                assistant_msg = {"role": "assistant", "content": content}
-                if tool_calls:
-                    assistant_msg["tool_calls"] = tool_calls
-                messages.append(assistant_msg)
-
-                # 如果没有工具调用，说明任务完成
-                if not tool_calls:
-                    logger.info(f"Autonomous exploration completed (no more tool calls)")
-                    if self.on_explore_complete:
-                        if asyncio.iscoroutinefunction(self.on_explore_complete):
-                            await self.on_explore_complete(content or "探索完成")
-                        else:
-                            self.on_explore_complete(content or "探索完成")
-                    break
-
-                # 执行工具调用
-                for tc in tool_calls:
-                    tc_id = tc.get("id", "")
-                    func = tc.get("function", {})
-                    func_name = func.get("name", "")
-                    func_args_str = func.get("arguments", "{}")
-
-                    try:
-                        import json
-                        func_args = json.loads(func_args_str) if func_args_str else {}
-                    except json.JSONDecodeError:
-                        func_args = {}
-
-                    try:
-                        tool_result = await self.agent.tools.execute(func_name, **func_args)
-                        # 确保结果是字符串
-                        if not isinstance(tool_result, str):
-                            tool_result = str(tool_result)
-                    except Exception as tool_e:
-                        logger.exception(f"Tool execution failed: {func_name}")
-                        tool_result = f"Error executing {func_name}: {str(tool_e)}"
-
-                    # 将工具结果加入历史
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc_id,
-                        "name": func_name,
-                        "content": tool_result
-                    })
-
-                    logger.info(f"Executed tool: {func_name}, result length: {len(tool_result)}")
-
-            except Exception as e:
-                consecutive_failures += 1
-                logger.error(f"Iteration {iteration + 1} failed (consecutive: {consecutive_failures}): {e}")
-                if consecutive_failures >= max_consecutive_failures:
-                    logger.warning(f"Consecutive failures reached {max_consecutive_failures}, stopping exploration")
-                    break
-                # 继续下一轮迭代
-                continue
-
-        else:
-            # 达到最大迭代次数
-            logger.warning(f"Autonomous exploration hit max iterations ({max_iterations})")
-
-        # 尝试获取最终总结（即使因失败中断也尝试）
         try:
-            if len(messages) > 2:
-                summary_prompt = messages + [{"role": "user", "content": "请用一段话总结你完成的工作和发现。如果探索被中断，请说明已完成的进度。"}]
-                summary_response = await self._call_llm_with_retry(
-                    summary_prompt[-5:], max_retries=2
-                )
-                if summary_response:
-                    summary_choices = summary_response.get("choices", [])
-                    if summary_choices:
-                        summary_text = summary_choices[0].get("message", {}).get("content", "")
-                        if self.on_explore_complete:
-                            if asyncio.iscoroutinefunction(self.on_explore_complete):
-                                await self.on_explore_complete(summary_text)
-                            else:
-                                self.on_explore_complete(summary_text)
-        except Exception as e:
-            logger.error(f"Failed to get summary: {e}")
+            # 临时设置自主探索的 system prompt
+            self.agent.system_prompt = prompt
 
-    async def _call_llm_with_retry(self, messages: list, max_retries: int = 3) -> Optional[dict]:
-        """带重试的 LLM 调用"""
-        import asyncio
-        for attempt in range(max_retries):
-            try:
-                response = await self.agent.gateway.chat_completion(
-                    model_id=self.agent.model_id,
-                    messages=messages,
-                    tools=self.agent.tools.get_schemas()
-                )
-                return response
-            except Exception as e:
-                wait_time = 2 ** attempt  # 指数退避: 2s, 4s, 8s
-                logger.warning(f"LLM call failed (attempt {attempt + 1}/{max_retries}): {e}, retrying in {wait_time}s")
-                await asyncio.sleep(wait_time)
-        logger.error(f"LLM call failed after {max_retries} retries")
-        return None
+            # 复用 Agent Loop 执行自主探索
+            response = await self.agent.run("开始执行自主探索任务")
+
+            if response:
+                logger.info(f"Autonomous exploration completed, response length: {len(response)}")
+                if self.on_explore_complete:
+                    if asyncio.iscoroutinefunction(self.on_explore_complete):
+                        await self.on_explore_complete(response)
+                    else:
+                        self.on_explore_complete(response)
+            else:
+                logger.warning("Autonomous exploration returned empty response")
+        except Exception as e:
+            logger.exception(f"Autonomous exploration failed: {e}")
+        finally:
+            # 恢复原始 system prompt
+            self.agent.system_prompt = original_system_prompt
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
         """构建自主探索 prompt（包含完整 system prompt + skills + SOP）"""
