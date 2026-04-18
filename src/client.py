@@ -323,4 +323,5 @@ class LLMGateway:
         **kwargs
     ) -> AsyncGenerator[Dict, None]:
         """流式聊天补全（使用降级机制）"""
-        return self.stream_chat_completion_with_fallback(model_id, messages, **kwargs)
+        async for chunk in self.stream_chat_completion_with_fallback(model_id, messages, **kwargs):
+            yield chunk
