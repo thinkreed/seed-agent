@@ -201,29 +201,46 @@ def search_files(keyword: str, path: str = ".", pattern: str = "*"):
                     pass
     return matches if matches else "No matches found."
 
-import psutil
-
 def list_processes(filter_keyword: str = None, limit: int = 50):
-    """List running processes.
+    """List running processes using system commands.
     Args:
         filter_keyword: Optional keyword to filter process names (case-insensitive).
         limit: Max number of processes to return.
     Returns:
-        List of dicts with 'pid', 'name', 'status'.
+        Formatted string with process details.
     """
     try:
+        is_windows = os.name == 'nt'
+        cmd = ['tasklist', '/NH', '/FO', 'CSV'] if is_windows else ['ps', '-eo', 'pid,comm,state']
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        output = result.stdout.strip()
+        if not output:
+            return "Could not retrieve process list."
+        
+        lines = output.splitlines()
         procs = []
-        for proc in psutil.process_iter(['pid', 'name', 'status']):
-            try:
-                info = proc.info
-                if filter_keyword:
-                    if filter_keyword.lower() not in info['name'].lower():
-                        continue
-                procs.append(f"PID: {info['pid']}, Name: {info['name']}, Status: {info['status']}")
-                if len(procs) >= limit:
-                    break
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                pass
+        
+        for line in lines:
+            if is_windows:
+                # CSV format: "Name","PID","Session Name","Session#","Mem Usage"
+                parts = line.strip().split('","')
+                if len(parts) < 2: continue
+                name = parts[0].strip('"')
+                pid = parts[1].strip('"').replace(',', '')
+            else:
+                # ps format: PID COMM STATE
+                parts = line.split()
+                if len(parts) < 3: continue
+                pid, name, status = parts[0], parts[1], parts[2]
+            
+            if filter_keyword and filter_keyword.lower() not in name.lower():
+                continue
+                
+            procs.append(f"PID: {pid}, Name: {name}")
+            if len(procs) >= limit:
+                break
+        
         return "\n".join(procs) if procs else "No processes found matching filter."
     except Exception as e:
         return f"Error listing processes: {str(e)}"
