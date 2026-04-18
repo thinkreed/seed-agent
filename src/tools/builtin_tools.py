@@ -1,6 +1,7 @@
 import subprocess
 import os
 from pathlib import Path
+import zipfile
 
 def run_code(code: str, type: str = "python", cwd: str = "."):
     """Execute code safely via subprocess.
