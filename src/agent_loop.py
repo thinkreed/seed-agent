@@ -155,34 +155,36 @@ class AgentLoop:
                 return
     
     async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
-        """批量执行工具调用
+        """批量并行执行工具调用
         
         Args:
             tool_calls: LLM 返回的工具调用列表
         Returns:
             工具结果消息列表 (role: "tool")
         """
-        results = []
-        for tool_call in tool_calls:
+        async def _run_single_call(tool_call: Dict) -> Dict:
             tool_id = tool_call['id']
             tool_name = tool_call['function']['name']
-            tool_args = json.loads(tool_call['function']['arguments'])
+            # Handle potential dict or string for arguments
+            raw_args = tool_call['function']['arguments']
+            tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
             
             try:
                 result = await self.tools.execute(tool_name, **tool_args)
-                results.append({
+                return {
                     "role": "tool",
                     "tool_call_id": tool_id,
                     "content": str(result)
-                })
+                }
             except Exception as e:
-                results.append({
+                return {
                     "role": "tool",
                     "tool_call_id": tool_id,
                     "content": f"Error: {str(e)}"
-                })
+                }
         
-        return results
+        # Execute all tool calls concurrently
+        return await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
     
     def clear_history(self):
         """清空对话历史"""
