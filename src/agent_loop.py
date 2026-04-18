@@ -2,6 +2,7 @@ import asyncio
 import json
 from typing import List, Dict, Optional, AsyncGenerator
 from tools import ToolRegistry
+from tools.builtin_tools import run_code, read_file, write_file, list_files
 from client import LLMGateway
 
 def estimate_content_length(content: str) -> int:
@@ -40,6 +41,8 @@ class AgentLoop:
         
         self.history: List[Dict] = []
         self.tools = ToolRegistry()
+        from tools.builtin_tools import register_builtin_tools
+        register_builtin_tools(self.tools)
         self._pending_user_input: Optional[str] = None  # 待处理的用户输入
     
     def _get_primary_model(self) -> str:
