@@ -169,8 +169,17 @@ def call_llm_for_optimization(wiki_content: str, wiki_file: str) -> dict:
 
     model_id = gateway.get_active_provider() + "/" + gateway.config.models[gateway.get_active_provider()].models[0].id
 
+    async def _async_call():
+        """内部异步函数"""
+        return await gateway.chat_completion(model_id, messages, tools=tools.get_schemas())
+
     try:
-        response = asyncio.run(gateway.chat_completion(model_id, messages, tools=tools.get_schemas()))
+        response = asyncio.run(_async_call())
+
+        # 验证响应类型
+        if response is None or not isinstance(response, dict):
+            logger.error(f"Invalid response type: {type(response)}")
+            return {"optimization": "调用失败", "result": f"Invalid response type: {type(response)}"}
 
         # 提取结果
         choices = response.get("choices", [])
