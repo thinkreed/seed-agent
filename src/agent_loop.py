@@ -42,7 +42,9 @@ class AgentLoop:
         self.history: List[Dict] = []
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
+        from tools.memory_tools import register_memory_tools
         register_builtin_tools(self.tools)
+        register_memory_tools(self.tools)
         self._pending_user_input: Optional[str] = None  # 待处理的用户输入
     
     def _get_primary_model(self) -> str:
