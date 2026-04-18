@@ -4,6 +4,13 @@ from typing import List, Dict, Optional, AsyncGenerator
 from tools import ToolRegistry
 from client import LLMGateway
 
+def estimate_content_length(content: str) -> int:
+    """简单估算内容长度 (字符数 * 1.5 粗略模拟 token 消耗，中英文混排)"""
+    if not content:
+        return 0
+    # 粗略估算：中文约等于1 token，英文单词约等于1-1.3 token。这里直接用 len 做简单截断基准
+    return len(content)
+
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数异常"""
     pass
@@ -40,12 +47,49 @@ class AgentLoop:
         return self.gateway.config.agents['defaults'].defaults.primary
     
     def _build_messages(self) -> List[Dict]:
-        """构建完整的消息列表"""
+        """构建完整的消息列表，包含上下文自动截断"""
+        self._trim_history()
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
         messages.extend(self.history)
         return messages
+
+    def _trim_history(self):
+        """根据模型上下文窗口限制，裁剪历史消息"""
+        if not self.history:
+            return
+
+        try:
+            model_config = self.gateway.get_model_config(self.model_id)
+            max_context = model_config.contextWindow
+        except Exception:
+            max_context = 8000
+
+        # 限制在 contextWindow 的 80% 以内，预留响应空间
+        limit = int(max_context * 0.8)
+        system_len = estimate_content_length(self.system_prompt) if self.system_prompt else 0
+        available = max(500, limit - system_len)
+
+        # 估算历史总长度
+        total_len = sum(estimate_content_length(msg.get('content', '')) for msg in self.history)
+        
+        if total_len > available:
+            # 逆序保留最近的消息
+            messages_to_keep = []
+            current_len = 0
+            for msg in reversed(self.history):
+                length = estimate_content_length(msg.get('content', ''))
+                if current_len + length > available:
+                    # 如果还没保留任何消息，强制保留最后一条（通常是用户最新的输入）
+                    if not messages_to_keep:
+                        messages_to_keep.append(msg)
+                    break
+                current_len += length
+                messages_to_keep.append(msg)
+            
+            self.history = list(reversed(messages_to_keep))
+            print(f"[Context Trimmed]: History reduced to {len(self.history)} messages.")
     
     async def run(self, user_input: str) -> str:
         """处理用户输入,返回最终响应
