@@ -212,7 +212,9 @@ class LLMGateway:
         client = self.get_client(model_id)
         model_config = self.get_model_config(model_id)
 
-        if not kwargs.get('tools'):
+        # 清理空 tools 数组（部分 API 不允许空数组）
+        tools = kwargs.get('tools')
+        if not tools:
             kwargs.pop('tools', None)
 
         response = await client.chat.completions.create(
@@ -297,16 +299,31 @@ class LLMGateway:
         client = self.get_client(model_id)
         model_config = self.get_model_config(model_id)
 
-        if not kwargs.get('tools'):
+        # 清理空 tools 数组（部分 API 不允许空数组）
+        tools = kwargs.get('tools')
+        if not tools:
             kwargs.pop('tools', None)
 
-        stream = await client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=model_config.id,
             messages=messages,
             stream=True,
             max_tokens=model_config.maxTokens,
             **kwargs
         )
+
+        # 兼容不同 SDK 版本：AsyncStream vs 协程包装
+        if hasattr(response, '__aiter__'):
+            stream = response
+        elif asyncio.iscoroutine(response):
+            stream = await response
+        else:
+            # 非流式响应，直接 yield 并返回
+            try:
+                yield response.model_dump()
+            except Exception:
+                yield str(response)
+            return
 
         async for chunk in stream:
             try:

@@ -30,9 +30,9 @@ class ToolRegistry:
         """获取所有工具的 JSON Schema(用于 LLM 调用)"""
         return list(self._tool_schemas.values())
     
-    async def execute(self, name: str, **kwargs) -> Any:
+    async def execute(self, tool_name: str, **kwargs) -> Any:
         """执行工具(支持异步)"""
-        func = self.get_tool(name)
+        func = self.get_tool(tool_name)
         if asyncio.iscoroutinefunction(func):
             return await func(**kwargs)
         return func(**kwargs)

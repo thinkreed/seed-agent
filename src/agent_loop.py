@@ -255,10 +255,19 @@ class AgentLoop:
             tool_id = tool_call['id']
             tool_name = tool_call['function']['name']
             raw_args = tool_call['function']['arguments']
-            if isinstance(raw_args, str):
-                tool_args = json.loads(raw_args) if raw_args.strip() else {}
-            else:
-                tool_args = raw_args if raw_args else {}
+
+            # 鲁棒的 JSON 解析：处理空字符串、无效 JSON 等边界情况
+            try:
+                if isinstance(raw_args, str):
+                    raw_args = raw_args.strip()
+                    tool_args = json.loads(raw_args) if raw_args else {}
+                else:
+                    tool_args = raw_args if raw_args else {}
+                if not isinstance(tool_args, dict):
+                    tool_args = {}
+            except (json.JSONDecodeError, TypeError, ValueError):
+                logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
+                tool_args = {}
 
             try:
                 result = await self.tools.execute(tool_name, **tool_args)

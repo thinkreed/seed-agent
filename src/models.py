@@ -51,15 +51,22 @@ def load_config(config_path: str) -> FullConfig:
         data['models'] = data['models']['providers']
 
     # 2. 处理 agents.defaults.model -> agents.defaults.defaults
+    #    幂等迁移：已迁移过的配置不会被重复处理
     if 'agents' in data and isinstance(data['agents'], dict):
         agent_section = data['agents']
         if 'defaults' in agent_section and isinstance(agent_section['defaults'], dict):
             defaults = agent_section['defaults']
+            # 旧格式: {"defaults": {"model": "..."}}
             if 'model' in defaults:
-                # 将 {"defaults": {"model": "..."}} 转换为 {"defaults": {"primary": "..."}}
                 agent_section['defaults'] = {
                     'defaults': {'primary': defaults['model']}
                 }
+            # 半迁移格式: {"defaults": {"primary": "..."}} → 补全嵌套
+            elif 'primary' in defaults and 'defaults' not in defaults:
+                agent_section['defaults'] = {
+                    'defaults': {'primary': defaults['primary']}
+                }
+            # 已迁移格式: {"defaults": {"defaults": {"primary": "..."}}} → 无需处理
 
     try:
         return FullConfig(**data)
