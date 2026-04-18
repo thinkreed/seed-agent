@@ -1,6 +1,8 @@
 import asyncio
 import sys
 import os
+import logging
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -8,6 +10,19 @@ load_dotenv()
 
 # Add src to path to allow imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+# Setup cross-platform logging to .seed/logs
+LOG_DIR = Path(__file__).parent / ".seed" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(LOG_DIR / "seed_agent.log", encoding="utf-8")
+    ]
+)
+logger = logging.getLogger("seed_agent")
 
 from agent_loop import AgentLoop
 from client import LLMGateway
@@ -30,7 +45,7 @@ async def main():
         agent = AgentLoop(gateway=gateway, system_prompt=system_prompt)
         print("Agent initialized successfully. Type 'exit' to quit.\n")
     except Exception as e:
-        print(f"Failed to initialize agent: {e}")
+        logger.exception("Failed to initialize agent")
         return
 
     print("Starting interactive loop...")
@@ -57,7 +72,7 @@ async def main():
             print("\nInterrupted by user.")
             break
         except Exception as e:
-            print(f"\nError occurred: {e}")
+            logger.exception("Error occurred during interaction")
 
 if __name__ == "__main__":
     asyncio.run(main())
