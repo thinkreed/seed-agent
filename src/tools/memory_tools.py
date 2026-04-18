@@ -9,55 +9,127 @@ from pathlib import Path
 MEMORY_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '.seed', 'memory'))
 SESSIONS_DIR = os.path.join(MEMORY_ROOT, 'raw', 'sessions')
 
-def _get_path(level, filename=None):
-    mapping = {'L1': 'notes.md', 'L2': 'skills', 'L3': 'knowledge', 'L4': 'raw'}
-    if level not in mapping: return None
-    base = mapping[level]
-    if base.endswith('.md'):
-        return os.path.join(MEMORY_ROOT, base)
-    if not filename: return None
-    return os.path.join(MEMORY_ROOT, base, filename)
-
 def write_memory(level: str, content: str, title: str = "", metadata: str = "") -> str:
     """
     Write memory to L1/L2/L3/L4. Validates content length and structure.
-    
+
     Args:
         level: L1 (Index), L2 (Skill), L3 (Knowledge), L4 (Raw)
-        content: Memory content
-        title: Memory title or filename (for L2-L4). For L1, it's the section header.
+        content: Memory content (for L2, must be SKILL.md format with YAML frontmatter)
+        title: Memory title or skill name (for L2-L4). For L1, it's the section header.
         metadata: Optional metadata (source, date, etc.)
     """
-    # SOP Rule Validation:
-    # L1 Constraint: Index only, short.
-    if level == 'L1' and len(content) > 200:
-        return "Error: L1 content exceeds limit (Index only)."
-    if level == 'L1' and ("##" in content or "```" in content):
-        return "Error: L1 cannot contain detailed steps or code blocks."
+    # L1 校验：索引简短，无详细步骤
+    if level == 'L1':
+        if len(content) > 200:
+            return "Error: L1 content exceeds 200 chars (Index only)."
+        if "##" in content or "```" in content:
+            return "Error: L1 cannot contain subsections or code blocks."
 
-    path = _get_path(level, title if not title.endswith(".md") else title)
+    # L2 校验：必须符合 Open Agent Skills 规范
+    if level == 'L2':
+        validation = _validate_skill_format(content, title)
+        if validation:
+            return validation
+
+    path = _get_path(level, title)
     if not path: return "Error: Invalid level or missing filename."
 
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        
-        # L1 appends to notes.md; others create/overwrite files
+
         if level == 'L1':
-            mode = 'a'
-            with open(path, mode, encoding='utf-8') as f:
+            with open(path, 'a', encoding='utf-8') as f:
                 f.write(f"\n## {title}\n")
                 f.write(content.strip() + "\n")
             return f"Updated L1 Index: {title}"
         else:
-            mode = 'w'
-            with open(path, mode, encoding='utf-8') as f:
-                if metadata:
-                    f.write(f"<!-- {metadata} -->\n")
-                f.write(f"# {title}\n")
-                f.write(content.strip() + "\n")
+            # L2 直接写入 content（已包含 YAML frontmatter）
+            # L3/L4 写入带标题的格式
+            if level == 'L2':
+                # L2 写入 SKILL.md 格式（content 应已包含 frontmatter）
+                with open(path, 'w', encoding='utf-8') as f:
+                    f.write(content.strip() + "\n")
+            else:
+                with open(path, 'w', encoding='utf-8') as f:
+                    if metadata:
+                        f.write(f"<!-- {metadata} -->\n")
+                    f.write(f"# {title}\n")
+                    f.write(content.strip() + "\n")
             return f"Saved {level} Memory: {os.path.basename(path)}"
     except Exception as e:
         return f"Error writing memory: {str(e)}"
+
+
+def _validate_skill_format(content: str, name: str = "") -> str:
+    """校验 L2 Skill 格式是否符合 Open Agent Skills 规范"""
+    # 校验 YAML frontmatter
+    if not content.strip().startswith("---"):
+        return "Error: L2 Skill must start with YAML frontmatter (---)."
+
+    # 提取 frontmatter
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return "Error: L2 Skill must have closing --- for frontmatter."
+
+    frontmatter_text = parts[1].strip()
+
+    # 校验必需字段
+    required_fields = ["name", "description"]
+    for field in required_fields:
+        if field not in frontmatter_text:
+            return f"Error: L2 Skill frontmatter must contain '{field}' field."
+
+    # 解析 name 字段
+    name_match = re.search(r'name:\s*["\']?([^"\':\n]+)["\']?', frontmatter_text)
+    if name_match:
+        skill_name = name_match.group(1).strip()
+        # name 校验规则：小写字母/数字/连字符，1-64字符
+        if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', skill_name):
+            return f"Error: L2 Skill name '{skill_name}' must be lowercase letters/numbers/hyphens, 1-64 chars, no leading/trailing/consecutive hyphens."
+        if len(skill_name) > 64:
+            return "Error: L2 Skill name exceeds 64 chars limit."
+
+    # 校验 description 长度
+    desc_match = re.search(r'description:\s*["\']?(.+?)["\']?\n', frontmatter_text, re.DOTALL)
+    if desc_match:
+        desc = desc_match.group(1).strip()
+        if len(desc) > 1024:
+            return "Error: L2 Skill description exceeds 1024 chars limit."
+        if not desc:
+            return "Error: L2 Skill description cannot be empty."
+
+    # 校验文件名：必须是 skill_name/SKILL.md 格式
+    if name:
+        # name 应为 skill_name/SKILL.md 或 SKILL.md
+        expected_name = f"{skill_name}/SKILL.md"
+        if name != expected_name and name != "SKILL.md":
+            return f"Error: L2 filename must be '{expected_name}' (skill directory with SKILL.md)."
+
+    return ""  # 校验通过
+
+
+def _get_path(level, filename=None):
+    """获取记忆文件路径"""
+    mapping = {'L1': 'notes.md', 'L2': 'skills', 'L3': 'knowledge', 'L4': 'raw'}
+    if level not in mapping: return None
+    base = mapping[level]
+
+    if base.endswith('.md'):
+        return os.path.join(MEMORY_ROOT, base)
+
+    if not filename: return None
+
+    # L2 特殊处理：skill 目录结构
+    if level == 'L2':
+        # filename 可以是 "skill_name/SKILL.md" 或 "SKILL.md"（需要配合 skill_name）
+        if filename.endswith('/SKILL.md') or filename == 'SKILL.md':
+            return os.path.join(MEMORY_ROOT, base, filename)
+        else:
+            # 如果只传了 skill_name，自动补全为 skill_name/SKILL.md
+            return os.path.join(MEMORY_ROOT, base, filename, 'SKILL.md')
+
+    return os.path.join(MEMORY_ROOT, base, filename)
 
 def read_memory_index() -> str:
     """

@@ -208,5 +208,8 @@ __marimo__/
 
 .sisyphus
 .qwen
-.seed/
+.seed/logs/
+.seed/memory/raw/
+.seed/memory/knowledge/
+.seed/memory/notes/
 config/
