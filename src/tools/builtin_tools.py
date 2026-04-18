@@ -120,6 +120,38 @@ def get_system_info() -> str:
     except Exception as e:
         return f"Error getting system info: {str(e)}"
 
+import datetime
+
+def get_current_time() -> str:
+    """Get current date and time.
+    Returns:
+        Formatted date and time string.
+    """
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z")
+
+def run_shell(command: str, shell_type: str = "powershell", cwd: str = ".", timeout: int = 60):
+    """Execute a shell command.
+    Args:
+        command: Shell command to execute.
+        shell_type: Type of shell ('powershell' or 'bash').
+        cwd: Working directory.
+        timeout: Execution timeout in seconds.
+    """
+    try:
+        shell = "powershell" if shell_type == "powershell" else "bash"
+        result = subprocess.run(
+            [shell, "-Command" if shell_type == "powershell" else "-c", command],
+            capture_output=True, text=True, timeout=timeout, cwd=cwd
+        )
+        output = result.stdout
+        if result.stderr:
+            output += "\nStderr:\n" + result.stderr
+        return output if output else "Command executed successfully."
+    except subprocess.TimeoutExpired:
+        return "Error: Command timed out."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 def register_builtin_tools(registry):
     """Register builtin tools to the registry."""
     registry.register("run_code", run_code)
@@ -128,3 +160,5 @@ def register_builtin_tools(registry):
     registry.register("list_files", list_files)
     registry.register("fetch_url", fetch_url)
     registry.register("get_system_info", get_system_info)
+    registry.register("get_current_time", get_current_time)
+    registry.register("run_shell", run_shell)
