@@ -209,6 +209,33 @@ def search_files(keyword: str, path: str = ".", pattern: str = "*"):
                     pass
     return matches if matches else "No matches found."
 
+import psutil
+
+def list_processes(filter_keyword: str = None, limit: int = 50):
+    """List running processes.
+    Args:
+        filter_keyword: Optional keyword to filter process names (case-insensitive).
+        limit: Max number of processes to return.
+    Returns:
+        List of dicts with 'pid', 'name', 'status'.
+    """
+    try:
+        procs = []
+        for proc in psutil.process_iter(['pid', 'name', 'status']):
+            try:
+                info = proc.info
+                if filter_keyword:
+                    if filter_keyword.lower() not in info['name'].lower():
+                        continue
+                procs.append(f"PID: {info['pid']}, Name: {info['name']}, Status: {info['status']}")
+                if len(procs) >= limit:
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        return "\n".join(procs) if procs else "No processes found matching filter."
+    except Exception as e:
+        return f"Error listing processes: {str(e)}"
+
 def run_shell(command: str, shell_type: str = "powershell", cwd: str = ".", timeout: int = 60):
     """Execute a shell command.
     Args:
@@ -245,4 +272,5 @@ def register_builtin_tools(registry):
     registry.register("compress_files", compress_files)
     registry.register("decompress_files", decompress_files)
     registry.register("search_files", search_files)
+    registry.register("list_processes", list_processes)
     registry.register("run_shell", run_shell)
