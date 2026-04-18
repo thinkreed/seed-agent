@@ -78,13 +78,18 @@ class LLMGateway:
         )
         return response.model_dump()
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((APIConnectionError, RateLimitError, APIStatusError))
+    )
     async def stream_chat_completion(
         self,
         model_id: str,
         messages: List[Dict],
         **kwargs
     ) -> AsyncGenerator[Dict, None]:
-        """流式聊天补全"""
+        """流式聊天补全，包含重试机制和空 chunk 过滤"""
         client = self.get_client(model_id)
         model_config = self.get_model_config(model_id)
         
@@ -101,4 +106,11 @@ class LLMGateway:
         )
         
         async for chunk in stream:
-            yield chunk.model_dump()
+            # Filter out empty or invalid chunks
+            try:
+                chunk_dict = chunk.model_dump()
+                # Check if choices is valid
+                if chunk_dict.get('choices'):
+                    yield chunk_dict
+            except Exception:
+                continue
