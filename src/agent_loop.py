@@ -26,7 +26,7 @@ class ToolNotFoundError(Exception):
 
 class AgentLoop:
     """Agent 主循环"""
-    
+
     def __init__(
         self,
         gateway: LLMGateway,
@@ -38,7 +38,7 @@ class AgentLoop:
         self.model_id = model_id or self._get_primary_model()
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
-        
+
         self.history: List[Dict] = []
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
@@ -46,11 +46,11 @@ class AgentLoop:
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
         self._pending_user_input: Optional[str] = None  # 待处理的用户输入
-    
+
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         return self.gateway.config.agents['defaults'].defaults.primary
-    
+
     def _build_messages(self) -> List[Dict]:
         """构建完整的消息列表，包含上下文自动截断"""
         self._trim_history()
@@ -92,7 +92,7 @@ class AgentLoop:
 
         # 计算长度 (包含所有 keys)
         total_len = sum(estimate_content_length(str(msg)) for msg in self.history)
-        
+
         if total_len > available:
             removed_count = 0
             # 移除旧消息，保留最新的一条 (当前用户输入) 和最近的上下文
@@ -100,24 +100,24 @@ class AgentLoop:
                 msg = self.history.pop(0)
                 total_len -= estimate_content_length(str(msg))
                 removed_count += 1
-            
+
             # 插入上下文截断提示
             if removed_count > 0 and self.history:
                 # 避免连续插入
                 first_msg = self.history[0]
                 if not (first_msg.get('role') == 'system' and 'truncated' in str(first_msg.get('content', '')).lower()):
                      self.history.insert(0, {
-                        "role": "system", 
+                        "role": "system",
                         "content": "[System Note: Previous conversation history was truncated to manage context window size.]"
                     })
 
     async def run(self, user_input: str) -> str:
         """处理用户输入,返回最终响应
-        
+
         用户消息优先原则:
         - 在处理过程中收到新的用户输入,立即中断当前处理
         - 优先响应新的用户消息
-        
+
         Args:
             user_input: 用户输入文本
         Returns:
@@ -125,18 +125,18 @@ class AgentLoop:
         """
         # 1. 添加用户输入到历史
         self.history.append({"role": "user", "content": user_input})
-        
+
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
-            
+
             # 检查是否有新的用户输入(中断机制)
             if self._pending_user_input:
                 new_input = self._pending_user_input
                 self._pending_user_input = None
                 self.history.append({"role": "user", "content": new_input})
                 iteration = 0  # 重置迭代计数
-            
+
             # 2. 调用 LLM
             messages = self._build_messages()
             response = await self.gateway.chat_completion(
@@ -144,14 +144,14 @@ class AgentLoop:
                 messages,
                 tools=self.tools.get_schemas()
             )
-            
+
             # 3. 解析响应
             choice = response['choices'][0]
             message = choice['message']
-            
+
             # 添加到历史
             self.history.append(message)
-            
+
             # 4. 检查是否有工具调用
             if message.get('tool_calls'):
                 tool_results = await self._execute_tool_calls(message['tool_calls'])
@@ -160,29 +160,30 @@ class AgentLoop:
             else:
                 # 5. 无工具调用,返回最终响应
                 return message.get('content', '')
-        
+
         raise MaxIterationsExceeded(
             f"Agent exceeded maximum iterations ({self.max_iterations})"
         )
-    
+
     async def stream_run(self, user_input: str) -> AsyncGenerator[Dict, None]:
         """流式处理用户输入
-        
+
         Yields:
             {"type": "chunk", "content": "..."}  # 文本块
             {"type": "final", "content": "..."}  # 最终响应
             {"type": "tool_call", "name": "...", "args": {...}}  # 工具调用
         """
         self.history.append({"role": "user", "content": user_input})
-        
+
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
-            
+
             messages = self._build_messages()
             full_content = ""
-            tool_calls = []
-            
+            # 用于累积流式工具调用
+            tool_calls_accumulator: Dict[int, Dict] = {}  # index -> tool_call data
+
             # 流式获取响应
             async for chunk in self.gateway.stream_chat_completion(
                 self.model_id,
@@ -195,12 +196,35 @@ class AgentLoop:
                 if content:
                     full_content += content
                     yield {"type": "chunk", "content": content}
-                
-                # 提取工具调用
-                tc = delta.get('tool_calls')
-                if tc:
-                    tool_calls.extend(tc)
-            
+
+                # 提取工具调用 (流式增量传输，需要累积)
+                tc_list = delta.get('tool_calls')
+                if tc_list:
+                    for tc in tc_list:
+                        idx = tc.get('index', 0)
+                        if idx not in tool_calls_accumulator:
+                            # 初始化新的工具调用
+                            tool_calls_accumulator[idx] = {
+                                'id': tc.get('id'),
+                                'type': tc.get('type', 'function'),
+                                'function': {'name': '', 'arguments': ''}
+                            }
+                        acc = tool_calls_accumulator[idx]
+                        # 累积 id 和 type
+                        if tc.get('id'):
+                            acc['id'] = tc['id']
+                        if tc.get('type'):
+                            acc['type'] = tc['type']
+                        # 累积 function 信息
+                        func = tc.get('function', {})
+                        if func.get('name'):
+                            acc['function']['name'] = func['name']
+                        if func.get('arguments'):
+                            acc['function']['arguments'] += func['arguments']
+
+            # 构建完整的工具调用列表
+            tool_calls = [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())] if tool_calls_accumulator else []
+
             # 构建助手消息
             assistant_message = {
                 "role": "assistant",
@@ -208,7 +232,7 @@ class AgentLoop:
                 "tool_calls": tool_calls if tool_calls else None
             }
             self.history.append(assistant_message)
-            
+
             # 处理工具调用
             if tool_calls:
                 yield {"type": "tool_call", "calls": tool_calls}
@@ -217,10 +241,10 @@ class AgentLoop:
             else:
                 yield {"type": "final", "content": full_content}
                 return
-    
+
     async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
         """批量并行执行工具调用
-        
+
         Args:
             tool_calls: LLM 返回的工具调用列表
         Returns:
@@ -231,8 +255,11 @@ class AgentLoop:
             tool_name = tool_call['function']['name']
             # Handle potential dict or string for arguments
             raw_args = tool_call['function']['arguments']
-            tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-            
+            if isinstance(raw_args, str):
+                tool_args = json.loads(raw_args) if raw_args.strip() else {}
+            else:
+                tool_args = raw_args if raw_args else {}
+
             try:
                 result = await self.tools.execute(tool_name, **tool_args)
                 return {
@@ -246,20 +273,20 @@ class AgentLoop:
                     "tool_call_id": tool_id,
                     "content": f"Error: {str(e)}"
                 }
-        
+
         # Execute all tool calls concurrently
         return await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
-    
+
     def clear_history(self):
         """清空对话历史"""
         self.history.clear()
-    
+
     def interrupt(self, user_input: str):
         """中断当前处理,优先响应用户输入
-        
+
         当 agent 正在处理(如执行工具调用)时,
         用户可以通过此方法发送新的指令并优先处理。
-        
+
         Args:
             user_input: 新的用户输入
         """
