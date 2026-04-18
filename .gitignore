@@ -212,4 +212,5 @@ __marimo__/
 .seed/memory/raw/
 .seed/memory/knowledge/
 .seed/memory/notes/
+.seed/memory/skills/
 config/
