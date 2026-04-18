@@ -43,7 +43,7 @@ class AgentLoop:
         gateway: LLMGateway,
         model_id: str = None,
         system_prompt: str = None,
-        max_iterations: int = 10,
+        max_iterations: int = 30,
         summary_interval: int = 10,
         session_id: str = None
     ):
