@@ -2,7 +2,6 @@ import asyncio
 import json
 from typing import List, Dict, Optional, AsyncGenerator
 from tools import ToolRegistry
-from tools.builtin_tools import run_code, read_file, write_file, list_files
 from tools.memory_tools import save_session_history, _generate_session_filename
 from client import LLMGateway
 
