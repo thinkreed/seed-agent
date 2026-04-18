@@ -39,7 +39,7 @@ def on_autonomous_complete(response: str):
 
 async def main(args=None):
     """交互式主循环入口"""
-    config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.json')
+    config_path = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
 
     # Load system prompt
     prompt_path = os.path.join(os.path.dirname(__file__), 'core_principles', 'system_prompts_en.md')

@@ -8,7 +8,7 @@ from agent_loop import AgentLoop
 from client import LLMGateway
 
 async def main():
-    config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.json')
+    config_path = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
     gateway = LLMGateway(config_path)
     agent = AgentLoop(gateway=gateway)
     

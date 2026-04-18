@@ -2,7 +2,10 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError
 from typing import List, Dict, Optional
 import json
+import os
 import sys
+
+DEFAULT_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
 
 class ModelConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
@@ -37,11 +40,23 @@ class FullConfig(BaseModel):
     models: Dict[str, ProviderConfig]
     agents: Dict[str, AgentConfig]
 
-def load_config(config_path: str) -> FullConfig:
-    """加载并解析配置文件，支持旧版 JSON 结构自动迁移"""
+def load_config(config_path: str = None) -> FullConfig:
+    """加载并解析配置文件，支持旧版 JSON 结构自动迁移
+    
+    Args:
+        config_path: 配置文件路径，默认为 ~/.seed/config.json
+    """
+    if config_path is None:
+        config_path = DEFAULT_CONFIG_PATH
+        
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+    except FileNotFoundError:
+        raise ValueError(
+            f"Configuration file not found: {config_path}\n"
+            f"Please create the file or specify a valid config path."
+        )
     except Exception as e:
         raise ValueError(f"Failed to load config file {config_path}: {e}")
 
