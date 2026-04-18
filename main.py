@@ -16,11 +16,18 @@ async def main():
     """交互式主循环入口"""
     config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.json')
     
+    # Load system prompt
+    prompt_path = os.path.join(os.path.dirname(__file__), 'core_principles', 'system_prompts_en.md')
+    system_prompt = None
+    if os.path.exists(prompt_path):
+        with open(prompt_path, 'r', encoding='utf-8') as f:
+            system_prompt = f.read()
+
     print("Initializing Agent...")
     try:
         # 初始化网关和 Agent
         gateway = LLMGateway(config_path)
-        agent = AgentLoop(gateway=gateway)
+        agent = AgentLoop(gateway=gateway, system_prompt=system_prompt)
         print("Agent initialized successfully. Type 'exit' to quit.\n")
     except Exception as e:
         print(f"Failed to initialize agent: {e}")
