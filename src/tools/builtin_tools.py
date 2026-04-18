@@ -76,9 +76,55 @@ def list_files(path: str = "."):
     except Exception as e:
         return f"Error listing files: {str(e)}"
 
+import urllib.request
+import urllib.parse
+import platform
+import socket
+
+def fetch_url(url: str, headers: dict = None, timeout: int = 10) -> str:
+    """Fetch content from a URL.
+    Args:
+        url: URL to fetch.
+        headers: Optional dict of headers.
+        timeout: Request timeout in seconds.
+    """
+    try:
+        req = urllib.request.Request(url)
+        if headers:
+            for key, value in headers.items():
+                req.add_header(key, value)
+        else:
+            req.add_header('User-Agent', 'Mozilla/5.0 (SeedAgent/1.0)')
+        
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            return response.read().decode('utf-8', errors='ignore')[:10000]
+    except Exception as e:
+        return f"Error fetching URL: {str(e)}"
+
+def get_system_info() -> str:
+    """Get basic system information.
+    Returns:
+        String with system details (OS, Node, Release, Machine, IP).
+    """
+    try:
+        info = {
+            "system": platform.system(),
+            "release": platform.release(),
+            "version": platform.version(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "hostname": platform.node(),
+            "local_ip": socket.gethostbyname(socket.gethostname())
+        }
+        return "\n".join(f"{k}: {v}" for k, v in info.items())
+    except Exception as e:
+        return f"Error getting system info: {str(e)}"
+
 def register_builtin_tools(registry):
     """Register builtin tools to the registry."""
     registry.register("run_code", run_code)
     registry.register("read_file", read_file)
     registry.register("write_file", write_file)
     registry.register("list_files", list_files)
+    registry.register("fetch_url", fetch_url)
+    registry.register("get_system_info", get_system_info)
