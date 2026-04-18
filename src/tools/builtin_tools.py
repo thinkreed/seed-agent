@@ -3,26 +3,18 @@ import os
 from pathlib import Path
 import zipfile
 
-def run_code(code: str, type: str = "python", cwd: str = "."):
-    """Execute code safely via subprocess.
+def run_code(code: str, cwd: str = "."):
+    """Execute Python code via subprocess.
+    Note: For system commands or PowerShell, use run_shell tool.
     Args:
-        code: The code string to execute.
-        type: Type of code ('python' or 'powershell').
+        code: The python code string to execute.
         cwd: Working directory for execution.
     """
     try:
-        if type == "python":
-            result = subprocess.run(
-                ["python", "-c", code],
-                capture_output=True, text=True, timeout=60, cwd=cwd
-            )
-        elif type == "powershell":
-            result = subprocess.run(
-                ["powershell", "-Command", code],
-                capture_output=True, text=True, timeout=60, cwd=cwd
-            )
-        else:
-            return f"Error: Unsupported code type '{type}'"
+        result = subprocess.run(
+            ["python", "-c", code],
+            capture_output=True, text=True, timeout=60, cwd=cwd
+        )
         
         output = result.stdout
         if result.stderr:
