@@ -37,7 +37,7 @@ class AgentLoop:
     
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
-        return self.gateway.config.agents['defaults'].primary
+        return self.gateway.config.agents['defaults'].defaults.primary
     
     def _build_messages(self) -> List[Dict]:
         """构建完整的消息列表"""

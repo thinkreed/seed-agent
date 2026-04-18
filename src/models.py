@@ -35,4 +35,20 @@ def load_config(config_path: str) -> FullConfig:
     """从 JSON 文件加载配置"""
     with open(config_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
+
+    # 适配 config.json 结构: models.providers -> models
+    if 'models' in data and 'providers' in data['models']:
+        data['models'] = data['models']['providers']
+
+    # 适配 config.json 结构: agents.defaults.model -> agents.defaults.defaults
+    if 'agents' in data and 'defaults' in data['agents']:
+        agent_defaults = data['agents']['defaults']
+        if 'model' in agent_defaults:
+            # 构造 FullConfig 期望的结构: agents -> {"defaults": {"defaults": {...}}}
+            data['agents'] = {
+                'defaults': {
+                    'defaults': agent_defaults['model']
+                }
+            }
+
     return FullConfig(**data)
