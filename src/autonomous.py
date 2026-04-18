@@ -99,13 +99,16 @@ class AutonomousExplorer:
 
         logger.info("Starting autonomous exploration via Agent Loop")
 
-        # 保存原始 system prompt 和 history，以便恢复
+        # 保存原始 system prompt、history 和迭代限制，以便恢复
         original_system_prompt = self.agent.system_prompt
         original_history = list(self.agent.history)
+        original_max_iterations = self.agent.max_iterations
 
         try:
-            # 临时设置自主探索的 system prompt
+            # 临时设置自主探索的 system prompt 和更高的迭代限制
             self.agent.system_prompt = prompt
+            # 自主探索任务通常需要更多迭代（执行多个TODO、调用多个工具）
+            self.agent.max_iterations = 100
 
             # 复用 Agent Loop 执行自主探索
             response = await self.agent.run("开始执行自主探索任务")
@@ -122,8 +125,9 @@ class AutonomousExplorer:
         except Exception as e:
             logger.exception(f"Autonomous exploration failed: {e}")
         finally:
-            # 恢复原始 system prompt
+            # 恢复原始 system prompt 和迭代限制
             self.agent.system_prompt = original_system_prompt
+            self.agent.max_iterations = original_max_iterations
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
         """构建自主探索 prompt（包含完整 system prompt + skills + SOP）"""

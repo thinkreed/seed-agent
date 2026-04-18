@@ -12,15 +12,22 @@ load_dotenv()
 # Add src to path to allow imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-# Setup cross-platform logging to ~/.seed/logs
+# Setup cross-platform logging to ~/.seed/logs with daily rotation
 LOG_DIR = Path(os.path.expanduser("~")) / ".seed" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+from datetime import date
+
+# 按天分割日志文件：seed_agent_2026-04-18.log
+log_file = LOG_DIR / f"seed_agent_{date.today().isoformat()}.log"
+file_handler = logging.FileHandler(log_file, encoding="utf-8")
+
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(LOG_DIR / "seed_agent.log", encoding="utf-8")
+        file_handler
     ]
 )
 logger = logging.getLogger("seed_agent")
@@ -106,6 +113,12 @@ async def main(args=None):
 
             print("-" * 50) # 分隔符
 
+        except EOFError:
+            # stdin 关闭（如管道输入结束），优雅退出
+            logger.info("Input stream closed, exiting gracefully")
+            await explorer.stop()
+            await agent.scheduler.stop()
+            break
         except KeyboardInterrupt:
             print("\nInterrupted by user.")
             await explorer.stop()
