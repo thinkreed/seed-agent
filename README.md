@@ -1,122 +1,198 @@
-# Seed Agent Loop
+# Seed Agent
 
-A modular, asynchronous Agent Loop system supporting multi-provider LLM configuration, tool use, and streaming output. The system is designed as a physics-based autonomous evolution executor capable of independent reasoning, memory persistence, and self-improvement through exploration.
+A modular, asynchronous autonomous AI agent system supporting multi-provider LLM configuration, tool execution, streaming output, and self-evolving capabilities. The system is designed as a physics-level autonomous executor capable of independent reasoning, memory persistence, and self-improvement through exploration.
 
 ## Project Structure
 
 ```
 seed-agent/
-├── config/                  # Configuration files and AGENTS.md
-├── core_principles/         # System prompts and core principles
-├── docs/                    # Documentation
-├── examples/                # Usage examples and AGENTS.md
-├── memory/                  # Memory system (L1-L4) and AGENTS.md
-├── auto/                    # Autonomous exploration module and AGENTS.md
-├── src/                     # Core engine and AGENTS.md
-│   ├── __init__.py
-│   ├── agent_loop.py        # Main agent loop logic
-│   ├── client.py            # LLM Gateway (OpenAI compatible)
-│   ├── models.py            # Pydantic configuration models
-│   └── tools/               # Tool registry and AGENTS.md
 ├── main.py                  # Interactive CLI entry point
-└── requirements.txt         # Dependencies
+├── requirements.txt         # Python dependencies
+│
+├── src/                     # Core engine
+│   ├── __init__.py
+│   ├── agent_loop.py        # Main agent loop (conversation lifecycle, tool execution)
+│   ├── autonomous.py        # Idle-time autonomous exploration (Ralph enhanced)
+│   ├── client.py            # LLM Gateway (OpenAI compatible, multi-provider fallback)
+│   ├── models.py            # Pydantic configuration validation
+│   ├── ralph_loop.py        # Long-cycle deterministic task executor
+│   ├── scheduler.py         # Task scheduling and management
+│   └── tools/               # Tool registry system
+│       ├── __init__.py      # ToolRegistry class with schema inference
+│       ├── builtin_tools.py # 5 core tools (file ops, code exec)
+│       ├── memory_tools.py  # L1-L4 memory management
+│       ├── skill_loader.py  # Dynamic skill loading (progressive disclosure)
+│       ├── ralph_tools.py   # Ralph Loop management tools
+│       └── session_db.py    # SQLite+FTS5 session storage (Chinese FTS)
+│
+├── core_principles/         # System prompts and core principles
+│   ├── system_prompts_en.md # English system prompts
+│   └── system_prompts_zh.md # Chinese system prompts
+│
+├── memory/                  # Memory system (L1-L4 hierarchy)
+│   ├── memory.md            # Memory hierarchy details
+│   └── auto_dream.md        # Memory consolidation SOP
+│
+├── auto/                    # Autonomous exploration module
+│   └── 自主探索 SOP.md       # Autonomous exploration SOP (Chinese)
+│
+├── docs/                    # Design documentation
+│   ├── L4_SQLite_FTS5_Design.md        # L4 storage migration design
+│   ├── long_cycle_loop_enhancement_design.md  # Ralph Loop design
+│   └── ralph_loop.md        # Ralph Loop concept documentation
+│
+├── examples/                # Usage examples
+│   └── simple_agent.py      # Basic agent usage demo
+│
+├── scripts/                 # Utility scripts
+├── tests/                   # Test files
+└── tasks/                   # Task storage directory
 ```
 
-For detailed module documentation, see [Module Documentation](#module-documentation) below.
+---
 
 ## Architecture Overview
 
-Seed Agent Loop implements a hierarchical agent architecture with the following core components:
+Seed Agent implements a hierarchical agent architecture with the following core components:
 
-### Agent Loop Engine
-The core execution engine (`src/agent_loop.py`) manages the conversation lifecycle, handling message history, tool invocation, and response streaming. It maintains a state machine that tracks agent thinking, tool execution, and result processing phases.
+### AgentLoop Engine
+
+The central orchestrator (`src/agent_loop.py`) manages conversation flow, tool execution, history summarization, and maintains session state across interactions. Key features:
+
+- **Message History Management**: Automatic summarization at configured intervals
+- **Tool Call Iteration**: Parallel execution with retry logic (max 30 iterations)
+- **Streaming Output**: Real-time response chunks via `stream_run()`
+- **Context Compression**: Token-aware summarization when context window exceeds 75%
+- **Interrupt Handling**: Priority user input injection
 
 ### Multi-Provider Gateway
-The client layer (`src/client.py`) provides a unified OpenAI-compatible interface supporting multiple LLM providers. Configuration-driven provider selection allows seamless switching between different models without code changes.
 
-### Memory Hierarchy
-The system implements a four-tier memory architecture:
+The LLM Gateway (`src/client.py`) provides a unified OpenAI-compatible interface supporting multiple providers with automatic failover:
 
-- **L1 (Working Memory)**: Current conversation context, active tool states
-- **L2 (Episodic Memory)**: Session-level history and interaction patterns
-- **L3 (Semantic Memory)**: Learned knowledge, patterns, and abstractions
-- **L4 (World Memory)**: Cross-session knowledge, project-specific insights
+- **FallbackChain**: Primary → fallback provider switching on failures
+- **Retry Logic**: 3 retries with exponential backoff per provider
+- **Health Tracking**: Status monitoring (healthy/degraded/unavailable)
+- **Environment Variables**: API key resolution via `${VAR_NAME}` format
 
-See [memory/AGENTS.md](memory/AGENTS.md) for detailed memory system documentation.
+### Ralph Loop Engine
 
-### Autonomous Exploration
-The autonomous exploration module (`auto/`) enables the agent to independently discover solutions, analyze failures, and evolve strategies. This feature allows the system to:
-- Detect and diagnose execution failures
-- Explore alternative approaches when initial attempts fail
-- Record and leverage learned experiences
+A long-cycle deterministic task executor (`src/ralph_loop.py`) designed for complex, multi-step operations:
 
-See [auto/AGENTS.md](auto/AGENTS.md) for detailed exploration documentation.
+- **External Verification**: Completion driven by objective criteria (tests passing, marker files, git clean)
+- **Fresh Context**: Periodic context reset prevents drift in long-running tasks
+- **State Persistence**: Task state saved to filesystem for crash recovery
+- **Safety Limits**: Max 1000 iterations or 8 hours execution time
 
-### Tool System
-The tool registry (`src/tools/`) provides extensibility for agent capabilities. Tools are defined using a declarative schema and can include:
-- File system operations
-- Code execution and analysis
-- Web research and information retrieval
-- Custom domain-specific actions
+**Completion Types:**
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `TEST_PASS` | Test suite passes at specified rate | Code refactoring, bug fixes |
+| `FILE_EXISTS` | Target files created | File generation tasks |
+| `MARKER_FILE` | Completion marker written | Multi-step workflows |
+| `GIT_CLEAN` | Working directory clean | Full project changes |
+| `CUSTOM_CHECK` | Custom validation function | Domain-specific validation |
 
-See [src/tools/AGENTS.md](src/tools/AGENTS.md) for tool development guidelines.
+### Task Scheduler
+
+The scheduler (`src/scheduler.py`) enables autonomous task creation and management:
+
+**Built-in Tasks:**
+| Task | Interval | Purpose |
+|------|----------|---------|
+| `autodream` | 12 hours | Memory consolidation and cleanup |
+| `autonomous_explore` | 30 minutes | Idle-time exploration trigger |
+| `health_check` | 1 hour | System diagnostics |
+
+**Features:**
+- CRUD operations via tool functions
+- Task persistence to `~/.seed/tasks/`
+- Enable/disable toggle per task
+- Execution logging in JSONL format
+
+### Autonomous Explorer
+
+Idle-time autonomous task execution (`src/autonomous.py`) monitors user activity:
+
+- **Trigger**: 30 minutes of user inactivity
+- **Workflow**: Check TODO.md → Execute existing tasks OR generate new ones
+- **SOP Integration**: Follows defined Standard Operating Procedures
+- **Ralph Integration**: Enhanced with completion promise detection
+
+---
 
 ## Memory System
 
-The memory system provides persistent context across sessions, enabling the agent to accumulate knowledge and improve over time. Each tier serves a specific purpose:
+A four-tier hierarchical memory architecture for persistent knowledge management:
 
-| Tier | Name | Purpose | Persistence |
-|------|------|---------|-------------|
-| L1 | Working Memory | Active conversation context | Session |
-| L2 | Episodic Memory | Interaction history | Session |
-| L3 | Semantic Memory | Learned patterns | Persistent |
-| L4 | World Memory | Cross-session knowledge | Persistent |
+| Tier | Name | Purpose | Storage | Persistence |
+|------|------|---------|---------|-------------|
+| L1 | Index | Quick reference to available SOPs | `notes.md` | Session |
+| L2 | Skills | Reusable operation procedures | `skills/*.md` | Persistent |
+| L3 | Knowledge | Cross-task patterns and principles | `knowledge/*.md` | Persistent |
+| L4 | Raw | Session history and execution logs | SQLite+FTS5 | Persistent |
 
-The memory system automatically manages data flow between tiers, with L3 and L4 providing long-term storage backed by file-based persistence.
+### L4 SQLite+FTS5 Storage
 
-See [memory/AGENTS.md](memory/AGENTS.md) for implementation details.
+Session history is now stored in SQLite with FTS5 full-text search:
 
-## Autonomous Exploration
+- **Chinese FTS**: jieba tokenization for Chinese content search
+- **Schema**: `session_messages` + `sessions_meta` + FTS5 virtual table
+- **Performance**: WAL mode, optimized caching, async writes
+- **Search**: `search_history()` with keyword matching and context extraction
 
-When the agent encounters failures or uncertainties, the autonomous exploration system activates to:
-
-1. **Failure Detection**: Identify when an operation fails or produces unexpected results
-2. **Root Cause Analysis**: Explore potential causes through targeted probing
-3. **Strategy Evolution**: Develop and test alternative approaches
-4. **Knowledge Recording**: Store discovered patterns for future use
-
-This system implements a three-strike rule for failure recovery:
-- First failure: Retry with same approach
-- Second failure: Update strategy based on error analysis
-- Third failure: Propose alternative solutions or consult user
-
-See [auto/AGENTS.md](auto/AGENTS.md) for detailed documentation.
+---
 
 ## Tool System
 
-Tools extend the agent's capabilities beyond text generation. The tool system provides:
+The tool registry (`src/tools/`) provides extensible agent capabilities through five modules:
 
-- **Schema-Driven Definition**: Tools declare their inputs, outputs, and behavior
-- **Sandboxed Execution**: Tools run in controlled environments
-- **Result Processing**: Tool outputs feed back into the agent's context
-- **Extensibility**: New tools can be added without modifying core logic
+### Built-in Tools (`builtin_tools.py`)
 
-Example tool definition:
-```python
-@tool()
-def read_file(path: str) -> str:
-    """Read contents of a file."""
-    with open(path, 'r') as f:
-        return f.read()
-```
+| Tool | Signature | Purpose |
+|------|-----------|---------|
+| `file_read` | `(path, start=1, count=100)` | Read file with line numbers |
+| `file_write` | `(path, content, mode="overwrite")` | Write/append to file |
+| `file_edit` | `(path, old_str, new_str, replace_all=False)` | Replace exact text |
+| `code_as_policy` | `(code, language="python", timeout=60)` | Execute code (py/js/sh/ps) |
+| `ask_user` | `(question, options=None)` | Request user confirmation |
 
-See [src/tools/AGENTS.md](src/tools/AGENTS.md) for creating custom tools.
+### Memory Tools (`memory_tools.py`)
 
-## Configuration Guide
+- `write_memory(level, content, title, metadata)` - Write to L1-L4
+- `read_memory_index()` - Read L1 index
+- `search_memory(keyword, levels)` - Search across levels
+- `start_long_term_update()` - Trigger experience extraction
 
-### Basic Configuration
+### Session Tools (`session_db.py`)
 
-Edit `config/config.json` to configure your API keys and model providers:
+- `save_session_history(messages, summary, session_id)` - Save to SQLite
+- `load_session_history(session_id)` - Load specific session
+- `list_sessions(limit)` - List recent sessions
+- `search_history(keyword, limit)` - FTS5 search with jieba
+
+### Ralph Tools (`ralph_tools.py`)
+
+- `start_ralph_loop(task_file, completion_type, criteria)` - Configure Ralph Loop
+- `write_completion_marker(content, marker_path)` - Signal task completion
+- `check_ralph_status(ralph_id)` - Check loop status
+- `stop_ralph_loop(ralph_id)` - Stop execution
+- `create_ralph_task_file(task_name, description)` - Create task file
+
+### Skill Loader (`skill_loader.py`)
+
+Progressive disclosure pattern for skill management:
+
+- `load_skill(name)` - Load complete skill content
+- `list_skills()` - List available skills
+- Skills stored in SKILL.md format with YAML frontmatter
+
+---
+
+## Configuration
+
+### Configuration File
+
+The system reads configuration from `~/.seed/config.json`:
 
 ```json
 {
@@ -124,19 +200,34 @@ Edit `config/config.json` to configure your API keys and model providers:
     "bailian": {
       "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
       "apiKey": "${BAILIAN_API_KEY}",
-      "model": "qwen-coder-plus",
-      "temperature": 0.7
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen-coder-plus",
+          "name": "Qwen Coder Plus",
+          "contextWindow": 100000,
+          "maxTokens": 4096
+        }
+      ]
     }
   },
-  "defaultModel": "bailian"
+  "agents": {
+    "defaults": {
+      "defaults": {
+        "primary": "bailian/qwen-coder-plus"
+      }
+    }
+  }
 }
 ```
 
-*API keys can be environment variables (e.g., `${BAILIAN_API_KEY}`) or plain strings.*
+**API Key Resolution:**
+- `${VAR_NAME}` → Resolved from environment variables
+- Plain strings → Used directly
 
-### Model Providers
+### Multi-Provider Fallback
 
-The system supports any OpenAI-compatible API. Configure multiple providers for fallback:
+Configure multiple providers for automatic failover:
 
 ```json
 {
@@ -144,22 +235,18 @@ The system supports any OpenAI-compatible API. Configure multiple providers for 
     "primary": {
       "baseUrl": "https://api.openai.com/v1",
       "apiKey": "${OPENAI_API_KEY}",
-      "model": "gpt-4"
+      "models": [{"id": "gpt-4", "name": "GPT-4", "contextWindow": 128000}]
     },
     "fallback": {
       "baseUrl": "https://coding.dashscope.aliyuncs.com/v1",
       "apiKey": "${BAILIAN_API_KEY}",
-      "model": "qwen-coder-plus"
+      "models": [{"id": "qwen-coder-plus", "name": "Qwen", "contextWindow": 100000}]
     }
   }
 }
 ```
 
-### Important Constraint
-
-**Do not modify `config/config.json` directly.** The configuration file is fully set up and should not be altered. If you need custom configuration, create a separate configuration file and load it programmatically.
-
-See [config/AGENTS.md](config/AGENTS.md) for advanced configuration options.
+---
 
 ## Setup
 
@@ -168,35 +255,131 @@ See [config/AGENTS.md](config/AGENTS.md) for advanced configuration options.
    pip install -r requirements.txt
    ```
 
-2. **Configuration**:
-   The system is pre-configured in `config/config.json`. API keys should be provided via environment variables.
+2. **Configure API Keys**:
+   Set environment variables for your providers:
+   ```bash
+   export BAILIAN_API_KEY="your-key-here"
+   # or add to .env file
+   ```
 
 3. **Run Interactive Mode**:
    ```bash
    python main.py
    ```
 
-## Usage Example
+4. **One-shot Chat**:
+   ```bash
+   python main.py --chat "Your message here"
+   ```
 
-See `examples/simple_agent.py` for a programmatic example demonstrating:
-- Tool invocation
-- Streaming responses
-- Multi-turn conversations
-- Custom tool registration
+---
+
+## Usage Examples
+
+### Programmatic Usage
+
+```python
+import asyncio
+from src.client import LLMGateway
+from src.agent_loop import AgentLoop
+
+async def main():
+    gateway = LLMGateway("~/.seed/config.json")
+    agent = AgentLoop(
+        gateway=gateway,
+        system_prompt="You are a helpful assistant.",
+        max_iterations=30
+    )
+    
+    # Synchronous response
+    response = await agent.run("Hello!")
+    print(response)
+    
+    # Streaming response
+    async for chunk in agent.stream_run("Tell me a story"):
+        if chunk['type'] == 'chunk':
+            print(chunk['content'], end='')
+        elif chunk['type'] == 'final':
+            print()  # Newline at end
+
+asyncio.run(main())
+```
+
+### Ralph Loop Usage
+
+```python
+from src.ralph_loop import RalphLoop, CompletionType
+
+# Test-driven execution
+ralph = RalphLoop.create_test_driven(
+    agent_loop=agent,
+    task_prompt_path=Path(".seed/tasks/refactor.md"),
+    test_command="pytest tests/ -v",
+    pass_rate=100
+)
+result = await ralph.run()
+
+# Marker-driven execution
+ralph = RalphLoop.create_marker_driven(
+    agent_loop=agent,
+    task_prompt_path=Path(".seed/tasks/task.md"),
+    marker_path=Path(".seed/done")
+)
+result = await ralph.run()
+```
+
+---
 
 ## Module Documentation
 
-Each module has dedicated documentation in its AGENTS.md file:
-
 | Module | Description | Documentation |
 |--------|-------------|---------------|
-| Core Engine | Agent loop, client, models | [src/AGENTS.md](src/AGENTS.md) |
+| Core Engine | AgentLoop, LLMGateway, RalphLoop, Scheduler | [src/AGENTS.md](src/AGENTS.md) |
 | Tools | Tool registry and development | [src/tools/AGENTS.md](src/tools/AGENTS.md) |
-| Configuration | Config management | [config/AGENTS.md](config/AGENTS.md) |
-| Core Principles | System prompts | [core_principles/AGENTS.md](core_principles/AGENTS.md) |
-| Examples | Usage examples | [examples/AGENTS.md](examples/AGENTS.md) |
+| Core Principles | System prompts | [core_principles/](core_principles/) |
 | Memory | L1-L4 memory system | [memory/AGENTS.md](memory/AGENTS.md) |
 | Autonomous | Self-exploration module | [auto/AGENTS.md](auto/AGENTS.md) |
+| Examples | Usage examples | [examples/](examples/) |
+| Design Docs | Architecture design documents | [docs/](docs/) |
+
+---
+
+## Design Documents
+
+Key architectural design documents in `docs/`:
+
+- **[L4 SQLite+FTS5 Design](docs/L4_SQLite_FTS5_Design.md)**: Session storage migration from JSONL to SQLite with Chinese full-text search
+- **[Ralph Loop Enhancement](docs/long_cycle_loop_enhancement_design.md)**: Long-cycle task execution with external verification
+- **[Ralph Loop Concept](docs/ralph_loop.md)**: Core concepts and motivation
+
+---
+
+## Data Storage
+
+The system stores data in `~/.seed/`:
+
+| Path | Purpose |
+|------|---------|
+| `~/.seed/config.json` | Configuration file |
+| `~/.seed/memory/` | L1-L4 memory storage |
+| `~/.seed/memory/raw/sessions.db` | SQLite session database |
+| `~/.seed/tasks/` | Task storage and logs |
+| `~/.seed/logs/` | Daily log files |
+| `~/.seed/scripts/` | Utility scripts |
+
+---
+
+## Dependencies
+
+```
+openai>=1.0.0        # Async OpenAI client
+pydantic>=2.0.0      # Configuration validation
+tenacity>=8.0.0      # Retry logic
+python-dotenv>=1.0.0 # Environment loading
+jieba>=0.42.0        # Chinese text segmentation (FTS5)
+```
+
+---
 
 ## Acknowledgments
 

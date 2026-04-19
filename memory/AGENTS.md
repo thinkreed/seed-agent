@@ -69,17 +69,24 @@ Raw archive layer for session history and execution logs.
 
 **Purpose:** Complete original data for traceability and review.
 
-**Format:** JSONL (JSON Lines) format
+**Storage:** **SQLite+FTS5 Database** (replacing JSONL format)
 
-**Storage:**
-- Original execution logs
-- Complete session histories
-- Raw probe data for review purposes
-- Full operation records
+**Database Location:** `~/.seed/memory/raw/sessions.db`
 
-**Tools provided:** save_session_history, load_session_history, list_sessions, search_history
+**Features:**
+- **Chinese Full-Text Search**: jieba tokenization for Chinese content
+- **FTS5 Virtual Table**: Efficient keyword matching with prefix support
+- **WAL Mode**: Concurrent read/write access
+- **Metadata Tracking**: Session summaries, message counts, timestamps
 
-**Usage:** Used for review and traceability, not direct execution calls.
+**Schema:**
+- `session_messages`: Main message table
+- `session_messages_fts`: FTS5 virtual table for search
+- `sessions_meta`: Session metadata with summaries
+
+**Tools provided:** save_session_history, load_session_history, list_sessions, search_history (via `session_db.py`)
+
+**Usage:** Full-text search across session history, session recovery, and traceability.
 
 ---
 
@@ -153,12 +160,12 @@ Searches memory across specified levels by keyword.
 
 ### Session History Tools (L4)
 
-Additional tools for raw session data management:
+Additional tools for raw session data management via SQLite+FTS5:
 
-- **save_session_history**: Saves conversation history to JSONL format
-- **load_session_history**: Loads specific session data
-- **list_sessions**: Lists recent sessions with metadata
-- **search_history**: Searches past sessions by keyword
+- **save_session_history**: Saves conversation history to SQLite with jieba tokenization for FTS5 indexing
+- **load_session_history**: Loads specific session data from database
+- **list_sessions**: Lists recent sessions with metadata from `sessions_meta` table
+- **search_history**: FTS5 full-text search with Chinese support (jieba tokenization)
 
 ---
 

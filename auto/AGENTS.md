@@ -4,6 +4,38 @@ This module enables the agent to perform autonomous exploration tasks when idle.
 
 The autonomous exploration framework is designed around two core principles: execution viability and evolutionary沉淀 (knowledge accumulation/refinement). The agent continuously evaluates opportunities for task execution and knowledge building, ensuring productive use of idle time while advancing its capabilities.
 
+## Ralph Loop Integration
+
+The AutonomousExplorer is now enhanced with Ralph Loop mechanisms for long-cycle deterministic task execution:
+
+### Completion Promise Detection
+
+External completion markers drive task exit, ensuring objective task completion:
+- Checks `~/.seed/completion_promise` file for completion tokens (DONE, COMPLETE, TASK_FINISHED)
+- Automatically clears marker on detection
+- Prevents infinite loops through external verification
+
+### Context Reset Mechanism
+
+Periodic history reset prevents drift in long-running tasks:
+- **Reset Interval**: Every 5 iterations (configurable via `CONTEXT_RESET_INTERVAL`)
+- **Critical Context Extraction**: Preserves key decisions and findings from previous iterations
+- **Fresh Context Injection**: Re-injects summarized state for continuity
+
+### State Persistence
+
+Task state saved to filesystem for crash recovery:
+- State file: `~/.seed/ralph_state.json`
+- Contains: iteration count, start time, last response, timestamp
+- Enables resumption after process crash
+
+### Safety Limits
+
+Maximum iteration and duration protection:
+- **Max Iterations**: 1000 (configurable via `RALPH_MAX_ITERATIONS`)
+- **Max Duration**: 8 hours (configurable via `RALPH_MAX_DURATION`)
+- Automatic exit with status report when limits reached
+
 # Trigger Conditions
 
 The autonomous exploration activates when specific conditions are met:
@@ -63,8 +95,20 @@ The autonomous exploration module is integrated into the agent system as follows
 
 **AutonomousExplorer Class**: Located in `src/autonomous.py`, this class manages the idle monitoring loop and task execution. Key components include:
 - `_idle_monitor_loop()`: Checks idle time every 30 seconds
-- `_execute_autonomous_task()`: Runs the exploration workflow with tool call iteration
+- `_execute_autonomous_task()`: Runs the exploration workflow with Ralph Loop enhanced iteration
 - `_build_autonomous_prompt()`: Constructs the complete prompt including system prompt, skills, and SOP
+- `_check_completion_promise()`: Ralph Loop mechanism for external completion detection
+- `_check_safety_limits()`: Ralph Loop safety protection (iterations/duration)
+- `_reset_context_if_needed()`: Ralph Loop context reset for drift prevention
+- `_persist_state()`: Ralph Loop state persistence for crash recovery
+
+**Ralph Loop Configuration** (in autonomous.py):
+- `COMPLETION_PROMISE_FILE`: `~/.seed/completion_promise`
+- `COMPLETION_PROMISE_TOKENS`: ["DONE", "COMPLETE", "TASK_FINISHED"]
+- `CONTEXT_RESET_ENABLED`: True (default)
+- `CONTEXT_RESET_INTERVAL`: 5 (iterations)
+- `RALPH_MAX_ITERATIONS`: 1000
+- `RALPH_MAX_DURATION`: 8 * 60 * 60 (8 hours)
 
 **SOP Document Loading**: The SOP is loaded from `auto/自主探索 SOP.md` during initialization. This document contains the complete guidelines for autonomous task execution.
 
@@ -79,4 +123,8 @@ The autonomous exploration module is integrated into the agent system as follows
 | File | Description |
 |------|-------------|
 | 自主探索 SOP.md | The autonomous exploration SOP document (Chinese filename) - contains detailed workflow, principles, and guidelines |
-| src/autonomous.py | Implementation of the AutonomousExplorer class with idle monitoring and task execution logic |
+| src/autonomous.py | Implementation of the AutonomousExplorer class with Ralph Loop integration |
+| src/ralph_loop.py | Ralph Loop implementation for long-cycle deterministic task execution |
+| src/tools/ralph_tools.py | Tools for Ralph Loop management (start, stop, status check, completion markers) |
+| docs/long_cycle_loop_enhancement_design.md | Ralph Loop design documentation |
+| docs/ralph_loop.md | Ralph Loop concept documentation |

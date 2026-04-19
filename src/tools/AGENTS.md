@@ -4,7 +4,7 @@ This module provides a comprehensive tool registration and execution framework f
 
 ## Module Overview
 
-The tool registry system is located in `src/tools/` and consists of four main components:
+The tool registry system is located in `src/tools/` and consists of six main components:
 
 | File | Purpose |
 |------|---------|
@@ -12,6 +12,8 @@ The tool registry system is located in `src/tools/` and consists of four main co
 | `builtin_tools.py` | Five core built-in tools for file operations and code execution |
 | `memory_tools.py` | L1-L4 memory management system and session history tools |
 | `skill_loader.py` | Dynamic skill loading with progressive disclosure pattern |
+| `ralph_tools.py` | Ralph Loop management tools for long-cycle task execution |
+| `session_db.py` | SQLite+FTS5 session storage with Chinese full-text search |
 
 ---
 
@@ -552,6 +554,240 @@ Available Skills:
 - skill-name: Description (truncated to 100 chars)...
 - another-skill: Description...
 ```
+
+---
+
+## Ralph Tools
+
+The Ralph tools (`ralph_tools.py`) provide tools for managing Ralph Loop execution. These tools enable the agent to configure, monitor, and control long-cycle deterministic task execution.
+
+### start_ralph_loop
+
+Configures and prepares a Ralph Loop for execution.
+
+**Function Signature:**
+```python
+def start_ralph_loop(
+    task_prompt_file: str,
+    completion_type: str = "marker_file",
+    max_iterations: int = 1000,
+    completion_criteria: Dict = None
+) -> str
+```
+
+**Parameters:**
+- `task_prompt_file` (str): Task description file path (relative path from `~/.seed/tasks/`)
+- `completion_type` (str): Completion verification type:
+  - `marker_file` (default): Completion marker file
+  - `test_pass`: Test pass rate verification
+  - `file_exists`: Target file existence verification
+  - `git_clean`: Git working directory clean verification
+  - `custom_check`: Custom validation function
+- `max_iterations` (int): Maximum iterations (default: 1000, max duration: 8 hours)
+- `completion_criteria` (Dict): Verification conditions based on type
+
+**Returns:**
+- str: Ralph Loop configuration status and ID
+
+---
+
+### write_completion_marker
+
+Writes a completion marker for Ralph Loop's marker_file verification.
+
+**Function Signature:**
+```python
+def write_completion_marker(content: str = "DONE", marker_path: str = None) -> str
+```
+
+**Parameters:**
+- `content` (str): Marker content (default: "DONE", supports "COMPLETE", "TASK_FINISHED")
+- `marker_path` (str): Marker file path (default: `~/.seed/completion_promise`)
+
+**Returns:**
+- str: Success message with marker path
+
+---
+
+### check_ralph_status
+
+Checks the status of a Ralph Loop.
+
+**Function Signature:**
+```python
+def check_ralph_status(ralph_id: str = None) -> str
+```
+
+**Parameters:**
+- `ralph_id` (str): Ralph Loop ID (optional, lists all if not provided)
+
+**Returns:**
+- str: Ralph Loop status information including iteration count, start time, task file
+
+---
+
+### stop_ralph_loop
+
+Stops a Ralph Loop execution.
+
+**Function Signature:**
+```python
+def stop_ralph_loop(ralph_id: str) -> str
+```
+
+**Parameters:**
+- `ralph_id` (str): Ralph Loop ID
+
+**Returns:**
+- str: Operation result (state preserved for recovery)
+
+---
+
+### create_ralph_task_file
+
+Creates a Ralph Loop task description file.
+
+**Function Signature:**
+```python
+def create_ralph_task_file(task_name: str, task_description: str) -> str
+```
+
+**Parameters:**
+- `task_name` (str): Task name for file naming
+- `task_description` (str): Detailed task description
+
+**Returns:**
+- str: Task file path
+
+---
+
+## Session Database (SQLite+FTS5)
+
+The session database (`session_db.py`) provides SQLite+FTS5 storage for L4 session history with Chinese full-text search support using jieba tokenization.
+
+### SessionDB Class
+
+The `SessionDB` class manages SQLite database connections and operations.
+
+#### `__init__(db_path: str = None)`
+
+Initializes database connection with schema creation.
+
+```python
+class SessionDB:
+    """Session 数据库管理类 (SQLite + FTS5)"""
+    
+    def __init__(self, db_path: str = None):
+        self.db_path = db_path or str(DB_PATH)  # ~/.seed/memory/raw/sessions.db
+        self._init_db()
+```
+
+**Schema:**
+- `session_messages`: Main message table with session_id, timestamp, role, content
+- `session_messages_fts`: FTS5 virtual table for full-text search
+- `sessions_meta`: Metadata table with summary and message count
+
+---
+
+### save_session_history
+
+Saves conversation history to SQLite with FTS5 indexing.
+
+**Function Signature:**
+```python
+def save_session_history(messages: List[Dict], summary: str = None, session_id: str = None) -> str
+```
+
+**Parameters:**
+- `messages` (List[Dict]): Message list with role, content, tool_calls
+- `summary` (str): Optional session summary
+- `session_id` (str): Session identifier (auto-generated if not provided)
+
+**Returns:**
+- str: Session ID and message count
+
+**FTS5 Processing:**
+- Content tokenized with jieba for Chinese text
+- Tokens stored in FTS5 virtual table for search
+- WAL mode for concurrent access
+
+---
+
+### load_session_history
+
+Loads conversation history from SQLite.
+
+**Function Signature:**
+```python
+def load_session_history(session_id: str) -> str
+```
+
+**Parameters:**
+- `session_id` (str): Session ID (supports fuzzy matching)
+
+**Returns:**
+- str: Formatted session data with metadata and messages
+
+---
+
+### list_sessions
+
+Lists recent sessions from database.
+
+**Function Signature:**
+```python
+def list_sessions(limit: int = 10) -> str
+```
+
+**Parameters:**
+- `limit` (int): Maximum sessions to return (default: 10)
+
+**Returns:**
+- str: Session list with ID, message count, creation time, summary
+
+---
+
+### search_history
+
+Full-text search using FTS5 with jieba tokenization.
+
+**Function Signature:**
+```python
+def search_history(keyword: str, limit: int = 20) -> str
+```
+
+**Parameters:**
+- `keyword` (str): Search keyword (Chinese text supported)
+- `limit` (int): Maximum results (default: 20)
+
+**Returns:**
+- str: Matching messages with session context and highlighted previews
+
+**Chinese Search:**
+- Uses jieba for tokenization preprocessing
+- OR logic for Chinese tokens to improve recall
+- Fallback to LIKE search if FTS5 fails
+
+---
+
+### search_with_filters
+
+Enhanced search with multiple filter conditions.
+
+**Function Signature:**
+```python
+def search_with_filters(
+    keyword: str,
+    session_id: Optional[str] = None,
+    role: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    limit: int = 20
+) -> List[Dict]
+```
+
+**Returns:**
+- List[Dict]: Matching message dictionaries with full metadata
 
 ---
 

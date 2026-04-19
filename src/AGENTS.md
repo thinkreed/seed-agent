@@ -9,9 +9,10 @@ The core engine consists of five main components that work together to create an
 ```
 src/
 ├── agent_loop.py    # Main agent loop with message handling and tool execution
-├── autonomous.py    # Idle-time autonomous exploration
+├── autonomous.py    # Idle-time autonomous exploration (Ralph Loop enhanced)
 ├── client.py        # LLM Gateway with multi-provider fallback
 ├── models.py        # Pydantic configuration validation
+├── ralph_loop.py    # Long-cycle deterministic task executor
 └── scheduler.py     # Task scheduling and management
 ```
 
@@ -305,6 +306,161 @@ def record_activity(self):
 def get_idle_time(self) -> float:
     """获取当前空闲时间（秒）"""
     return time.time() - self._last_activity
+```
+
+---
+
+## RalphLoop
+
+The `RalphLoop` class provides a long-cycle deterministic task execution framework with external verification-driven completion. It is designed for complex, multi-step operations that require objective completion criteria rather than self-judgment.
+
+### Purpose
+
+RalphLoop addresses the challenge of long-running tasks where traditional agent loops suffer from context drift and unreliable completion detection. It uses external verification (tests passing, marker files, git clean) to determine task completion, ensuring deterministic and verifiable outcomes.
+
+### Core Mechanisms
+
+1. **External Verification**: Completion is driven by objective criteria, not model self-judgment
+2. **Fresh Context**: Periodic context reset prevents drift in long-running iterations
+3. **State Persistence**: Task state saved to filesystem for crash recovery
+4. **Safety Limits**: Max iterations (1000) and duration (8 hours) protection
+
+### Completion Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| `TEST_PASS` | Test suite passes at specified rate | Code refactoring, bug fixes |
+| `FILE_EXISTS` | Target files created | File generation tasks |
+| `MARKER_FILE` | Completion marker written | Multi-step workflows |
+| `GIT_CLEAN` | Working directory clean | Full project changes |
+| `CUSTOM_CHECK` | Custom validation function | Domain-specific validation |
+
+### Key Methods
+
+#### `__init__(agent_loop, completion_type, completion_criteria, task_prompt_path, ...)`
+
+Initializes Ralph Loop with configuration.
+
+```python
+class RalphLoop:
+    """Ralph Loop 执行器"""
+
+    MAX_ITERATIONS = 1000
+    MAX_DURATION = 8 * 60 * 60  # 8 hours
+    ITERATION_INTERVAL = 5  # Context reset every 5 iterations
+
+    def __init__(
+        self,
+        agent_loop,
+        completion_type: CompletionType,
+        completion_criteria: dict,
+        task_prompt_path: Path,
+        on_iteration_complete: Callable = None,
+        max_iterations: int = None,
+        max_duration: int = None,
+        context_reset_interval: int = None
+    ):
+        self.agent = agent_loop
+        self.completion_type = completion_type
+        self.completion_criteria = completion_criteria
+        self.task_prompt_path = task_prompt_path
+        # ... initialization
+```
+
+#### `run() -> str`
+
+Executes the Ralph Loop with verification.
+
+```python
+async def run(self) -> str:
+    """执行 Ralph Loop"""
+    while self._is_running:
+        self._iteration_count += 1
+        
+        # 1. Safety check
+        if self._check_safety_limits():
+            break
+        
+        # 2. Context reset
+        self._reset_context()
+        
+        # 3. Load task prompt
+        prompt = self._load_task_prompt()
+        
+        # 4. Execute agent loop
+        response = await self.agent.run(prompt)
+        
+        # 5. Persist state
+        self._persist_state(response)
+        
+        # 6. External completion verification
+        if self._check_completion():
+            self._cleanup()
+            return "DONE"
+        
+        await asyncio.sleep(1)
+```
+
+#### `_check_completion() -> bool`
+
+External completion verification (core mechanism).
+
+```python
+def _check_completion(self) -> bool:
+    """外部完成验证"""
+    validators = {
+        CompletionType.TEST_PASS: self._check_test_pass,
+        CompletionType.FILE_EXISTS: self._check_file_exists,
+        CompletionType.MARKER_FILE: self._check_marker_file,
+        CompletionType.GIT_CLEAN: self._check_git_clean,
+        CompletionType.CUSTOM_CHECK: self._check_custom,
+    }
+    
+    validator = validators.get(self.completion_type)
+    return validator() if validator else False
+```
+
+#### `_reset_context()`
+
+Periodic context reset to prevent drift.
+
+```python
+def _reset_context(self):
+    """重置上下文（新鲜上下文）"""
+    if self._iteration_count % self.context_reset_interval != 0:
+        return
+    
+    # Extract critical context
+    preserved = self._extract_critical_context()
+    
+    # Clear history
+    self.agent.history.clear()
+    
+    # Re-inject preserved info
+    if preserved:
+        self.agent.history.append({
+            "role": "system",
+            "content": f"[迭代 {self._iteration_count} 状态摘要]\n{preserved}"
+        })
+```
+
+### Factory Methods
+
+```python
+# Test-driven execution
+ralph = RalphLoop.create_test_driven(
+    agent_loop=agent,
+    task_prompt_path=Path(".seed/tasks/refactor.md"),
+    test_command="pytest tests/ -v",
+    pass_rate=100
+)
+
+# Marker-driven execution
+ralph = RalphLoop.create_marker_driven(
+    agent_loop=agent,
+    task_prompt_path=Path(".seed/tasks/task.md"),
+    marker_path=Path(".seed/done")
+)
 ```
 
 ---
