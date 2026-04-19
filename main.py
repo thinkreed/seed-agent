@@ -58,8 +58,6 @@ async def main(args=None):
     print("Initializing Agent...")
 
     # Create PID file for abnormal exit detection
-    import os
-    import sys
     pid_file = os.path.join(os.path.dirname(__file__), 'tasks', 'seed_agent.pid')
     os.makedirs(os.path.dirname(pid_file), exist_ok=True)
     with open(pid_file, 'w') as f:

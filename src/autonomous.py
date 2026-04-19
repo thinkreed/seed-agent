@@ -19,7 +19,7 @@ SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
 class AutonomousExplorer:
     """自主探索执行器"""
 
-    IDLE_TIMEOUT = 30 * 60  # 15分钟（秒）
+    IDLE_TIMEOUT = 30 * 60  # 30分钟（秒）
 
     def __init__(self, agent_loop, on_explore_complete: Callable = None):
         self.agent = agent_loop
