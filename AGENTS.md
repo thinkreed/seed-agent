@@ -14,6 +14,8 @@
 | **RalphLoop** | `src/ralph_loop.py` | 长周期任务执行器：外部验证驱动完成、上下文重置防漂移 |
 | **Scheduler** | `src/scheduler.py` | 定时任务调度：内置任务 + 自定义任务管理 |
 | **AutonomousExplorer** | `src/autonomous.py` | 空闲自主探索：30分钟触发、SOP驱动执行 |
+| **SubagentManager** | `src/subagent_manager.py` | 子代理管理器：创建、调度、并行执行、结果聚合 |
+| **SubagentInstance** | `src/subagent.py` | 独立上下文的子代理：权限隔离、执行循环 |
 
 ### 工具系统
 
@@ -23,6 +25,7 @@
 | **memory_tools** | `src/tools/memory_tools.py` | L1-L4记忆管理、经验沉淀 |
 | **skill_loader** | `src/tools/skill_loader.py` | 动态技能加载（渐进式披露） |
 | **ralph_tools** | `src/tools/ralph_tools.py` | Ralph Loop管理：启动/状态检查/完成标记 |
+| **subagent_tools** | `src/tools/subagent_tools.py` | Subagent管理：创建/等待/聚合/终止 |
 | **session_db** | `src/tools/session_db.py` | SQLite+FTS5会话存储（jieba中文分词） |
 
 ### Ralph Loop 机制
@@ -39,6 +42,48 @@
 - `MARKER_FILE` - 完成标志文件
 - `GIT_CLEAN` - Git工作区干净
 - `CUSTOM_CHECK` - 自定义验证函数
+
+### Subagent 机制
+
+独立上下文的子代理执行，核心特性：
+- **独立上下文**：每个 subagent 有独立的 context window，不共享主对话历史
+- **并行执行**：多个 subagent 可同时运行（默认最大 3 个）
+- **权限隔离**：可配置不同权限集（read-only, review, implement, plan）
+- **结果聚合**：只返回关键结果给主对话，不污染主上下文
+- **超时管理**：每个 subagent 默认 5 分钟超时
+
+Subagent 类型：
+| 类型 | 权限集 | 用途 |
+|------|------|------|
+| `EXPLORE` | read_only | 只读探索：搜索文件、阅读代码 |
+| `REVIEW` | review | 审查验证：只读 + 代码执行 |
+| `IMPLEMENT` | implement | 实现执行：全权限 |
+| `PLAN` | plan | 规划分析：只读 + 记忆写入 |
+
+权限集定义：
+| 权限集 | 允许工具 |
+|------|------|
+| `read_only` | file_read, search_history, ask_user |
+| `review` | file_read, code_as_policy, search_history, ask_user |
+| `implement` | file_read/write/edit, code_as_policy, memory tools, search_history |
+| `plan` | file_read, write_memory, search_history, ask_user |
+
+核心工具：
+- `spawn_subagent(type, prompt)` - 创建子代理任务
+- `wait_for_subagent(task_id)` - 等待任务完成
+- `aggregate_subagent_results(task_ids)` - 聚合多个结果
+- `list_subagents(status)` - 列出任务状态
+- `kill_subagent(task_id)` - 终止任务
+- `spawn_parallel_subagents(tasks)` - 并行创建多个任务
+
+RalphLoop 与 Subagent 融合：
+```
+RalphSubagentOrchestrator 执行模式:
+1. PlanSubagent → 分析任务、制定执行计划
+2. ImplementSubagent (并行) → 执行多个子任务
+3. ReviewSubagent → 验证实现质量
+4. External verification → 循环或完成
+```
 
 ### 定时任务
 

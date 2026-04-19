@@ -8,6 +8,7 @@ from tools.memory_tools import _save_session_history, _generate_session_filename
 from tools.skill_loader import SkillLoader
 from scheduler import TaskScheduler
 from client import LLMGateway
+from subagent_manager import SubagentManager
 
 
 class MaxIterationsExceeded(Exception):
@@ -65,11 +66,20 @@ class AgentLoop:
         from tools.skill_loader import register_skill_tools
         from scheduler import register_scheduler_tools
         from tools.ralph_tools import register_ralph_tools
+        from tools.subagent_tools import register_subagent_tools, init_subagent_manager
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
         register_skill_tools(self.tools)
         register_scheduler_tools(self.tools)
         register_ralph_tools(self.tools)
+        register_subagent_tools(self.tools)
+
+        # 初始化 SubagentManager
+        self.subagent_manager = SubagentManager(
+            gateway=self.gateway,
+            model_id=self.model_id,
+        )
+        init_subagent_manager(self.subagent_manager)
 
         # 初始化定时任务调度器
         self.scheduler = TaskScheduler(self)

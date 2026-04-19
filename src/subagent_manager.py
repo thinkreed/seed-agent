@@ -1,0 +1,453 @@
+"""
+SubagentManager - 子代理生命周期管理和调度
+
+核心职责:
+- 创建独立 SubagentInstance
+- 并行执行调度
+- 结果收集与过滤
+- 超时管理
+- 资源限制（同时运行的 subagent 数量）
+"""
+
+import asyncio
+import uuid
+from typing import Dict, List, Optional, Any, Callable
+from datetime import datetime
+from dataclasses import dataclass
+import logging
+
+from client import LLMGateway
+from subagent import (
+    SubagentType,
+    SubagentInstance,
+    SubagentState,
+    SubagentResult,
+    PERMISSION_SETS,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SubagentTask:
+    """Subagent 任务定义"""
+    id: str
+    subagent_type: SubagentType
+    prompt: str
+    custom_tools: Optional[set] = None
+    custom_system_prompt: Optional[str] = None
+    max_iterations: Optional[int] = None
+    timeout: Optional[int] = None
+    priority: int = 0  # 优先级，数值越高越先执行
+
+
+class SubagentManager:
+    """
+    Subagent 管理器
+
+    负责管理子代理的完整生命周期:
+    - 创建: spawn_subagent()
+    - 执行: run_subagent() / run_parallel()
+    - 状态: get_status()
+    - 结果: get_result()
+    - 清理: cleanup()
+    """
+
+    DEFAULT_MAX_CONCURRENT = 3  # 默认最大并行数
+    DEFAULT_TIMEOUT = 300  # 默认超时 5 分钟
+    DEFAULT_MAX_ITERATIONS = 15  # 默认最大迭代次数
+
+    def __init__(
+        self,
+        gateway: LLMGateway,
+        model_id: Optional[str] = None,
+        max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+    ):
+        """
+        初始化 SubagentManager
+
+        Args:
+            gateway: LLM 网关实例
+            model_id: 默认使用的模型 ID
+            max_concurrent: 最大并行执行的 subagent 数量
+        """
+        self.gateway = gateway
+        self.model_id = model_id or self._get_primary_model()
+        self.max_concurrent = max_concurrent
+
+        # 活跃的 subagent 实例
+        self._instances: Dict[str, SubagentInstance] = {}
+
+        # 任务状态跟踪
+        self._tasks: Dict[str, SubagentTask] = {}
+
+        # 执行结果
+        self._results: Dict[str, SubagentResult] = {}
+
+        # 并发控制信号量
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+
+        # 状态变更回调
+        self._status_callbacks: List[Callable[[str, str], None]] = []
+
+    def _get_primary_model(self) -> str:
+        """从配置获取主模型"""
+        return self.gateway.config.agents['defaults'].defaults.primary
+
+    def register_status_callback(self, callback: Callable[[str, str], None]):
+        """注册状态变更回调"""
+        self._status_callbacks.append(callback)
+
+    def _notify_status(self, task_id: str, status: str):
+        """通知状态变更"""
+        for callback in self._status_callbacks:
+            try:
+                callback(task_id, status)
+            except Exception as e:
+                logger.warning(f"Status callback error: {e}")
+
+    def create_task(
+        self,
+        subagent_type: SubagentType,
+        prompt: str,
+        custom_tools: Optional[set] = None,
+        custom_system_prompt: Optional[str] = None,
+        max_iterations: Optional[int] = None,
+        timeout: Optional[int] = None,
+        priority: int = 0,
+    ) -> str:
+        """
+        创建 Subagent 任务
+
+        Args:
+            subagent_type: Subagent 类型
+            prompt: 任务提示
+            custom_tools: 自定义工具集
+            custom_system_prompt: 自定义 system prompt
+            max_iterations: 最大迭代次数
+            timeout: 超时时间（秒）
+            priority: 优先级
+
+        Returns:
+            str: 任务 ID
+        """
+        task_id = str(uuid.uuid4())[:8]
+        task = SubagentTask(
+            id=task_id,
+            subagent_type=subagent_type,
+            prompt=prompt,
+            custom_tools=custom_tools,
+            custom_system_prompt=custom_system_prompt,
+            max_iterations=max_iterations,
+            timeout=timeout,
+            priority=priority,
+        )
+        self._tasks[task_id] = task
+        return task_id
+
+    def spawn_subagent(self, task_id: str) -> SubagentInstance:
+        """
+        创建 SubagentInstance
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            SubagentInstance
+        """
+        if task_id not in self._tasks:
+            raise ValueError(f"Task not found: {task_id}")
+
+        task = self._tasks[task_id]
+
+        instance = SubagentInstance(
+            gateway=self.gateway,
+            subagent_type=task.subagent_type,
+            model_id=self.model_id,
+            max_iterations=task.max_iterations or self.DEFAULT_MAX_ITERATIONS,
+            timeout=task.timeout or self.DEFAULT_TIMEOUT,
+            custom_system_prompt=task.custom_system_prompt,
+            custom_tools=task.custom_tools,
+        )
+
+        self._instances[task_id] = instance
+        return instance
+
+    async def run_subagent(self, task_id: str) -> SubagentResult:
+        """
+        执行单个 Subagent 任务
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            SubagentResult
+        """
+        if task_id not in self._tasks:
+            raise ValueError(f"Task not found: {task_id}")
+
+        task = self._tasks[task_id]
+
+        # 创建实例（如果不存在）
+        if task_id not in self._instances:
+            self.spawn_subagent(task_id)
+
+        instance = self._instances[task_id]
+
+        # 并发控制
+        async with self._semaphore:
+            self._notify_status(task_id, "running")
+            state = await instance.run(task.prompt, task_id)
+            result = SubagentResult(state)
+            self._results[task_id] = result
+            self._notify_status(task_id, state.status)
+            return result
+
+    async def run_parallel(
+        self,
+        task_ids: List[str],
+        fail_fast: bool = False,
+    ) -> Dict[str, SubagentResult]:
+        """
+        并行执行多个 Subagent 任务
+
+        Args:
+            task_ids: 任务 ID 列表
+            fail_fast: 是否在第一个失败时立即停止
+
+        Returns:
+            Dict[str, SubagentResult]: 任务 ID -> 结果
+        """
+        if fail_fast:
+            # 顺序执行，失败即停
+            results = {}
+            for task_id in task_ids:
+                result = await self.run_subagent(task_id)
+                results[task_id] = result
+                if not result.success:
+                    break
+            return results
+        else:
+            # 并行执行
+            tasks = [self.run_subagent(task_id) for task_id in task_ids]
+            results_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+            results = {}
+            for task_id, result in zip(task_ids, results_list):
+                if isinstance(result, Exception):
+                    # 创建失败状态
+                    state = SubagentState(
+                        id=task_id,
+                        subagent_type=self._tasks[task_id].subagent_type,
+                        status="failed",
+                        prompt=self._tasks[task_id].prompt,
+                        error=str(result),
+                    )
+                    results[task_id] = SubagentResult(state)
+                else:
+                    results[task_id] = result
+
+            return results
+
+    def get_status(self, task_id: str) -> Optional[str]:
+        """获取任务状态"""
+        if task_id in self._results:
+            return self._results[task_id].state.status
+        if task_id in self._instances:
+            return self._instances[task_id].state.status if self._instances[task_id].state else "pending"
+        if task_id in self._tasks:
+            return "pending"
+        return None
+
+    def get_result(self, task_id: str) -> Optional[SubagentResult]:
+        """获取任务结果"""
+        return self._results.get(task_id)
+
+    def get_all_results(self) -> Dict[str, SubagentResult]:
+        """获取所有结果"""
+        return self._results.copy()
+
+    def wait_for_result(
+        self,
+        task_id: str,
+        timeout: Optional[float] = None,
+    ) -> Optional[SubagentResult]:
+        """
+        等待任务完成（同步版本，用于在已运行的异步上下文中）
+
+        注意：这个方法需要在外部异步上下文中使用
+        """
+        # 简单轮询检查
+        import time
+        start = time.time()
+        while True:
+            if task_id in self._results:
+                return self._results[task_id]
+            if timeout and (time.time() - start) > timeout:
+                return None
+            time.sleep(0.1)
+
+    def aggregate_results(
+        self,
+        task_ids: List[str],
+        include_errors: bool = True,
+        max_length: int = 2000,
+    ) -> str:
+        """
+        聚合多个任务的结果
+
+        Args:
+            task_ids: 任务 ID 列表
+            include_errors: 是否包含错误信息
+            max_length: 单个结果最大长度
+
+        Returns:
+            str: 聚合后的结果摘要
+        """
+        summaries = []
+        for task_id in task_ids:
+            result = self._results.get(task_id)
+            if not result:
+                summaries.append(f"[{task_id}] Not found")
+                continue
+
+            if result.success:
+                content = result.result or ""
+                if len(content) > max_length:
+                    content = content[:max_length] + "...(truncated)"
+                summaries.append(f"[{task_id}] SUCCESS:\n{content}")
+            elif include_errors:
+                summaries.append(f"[{task_id}] {result.state.status.upper()}: {result.error}")
+
+        return "\n\n---\n\n".join(summaries)
+
+    def cleanup(self, task_id: Optional[str] = None):
+        """
+        清理任务资源
+
+        Args:
+            task_id: 指定任务 ID，None 表示清理所有
+        """
+        if task_id:
+            self._tasks.pop(task_id, None)
+            self._instances.pop(task_id, None)
+            self._results.pop(task_id, None)
+        else:
+            self._tasks.clear()
+            self._instances.clear()
+            self._results.clear()
+
+    def list_tasks(self, status: Optional[str] = None) -> List[Dict]:
+        """
+        列出所有任务
+
+        Args:
+            status: 过滤状态（可选）
+
+        Returns:
+            List[Dict]: 任务列表
+        """
+        tasks = []
+        for task_id, task in self._tasks.items():
+            task_status = self.get_status(task_id)
+            if status and task_status != status:
+                continue
+            tasks.append({
+                "id": task_id,
+                "type": task.subagent_type.value,
+                "status": task_status,
+                "prompt_preview": task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt,
+                "priority": task.priority,
+            })
+        return tasks
+
+    # ==================== 便捷方法 ====================
+
+    def spawn_explore(self, prompt: str, **kwargs) -> str:
+        """创建探索型 Subagent 任务"""
+        return self.create_task(SubagentType.EXPLORE, prompt, **kwargs)
+
+    def spawn_review(self, prompt: str, **kwargs) -> str:
+        """创建审查型 Subagent 任务"""
+        return self.create_task(SubagentType.REVIEW, prompt, **kwargs)
+
+    def spawn_implement(self, prompt: str, **kwargs) -> str:
+        """创建实现型 Subagent 任务"""
+        return self.create_task(SubagentType.IMPLEMENT, prompt, **kwargs)
+
+    def spawn_plan(self, prompt: str, **kwargs) -> str:
+        """创建规划型 Subagent 任务"""
+        return self.create_task(SubagentType.PLAN, prompt, **kwargs)
+
+
+# ==================== RalphLoop 集成支持 ====================
+
+class RalphSubagentOrchestrator:
+    """
+    RalphLoop 升级的 Subagent 编排器
+
+    执行模式:
+    1. Spawn PlanSubagent -> 获取执行计划
+    2. Spawn multiple ImplementSubagent (并行)
+    3. Spawn ReviewSubagent -> 验证实现
+    4. External verification -> 循环或完成
+    """
+
+    def __init__(self, manager: SubagentManager):
+        self.manager = manager
+        self._plan_task_id: Optional[str] = None
+        self._implement_task_ids: List[str] = []
+        self._review_task_id: Optional[str] = None
+
+    async def plan_phase(self, task_prompt: str) -> str:
+        """规划阶段"""
+        self._plan_task_id = self.manager.spawn_plan(
+            f"请分析以下任务并制定执行计划:\n\n{task_prompt}"
+        )
+        result = await self.manager.run_subagent(self._plan_task_id)
+        return result.summary
+
+    async def implement_phase(
+        self,
+        implement_prompts: List[str],
+    ) -> Dict[str, SubagentResult]:
+        """实现阶段（并行执行多个任务）"""
+        self._implement_task_ids = []
+        for prompt in implement_prompts:
+            task_id = self.manager.spawn_implement(prompt)
+            self._implement_task_ids.append(task_id)
+
+        return await self.manager.run_parallel(self._implement_task_ids)
+
+    async def review_phase(self, review_prompt: str) -> str:
+        """审查阶段"""
+        self._review_task_id = self.manager.spawn_review(review_prompt)
+        result = await self.manager.run_subagent(self._review_task_id)
+        return result.summary
+
+    def get_execution_report(self) -> Dict:
+        """获取执行报告"""
+        return {
+            "plan": {
+                "task_id": self._plan_task_id,
+                "result": self.manager.get_result(self._plan_task_id).summary if self._plan_task_id else None,
+            },
+            "implement": [
+                {
+                    "task_id": task_id,
+                    "result": self.manager.get_result(task_id).summary if self.manager.get_result(task_id) else None,
+                }
+                for task_id in self._implement_task_ids
+            ],
+            "review": {
+                "task_id": self._review_task_id,
+                "result": self.manager.get_result(self._review_task_id).summary if self._review_task_id else None,
+            },
+        }
+
+    def cleanup(self):
+        """清理所有任务"""
+        self.manager.cleanup()
+        self._plan_task_id = None
+        self._implement_task_ids = []
+        self._review_task_id = None
