@@ -79,7 +79,7 @@ class TaskScheduler:
     # 内置任务类型及其默认间隔
     BUILTIN_TASKS = {
         "autodream": 12 * 60 * 60,  # 每12小时记忆整理
-        "autonomous_explore": 15 * 60,  # 每15分钟自主探索
+        "autonomous_explore": 30 * 60,  # 每30分钟自主探索
         "health_check": 60 * 60,  # 每小时健康检查
     }
 
