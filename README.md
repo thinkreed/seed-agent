@@ -200,4 +200,4 @@ Each module has dedicated documentation in its AGENTS.md file:
 
 ## Acknowledgments
 
-Special thanks to [GenericAgent](https://github.com/lsdefine/GenericAgent) for inspiration and contributions to this project.
+Special thanks to [GenericAgent](https://github.com/lsdefine/GenericAgent) for inspiration to this project.

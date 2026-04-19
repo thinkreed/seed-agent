@@ -98,6 +98,16 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
 #   commonly ignored for libraries.
+
+# Seed Agent specific
+tasks/*.png
+tasks/*.html
+tasks/diagnosis_cache.json
+tasks/diagnosis_report.*
+tasks/daily_report_*.md
+tasks/weekly_report_*.md
+scripts/__pycache__/
+scripts/checks/__pycache__/
 #uv.lock
 
 # poetry

@@ -3,6 +3,7 @@
 import os
 import re
 import yaml
+import difflib
 from typing import List, Dict, Optional
 from pathlib import Path
 
@@ -34,11 +35,19 @@ class SkillLoader:
             try:
                 meta = self._parse_frontmatter(skill_file)
                 if meta:
+                    # 解析 triggers
+                    triggers = meta.get('triggers', '')
+                    if isinstance(triggers, str):
+                        triggers = [t.strip() for t in triggers.split(',')]
+                    elif not isinstance(triggers, list):
+                        triggers = []
+
                     self._skills_meta[meta['name']] = {
                         'path': str(skill_file),
                         'name': meta['name'],
                         'description': meta.get('description', ''),
                         'allowed_tools': meta.get('allowed-tools', ''),
+                        'triggers': triggers, # 新增字段
                         'metadata': meta.get('metadata', {})
                     }
             except Exception:
@@ -81,21 +90,67 @@ class SkillLoader:
         return "\n".join(lines)
 
     def match_skill(self, query: str) -> Optional[str]:
-        """根据用户查询匹配最相关的 skill"""
+        """根据用户查询匹配最相关的 skill (支持模糊匹配与触发词)"""
         query_lower = query.lower()
         best_match = None
-        best_score = 0
+        best_score = 0.0
+
+        # 改进分词：支持中英文
+        # 1. 英文单词/数字
+        en_words = re.findall(r'[a-zA-Z0-9_]+', query_lower)
+        # 2. 中文字符串片段
+        cn_words = re.findall(r'[\u4e00-\u9fa5]+', query_lower)
+        query_words = en_words + cn_words
+        
+        # 如果没有任何词（全是符号），使用整个查询串
+        if not query_words and query.strip():
+            query_words = [query_lower]
 
         for name, meta in self._skills_meta.items():
-            # 检查 name 和 description 中的关键词
-            keywords = [name.lower()] + meta['description'].lower().split()
-            score = sum(1 for kw in keywords if kw in query_lower)
+            # 收集所有关键词：name, description 词, triggers
+            keywords = set()
+            keywords.add(name.lower())
+            
+            # Description 词 (英文)
+            keywords.update(re.findall(r'[a-zA-Z0-9_]+', meta['description'].lower()))
+            
+            # Triggers (可能包含中文)
+            triggers = meta.get('triggers', [])
+            if isinstance(triggers, str):
+                # 分割 triggers
+                # 假设 triggers 是逗号分隔，且可能包含空格
+                raw_triggers = [t.strip() for t in triggers.split(',')]
+                for t in raw_triggers:
+                    if t:
+                        keywords.add(t.lower())
+                        # 如果 trigger 是中英文混合，拆分它
+                        # 例如 "create 技能" -> "create", "技能"
+                        keywords.update(re.findall(r'[a-zA-Z0-9_]+', t.lower()))
+                        keywords.update(re.findall(r'[\u4e00-\u9fa5]+', t.lower()))
+
+            score = 0.0
+            for qw in query_words:
+                matched = False
+                for kw in keywords:
+                    # 精确匹配 (包含关系)
+                    if kw in qw or qw in kw:
+                        score += 1.0
+                        matched = True
+                        break
+                
+                if not matched:
+                    # 模糊匹配
+                    # 仅对英文单词进行模糊匹配 (difflib 对中文效果一般且慢)
+                    if re.match(r'^[a-z0-9_]+$', qw): 
+                        matches = difflib.get_close_matches(qw, list(keywords), n=1, cutoff=0.8)
+                        if matches:
+                            score += 0.5 
 
             if score > best_score:
                 best_score = score
                 best_match = name
 
-        return best_match if best_score > 0 else None
+        return best_match if best_score >= 1.0 else None
 
     def load_skill_content(self, name: str) -> Optional[str]:
         """加载完整 skill 内容（第二层披露）"""

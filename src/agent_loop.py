@@ -54,6 +54,11 @@ class AgentLoop:
         self._conversation_rounds: int = 0  # 用户消息计数
         self._last_summary: Optional[str] = None  # 最近一次摘要
         self.session_id: str = session_id or _generate_session_filename()  # 当前会话ID
+        
+        # Context Window Management
+        self.context_window = self._get_model_context_window()
+        self.context_usage_threshold = 0.75  # Trigger summary at 75% usage
+
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
@@ -80,6 +85,36 @@ class AgentLoop:
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         return self.gateway.config.agents['defaults'].defaults.primary
+
+    def _get_model_context_window(self) -> int:
+        """获取当前模型的上下文窗口大小"""
+        # Extract provider_id and model_id from "provider/model" format
+        if '/' in self.model_id:
+            provider_id, model_id = self.model_id.split('/', 1)
+            provider = self.gateway.config.models.get(provider_id)
+            if provider:
+                for m in provider.models:
+                    if m.id == model_id:
+                        return m.contextWindow
+        return 100000  # Default fallback
+
+    def _estimate_context_size(self) -> int:
+        """估算当前上下文的 Token 数量 (粗略估算: 字符数 * 0.7)"""
+        # 包含 system prompt 和 history
+        total_chars = len(self.system_prompt) if self.system_prompt else 0
+        for msg in self.history:
+            content = msg.get('content', '')
+            if isinstance(content, str):
+                total_chars += len(content)
+            elif isinstance(content, list):
+                # For multimodal content, estimate text length
+                for item in content:
+                    if isinstance(item, dict) and 'text' in item:
+                        total_chars += len(item['text'])
+        
+        # 简单的 heuristic: 1 token ≈ 1.5 characters for mixed text, or 1 char ≈ 0.7 tokens for Chinese
+        # Using 0.7 as a safe upper bound for token count relative to chars
+        return int(total_chars * 0.7)
 
     def _build_messages(self) -> List[Dict]:
         """构建完整的消息列表"""
@@ -127,7 +162,15 @@ class AgentLoop:
         if self.history:
             save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
 
-        if self._conversation_rounds < self.summary_interval:
+        # Check if context window is getting full (Token-based)
+        estimated_tokens = self._estimate_context_size()
+        token_threshold = self.context_window * self.context_usage_threshold
+        is_context_full = estimated_tokens > token_threshold
+
+        # Or if conversation rounds exceed limit (Count-based)
+        is_round_limit_reached = self._conversation_rounds >= self.summary_interval
+
+        if not is_context_full and not is_round_limit_reached:
             return
 
         # 生成摘要
@@ -138,8 +181,12 @@ class AgentLoop:
         # 更新元数据中的摘要
         save_session_history([], summary=summary, session_id=self.session_id)
 
-        # 保留最近2轮对话 + 摘要
-        keep_count = 4  # 最近的 user + assistant + tool calls + results
+        # 保留最近 2 轮对话 + 摘要 (or fewer if context is critical)
+        # If context is very full, keep less history
+        keep_count = 4 if not is_context_full else 2 
+        
+        # 确保保留的部分是完整的 (user + assistant + tool_calls/results)
+        # 简单切片，保留最后 keep_count 条
         preserved = self.history[-keep_count:] if len(self.history) > keep_count else self.history
 
         # 用摘要替换旧历史

@@ -120,7 +120,9 @@ class TaskScheduler:
 
     def _init_builtin_tasks(self):
         """初始化内置任务"""
-        # autodream: 记忆整理
+        modified = False
+        
+        # 1. autodream: 记忆整理
         if "autodream" not in self._tasks:
             self._tasks["autodream"] = ScheduledTask(
                 task_id="autodream",
@@ -129,6 +131,31 @@ class TaskScheduler:
                 prompt="执行 autodream 记忆整理 SOP：分层逐查、ROI评估、低ROI清理、补全高价值项",
                 enabled=True
             )
+            modified = True
+
+        # 2. health_check: 系统健康检查
+        if "health_check" not in self._tasks:
+            self._tasks["health_check"] = ScheduledTask(
+                task_id="health_check",
+                task_type="custom",
+                interval_seconds=self.BUILTIN_TASKS["health_check"],
+                prompt="运行诊断脚本 `python scripts/diagnose_seed_agent.py --json -q`，统计 FAIL/WARN。如有 FAIL，尝试修复。将结果摘要追加到任务日志。",
+                enabled=True
+            )
+            modified = True
+            
+        # 3. autonomous_explore: 自主探索 (Optional, usually triggered by idle time)
+        if "autonomous_explore" not in self._tasks:
+             self._tasks["autonomous_explore"] = ScheduledTask(
+                task_id="autonomous_explore",
+                task_type="custom",
+                interval_seconds=self.BUILTIN_TASKS["autonomous_explore"],
+                prompt="执行一次快速自主探索，检查系统状态、日志和TODO。",
+                enabled=False # Disabled by default to avoid conflict with idle trigger
+            )
+             modified = True
+
+        if modified:
             self._save_tasks()
 
     async def start(self):
@@ -170,30 +197,44 @@ class TaskScheduler:
                 self._save_tasks()
 
     async def _execute_task(self, task: ScheduledTask):
-        """执行任务"""
+        """执行任务（支持 tool_calls 循环处理）"""
         try:
-            if self.agent:
-                # 通过 agent 执行任务 prompt
-                response = await self.agent.gateway.chat_completion(
-                    model_id=self.agent.model_id,
-                    messages=[
-                        {"role": "system", "content": self.agent.system_prompt or ""},
-                        {"role": "user", "content": task.prompt}
-                    ],
-                    tools=self.agent.tools.get_schemas()
-                )
-
-                # 提取响应
-                choices = response.get("choices", [])
-                if choices:
-                    content = choices[0].get("message", {}).get("content", "")
-                    logger.info(f"Task {task.task_id} completed: {content[:200]}...")
-
-                    # 记录执行日志
-                    self._log_task_execution(task, content)
-
-            else:
+            if not self.agent:
                 logger.warning(f"No agent available for task {task.task_id}")
+                self._log_task_execution(task, "No agent available", success=False)
+                return
+
+            # 使用 agent 的 stream_run 处理任务，支持 tool_calls 循环
+            history = self.agent.history.copy()
+            original_max_iterations = self.agent.max_iterations
+
+            try:
+                # 临时提升迭代次数以支持复杂任务
+                self.agent.max_iterations = max(original_max_iterations, 30)
+
+                # 通过 stream_run 执行任务（自动处理 tool_calls 循环）
+                full_response = ""
+                tool_calls_count = 0
+
+                async for chunk in self.agent.stream_run(task.prompt):
+                    if chunk['type'] == 'chunk':
+                        full_response += chunk['content']
+                    elif chunk['type'] == 'tool_call':
+                        tool_calls_count += len(chunk.get('calls', []))
+
+                # 提取最终响应
+                if full_response:
+                    logger.info(f"Task {task.task_id} completed ({len(full_response)} chars, {tool_calls_count} tool calls)")
+                else:
+                    logger.warning(f"Task {task.task_id} returned empty response")
+
+                # 记录执行日志
+                result = full_response[:500] if full_response else f"Empty response ({tool_calls_count} tool calls executed)"
+                self._log_task_execution(task, result, success=bool(full_response) or tool_calls_count > 0)
+
+            finally:
+                # 恢复原始迭代限制
+                self.agent.max_iterations = original_max_iterations
 
         except Exception as e:
             logger.exception(f"Task {task.task_id} failed: {e}")

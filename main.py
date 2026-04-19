@@ -56,6 +56,56 @@ async def main(args=None):
             system_prompt = f.read()
 
     print("Initializing Agent...")
+
+    # Create PID file for abnormal exit detection
+    import os
+    import sys
+    pid_file = os.path.join(os.path.dirname(__file__), 'tasks', 'seed_agent.pid')
+    os.makedirs(os.path.dirname(pid_file), exist_ok=True)
+    with open(pid_file, 'w') as f:
+        f.write(str(os.getpid()))
+    
+    # Register cleanup on exit
+    import atexit
+    def remove_pid():
+        if os.path.exists(pid_file):
+            try:
+                os.remove(pid_file)
+            except:
+                pass
+    atexit.register(remove_pid)
+
+    # 启动前诊断检查（可选，使用 --no-check 跳过）
+    if not args or not getattr(args, 'no_check', False):
+        try:
+            seed_dir = Path(os.path.expanduser("~")) / ".seed"
+            diag_script = seed_dir / "scripts" / "diagnose_seed_agent.py"
+            if diag_script.exists():
+                import subprocess
+                result = subprocess.run(
+                    ['python', str(diag_script), '--json', '-q'],
+                    capture_output=True, text=True, encoding='utf-8',
+                    cwd=str(seed_dir), timeout=60
+                )
+                if result.returncode == 0:
+                    import json as _json
+                    report = _json.loads(result.stdout)
+                    summary = report.get('summary', {})
+                    failed = summary.get('failed', 0)
+                    warned = summary.get('warned', 0)
+                    if failed > 0:
+                        print(f"  ⚠️  诊断发现 {failed} 个问题，建议运行修复:")
+                        print(f"     python {seed_dir}/scripts/diagnose_seed_agent.py --fix")
+                        for r in report.get('results', []):
+                            if r['status'] == 'FAIL':
+                                print(f"     - [{r['severity']}] {r['id']}: {r['name']}")
+                    elif warned > 0:
+                        print(f"  ℹ️  诊断发现 {warned} 个警告")
+                    else:
+                        print(f"  ✅ 诊断通过 ({summary.get('passed', 0)} 项)")
+        except Exception as e:
+            logger.warning(f"Pre-start diagnosis skipped: {e}")
+
     try:
         # 初始化网关和 Agent
         gateway = LLMGateway(config_path)
@@ -129,5 +179,6 @@ async def main(args=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Seed Agent CLI")
     parser.add_argument('--chat', '-c', type=str, help="One-shot chat message")
+    parser.add_argument('--no-check', action='store_true', help="Skip pre-start diagnosis check")
     args = parser.parse_args()
     asyncio.run(main(args))

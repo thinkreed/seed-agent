@@ -215,6 +215,49 @@ def ask_user(question: str, options: list = None) -> str:
     return result
 
 
+def run_diagnosis(fix: bool = False) -> str:
+    """
+    Run seed-agent diagnostic scan based on known bug patterns.
+
+    Args:
+        fix: If True, automatically fix detected issues (default: False).
+
+    Returns:
+        Diagnosis results with PASS/FAIL/WARN status for each check.
+    """
+    try:
+        seed_dir = Path(os.path.expanduser("~")) / ".seed"
+        script_path = seed_dir / "scripts" / "diagnose_seed_agent.py"
+
+        if not script_path.exists():
+            return f"Error: Diagnosis script not found at {script_path}"
+
+        cmd = [
+            "python", str(script_path),
+        ]
+        if fix:
+            cmd.append("--fix")
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            cwd=str(seed_dir),
+            timeout=120
+        )
+
+        output = result.stdout
+        if result.stderr:
+            output += f"\nSTDERR: {result.stderr}"
+
+        return output[:3000]  # Limit output size
+    except subprocess.TimeoutExpired:
+        return "Error: Diagnosis timed out (>120s)"
+    except Exception as e:
+        return f"Error running diagnosis: {str(e)}"
+
+
 def register_builtin_tools(registry):
     """Register the 5 core builtin tools."""
     registry.register("file_read", file_read)
@@ -222,3 +265,4 @@ def register_builtin_tools(registry):
     registry.register("file_edit", file_edit)
     registry.register("code_as_policy", code_as_policy)
     registry.register("ask_user", ask_user)
+    registry.register("run_diagnosis", run_diagnosis)
