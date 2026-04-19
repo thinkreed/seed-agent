@@ -214,258 +214,179 @@ def register_memory_tools(registry):
     registry.register("read_memory_index", read_memory_index)
     registry.register("search_memory", search_memory)
     registry.register("start_long_term_update", start_long_term_update)
-    # 对话历史工具
-    registry.register("save_session_history", save_session_history)
-    registry.register("load_session_history", load_session_history)
-    registry.register("list_sessions", list_sessions)
-    registry.register("search_history", search_history)
+    # 对话历史工具 - 使用 SQLite + FTS5 后端
+    registry.register("save_session_history", _save_session_history)
+    registry.register("load_session_history", _load_session_history)
+    registry.register("list_sessions", _list_sessions)
+    registry.register("search_history", _search_history)
 
 
-# ==================== 对话历史持久化 (L4 Raw - JSONL 格式) ====================
+# ==================== 对话历史持久化 (L4 Raw - SQLite + FTS5) ====================
+# SQLite 后端实现已迁移到 session_db.py，此处为兼容性封装层。
+# 迁移完成后，JSONL 文件将不再使用，但保留 _ensure_sessions_dir 等函数
+# 以支持可能仍依赖它们的旧代码。
 
 def _ensure_sessions_dir():
-    """确保 sessions 目录存在"""
+    """确保 sessions 目录存在（保留兼容）"""
     os.makedirs(SESSIONS_DIR, exist_ok=True)
+
+def _save_session_history(messages: list, summary: str = None, session_id: str = None) -> str:
+    """Save conversation history to SQLite (wrapper for session_db.py)"""
+    try:
+        from src.tools.session_db import save_session_history as sqlite_save
+        return sqlite_save(messages, summary, session_id)
+    except ImportError:
+        return _save_session_history_jsonl(messages, summary, session_id)
+
+def _load_session_history(session_id: str) -> str:
+    """Load conversation history from SQLite (wrapper for session_db.py)"""
+    try:
+        from src.tools.session_db import load_session_history as sqlite_load
+        return sqlite_load(session_id)
+    except ImportError:
+        return _load_session_history_jsonl(session_id)
+
+def _list_sessions(limit: int = 10) -> str:
+    """List recent sessions from SQLite (wrapper for session_db.py)"""
+    try:
+        from src.tools.session_db import list_sessions as sqlite_list
+        return sqlite_list(limit)
+    except ImportError:
+        return _list_sessions_jsonl(limit)
+
+def _search_history(keyword: str, limit: int = 20) -> str:
+    """Search conversation history using FTS5 (wrapper for session_db.py)"""
+    try:
+        from src.tools.session_db import search_history as sqlite_search
+        return sqlite_search(keyword, limit)
+    except ImportError:
+        return _search_history_jsonl(keyword, limit)
+
+# ---- JSONL Fallback (保留向后兼容) ----
 
 def _generate_session_filename() -> str:
     """生成会话文件名"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"session_{timestamp}.jsonl"
 
-def save_session_history(messages: list, summary: str = None, session_id: str = None) -> str:
-    """
-    Save conversation history to L4 raw/sessions in JSONL format.
-
-    Args:
-        messages: List of message dicts with role, content, tool_calls, etc.
-        summary: Optional session summary (written as separate line).
-        session_id: Optional session ID (filename). If None, generates new one.
-
-    Returns:
-        Session ID (filename) or error message.
-    """
+def _save_session_history_jsonl(messages: list, summary: str = None, session_id: str = None) -> str:
+    """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
-
         if not session_id:
             session_id = _generate_session_filename()
-
         filepath = os.path.join(SESSIONS_DIR, session_id)
-
-        # JSONL: 每行一个 JSON 对象，追加写入
         with open(filepath, 'a', encoding='utf-8') as f:
-            # 首次创建时写入元数据行
             if not os.path.exists(filepath) or os.stat(filepath).st_size == 0:
-                meta = {
-                    'type': 'session_meta',
-                    'session_id': session_id,
-                    'created_at': datetime.now().isoformat()
-                }
+                meta = {'type': 'session_meta', 'session_id': session_id, 'created_at': datetime.now().isoformat()}
                 f.write(json.dumps(meta, ensure_ascii=False) + '\n')
-
-            # 写入消息
             for msg in messages:
                 msg['timestamp'] = datetime.now().isoformat()
                 msg['type'] = 'message'
                 f.write(json.dumps(msg, ensure_ascii=False) + '\n')
-
-            # 写入摘要（如果有）
             if summary:
-                summary_line = {
-                    'type': 'summary',
-                    'content': summary,
-                    'timestamp': datetime.now().isoformat()
-                }
+                summary_line = {'type': 'summary', 'content': summary, 'timestamp': datetime.now().isoformat()}
                 f.write(json.dumps(summary_line, ensure_ascii=False) + '\n')
-
-        # 统计消息数
         msg_count = len(messages)
         return f"Session saved: {session_id} ({msg_count} messages)"
     except Exception as e:
         return f"Error saving session: {str(e)}"
 
-def load_session_history(session_id: str) -> str:
-    """
-    Load conversation history from L4 raw/sessions (JSONL format).
-
-    Args:
-        session_id: Session filename (e.g., session_20240418_123456.jsonl)
-
-    Returns:
-        Formatted session data or error message.
-    """
+def _load_session_history_jsonl(session_id: str) -> str:
+    """JSONL fallback implementation"""
     try:
         filepath = os.path.join(SESSIONS_DIR, session_id)
         if not os.path.exists(filepath):
-            # 尝试模糊匹配
-            matches = [f for f in os.listdir(SESSIONS_DIR) 
-                       if f.startswith(session_id) or session_id in f]
+            matches = [f for f in os.listdir(SESSIONS_DIR) if f.startswith(session_id) or session_id in f]
             if matches:
                 filepath = os.path.join(SESSIONS_DIR, matches[0])
             else:
                 return f"Session not found: {session_id}"
-
-        messages = []
-        meta = {}
-        summary = None
-
+        messages = []; meta = {}; summary = None
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
-                if not line.strip():
-                    continue
+                if not line.strip(): continue
                 obj = json.loads(line)
-                if obj.get('type') == 'session_meta':
-                    meta = obj
-                elif obj.get('type') == 'message':
-                    messages.append(obj)
-                elif obj.get('type') == 'summary':
-                    summary = obj.get('content')
-
-        # 格式化输出
+                if obj.get('type') == 'session_meta': meta = obj
+                elif obj.get('type') == 'message': messages.append(obj)
+                elif obj.get('type') == 'summary': summary = obj.get('content')
         output = f"Session: {meta.get('session_id', session_id)}\n"
         output += f"Created: {meta.get('created_at', 'unknown')}\n"
         output += f"Messages: {len(messages)}\n"
-        if summary:
-            output += f"Summary: {summary}\n"
+        if summary: output += f"Summary: {summary}\n"
         output += "---\n"
-
         for msg in messages:
             role = msg.get('role', 'unknown')
             content = msg.get('content', '')
             if msg.get('tool_calls'):
-                tc_names = [tc.get('function', {}).get('name', 'unknown') 
-                            for tc in msg['tool_calls']]
+                tc_names = [tc.get('function', {}).get('name', 'unknown') for tc in msg['tool_calls']]
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
-            if msg.get('tool_call_id'):
-                content = msg.get('content', '')[:200]
-
-            if len(content) > 500:
-                content = content[:500] + "..."
-
+            if msg.get('tool_call_id'): content = msg.get('content', '')[:200]
+            if len(content) > 500: content = content[:500] + "..."
             output += f"{role}: {content}\n"
-
         return output
     except Exception as e:
         return f"Error loading session: {str(e)}"
 
-def list_sessions(limit: int = 10) -> str:
-    """
-    List recent conversation sessions from L4 raw/sessions.
-
-    Args:
-        limit: Max number of sessions to return.
-
-    Returns:
-        List of sessions with metadata.
-    """
+def _list_sessions_jsonl(limit: int = 10) -> str:
+    """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
         files = sorted(os.listdir(SESSIONS_DIR), reverse=True)
         session_files = [f for f in files if f.startswith('session_') and f.endswith('.jsonl')]
-
         results = []
         for f in session_files[:limit]:
             filepath = os.path.join(SESSIONS_DIR, f)
-            msg_count = 0
-            created_at = 'unknown'
-            summary = None
-
+            msg_count = 0; created_at = 'unknown'; summary = None
             with open(filepath, 'r', encoding='utf-8') as fp:
                 for line in fp:
-                    if not line.strip():
-                        continue
+                    if not line.strip(): continue
                     obj = json.loads(line)
-                    if obj.get('type') == 'session_meta':
-                        created_at = obj.get('created_at', 'unknown')
-                    elif obj.get('type') == 'message':
-                        msg_count += 1
-                    elif obj.get('type') == 'summary':
-                        summary = obj.get('content', '')[:100]
-
-            results.append({
-                'session_id': f,
-                'created_at': created_at,
-                'message_count': msg_count,
-                'summary': summary
-            })
-
-        if not results:
-            return "No sessions found."
-
+                    if obj.get('type') == 'session_meta': created_at = obj.get('created_at', 'unknown')
+                    elif obj.get('type') == 'message': msg_count += 1
+                    elif obj.get('type') == 'summary': summary = obj.get('content', '')[:100]
+            results.append({'session_id': f, 'created_at': created_at, 'message_count': msg_count, 'summary': summary})
+        if not results: return "No sessions found."
         output = "Recent Sessions:\n"
         for s in results:
             output += f"- {s['session_id']}: {s['message_count']} msgs, {s['created_at']}\n"
-            if s['summary']:
-                output += f"  Summary: {s['summary']}...\n"
-
+            if s['summary']: output += f"  Summary: {s['summary']}...\n"
         return output
     except Exception as e:
         return f"Error listing sessions: {str(e)}"
 
-def search_history(keyword: str, limit: int = 20) -> str:
-    """
-    Search conversation history by keyword in L4 raw/sessions.
-
-    Args:
-        keyword: Search keyword (case-insensitive).
-        limit: Max results to return.
-
-    Returns:
-        Matching messages with session and context.
-    """
+def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
+    """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
-        files = [f for f in os.listdir(SESSIONS_DIR) 
-                 if f.startswith('session_') and f.endswith('.jsonl')]
-
-        results = []
-        keyword_lower = keyword.lower()
-
+        files = [f for f in os.listdir(SESSIONS_DIR) if f.startswith('session_') and f.endswith('.jsonl')]
+        results = []; keyword_lower = keyword.lower()
         for f in files:
             filepath = os.path.join(SESSIONS_DIR, f)
             messages = []
-
             with open(filepath, 'r', encoding='utf-8') as fp:
                 for line in fp:
-                    if not line.strip():
-                        continue
+                    if not line.strip(): continue
                     obj = json.loads(line)
-                    if obj.get('type') == 'message':
-                        messages.append(obj)
-
+                    if obj.get('type') == 'message': messages.append(obj)
             for i, msg in enumerate(messages):
                 content = msg.get('content', '')
                 if content and keyword_lower in content.lower():
-                    context_start = max(0, i - 1)
-                    context_end = min(len(messages), i + 2)
+                    context_start = max(0, i - 1); context_end = min(len(messages), i + 2)
                     context = messages[context_start:context_end]
-
                     results.append({
-                        'session_id': f,
-                        'timestamp': msg.get('timestamp', 'unknown'),
-                        'role': msg.get('role'),
+                        'session_id': f, 'timestamp': msg.get('timestamp', 'unknown'), 'role': msg.get('role'),
                         'matched': content[:300] + "..." if len(content) > 300 else content,
-                        'context': [
-                            f"{m.get('role')}: {m.get('content', '')[:100]}"
-                            for m in context
-                        ]
+                        'context': [f"{m.get('role')}: {m.get('content', '')[:100]}" for m in context]
                     })
-
-                    if len(results) >= limit:
-                        break
-
-            if len(results) >= limit:
-                break
-
-        if not results:
-            return f"No matches found for: {keyword}"
-
+                    if len(results) >= limit: break
+            if len(results) >= limit: break
+        if not results: return f"No matches found for: {keyword}"
         output = f"Found {len(results)} matches for '{keyword}':\n"
         for r in results:
             output += f"\n[{r['session_id']}] {r['timestamp']}\n"
             output += f"{r['role']}: {r['matched']}\n"
             output += f"Context: {r['context']}\n"
-
         return output
     except Exception as e:
         return f"Error searching history: {str(e)}"
