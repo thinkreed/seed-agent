@@ -66,7 +66,7 @@ main.py
    └── TaskScheduler (src/scheduler.py)
          │
          ├── autodream: 每12小时
-         ├── autonomous_explore: 每15分钟
+         ├── autonomous_explore: 每30分钟
          └── health_check: 每1小时
 ```
 

@@ -346,7 +346,7 @@ class AutonomousExplorer:
         prompt_parts = [
             "# 自主探索任务触发",
             "",
-            "当前空闲15分钟，开始执行自主任务。",
+            "当前空闲30分钟，开始执行自主任务。",
             "",
             "## 当前状态",
             f"- TODO状态: {'有待执行任务' if has_todo else '无TODO，进入规划模式'}",

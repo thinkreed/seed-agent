@@ -178,7 +178,7 @@ AutonomousExplorer enables the agent to be productive during idle periods by mon
 
 ### Key Features
 
-- **Idle Monitoring**: Tracks user activity and triggers exploration after 15 minutes of inactivity
+- **Idle Monitoring**: Tracks user activity and triggers exploration after 30 minutes of inactivity
 - **SOP Integration**: Loads and executes tasks based on configurable SOP documents
 - **Planning Mode**: When no TODOs exist, generates new task items autonomously
 - **Error Resilience**: Implements retry logic with exponential backoff and graceful degradation
@@ -193,7 +193,7 @@ Initializes the autonomous explorer with agent loop reference.
 class AutonomousExplorer:
     """自主探索执行器"""
 
-    IDLE_TIMEOUT = 15 * 60  # 15 minutes in seconds
+    IDLE_TIMEOUT = 30 * 60  # 30 minutes in seconds
 
     def __init__(self, agent_loop, on_explore_complete: Callable = None):
         self.agent = agent_loop
@@ -600,7 +600,7 @@ class TaskScheduler:
     # Built-in task types with default intervals
     BUILTIN_TASKS = {
         "autodream": 12 * 60 * 60,      # Every 12 hours
-        "autonomous_explore": 15 * 60,  # Every 15 minutes
+        "autonomous_explore": 30 * 60,  # Every 15 minutes
         "health_check": 60 * 60,        # Every hour
     }
 
