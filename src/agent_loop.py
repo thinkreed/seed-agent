@@ -4,7 +4,7 @@ import os
 from typing import List, Dict, Optional, AsyncGenerator
 from pathlib import Path
 from tools import ToolRegistry
-from tools.memory_tools import save_session_history, _generate_session_filename
+from tools.memory_tools import _save_session_history, _generate_session_filename
 from tools.skill_loader import SkillLoader
 from scheduler import TaskScheduler
 from client import LLMGateway
@@ -160,7 +160,7 @@ class AgentLoop:
         """检查是否需要总结历史，并执行总结"""
         # 无论是否达到总结间隔，都先保存会话历史到 L4
         if self.history:
-            save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
+            _save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
 
         # Check if context window is getting full (Token-based)
         estimated_tokens = self._estimate_context_size()
@@ -179,7 +179,7 @@ class AgentLoop:
             return
 
         # 更新元数据中的摘要
-        save_session_history([], summary=summary, session_id=self.session_id)
+        _save_session_history([], summary=summary, session_id=self.session_id)
 
         # 保留最近 2 轮对话 + 摘要 (or fewer if context is critical)
         # If context is very full, keep less history
@@ -339,7 +339,7 @@ class AgentLoop:
     def clear_history(self, save_current: bool = True):
         """清空对话历史，可选保存当前历史到 L4"""
         if save_current and self.history:
-            save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
+            _save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
         self.history.clear()
         self._conversation_rounds = 0
         self._last_summary = None
