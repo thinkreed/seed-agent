@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from typing import List, Dict, Optional, AsyncGenerator
+from typing import List, Dict, Optional, AsyncGenerator, Set
 from pathlib import Path
 from tools import ToolRegistry
 from tools.memory_tools import _save_session_history, _generate_session_filename
@@ -72,8 +72,9 @@ class AgentLoop:
         # 初始化定时任务调度器
         self.scheduler = TaskScheduler(self)
 
-        # 加载 skills 并注入到 system prompt
+        # 加载 skills 并注入到 system prompt (渐进式披露: 仅注入索引)
         self.skill_loader = SkillLoader()
+        self._available_tools: Optional[Set[str]] = None
         skills_prompt = self.skill_loader.get_skills_prompt()
         if system_prompt:
             self.system_prompt = system_prompt + "\n\n" + skills_prompt
