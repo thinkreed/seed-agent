@@ -1,10 +1,18 @@
-"""自主探索模块：空闲时根据 SOP 执行自主任务"""
+"""自主探索模块：空闲时根据 SOP 执行自主任务
+
+增强版 (Ralph Loop 集成):
+- completion_promise 检测：外部完成标志驱动退出
+- 可选上下文重置：防止上下文漂移
+- 防无限循环上限：迭代和时间双重保护
+"""
 
 import os
 import asyncio
 import time
+import json
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict
+from enum import Enum
 import logging
 
 logger = logging.getLogger("seed_agent")
@@ -15,9 +23,32 @@ PROJECT_ROOT = Path(__file__).parent.parent
 SOP_PATH = PROJECT_ROOT / "auto" / "自主探索 SOP.md"
 SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
 
+# Ralph Loop 增强配置
+COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
+COMPLETION_PROMISE_TOKENS = ["DONE", "COMPLETE", "TASK_FINISHED"]
+CONTEXT_RESET_ENABLED = True  # 默认开启
+CONTEXT_RESET_INTERVAL = 5    # 每5轮迭代重置
+RALPH_MAX_ITERATIONS = 1000   # 理论上限
+RALPH_MAX_DURATION = 8 * 60 * 60  # 8小时最大执行时间
+
+
+class CompletionType(Enum):
+    """完成验证类型"""
+    TEST_PASS = "test_pass"         # 测试通过
+    FILE_EXISTS = "file_exists"     # 目标文件存在
+    MARKER_FILE = "marker_file"     # 完成标志文件
+    GIT_CLEAN = "git_clean"         # Git 工作区干净
+    CUSTOM_CHECK = "custom_check"   # 自定义验证函数
+
 
 class AutonomousExplorer:
-    """自主探索执行器"""
+    """自主探索执行器 (Ralph Loop 增强)
+
+    新增特性:
+    - completion_promise 检测：外部标志驱动退出
+    - 可选上下文重置：防止上下文漂移
+    - 防无限循环上限：迭代和时间双重保护
+    """
 
     IDLE_TIMEOUT = 30 * 60  # 30分钟（秒）
 
@@ -28,6 +59,9 @@ class AutonomousExplorer:
         self._running: bool = False
         self._task: Optional[asyncio.Task] = None
         self._sop_content: Optional[str] = None
+        self._iteration_count: int = 0  # Ralph Loop 迭代计数
+        self._ralph_start_time: float = 0  # Ralph Loop 开始时间
+        self._state_file: Path = SEED_DIR / "ralph_state.json"  # 状态持久化
         self._load_sop()
 
     def _load_sop(self):
@@ -80,11 +114,110 @@ class AutonomousExplorer:
             # 每30秒检查一次
             await asyncio.sleep(30)
 
+    # === Ralph Loop 增强方法 ===
+
+    def _check_completion_promise(self) -> bool:
+        """检查外部完成标志（Ralph Loop 核心机制）"""
+        if COMPLETION_PROMISE_FILE.exists():
+            content = COMPLETION_PROMISE_FILE.read_text().strip()
+            if content in COMPLETION_PROMISE_TOKENS:
+                logger.info(f"Completion promise detected: {content}")
+                # 清除标志
+                COMPLETION_PROMISE_FILE.unlink()
+                return True
+        return False
+
+    def _check_safety_limits(self) -> bool:
+        """检查安全上限（防止无限循环）"""
+        # 迭代上限
+        if self._iteration_count >= RALPH_MAX_ITERATIONS:
+            logger.warning(f"Ralph Loop exceeded max iterations ({RALPH_MAX_ITERATIONS})")
+            return True
+
+        # 时间上限
+        if self._ralph_start_time > 0:
+            elapsed = time.time() - self._ralph_start_time
+            if elapsed >= RALPH_MAX_DURATION:
+                logger.warning(f"Ralph Loop exceeded max duration ({RALPH_MAX_DURATION}s)")
+                return True
+
+        return False
+
+    async def _reset_context_if_needed(self) -> Optional[str]:
+        """条件性重置上下文（防止上下文漂移）"""
+        if not CONTEXT_RESET_ENABLED:
+            return None
+
+        if self._iteration_count % CONTEXT_RESET_INTERVAL != 0:
+            return None
+
+        # 保存关键状态
+        preserved = self._extract_critical_context()
+
+        # 重置 history
+        self.agent.history.clear()
+
+        # 重新注入保留信息（如有）
+        if preserved:
+            self.agent.history.append({
+                "role": "system",
+                "content": f"[迭代 {self._iteration_count} 状态摘要]\n{preserved}"
+            })
+
+        logger.info(f"Context reset at iteration {self._iteration_count}")
+        return preserved
+
+    def _extract_critical_context(self) -> Optional[str]:
+        """提取关键上下文（可选保留）"""
+        # 从 agent.history 提取关键决策/发现
+        if not self.agent.history:
+            return None
+
+        # 提取最后一条 assistant 消息的摘要
+        for msg in reversed(self.agent.history):
+            if msg.get("role") == "assistant" and msg.get("content"):
+                return f"上次执行摘要: {msg['content'][:300]}"
+        return None
+
+    def _persist_state(self, response: str = ""):
+        """持久化当前状态（支持进程恢复）"""
+        SEED_DIR.mkdir(parents=True, exist_ok=True)
+        state = {
+            "iteration": self._iteration_count,
+            "start_time": self._ralph_start_time,
+            "last_response": response[:500] if response else "",
+            "timestamp": time.time()
+        }
+        self._state_file.write_text(json.dumps(state, indent=2))
+
+    def _load_or_init_state(self):
+        """加载或初始化状态（支持进程恢复）"""
+        if self._state_file.exists():
+            try:
+                state = json.loads(self._state_file.read_text())
+                self._iteration_count = state.get("iteration", 0)
+                self._ralph_start_time = state.get("start_time", time.time())
+                logger.info(f"Resumed Ralph Loop from iteration {self._iteration_count}")
+            except (json.JSONDecodeError, KeyError):
+                self._iteration_count = 0
+                self._ralph_start_time = time.time()
+        else:
+            self._iteration_count = 0
+            self._ralph_start_time = time.time()
+
+    def _cleanup_state(self):
+        """清理状态文件"""
+        if self._state_file.exists():
+            self._state_file.unlink()
+
     async def _execute_autonomous_task(self):
-        """执行自主探索任务（复用 Agent Loop）"""
+        """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强）"""
         if not self._sop_content:
             logger.warning("No SOP loaded, skipping autonomous exploration")
             return
+
+        # 加载或初始化 Ralph Loop 状态
+        self._load_or_init_state()
 
         # 构建自主探索 prompt（包含完整上下文）
         todo_path = SEED_DIR / "TODO.md"
@@ -97,7 +230,7 @@ class AutonomousExplorer:
         # 构建完整 prompt
         prompt = self._build_autonomous_prompt(todo_content, has_todo)
 
-        logger.info("Starting autonomous exploration via Agent Loop")
+        logger.info("Starting autonomous exploration via Agent Loop (Ralph enhanced)")
 
         # 保存原始 system prompt、history 和迭代限制，以便恢复
         original_system_prompt = self.agent.system_prompt
@@ -110,8 +243,49 @@ class AutonomousExplorer:
             # 自主探索任务通常需要更多迭代（执行多个TODO、调用多个工具）
             self.agent.max_iterations = 100
 
-            # 复用 Agent Loop 执行自主探索
-            response = await self.agent.run("开始执行自主探索任务")
+            # Ralph Loop 增强循环
+            while True:
+                self._iteration_count += 1
+
+                # 1. 安全检查
+                if self._check_safety_limits():
+                    logger.info("Ralph Loop safety limit reached, generating report")
+                    break
+
+                # 2. completion_promise 检测（外部完成验证）
+                if self._check_completion_promise():
+                    logger.info("Completion promise detected, exiting Ralph loop")
+                    self._cleanup_state()
+                    if self.on_explore_complete:
+                        if asyncio.iscoroutinefunction(self.on_explore_complete):
+                            await self.on_explore_complete("DONE")
+                        else:
+                            self.on_explore_complete("DONE")
+                    return "DONE"
+
+                # 3. 可选上下文重置
+                await self._reset_context_if_needed()
+
+                # 4. 执行一轮 Agent Loop
+                response = await self.agent.run("继续执行自主探索任务")
+
+                # 5. 持久化状态
+                self._persist_state(response)
+
+                # 6. 检查是否完成任务
+                if response and "任务完成" in response or "已完成" in response:
+                    logger.info(f"Autonomous exploration completed at iteration {self._iteration_count}")
+                    self._cleanup_state()
+                    break
+
+                # 7. 空响应检测（可能需要重新注入 prompt）
+                if not response:
+                    logger.warning(f"Empty response at iteration {self._iteration_count}, re-injecting prompt")
+                    # 重新注入任务 prompt
+                    self.agent.history.append({"role": "user", "content": prompt})
+
+                # 8. 短暂等待（防止过快循环）
+                await asyncio.sleep(2)
 
             if response:
                 logger.info(f"Autonomous exploration completed, response length: {len(response)}")
@@ -122,12 +296,19 @@ class AutonomousExplorer:
                         self.on_explore_complete(response)
             else:
                 logger.warning("Autonomous exploration returned empty response")
+
+            return response
+
         except Exception as e:
             logger.exception(f"Autonomous exploration failed: {e}")
+            # 保存状态以便恢复
+            self._persist_state(str(e))
+            return None
         finally:
             # 恢复原始 system prompt 和迭代限制
             self.agent.system_prompt = original_system_prompt
             self.agent.max_iterations = original_max_iterations
+            # 注意：不恢复 history，因为 Ralph Loop 可能已重置
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
         """构建自主探索 prompt（包含完整 system prompt + skills + SOP）"""

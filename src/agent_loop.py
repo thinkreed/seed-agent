@@ -64,10 +64,12 @@ class AgentLoop:
         from tools.memory_tools import register_memory_tools
         from tools.skill_loader import register_skill_tools
         from scheduler import register_scheduler_tools
+        from tools.ralph_tools import register_ralph_tools
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
         register_skill_tools(self.tools)
         register_scheduler_tools(self.tools)
+        register_ralph_tools(self.tools)
 
         # 初始化定时任务调度器
         self.scheduler = TaskScheduler(self)
