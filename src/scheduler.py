@@ -79,7 +79,6 @@ class TaskScheduler:
     # 内置任务类型及其默认间隔
     BUILTIN_TASKS = {
         "autodream": 12 * 60 * 60,  # 每12小时记忆整理
-        "autonomous_explore": 30 * 60,  # 每30分钟自主探索
         "health_check": 60 * 60,  # 每小时健康检查
     }
 
@@ -144,17 +143,6 @@ class TaskScheduler:
             )
             modified = True
             
-        # 3. autonomous_explore: 自主探索 (Optional, usually triggered by idle time)
-        if "autonomous_explore" not in self._tasks:
-             self._tasks["autonomous_explore"] = ScheduledTask(
-                task_id="autonomous_explore",
-                task_type="custom",
-                interval_seconds=self.BUILTIN_TASKS["autonomous_explore"],
-                prompt="执行一次快速自主探索，检查系统状态、日志和TODO。",
-                enabled=False # Disabled by default to avoid conflict with idle trigger
-            )
-             modified = True
-
         if modified:
             self._save_tasks()
 
