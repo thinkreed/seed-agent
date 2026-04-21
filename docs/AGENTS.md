@@ -8,9 +8,40 @@ This directory contains design documents that capture architectural decisions, i
 
 | Document | Description |
 |----------|-------------|
+| `memory_graph_enhancement_design.md` | Memory Graph architecture for skill evolution and outcome tracking |
 | `L4_SQLite_FTS5_Design.md` | L4 session storage migration from JSONL to SQLite+FTS5 |
 | `long_cycle_loop_enhancement_design.md` | Ralph Loop architecture and implementation design |
 | `ralph_loop.md` | Ralph Loop concept and motivation |
+
+---
+
+## Memory Graph Enhancement Design
+
+**File:** `memory_graph_enhancement_design.md`
+
+**Purpose:** Documents the Memory Graph architecture for skill evolution and outcome tracking, inspired by GEP (Gene Evolution Protocol).
+
+**Key Sections:**
+- Gene paper insights: "control density" vs "document completeness"
+- Current Skill system limitations (no evolution feedback loop)
+- gene_outcomes table design in L4 SQLite
+- Selection algorithm: Laplace smoothing + confidence decay
+- Ban threshold for low-value strategies
+- Skill frontmatter enhancement (strategy, avoid, constraints)
+- Integration points with AgentLoop, AutonomousExplorer, RalphLoop
+
+**Core Mechanisms:**
+1. **Outcome Tracking**: Every skill execution records (skill_name, signal_pattern, outcome)
+2. **Evidence-Based Selection**: Historical success rates guide skill selection
+3. **Confidence Decay**: Older outcomes carry less weight (30-day half-life)
+4. **Ban Threshold**: Strategies with value < 0.18 and 2+ attempts are banned
+5. **Gene-Style Control**: Frontmatter strategy/avoid fields as compact control signals
+
+**Why Memory Graph:**
+- Prevents repeated mistakes (banned strategies)
+- Natural selection for successful strategies
+- Quantifiable evolution metrics
+- Token-efficient skill injection (Gene slice ~230 tokens)
 
 ---
 
@@ -78,6 +109,7 @@ This directory contains design documents that capture architectural decisions, i
 
 ### When to Read These Documents
 
+- **Memory Graph Design**: Before modifying skill selection, outcome tracking, or frontmatter schema
 - **L4 SQLite Design**: Before modifying session storage or adding search features
 - **Ralph Loop Design**: Before implementing long-cycle tasks or modifying autonomous.py
 - **Ralph Loop Concept**: To understand the design philosophy and motivation
@@ -86,6 +118,7 @@ This directory contains design documents that capture architectural decisions, i
 
 | Document | Related Code |
 |----------|--------------|
+| Memory Graph Design | `src/tools/skill_loader.py`, `src/tools/session_db.py`, `src/agent_loop.py` |
 | L4 SQLite Design | `src/tools/session_db.py`, `src/tools/memory_tools.py` |
 | Ralph Loop Design | `src/ralph_loop.py`, `src/autonomous.py`, `src/tools/ralph_tools.py` |
 | Ralph Loop Concept | Architecture decision rationale |
@@ -100,4 +133,11 @@ Planned design documents to add:
 |------------------|---------|
 | Scheduler Design | Task scheduling architecture and built-in tasks |
 | FallbackChain Design | Multi-provider failover mechanism |
-| Memory Consolidation Design | Auto-dream process and ROI assessment |
+| Subagent Design | SubagentInstance architecture and permission isolation |
+
+**Completed documents:**
+- ✅ Memory Graph Enhancement Design (skill evolution and outcome tracking)
+- ✅ L4 SQLite+FTS5 Design (session storage migration)
+- ✅ Ralph Loop Enhancement Design (long-cycle task execution)
+- ✅ Ralph Loop Concept (design philosophy)
+- ✅ Subagent Design (in `subagents.md`) |

@@ -1,14 +1,17 @@
 import asyncio
 import json
 import os
+import logging
 from typing import List, Dict, Optional, AsyncGenerator, Set
 from pathlib import Path
 from tools import ToolRegistry
-from tools.memory_tools import _save_session_history, _generate_session_filename
+from tools.memory_tools import _save_session_history, _generate_session_filename, _record_skill_outcome
 from tools.skill_loader import SkillLoader
 from scheduler import TaskScheduler
 from client import LLMGateway
 from subagent_manager import SubagentManager
+
+logger = logging.getLogger(__name__)
 
 
 class MaxIterationsExceeded(Exception):
@@ -55,6 +58,9 @@ class AgentLoop:
         self._conversation_rounds: int = 0  # 用户消息计数
         self._last_summary: Optional[str] = None  # 最近一次摘要
         self.session_id: str = session_id or _generate_session_filename()  # 当前会话ID
+
+        # Memory Graph: Skill 执行跟踪
+        self._pending_skill_outcomes: List[Dict] = []  # 待评估的 skill 执行
         
         # Context Window Management
         self.context_window = self._get_model_context_window()
@@ -243,6 +249,8 @@ class AgentLoop:
             else:
                 # 对话完成，检查是否需要总结
                 await self._maybe_summarize()
+                # Memory Graph: 评估并记录 Skill 执行结果
+                self._evaluate_and_record_skill_outcomes(final_success=True)
                 return message.get('content', '')
 
         raise MaxIterationsExceeded(
@@ -310,11 +318,13 @@ class AgentLoop:
             else:
                 # 对话完成，检查是否需要总结
                 await self._maybe_summarize()
+                # Memory Graph: 评估并记录 Skill 执行结果
+                self._evaluate_and_record_skill_outcomes(final_success=True)
                 yield {"type": "final", "content": full_content}
                 return
 
     async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
-        """批量并行执行工具调用"""
+        """批量并行执行工具调用 (含 Memory Graph 自动记录)"""
         async def _run_single_call(tool_call: Dict) -> Dict:
             tool_id = tool_call['id']
             tool_name = tool_call['function']['name']
@@ -335,19 +345,89 @@ class AgentLoop:
 
             try:
                 result = await self.tools.execute(tool_name, **tool_args)
+
+                # Memory Graph: 跟踪 skill 执行
+                if tool_name == 'load_skill':
+                    skill_name = tool_args.get('name', '')
+                    self._pending_skill_outcomes.append({
+                        'skill_name': skill_name,
+                        'tool_call_id': tool_id,
+                        'result': result,
+                        'signals': self._extract_signals_from_context()
+                    })
+
                 return {
                     "role": "tool",
                     "tool_call_id": tool_id,
                     "content": str(result)
                 }
             except Exception as e:
+                # Memory Graph: 记录失败
+                if tool_name == 'load_skill':
+                    skill_name = tool_args.get('name', '')
+                    self._pending_skill_outcomes.append({
+                        'skill_name': skill_name,
+                        'tool_call_id': tool_id,
+                        'result': f"Error: {str(e)}",
+                        'signals': self._extract_signals_from_context(),
+                        'failed': True
+                    })
+
                 return {
                     "role": "tool",
                     "tool_call_id": tool_id,
                     "content": f"Error: {str(e)}"
                 }
 
-        return await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
+        results = await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
+        return results
+
+    def _extract_signals_from_context(self) -> List[str]:
+        """从当前上下文提取触发信号"""
+        signals = []
+        # 从最近几条消息中提取关键词
+        for msg in self.history[-3:]:
+            content = msg.get('content', '')
+            if isinstance(content, str):
+                # 简单提取：前 5 个词作为信号
+                words = content.split()[:5]
+                signals.extend(words)
+        return signals[:10]  # 最大 10 个信号
+
+    def _evaluate_and_record_skill_outcomes(self, final_success: bool = True):
+        """评估并记录待处理的 Skill 执行结果"""
+        for pending in self._pending_skill_outcomes:
+            skill_name = pending.get('skill_name')
+            result = pending.get('result', '')
+            signals = pending.get('signals', [])
+            failed = pending.get('failed', False)
+
+            # 简化评估：根据是否有错误判断成功/失败
+            if failed or 'Error' in str(result) or 'not found' in str(result).lower():
+                outcome = 'failed'
+                score = 0.0
+            elif 'Security Warning' in str(result):
+                outcome = 'partial'
+                score = 0.5
+            else:
+                outcome = 'success'
+                score = 1.0 if final_success else 0.8
+
+            # 记录结果
+            if skill_name:
+                try:
+                    _record_skill_outcome(
+                        skill_name=skill_name,
+                        outcome=outcome,
+                        score=score,
+                        signals=signals,
+                        session_id=self.session_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to record skill outcome: {e}")
+
+        # 清空待处理列表
+        self._pending_skill_outcomes.clear()
 
     def clear_history(self, save_current: bool = True):
         """清空对话历史，可选保存当前历史到 L4"""

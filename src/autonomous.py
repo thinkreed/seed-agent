@@ -1,9 +1,11 @@
 """自主探索模块：空闲时根据 SOP 执行自主任务
 
-增强版 (Ralph Loop 集成):
+增强版 (Ralph Loop + Memory Graph 集成):
 - completion_promise 检测：外部完成标志驱动退出
 - 可选上下文重置：防止上下文漂移
 - 防无限循环上限：迭代和时间双重保护
+- Memory Graph 选择：基于历史结果选择最佳 Skill
+- 自动结果记录：执行完成后自动记录 outcome
 """
 
 import os
@@ -11,7 +13,7 @@ import asyncio
 import time
 import json
 from pathlib import Path
-from typing import Optional, Callable, Dict
+from typing import Optional, Callable, Dict, List
 from enum import Enum
 import logging
 
@@ -311,14 +313,35 @@ class AutonomousExplorer:
             # 注意：不恢复 history，因为 Ralph Loop 可能已重置
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
-        """构建自主探索 prompt（包含完整 system prompt + skills + SOP）"""
+        """构建自主探索 prompt（包含完整 system prompt + skills + SOP + Memory Graph 选择）"""
         # 获取 agent 的 system prompt（已包含 skills）
         base_system_prompt = self.agent.system_prompt or ""
 
         # 获取 skills prompt（从 skill_loader）
         skills_prompt = ""
+        best_skill_suggestion = ""
         if hasattr(self.agent, 'skill_loader') and self.agent.skill_loader:
             skills_prompt = self.agent.skill_loader.get_skills_prompt()
+
+            # Memory Graph 增强：根据任务类型选择最佳 skill
+            signals = self._extract_task_signals(todo_content, has_todo)
+            best_skill = self.agent.skill_loader.select_best_skill(
+                signals=signals,
+                available_tools=self.agent.tools.get_tool_names() if hasattr(self.agent.tools, 'get_tool_names') else None
+            )
+
+            if best_skill:
+                # 使用 Gene slice（Tier 2a）注入，而非完整 skill
+                gene_slice = self.agent.skill_loader.get_gene_slice(best_skill)
+                if gene_slice:
+                    best_skill_suggestion = f"""## 推荐技能 (Memory Graph 选择)
+
+基于历史成功率，推荐使用技能: **{best_skill}**
+
+{gene_slice}
+
+"""
+                    logger.info(f"Memory Graph selected skill: {best_skill}")
 
         # 构建 SOP 内容
         sop_prompt = f"""## 自主探索 SOP
@@ -336,10 +359,35 @@ class AutonomousExplorer:
             parts.append(base_system_prompt)
         if skills_prompt and skills_prompt not in base_system_prompt:
             parts.append(skills_prompt)
+        if best_skill_suggestion:
+            parts.append(best_skill_suggestion)
         parts.append(sop_prompt)
         parts.append(task_prompt)
 
         return "\n\n".join(parts)
+
+    def _extract_task_signals(self, todo_content: str, has_todo: bool) -> List[str]:
+        """从任务内容提取触发信号"""
+        signals = []
+
+        if has_todo and todo_content:
+            # 从 TODO 内容提取关键词
+            lines = todo_content.split('\n')
+            for line in lines[:5]:
+                # 提取 TODO 条目中的关键词
+                if line.strip():
+                    words = line.split()
+                    signals.extend(words[:3])
+
+        # 根据任务类型添加基础信号
+        if has_todo:
+            signals.append("execute")
+            signals.append("task")
+        else:
+            signals.append("plan")
+            signals.append("generate")
+
+        return signals[:10]
 
     def _build_task_instruction(self, todo_content: str, has_todo: bool) -> str:
         """构建任务指令部分"""
