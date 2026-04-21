@@ -12,6 +12,7 @@ This directory contains design documents that capture architectural decisions, i
 | `L4_SQLite_FTS5_Design.md` | L4 session storage migration from JSONL to SQLite+FTS5 |
 | `long_cycle_loop_enhancement_design.md` | Ralph Loop architecture and implementation design |
 | `ralph_loop.md` | Ralph Loop concept and motivation |
+| `rate_limiting_system_design.md` | LLM request rate limiting system (Token Bucket + Queue + Persistence) |
 
 ---
 
@@ -90,6 +91,36 @@ This directory contains design documents that capture architectural decisions, i
 
 ---
 
+## Rate Limiting System Design
+
+**File:** `rate_limiting_system_design.md`
+
+**Purpose:** Documents the LLM request rate limiting system to prevent Provider API rate limit errors during concurrent subagent execution.
+
+**Key Sections:**
+- Problem analysis: Subagent parallel execution causing burst LLM requests
+- 4-layer architecture: Rolling Window + Token Bucket + Semaphore + Queue
+- Config-driven rate limits via `config.json`
+- Two rate limit modes: rolling window (百炼) and fixed RPM (OpenAI)
+- State persistence for crash recovery
+- Request priority system (CRITICAL/HIGH/NORMAL/LOW)
+
+**Core Mechanisms:**
+1. **RollingWindowTracker**: 5-hour sliding window tracking (6000 requests limit)
+2. **TokenBucket**: Burst smoothing at 0.33 req/sec
+3. **Semaphore**: Concurrent request limit (max_concurrent=3)
+4. **RequestQueue**: Async dispatch with priority and backpressure
+5. **RateLimitSQLite**: Cross-process state persistence
+
+**Why Rate Limiting:**
+- Prevents Provider 429 errors during parallel subagent execution
+- Precise rate control matching Provider specs (百炼: 6000/5h)
+- Burst capacity for short-term spikes
+- Queue for low-priority background tasks
+- Crash recovery via state persistence
+
+---
+
 ## Ralph Loop Concept
 
 **File:** `ralph_loop.md`
@@ -113,6 +144,7 @@ This directory contains design documents that capture architectural decisions, i
 - **L4 SQLite Design**: Before modifying session storage or adding search features
 - **Ralph Loop Design**: Before implementing long-cycle tasks or modifying autonomous.py
 - **Ralph Loop Concept**: To understand the design philosophy and motivation
+- **Rate Limiting Design**: Before modifying LLM request handling, subagent execution, or adding new providers
 
 ### How These Documents Relate to Code
 
@@ -122,6 +154,7 @@ This directory contains design documents that capture architectural decisions, i
 | L4 SQLite Design | `src/tools/session_db.py`, `src/tools/memory_tools.py` |
 | Ralph Loop Design | `src/ralph_loop.py`, `src/autonomous.py`, `src/tools/ralph_tools.py` |
 | Ralph Loop Concept | Architecture decision rationale |
+| Rate Limiting Design | `src/client.py`, `src/rate_limiter.py`, `src/request_queue.py`, `src/rate_limit_db.py`, `src/subagent_manager.py` |
 
 ---
 
@@ -133,11 +166,11 @@ Planned design documents to add:
 |------------------|---------|
 | Scheduler Design | Task scheduling architecture and built-in tasks |
 | FallbackChain Design | Multi-provider failover mechanism |
-| Subagent Design | SubagentInstance architecture and permission isolation |
 
 **Completed documents:**
 - ✅ Memory Graph Enhancement Design (skill evolution and outcome tracking)
 - ✅ L4 SQLite+FTS5 Design (session storage migration)
 - ✅ Ralph Loop Enhancement Design (long-cycle task execution)
 - ✅ Ralph Loop Concept (design philosophy)
-- ✅ Subagent Design (in `subagents.md`) |
+- ✅ Subagent Design (in `subagents.md`)
+- ✅ Rate Limiting System Design (LLM request rate control) |

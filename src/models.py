@@ -7,6 +7,60 @@ import sys
 
 DEFAULT_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
 
+
+class RateLimitConfig(BaseModel):
+    """限流配置
+
+    支持两种限流模式:
+    - rolling_window: 滚动窗口（如百炼 5小时6000次）
+    - rpm: 固定 RPM（如 OpenAI 标准限流）
+    """
+    model_config = ConfigDict(extra='ignore')
+
+    # 滚动窗口模式
+    rollingWindowRequests: Optional[int] = None  # 窗口内最大请求
+    rollingWindowDuration: Optional[int] = None  # 窗口时长（秒）
+
+    # 固定 RPM 模式
+    rpm: Optional[int] = None  # 每分钟请求限制
+
+    # 突发容量
+    burstCapacity: int = 100
+
+    # 并发控制
+    maxConcurrent: int = 3
+
+    # 队列配置
+    queueMaxSize: int = 50
+    queueBackpressureThreshold: float = 0.8
+
+    def get_effective_rate(self) -> float:
+        """计算有效速率（requests/sec）"""
+        if self.rpm is not None:
+            return self.rpm / 60.0
+
+        if self.rollingWindowRequests is not None and self.rollingWindowDuration is not None:
+            return self.rollingWindowRequests / self.rollingWindowDuration
+
+        # 默认百炼规格: 6000/18000 = 0.33 req/sec
+        return 6000 / 18000
+
+    def get_window_limit(self) -> int:
+        """获取窗口请求上限"""
+        if self.rollingWindowRequests is not None:
+            return self.rollingWindowRequests
+        # 基于 RPM 推算 5 小时窗口
+        if self.rpm is not None:
+            return self.rpm * 300  # 5 hours = 300 minutes
+        return 6000
+
+    def get_window_duration(self) -> float:
+        """获取窗口时长（秒）"""
+        if self.rollingWindowDuration is not None:
+            return float(self.rollingWindowDuration)
+        return 18000.0  # 默认 5 小时
+
+
 class ModelConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
     id: str
@@ -15,12 +69,14 @@ class ModelConfig(BaseModel):
     maxTokens: int = 4096
     compat: Optional[Dict] = None
 
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
     baseUrl: str
     apiKey: str
     api: str = "openai-completions"
     models: List[ModelConfig]
+    rateLimit: Optional[RateLimitConfig] = None
 
     @field_validator('apiKey', 'baseUrl')
     @classmethod
