@@ -241,85 +241,20 @@ class AutonomousExplorer:
             logger.warning("No SOP loaded, skipping autonomous exploration")
             return
 
-        # 加载或初始化 Ralph Loop 状态
         self._load_or_init_state()
-
-        # 构建自主探索 prompt（包含完整上下文）
-        todo_path = SEED_DIR / "TODO.md"
-        has_todo = todo_path.exists()
-        todo_content = ""
-        if has_todo:
-            with open(todo_path, 'r', encoding='utf-8') as f:
-                todo_content = f.read()
-
-        # 构建完整 prompt
-        prompt = self._build_autonomous_prompt(todo_content, has_todo)
-
+        todo_content = self._load_todo_content()
+        prompt = self._build_autonomous_prompt(todo_content, bool(todo_content))
         logger.info("Starting autonomous exploration via Agent Loop (Ralph enhanced)")
 
-        # 保存原始 system prompt、history 和迭代限制，以便恢复
         original_system_prompt = self.agent.system_prompt
         original_history = list(self.agent.history)
         original_max_iterations = self.agent.max_iterations
 
         try:
-            # 初始化 response，防止循环提前退出时 UnboundLocalError
             response = None
-
-            # 临时设置自主探索的 system prompt 和更高的迭代限制
             self.agent.system_prompt = prompt
-            # 自主探索任务通常需要更多迭代（执行多个TODO、调用多个工具）
             self.agent.max_iterations = 100
-
-            # Ralph Loop 增强循环
-            while True:
-                self._iteration_count += 1
-
-                # 1. 安全检查
-                if self._check_safety_limits():
-                    logger.info("Ralph Loop safety limit reached, generating report")
-                    break
-
-                # 2. completion_promise 检测（外部完成验证）
-                if self._check_completion_promise():
-                    logger.info("Completion promise detected, exiting Ralph loop")
-                    self._cleanup_state()
-                    if self.on_explore_complete:
-                        if asyncio.iscoroutinefunction(self.on_explore_complete):
-                            await self.on_explore_complete("DONE")
-                        else:
-                            self.on_explore_complete("DONE")
-                    return "DONE"
-
-                # 3. 可选上下文重置
-                await self._reset_context_if_needed()
-
-                # 4. 执行一轮 Agent Loop
-                response = await self.agent.run("继续执行自主探索任务")
-
-                # 5. 持久化状态
-                self._persist_state(response)
-
-                # 6. 检查是否完成任务（使用扩展的检测标记）
-                if response and any(marker in response for marker in COMPLETION_MARKERS):
-                    logger.info(f"Autonomous exploration completed at iteration {self._iteration_count}")
-                    self._cleanup_state()
-                    break
-
-                # 7. 空响应检测（添加策略切换）
-                if not response:
-                    self._empty_response_count += 1
-                    logger.warning(f"Empty response at iteration {self._iteration_count} "
-                                   f"(count: {self._empty_response_count})")
-                    if self._empty_response_count >= 3:
-                        # 多次空响应时，尝试简化 prompt
-                        logger.warning("Too many empty responses, trying simplified prompt")
-                        self.agent.history.append({"role": "user", "content": "请报告当前状态"})
-                    else:
-                        self.agent.history.append({"role": "user", "content": prompt})
-
-                # 8. 短暂等待（防止过快循环）
-                await asyncio.sleep(2)
+            response = await self._run_ralph_loop()
 
             if response:
                 logger.info(f"Autonomous exploration completed, response length: {len(response)}")
@@ -335,14 +270,69 @@ class AutonomousExplorer:
 
         except Exception as e:
             logger.exception(f"Autonomous exploration failed: {e}")
-            # 保存状态以便恢复
             self._persist_state(str(e))
             return None
         finally:
-            # 恢复原始 system prompt 和迭代限制
             self.agent.system_prompt = original_system_prompt
             self.agent.max_iterations = original_max_iterations
-            # 注意：不恢复 history，因为 Ralph Loop 可能已重置
+
+    def _load_todo_content(self) -> str:
+        """加载TODO文件内容"""
+        todo_path = SEED_DIR / "TODO.md"
+        if todo_path.exists():
+            with open(todo_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        return ""
+
+    async def _run_ralph_loop(self) -> Optional[str]:
+        """执行Ralph Loop主循环"""
+        while True:
+            self._iteration_count += 1
+
+            if self._check_safety_limits():
+                logger.info("Ralph Loop safety limit reached, generating report")
+                break
+
+            if self._check_completion_promise():
+                logger.info("Completion promise detected, exiting Ralph loop")
+                self._cleanup_state()
+                await self._notify_completion("DONE")
+                return "DONE"
+
+            await self._reset_context_if_needed()
+            response = await self.agent.run("继续执行自主探索任务")
+            self._persist_state(response)
+
+            if response and any(marker in response for marker in COMPLETION_MARKERS):
+                logger.info(f"Autonomous exploration completed at iteration {self._iteration_count}")
+                self._cleanup_state()
+                break
+
+            await self._handle_response(response)
+            await asyncio.sleep(2)
+
+        return response
+
+    async def _notify_completion(self, result: str):
+        """通知探索完成"""
+        if self.on_explore_complete:
+            if asyncio.iscoroutinefunction(self.on_explore_complete):
+                await self.on_explore_complete(result)
+            else:
+                self.on_explore_complete(result)
+
+    async def _handle_response(self, response: Optional[str]):
+        """处理agent响应"""
+        if not response:
+            self._empty_response_count += 1
+            logger.warning(f"Empty response at iteration {self._iteration_count} "
+                           f"(count: {self._empty_response_count})")
+            if self._empty_response_count >= 3:
+                logger.warning("Too many empty responses, trying simplified prompt")
+                self.agent.history.append({"role": "user", "content": "请报告当前状态"})
+            else:
+                prompt = self._sop_content or ""
+                self.agent.history.append({"role": "user", "content": prompt})
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
         """构建自主探索 prompt（包含完整 system prompt + skills + SOP + Memory Graph 选择）"""

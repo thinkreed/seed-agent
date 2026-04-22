@@ -94,9 +94,16 @@ class SessionDB:
 
     def _create_schema(self):
         """创建数据库 Schema"""
-        cursor = self.conn.cursor()
+        self._create_session_messages_schema()
+        self._create_sessions_meta_schema()
+        self._create_gene_outcomes_schema()
+        self._create_gene_outcomes_triggers()
+        self._create_gene_outcomes_indexes()
+        self.conn.commit()
 
-        # 主表：session_messages
+    def _create_session_messages_schema(self):
+        """创建 session_messages 表和索引"""
+        cursor = self.conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS session_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,33 +117,17 @@ class SessionDB:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_session_messages_session
-            ON session_messages(session_id)
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_session_messages_timestamp
-            ON session_messages(timestamp)
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_session_messages_role
-            ON session_messages(role)
-        """)
-
-        # FTS5 虚拟表
+        for idx in ['session', 'timestamp', 'role']:
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_session_messages_{idx} ON session_messages({idx})")
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS session_messages_fts
-            USING fts5(
-                content,
-                session_id,
-                role,
-                tokenize='unicode61 remove_diacritics 2',
-                prefix='2 3 4'
-            )
+            USING fts5(content, session_id, role,
+                tokenize='unicode61 remove_diacritics 2', prefix='2 3 4')
         """)
 
-        # 元数据表：sessions_meta
+    def _create_sessions_meta_schema(self):
+        """创建 sessions_meta 表和索引"""
+        cursor = self.conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sessions_meta (
                 session_id TEXT PRIMARY KEY,
@@ -146,13 +137,11 @@ class SessionDB:
                 summary TEXT
             )
         """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_meta_created ON sessions_meta(created_at)")
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_sessions_meta_created
-            ON sessions_meta(created_at)
-        """)
-
-        # ==================== Memory Graph: gene_outcomes 表 ====================
+    def _create_gene_outcomes_schema(self):
+        """创建 gene_outcomes 表和 FTS5 虚拟表"""
+        cursor = self.conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS gene_outcomes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,20 +157,16 @@ class SessionDB:
                 CONSTRAINT unique_outcome UNIQUE (skill_name, signal_pattern, timestamp)
             )
         """)
-
-        # FTS5 虚拟表 (gene_outcomes)
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS gene_outcomes_fts USING fts5(
-                signal_pattern,
-                skill_name,
-                outcome_status,
-                content='gene_outcomes',
-                content_rowid='id',
-                tokenize='unicode61 remove_diacritics 2'
-            )
+                signal_pattern, skill_name, outcome_status,
+                content='gene_outcomes', content_rowid='id',
+                tokenize='unicode61 remove_diacritics 2')
         """)
 
-        # FTS5 同步触发器
+    def _create_gene_outcomes_triggers(self):
+        """创建 gene_outcomes FTS5 同步触发器"""
+        cursor = self.conn.cursor()
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS gene_outcomes_ai AFTER INSERT ON gene_outcomes BEGIN
                 INSERT INTO gene_outcomes_fts(rowid, signal_pattern, skill_name, outcome_status)
@@ -203,11 +188,11 @@ class SessionDB:
             END
         """)
 
-        # gene_outcomes 索引
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gene_skill_name ON gene_outcomes(skill_name)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gene_timestamp ON gene_outcomes(timestamp)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gene_status ON gene_outcomes(outcome_status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gene_session ON gene_outcomes(session_id)")
+    def _create_gene_outcomes_indexes(self):
+        """创建 gene_outcomes 索引"""
+        cursor = self.conn.cursor()
+        for col in ['skill_name', 'timestamp', 'outcome_status', 'session_id']:
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_gene_{col} ON gene_outcomes({col})")
 
         self.conn.commit()
 
