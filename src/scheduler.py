@@ -12,6 +12,7 @@ import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
 from datetime import datetime
+from request_queue import RequestPriority
 
 logger = logging.getLogger("seed_agent")
 
@@ -118,9 +119,14 @@ class TaskScheduler:
         logger.info(f"Saved {len(self._tasks)} scheduled tasks")
 
     def _init_builtin_tasks(self):
-        """初始化内置任务"""
-        modified = False
+        """初始化内置任务
         
+        重要：启动时设置 last_run 为当前时间，避免立即触发到期的任务。
+        这样确保任务在启动后等待一个完整间隔周期才首次执行。
+        """
+        modified = False
+        now = time.time()
+
         # 1. autodream: 记忆整理
         if "autodream" not in self._tasks:
             self._tasks["autodream"] = ScheduledTask(
@@ -128,6 +134,7 @@ class TaskScheduler:
                 task_type="autodream",
                 interval_seconds=self.BUILTIN_TASKS["autodream"],
                 prompt="执行 autodream 记忆整理 SOP：分层逐查、ROI评估、低ROI清理、补全高价值项",
+                last_run=now,  # 启动时设置，避免立即触发
                 enabled=True
             )
             modified = True
@@ -139,6 +146,7 @@ class TaskScheduler:
                 task_type="custom",
                 interval_seconds=self.BUILTIN_TASKS["health_check"],
                 prompt="运行诊断脚本 `python scripts/diagnose_seed_agent.py --json -q`，统计 FAIL/WARN。如有 FAIL，尝试修复。将结果摘要追加到任务日志。",
+                last_run=now,  # 启动时设置，避免立即触发
                 enabled=True
             )
             modified = True
@@ -185,40 +193,38 @@ class TaskScheduler:
                 self._save_tasks()
 
     async def _execute_task(self, task: ScheduledTask):
-        """执行任务（支持 tool_calls 循环处理）"""
+        """执行任务（支持 tool_calls 循环处理）
+        
+        使用 LOW 优先级，确保定时任务不会阻塞用户请求。
+        用户请求使用 CRITICAL 优先级，会立即执行。
+        """
         try:
             if not self.agent:
                 logger.warning(f"No agent available for task {task.task_id}")
                 self._log_task_execution(task, "No agent available", success=False)
                 return
 
-            # 使用 agent 的 stream_run 处理任务，支持 tool_calls 循环
-            history = self.agent.history.copy()
+            # 使用 agent 的 run 处理任务，支持 tool_calls 循环
+            # 使用 LOW 优先级，确保定时任务入队等待，不阻塞用户请求
             original_max_iterations = self.agent.max_iterations
 
             try:
                 # 临时提升迭代次数以支持复杂任务
                 self.agent.max_iterations = max(original_max_iterations, 30)
 
-                # 通过 stream_run 执行任务（自动处理 tool_calls 循环）
-                full_response = ""
-                tool_calls_count = 0
+                # 通过 run 执行任务（自动处理 tool_calls 循环）
+                # LOW 优先级会入队等待，让用户请求（CRITICAL）优先执行
+                response = await self.agent.run(task.prompt, priority=RequestPriority.LOW)
 
-                async for chunk in self.agent.stream_run(task.prompt):
-                    if chunk['type'] == 'chunk':
-                        full_response += chunk['content']
-                    elif chunk['type'] == 'tool_call':
-                        tool_calls_count += len(chunk.get('calls', []))
-
-                # 提取最终响应
-                if full_response:
-                    logger.info(f"Task {task.task_id} completed ({len(full_response)} chars, {tool_calls_count} tool calls)")
+                # 记录执行结果
+                if response:
+                    logger.info(f"Task {task.task_id} completed ({len(response)} chars)")
                 else:
                     logger.warning(f"Task {task.task_id} returned empty response")
 
                 # 记录执行日志
-                result = full_response[:500] if full_response else f"Empty response ({tool_calls_count} tool calls executed)"
-                self._log_task_execution(task, result, success=bool(full_response) or tool_calls_count > 0)
+                result = response[:500] if response else "Empty response"
+                self._log_task_execution(task, result, success=bool(response))
 
             finally:
                 # 恢复原始迭代限制

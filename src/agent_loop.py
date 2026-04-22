@@ -9,6 +9,7 @@ from tools.memory_tools import _save_session_history, _generate_session_filename
 from tools.skill_loader import SkillLoader
 from scheduler import TaskScheduler
 from client import LLMGateway
+from request_queue import RequestPriority
 from subagent_manager import SubagentManager
 
 logger = logging.getLogger(__name__)
@@ -216,8 +217,13 @@ class AgentLoop:
         self._last_summary = summary
         self._conversation_rounds = 0  # 重置计数
 
-    async def run(self, user_input: str) -> str:
-        """处理用户输入,返回最终响应"""
+    async def run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> str:
+        """处理用户输入,返回最终响应
+        
+        Args:
+            user_input: 用户输入文本
+            priority: 请求优先级，默认 CRITICAL（用户请求最高优先级）
+        """
         self.history.append({"role": "user", "content": user_input})
         self._conversation_rounds += 1
 
@@ -236,6 +242,7 @@ class AgentLoop:
             response = await self.gateway.chat_completion(
                 self.model_id,
                 messages,
+                priority=priority,  # 使用传入的优先级
                 tools=self.tools.get_schemas()
             )
 
@@ -257,8 +264,13 @@ class AgentLoop:
             f"Agent exceeded maximum iterations ({self.max_iterations})"
         )
 
-    async def stream_run(self, user_input: str) -> AsyncGenerator[Dict, None]:
-        """流式处理用户输入"""
+    async def stream_run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> AsyncGenerator[Dict, None]:
+        """流式处理用户输入
+        
+        Args:
+            user_input: 用户输入文本
+            priority: 请求优先级，默认 CRITICAL（用户请求最高优先级）
+        """
         self.history.append({"role": "user", "content": user_input})
         self._conversation_rounds += 1
 
@@ -273,6 +285,7 @@ class AgentLoop:
             async for chunk in self.gateway.stream_chat_completion(
                 self.model_id,
                 messages,
+                priority=priority,  # 使用传入的优先级
                 tools=self.tools.get_schemas()
             ):
                 delta = chunk['choices'][0].get('delta', {})

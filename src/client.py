@@ -529,7 +529,6 @@ class LLMGateway:
         model_id: str,
         messages: List[Dict],
         priority: int = RequestPriority.NORMAL,
-        use_queue: bool = False,
         **kwargs
     ) -> Dict:
         """非流式聊天补全（使用限流和降级机制）
@@ -538,22 +537,21 @@ class LLMGateway:
             model_id: 模型 ID (格式: provider/model)
             messages: 消息列表
             priority: 请求优先级
-                - CRITICAL: 用户直接交互，跳过限流等待
+                - CRITICAL: 用户直接交互，立即执行（跳过限流等待）
                 - HIGH: RalphLoop 迭代，优先处理
                 - NORMAL: Subagent 任务，标准处理
-                - LOW: Scheduler 后台，队列处理
-            use_queue: 是否强制使用队列（适用于批量任务）
+                - LOW: Scheduler 后台任务，入队等待执行
             **kwargs: 其他参数（如 tools, temperature 等）
 
         Returns:
             请求结果字典
         """
-        # LOW 优先级或强制使用队列 → 走队列
-        if priority == RequestPriority.LOW or use_queue:
+        # LOW 优先级 → 入队等待执行
+        if priority == RequestPriority.LOW:
             request_id = await self.submit_to_queue(model_id, messages, priority, **kwargs)
             return await self.wait_for_queue_result(request_id)
 
-        # 其他优先级 → 直接执行
+        # 其他优先级 → 直接执行（CRITICAL 不等待限流）
         return await self._execute_with_rate_limit(model_id, messages, priority, **kwargs)
 
     # 兼容旧接口
@@ -695,7 +693,29 @@ class LLMGateway:
         priority: int = RequestPriority.NORMAL,
         **kwargs
     ) -> AsyncGenerator[Dict, None]:
-        """流式聊天补全（使用限流和降级机制）"""
+        """流式聊天补全（使用限流和降级机制）
+        
+        Args:
+            priority: 请求优先级
+                - CRITICAL: 用户直接交互，立即执行（跳过限流等待）
+                - HIGH/NORMAL: 直接执行，有限流等待
+                - LOW: 先入队等待轮次，再流式执行
+        """
+        # LOW 优先级 → 先入队等待轮次，再流式执行
+        if priority == RequestPriority.LOW:
+            # 提交一个空请求到队列，等待轮次
+            request_id = await self.submit_to_queue(model_id, [{"role": "user", "content": "__wait_for_queue_slot__"}], priority)
+            # 等待轮次（这个请求会被队列 dispatcher 执行，但我们不关心结果）
+            try:
+                await self.wait_for_queue_result(request_id, timeout=300.0)
+            except Exception:
+                pass  # 忽略结果，我们只是等待轮次
+            # 现在轮到我们了，开始流式输出
+            async for chunk in self._stream_execute_with_rate_limit(model_id, messages, priority, **kwargs):
+                yield chunk
+            return
+
+        # 其他优先级 → 直接执行（CRITICAL 不等待限流）
         async for chunk in self._stream_execute_with_rate_limit(model_id, messages, priority, **kwargs):
             yield chunk
 
