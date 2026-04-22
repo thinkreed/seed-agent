@@ -146,7 +146,6 @@ RalphSubagentOrchestrator 执行模式:
 
 - 每次从 `origin/main` 拉出一个新分支工作，工作结束合回 `origin/main`
 - 发现问题，优先改动代码。
-- **禁止改动 `config\config.json`**，它已经完全配置好了。
 - **禁止修改 `core_principles` 目录下的文件**
 - **禁止修改 `golden_rules` 目录下的文件**
 
