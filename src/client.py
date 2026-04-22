@@ -691,7 +691,9 @@ class LLMGateway:
         if isinstance(priority, int):
             priority = RequestPriority(priority)
 
-        async for chunk in self._stream_three_phase(model_id, messages, priority, **kwargs):
+        # _stream_three_phase 返回异步生成器，需要先 await 获取
+        stream_gen = await self._stream_three_phase(model_id, messages, priority, **kwargs)
+        async for chunk in stream_gen:
             yield chunk
 
     # ==================== 执行层（带降级） ====================
