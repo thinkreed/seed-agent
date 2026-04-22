@@ -17,13 +17,19 @@ seed-agent/
 │   ├── models.py            # Pydantic configuration validation
 │   ├── ralph_loop.py        # Long-cycle deterministic task executor
 │   ├── scheduler.py         # Task scheduling and management
+│   ├── rate_limiter.py      # Token bucket rate limiter for API call throttling
+│   ├── rate_limit_db.py     # SQLite storage for rate limit tracking
+│   ├── request_queue.py    # Async request queue with priority support
+│   ├── subagent.py          # Subagent instance with isolated context
+│   ├── subagent_manager.py  # Subagent lifecycle and parallel execution manager
 │   └── tools/               # Tool registry system
 │       ├── __init__.py      # ToolRegistry class with schema inference
 │       ├── builtin_tools.py # 5 core tools (file ops, code exec)
 │       ├── memory_tools.py  # L1-L4 memory management
 │       ├── skill_loader.py  # Dynamic skill loading (progressive disclosure)
 │       ├── ralph_tools.py   # Ralph Loop management tools
-│       └── session_db.py    # SQLite+FTS5 session storage (Chinese FTS)
+│       ├── session_db.py    # SQLite+FTS5 session storage (Chinese FTS)
+│       └── subagent_tools.py # Subagent spawning and management tools
 │
 ├── core_principles/         # System prompts and core principles
 │   ├── system_prompts_en.md # English system prompts
@@ -100,8 +106,9 @@ The scheduler (`src/scheduler.py`) enables autonomous task creation and manageme
 | Task | Interval | Purpose |
 |------|----------|---------|
 | `autodream` | 12 hours | Memory consolidation and cleanup |
-| `autonomous_explore` | 30 minutes | Idle-time exploration trigger |
 | `health_check` | 1 hour | System diagnostics |
+
+**Note**: `autonomous_explore` is managed by `AutonomousExplorer` class independently (30-minute idle monitoring), not by Scheduler.
 
 **Features:**
 - CRUD operations via tool functions
@@ -117,6 +124,61 @@ Idle-time autonomous task execution (`src/autonomous.py`) monitors user activity
 - **Workflow**: Check TODO.md → Execute existing tasks OR generate new ones
 - **SOP Integration**: Follows defined Standard Operating Procedures
 - **Ralph Integration**: Enhanced with completion promise detection
+
+### Rate Limiting System
+
+The rate limiter (`src/rate_limiter.py`) provides token bucket-based API throttling:
+
+- **Token Bucket Algorithm**: Configurable capacity and refill rate per provider
+- **Per-Provider Limits**: Independent rate limits for different LLM providers
+- **Persistent Tracking**: Rate limit state stored in SQLite (`rate_limit.db`)
+- **Auto-Recovery**: Automatic wait and retry when tokens are depleted
+
+**Features:**
+- Burst allowance for handling traffic spikes
+- Thread-safe async operations
+- Provider-specific configuration
+- Health status reporting
+
+### Request Queue System
+
+The request queue (`src/request_queue.py`) manages async task execution with priority:
+
+- **Priority Queue**: Higher priority requests processed first
+- **Flow Control**: Backpressure handling when system is under load
+- **Request Batching**: Aggregate multiple requests for efficiency
+- **Timeout Management**: Automatic timeout and cleanup for stalled requests
+
+**Queue Features:**
+- FIFO ordering within priority levels
+- Concurrent request limiting
+- Request cancellation support
+- Metrics and monitoring
+
+### Subagent System
+
+The subagent system (`src/subagent.py`, `src/subagent_manager.py`) enables parallel task execution with isolated contexts:
+
+- **Isolated Contexts**: Each subagent has independent conversation history
+- **Parallel Execution**: Up to 3 concurrent subagents by default
+- **Permission Isolation**: Configurable permission sets per subagent type
+- **Result Aggregation**: Unified results returned to main conversation
+
+**Subagent Types:**
+| Type | Permission Set | Use Case |
+|------|----------------|----------|
+| `EXPLORE` | read_only | File exploration, code search |
+| `REVIEW` | review | Code review, testing |
+| `IMPLEMENT` | implement | Feature implementation |
+| `PLAN` | plan | Task planning, analysis |
+
+**Permission Sets:**
+| Permission | Allowed Tools |
+|------------|---------------|
+| `read_only` | file_read, search_history, ask_user |
+| `review` | file_read, code_as_policy, search_history, ask_user |
+| `implement` | file_read, file_write, file_edit, code_as_policy, memory tools, search_history |
+| `plan` | file_read, write_memory, search_history, ask_user |
 
 ---
 
@@ -185,6 +247,17 @@ Progressive disclosure pattern for skill management:
 - `load_skill(name)` - Load complete skill content
 - `list_skills()` - List available skills
 - Skills stored in SKILL.md format with YAML frontmatter
+
+### Subagent Tools (`subagent_tools.py`)
+
+Tools for spawning and managing subagent instances:
+
+- `spawn_subagent(type, prompt)` - Create new subagent with specified type
+- `wait_for_subagent(task_id)` - Wait for subagent completion
+- `aggregate_subagent_results(task_ids)` - Combine results from multiple subagents
+- `list_subagents(status)` - List running or completed subagents
+- `kill_subagent(task_id)` - Terminate running subagent
+- `spawn_parallel_subagents(tasks)` - Launch multiple subagents simultaneously
 
 ---
 
@@ -363,6 +436,7 @@ The system stores data in `~/.seed/`:
 | `~/.seed/config.json` | Configuration file |
 | `~/.seed/memory/` | L1-L4 memory storage |
 | `~/.seed/memory/raw/sessions.db` | SQLite session database |
+| `~/.seed/rate_limit.db` | SQLite rate limit tracking database |
 | `~/.seed/tasks/` | Task storage and logs |
 | `~/.seed/logs/` | Daily log files |
 | `~/.seed/scripts/` | Utility scripts |

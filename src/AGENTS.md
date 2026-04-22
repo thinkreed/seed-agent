@@ -8,12 +8,17 @@ The core engine consists of five main components that work together to create an
 
 ```
 src/
-├── agent_loop.py    # Main agent loop with message handling and tool execution
-├── autonomous.py    # Idle-time autonomous exploration (Ralph Loop enhanced)
-├── client.py        # LLM Gateway with multi-provider fallback
-├── models.py        # Pydantic configuration validation
-├── ralph_loop.py    # Long-cycle deterministic task executor
-└── scheduler.py     # Task scheduling and management
+├── agent_loop.py         # Main agent loop with message handling and tool execution
+├── autonomous.py         # Idle-time autonomous exploration (Ralph Loop enhanced)
+├── client.py             # LLM Gateway with multi-provider fallback
+├── models.py             # Pydantic configuration validation
+├── ralph_loop.py         # Long-cycle deterministic task executor
+├── rate_limiter.py       # Token Bucket + Rolling Window dual rate limiting
+├── rate_limit_db.py      # SQLite persistence for rate limit state
+├── request_queue.py      # TurnTicket request queue with priority and backpressure
+├── scheduler.py          # Task scheduling and management
+├── subagent_manager.py   # Subagent orchestration and lifecycle management
+└── subagent.py           # Independent context subagent execution
 ```
 
 ---
@@ -614,6 +619,1439 @@ def _resolve_api_key(self, api_key: str) -> str:
 
 ---
 
+## RateLimiter
+
+The `rate_limiter` module provides dual rate limiting mechanisms combining Token Bucket and Rolling Window algorithms. It ensures smooth handling of burst requests while maintaining strict control over total request volume within configurable time windows.
+
+### Purpose
+
+RateLimiter protects the LLM Gateway from exceeding API rate limits by implementing a two-tier throttling system:
+- **Token Bucket**: Smooths burst requests by replenishing tokens at a fixed rate
+- **Rolling Window**: Enforces hard limits on total requests within a sliding time window
+
+This combination handles both short-term burst control and long-term quota management (e.g., 6000 requests per 5 hours).
+
+### Key Classes
+
+#### TokenBucket
+
+A classic rate limiting algorithm that controls request flow by replenishing tokens at a fixed rate.
+
+```python
+class TokenBucket:
+    """Token Bucket 限流器
+
+    核心算法:
+    - tokens 以固定速率补充
+    - 每次请求消耗 1 token
+    - tokens 不能超过 capacity
+    - tokens 不足时需要等待
+
+    线程安全：使用 asyncio.Lock 保证并发安全
+    """
+
+    def __init__(self, rate: float, capacity: float, initial_tokens: Optional[float] = None):
+        """
+        Args:
+            rate: 每秒补充的 token 数
+            capacity: 最大 token 容量
+            initial_tokens: 初始 token 数，默认满载
+        """
+        self.rate = rate
+        self.capacity = capacity
+        self.tokens = initial_tokens if initial_tokens is not None else capacity
+        self.last_refill = time.time()
+        self._lock = asyncio.Lock()
+```
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `rate` | `float` | Token replenishment rate (tokens/sec) |
+| `capacity` | `float` | Maximum token bucket capacity |
+| `initial_tokens` | `Optional[float]` | Initial tokens, defaults to capacity |
+
+#### RollingWindowTracker
+
+A sliding window tracker that maintains precise control over request counts within a configurable duration.
+
+```python
+class RollingWindowTracker:
+    """滚动窗口追踪器
+
+    核心机制:
+    - 记录每个请求的时间戳
+    - 滚动计算窗口内已用请求数
+    - 窗口为滑动窗口（非固定窗口）
+
+    适用场景：
+    - 百炼 5 小时 6000 次限流
+    - 其他长窗口限流场景
+    """
+
+    def __init__(self, window_limit: int, window_duration: float):
+        """
+        Args:
+            window_limit: 窗口内最大请求数
+            window_duration: 窗口时长（秒）
+        """
+        self.window_limit = window_limit
+        self.window_duration = window_duration
+        self.requests: List[float] = []
+        self.total_requests_lifetime = 0
+        self._lock = asyncio.Lock()
+```
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `window_limit` | `int` | Maximum requests within the window |
+| `window_duration` | `float` | Window duration in seconds |
+
+#### RateLimiter
+
+Combines Token Bucket and Rolling Window for dual-layer rate limiting.
+
+```python
+class RateLimiter:
+    """组合限流器
+
+    组合 Token Bucket + Rolling Window 的双重限流机制:
+    - Token Bucket: 平滑突发请求
+    - Rolling Window: 控制长周期窗口内的总请求数
+    """
+
+    def __init__(
+        self,
+        rate: float,
+        capacity: float,
+        window_limit: int,
+        window_duration: float,
+    ):
+        """
+        Args:
+            rate: Token 补充速率（requests/sec）
+            capacity: Token 桶容量
+            window_limit: 滚动窗口请求上限
+            window_duration: 滚动窗口时长（秒）
+        """
+        self.token_bucket = TokenBucket(rate, capacity)
+        self.window_tracker = RollingWindowTracker(window_limit, window_duration)
+```
+
+### Key Methods
+
+#### `acquire() -> Tuple[bool, float]`
+
+Attempts to acquire a request permit without waiting.
+
+```python
+async def acquire(self) -> Tuple[bool, float]:
+    """尝试获取请求许可
+
+    Returns:
+        (allowed, wait_time): 是否允许, 需等待时间
+    """
+    # 先检查滚动窗口（硬限制）
+    window_allowed, window_wait = await self.window_tracker.check_available()
+    if not window_allowed:
+        return False, window_wait
+
+    # 再检查 Token Bucket（软限制，平滑突发）
+    bucket_allowed, bucket_wait = await self.token_bucket.acquire()
+    if not bucket_allowed:
+        return False, bucket_wait
+
+    return True, 0.0
+```
+
+#### `wait_and_acquire(max_wait: float) -> bool`
+
+Waits up to `max_wait` seconds to acquire a permit.
+
+```python
+async def wait_and_acquire(self, max_wait: float = 60.0) -> bool:
+    """等待并获取请求许可
+
+    Args:
+        max_wait: 最大等待时间（秒）
+
+    Returns:
+        是否成功获取
+    """
+    start = time.time()
+    while True:
+        allowed, wait_time = await self.acquire()
+        if allowed:
+            await self.window_tracker.record_request()
+            return True
+
+        elapsed = time.time() - start
+        if elapsed + wait_time > max_wait:
+            return False
+
+        await asyncio.sleep(wait_time)
+```
+
+#### `get_status() -> RateLimitStatus`
+
+Returns a snapshot of current rate limiting state.
+
+```python
+def get_status(self) -> RateLimitStatus:
+    """获取限流状态快照"""
+    return RateLimitStatus(
+        tokens_available=bucket_state.tokens,
+        token_bucket_capacity=self.token_bucket.capacity,
+        refill_rate=self.token_bucket.rate,
+        window_requests_used=len(active_requests),
+        window_requests_remaining=self.window_tracker.get_remaining(),
+        window_requests_limit=self.window_tracker.window_limit,
+        window_reset_time=self.window_tracker.get_reset_time(),
+        window_usage_ratio=self.window_tracker.get_usage_ratio(),
+        total_requests_lifetime=window_state.total_requests_lifetime,
+    )
+```
+
+### State Persistence
+
+RateLimiter supports state persistence via `get_state()` and `restore_state()` methods for crash recovery.
+
+### Usage Example
+
+```python
+from rate_limiter import RateLimiter
+
+# Create rate limiter: 2 req/sec burst, 6000 req/5hr window
+limiter = RateLimiter(
+    rate=2.0,
+    capacity=10.0,
+    window_limit=6000,
+    window_duration=18000  # 5 hours
+)
+
+# Acquire with max wait
+if await limiter.wait_and_acquire(max_wait=30.0):
+    # Make API request
+    response = await gateway.chat_completion(...)
+else:
+    # Handle timeout
+    logger.warning("Rate limit wait timeout")
+```
+
+### Reference
+
+For detailed design documentation, see [docs/rate_limiting_system_design.md](../docs/rate_limiting_system_design.md).
+
+---
+
+## RateLimitSQLite
+
+The `rate_limit_db` module provides SQLite-based persistence for rate limiting state, enabling cross-process state sharing and crash recovery.
+
+### Purpose
+
+RateLimitSQLite ensures rate limiting state survives process restarts and can be shared across multiple agent instances. It uses WAL mode for high-concurrency access and implements automatic cleanup of expired data.
+
+### Key Features
+
+- **Cross-Process Sharing**: Multiple processes can share rate limit state
+- **WAL Mode**: Write-Ahead Logging for high concurrent access
+- **Auto Cleanup**: Automatic removal of expired request records
+- **Crash Recovery**: State persistence survives process termination
+
+### Key Class
+
+#### RateLimitSQLite
+
+```python
+class RateLimitSQLite:
+    """SQLite 持久化存储
+
+    特性:
+    - 跨进程共享状态
+    - WAL 模式高并发
+    - 自动清理过期数据
+    - 崩溃恢复支持
+    """
+
+    DB_PATH = Path.home() / ".seed" / "rate_limit.db"
+
+    def __init__(self, db_path: Optional[Path] = None):
+        """
+        Args:
+            db_path: 数据库路径，默认 ~/.seed/rate_limit.db
+        """
+        self._db_path = db_path or self.DB_PATH
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()
+        self._lock = asyncio.Lock()
+        self._init_db()
+```
+
+### Database Schema
+
+#### `rate_limit_state` Table
+
+Single-row table storing current rate limit state:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `INTEGER` | Primary key (fixed to 1) |
+| `window_requests` | `TEXT` | JSON array of request timestamps |
+| `tokens_available` | `REAL` | Current token bucket tokens |
+| `last_refill_time` | `REAL` | Last token refill timestamp |
+| `total_requests` | `INTEGER` | Lifetime request count |
+| `updated_at` | `REAL` | Last update timestamp |
+
+#### `request_history` Table
+
+Audit trail for request execution:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | `INTEGER` | Auto-increment primary key |
+| `request_id` | `TEXT` | Unique request identifier |
+| `timestamp` | `REAL` | Request timestamp |
+| `priority` | `TEXT` | Request priority level |
+| `duration` | `REAL` | Request duration (optional) |
+| `success` | `INTEGER` | Success flag (0/1) |
+| `error_message` | `TEXT` | Error message (optional) |
+
+### Key Methods
+
+#### `load_state() -> RateLimitState`
+
+Loads current rate limit state with automatic expired request cleanup.
+
+```python
+async def load_state(self) -> RateLimitState:
+    """加载当前状态"""
+    async with self._lock:
+        conn = self._get_conn()
+        cursor = conn.execute("""
+            SELECT window_requests, tokens_available, last_refill_time,
+                   total_requests, updated_at
+            FROM rate_limit_state WHERE id = 1
+        """)
+        row = cursor.fetchone()
+
+        if row:
+            window_requests = json.loads(row[0])
+            # 清理过期请求（超过 5 小时）
+            now = time.time()
+            window_requests = [
+                t for t in window_requests
+                if now - t < 18000  # 5 hours
+            ]
+            return RateLimitState(...)
+```
+
+#### `save_state(state: RateLimitState) -> None`
+
+Persists rate limit state to database.
+
+```python
+async def save_state(self, state: RateLimitState) -> None:
+    """保存状态"""
+    async with self._lock:
+        conn = self._get_conn()
+        conn.execute("""
+            UPDATE rate_limit_state SET
+                window_requests = ?,
+                tokens_available = ?,
+                last_refill_time = ?,
+                total_requests = ?,
+                updated_at = ?
+            WHERE id = 1
+        """, (...))
+        conn.commit()
+```
+
+#### `save_bucket_state(bucket_state: TokenBucketState) / save_window_state(window_state: RollingWindowState)`
+
+Saves individual component states for partial updates.
+
+#### `record_request(request_id, priority, duration, success, error_message)`
+
+Records request execution for audit trail.
+
+#### `cleanup_old_history(max_age: float) -> int`
+
+Removes history records older than `max_age` seconds.
+
+```python
+async def cleanup_old_history(self, max_age: float = 86400.0) -> int:
+    """清理过期历史记录
+
+    Args:
+        max_age: 最大保留时间（秒），默认 24 小时
+
+    Returns:
+        清理的记录数
+    """
+```
+
+#### `get_stats() -> dict`
+
+Returns aggregate statistics including success rate, average duration, and recent errors.
+
+### Usage Example
+
+```python
+from rate_limit_db import RateLimitSQLite
+from rate_limiter import RateLimiter, TokenBucketState, RollingWindowState
+
+# Initialize database
+db = RateLimitSQLite()
+
+# Load persisted state on startup
+state = await db.load_state()
+
+# Create rate limiter with persisted state
+limiter = RateLimiter(rate=2.0, capacity=10.0, window_limit=6000, window_duration=18000)
+if state.tokens_available:
+    limiter.restore_state(
+        bucket_state=TokenBucketState(state.tokens_available, state.last_refill_time),
+        window_state=RollingWindowState(state.requests_in_window, state.total_requests_lifetime)
+    )
+
+# Save state periodically
+bucket_state, window_state = limiter.get_state()
+await db.save_bucket_state(bucket_state)
+await db.save_window_state(window_state)
+```
+
+---
+
+## RequestQueue
+
+The `request_queue` module implements a priority-based request queue with TurnTicket mode, providing fair scheduling, backpressure control, and intelligent auto-adjustment.
+
+### Purpose
+
+RequestQueue orchestrates concurrent LLM requests through a fair scheduling system:
+- **TurnTicket Mode**: Queue manages "turn allocation" without intervening in execution
+- **Priority Levels**: CRITICAL, HIGH, NORMAL, LOW for differentiated service
+- **Backpressure**: Rejects requests when queues approach capacity
+- **Auto-Adjustment**: Dynamically adjusts dispatch rates based on wait times
+
+### Key Classes
+
+#### RequestPriority
+
+Priority levels for request differentiation.
+
+```python
+class RequestPriority(IntEnum):
+    """请求优先级"""
+    CRITICAL = 0    # 用户直接交互，最高优先级，独立队列
+    HIGH = 1        # RalphLoop 迭代，优先处理
+    NORMAL = 2      # Subagent 任务，标准处理
+    LOW = 3         # Scheduler 后台，队列处理
+```
+
+| Priority | Value | Use Case |
+|----------|-------|----------|
+| `CRITICAL` | 0 | User direct interaction, independent queue |
+| `HIGH` | 1 | RalphLoop iterations, priority processing |
+| `NORMAL` | 2 | Subagent tasks, standard processing |
+| `LOW` | 3 | Scheduler background tasks |
+
+#### TurnTicket
+
+A "turn signal" representing permission to execute.
+
+```python
+@dataclass
+class TurnTicket:
+    """轮次票 - 代表"轮到你执行了"的信号
+
+    核心理念：队列只管"轮次分配"，不介入执行细节
+    """
+
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    priority: RequestPriority = RequestPriority.NORMAL
+    created_at: float = field(default_factory=time.time)
+
+    _turn_event: asyncio.Event = field(default_factory=asyncio.Event)
+    _turn_time: Optional[float] = None
+    _cancelled: bool = False
+    _cancel_reason: Optional[str] = None
+```
+
+### Key Methods
+
+#### `wait_for_turn(timeout: float) -> None`
+
+Waits for turn signal with timeout.
+
+```python
+async def wait_for_turn(self, timeout: float) -> None:
+    """等待轮次到达
+
+    Args:
+        timeout: 最大等待时间（秒）
+
+    Raises:
+        TurnWaitTimeout: 等待超时
+        asyncio.CancelledError: 被取消
+    """
+    try:
+        await asyncio.wait_for(self._turn_event.wait(), timeout)
+    except asyncio.TimeoutError:
+        raise TurnWaitTimeout(self.id, timeout, {})
+
+    if self._cancelled:
+        raise asyncio.CancelledError(self._cancel_reason)
+```
+
+#### `signal_turn()`
+
+Dispatcher signals that turn has arrived.
+
+```python
+def signal_turn(self) -> None:
+    """调度器通知：轮次到了"""
+    self._turn_time = time.time()
+    self._turn_event.set()
+```
+
+#### `cancel(reason: str)`
+
+Cancels the ticket, waking waiting threads with CancelledError.
+
+#### QueueConfig
+
+Configurable queue parameters with auto-adjustment support.
+
+```python
+@dataclass
+class QueueConfig:
+    """队列配置（可动态调整）"""
+
+    # CRITICAL 队列配置
+    critical_max_size: int = 10
+    critical_backpressure_threshold: float = 0.9
+    critical_dispatch_rate: float = 10.0
+    critical_target_wait_time: float = 5.0
+
+    # 普通队列配置（HIGH/NORMAL/LOW 共享）
+    normal_max_size: int = 50
+    normal_backpressure_threshold: float = 0.8
+    normal_dispatch_rate: float = 0.33
+    normal_target_wait_time: float = 30.0
+
+    # 自动调整
+    auto_adjust_enabled: bool = True
+    adjust_interval: float = 60.0
+```
+
+#### RequestQueue
+
+Main queue orchestrator with priority dispatch.
+
+```python
+class RequestQueue:
+    """请求队列系统 - TurnTicket 模式
+
+    特性:
+    - CRITICAL 独立队列，最高优先级
+    - 多优先级队列（HIGH/NORMAL/LOW 共享）
+    - TurnTicket 模式：只管轮次分配，不介入执行
+    - 反压机制（队列满时拒绝新请求）
+    - 智能配置调整
+    """
+
+    def __init__(self, config: QueueConfig = None):
+        self.config = config or QueueConfig()
+        self._critical_queue: Deque[TurnTicket] = deque()
+        self._normal_queues: Dict[RequestPriority, Deque[TurnTicket]] = {
+            RequestPriority.HIGH: deque(),
+            RequestPriority.NORMAL: deque(),
+            RequestPriority.LOW: deque(),
+        }
+        self._active_tickets: Dict[str, TurnTicket] = {}
+```
+
+### Key Methods
+
+#### `request_turn(priority) -> TurnTicket`
+
+Core entry point for requesting execution turn.
+
+```python
+async def request_turn(
+    self,
+    priority: RequestPriority = RequestPriority.NORMAL
+) -> TurnTicket:
+    """申请轮次（核心入口）
+
+    Args:
+        priority: 请求优先级
+
+    Returns:
+        TurnTicket: 轮次票
+
+    Raises:
+        QueueFullError: 队列已满
+    """
+    ticket = TurnTicket(priority=priority)
+
+    async with self._lock:
+        # Check backpressure threshold
+        if fill_ratio >= threshold:
+            self._stats.record_rejected(priority)
+            raise QueueFullError(fill_ratio, threshold, queue_type)
+
+        # Enqueue ticket
+        ...
+
+    self._new_request_event.set()
+    return ticket
+```
+
+#### `start_dispatcher() / stop_dispatcher()`
+
+Lifecycle management for the async dispatcher loop.
+
+#### `get_stats() -> Dict[str, Any]`
+
+Returns comprehensive queue statistics including lengths, fill ratios, wait times, and reject rates.
+
+### Backpressure Mechanism
+
+When queue fill ratio exceeds the configured threshold:
+- `QueueFullError` is raised immediately
+- Client can choose to retry, downgrade priority, or abort
+- Thresholds configurable per queue type (CRITICAL vs normal)
+
+```python
+# Backpressure triggers at threshold
+if fill_ratio >= threshold:
+    raise QueueFullError(fill_ratio, threshold, queue_type)
+```
+
+### Dispatch Algorithm
+
+Priority-based dispatch with CRITICAL always first:
+
+```python
+async def _dispatch_loop(self):
+    """调度循环核心：CRITICAL 优先"""
+    while self._running:
+        # 1. 先处理 CRITICAL（最高优先级）
+        ticket = await self._pop_ticket(RequestPriority.CRITICAL)
+        if ticket:
+            await self._signal_turn(ticket)
+            await asyncio.sleep(1.0 / self.config.critical_dispatch_rate)
+            continue
+
+        # 2. CRITICAL 空，处理普通队列（按优先级）
+        for priority in [HIGH, NORMAL, LOW]:
+            ticket = await self._pop_ticket(priority)
+            if ticket:
+                await self._signal_turn(ticket)
+                await asyncio.sleep(1.0 / self.config.normal_dispatch_rate)
+                break
+```
+
+### Auto-Adjustment
+
+The queue dynamically adjusts dispatch rates based on observed wait times:
+
+```python
+async def _adjust_config(self):
+    """根据统计数据智能调整配置"""
+    # If CRITICAL avg wait exceeds target, increase dispatch rate
+    if critical_avg_wait > self.config.critical_target_wait_time:
+        self.config.critical_dispatch_rate *= 1.2
+
+    # If reject rate exceeds 10%, increase backpressure threshold
+    if critical_reject_rate > 0.1:
+        self.config.critical_backpressure_threshold += 0.05
+```
+
+### Usage Example
+
+```python
+from request_queue import RequestQueue, RequestPriority, QueueConfig
+
+# Create queue with custom config
+config = QueueConfig(
+    critical_max_size=10,
+    critical_backpressure_threshold=0.9,
+    normal_max_size=50
+)
+queue = RequestQueue(config)
+
+# Start dispatcher
+await queue.start_dispatcher()
+
+# Request turn (entry point)
+try:
+    ticket = await queue.request_turn(RequestPriority.NORMAL)
+    await ticket.wait_for_turn(timeout=30.0)
+    
+    # Execute LLM request (queue doesn't intervene)
+    response = await gateway.chat_completion(...)
+    
+finally:
+    # Check stats
+    stats = queue.get_stats()
+    print(f"Queue fill ratio: {stats['fill_ratios']['total']:.2%}")
+
+# Stop dispatcher
+await queue.stop_dispatcher()
+```
+
+### Integration with LLMGateway
+
+RequestQueue is integrated into LLMGateway for automatic turn management:
+
+```python
+# In LLMGateway.chat_completion():
+# Phase 1: Queue turn request
+ticket = await self.request_turn(priority)
+await ticket.wait_for_turn(timeout=self.get_dynamic_timeout(priority))
+
+# Phase 2-4: Execute with semaphore and rate limiter
+async with self._request_semaphore:
+    if self._rate_limiter:
+        await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
+    result = await self._chat_completion_with_fallback_internal(...)
+```
+
+---
+
+## SubagentInstance
+
+The `subagent` module provides independent context subagent execution with configurable permission sets. Each subagent operates with its own conversation history, isolated from the main agent context, enabling parallel task execution without context pollution.
+
+### Purpose
+
+SubagentInstance enables the agent to delegate specific tasks to specialized sub-agents with restricted capabilities. This provides:
+
+- **Isolated Context**: Each subagent maintains independent conversation history
+- **Permission Isolation**: Configurable tool access per subagent type
+- **Parallel Execution**: Multiple subagents can run concurrently
+- **Result Aggregation**: Only key results returned to main conversation
+
+### Key Classes
+
+#### SubagentType
+
+Enum defining the four subagent types with specific purposes.
+
+```python
+class SubagentType(Enum):
+    """Subagent 类型枚举"""
+    EXPLORE = "explore"      # 只读探索：搜索文件、阅读代码
+    REVIEW = "review"       # 审查验证：只读 + 代码执行
+    IMPLEMENT = "implement" # 实现执行：全权限
+    PLAN = "plan"           # 规划分析：只读 + 记忆写入
+```
+
+| Type | Permission Set | Purpose |
+|------|----------------|---------|
+| `EXPLORE` | `read_only` | Search files, read code, understand structure |
+| `REVIEW` | `review` | Code review, testing, quality verification |
+| `IMPLEMENT` | `implement` | Feature implementation, bug fixes, refactoring |
+| `PLAN` | `plan` | Task analysis, planning, decision recording |
+
+#### Permission Sets
+
+Each subagent type has a predefined permission set controlling available tools.
+
+```python
+PERMISSION_SETS: Dict[str, Set[str]] = {
+    "read_only": {
+        "file_read",
+        "search_history",
+        "ask_user",
+    },
+    "review": {
+        "file_read",
+        "code_as_policy",
+        "search_history",
+        "ask_user",
+    },
+    "implement": {
+        "file_read",
+        "file_write",
+        "file_edit",
+        "code_as_policy",
+        "write_memory",
+        "read_memory_index",
+        "search_memory",
+        "search_history",
+        "ask_user",
+        "run_diagnosis",
+    },
+    "plan": {
+        "file_read",
+        "write_memory",
+        "read_memory_index",
+        "search_memory",
+        "search_history",
+        "ask_user",
+    },
+}
+```
+
+| Permission Set | Allowed Tools |
+|----------------|---------------|
+| `read_only` | `file_read`, `search_history`, `ask_user` |
+| `review` | `file_read`, `code_as_policy`, `search_history`, `ask_user` |
+| `implement` | All file tools + `code_as_policy` + memory tools + `search_history` + `ask_user` + `run_diagnosis` |
+| `plan` | `file_read`, `write_memory`, `read_memory_index`, `search_memory`, `search_history`, `ask_user` |
+
+#### SubagentState
+
+Dataclass tracking subagent execution state.
+
+```python
+@dataclass
+class SubagentState:
+    """Subagent 状态"""
+    id: str
+    subagent_type: SubagentType
+    status: str  # "pending", "running", "completed", "failed", "timeout"
+    prompt: str
+    result: Optional[str] = None
+    error: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.now)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    iterations: int = 0
+    parent_session_id: Optional[str] = None
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `str` | Unique task identifier |
+| `subagent_type` | `SubagentType` | Subagent type enum |
+| `status` | `str` | Execution status (pending/running/completed/failed/timeout) |
+| `prompt` | `str` | Original task prompt |
+| `result` | `Optional[str]` | Execution result (on success) |
+| `error` | `Optional[str]` | Error message (on failure) |
+| `iterations` | `int` | Number of tool call iterations executed |
+
+#### SubagentInstance
+
+Main class for independent subagent execution.
+
+```python
+class SubagentInstance:
+    """独立上下文的 Subagent 执行实例"""
+
+    MAX_SUBAGENT_ITERATIONS = 15  # Default iteration limit
+
+    def __init__(
+        self,
+        gateway: LLMGateway,
+        subagent_type: SubagentType,
+        model_id: Optional[str] = None,
+        max_iterations: int = MAX_SUBAGENT_ITERATIONS,
+        timeout: int = 300,  # 5 minute timeout
+        custom_system_prompt: Optional[str] = None,
+        custom_tools: Optional[Set[str]] = None,
+    ):
+        """
+        Initialize Subagent instance.
+
+        Args:
+            gateway: LLM gateway instance (shared with parent agent)
+            subagent_type: Subagent type determining permission set
+            model_id: Model ID (defaults to primary model)
+            max_iterations: Maximum tool call iterations (default: 15)
+            timeout: Execution timeout in seconds (default: 300)
+            custom_system_prompt: Override default system prompt
+            custom_tools: Override default permission set
+        """
+```
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `gateway` | `LLMGateway` | required | Shared LLM gateway instance |
+| `subagent_type` | `SubagentType` | required | Determines permission set |
+| `model_id` | `Optional[str]` | primary model | Specific model to use |
+| `max_iterations` | `int` | `15` | Tool call iteration limit |
+| `timeout` | `int` | `300` | Execution timeout (seconds) |
+| `custom_system_prompt` | `Optional[str]` | type-specific | Override default prompt |
+| `custom_tools` | `Optional[Set[str]]` | type-specific | Override permission set |
+
+### Key Methods
+
+#### `run(prompt: str, task_id: Optional[str] = None) -> SubagentState`
+
+Main execution method with timeout protection.
+
+```python
+async def run(self, prompt: str, task_id: Optional[str] = None) -> SubagentState:
+    """Execute Subagent task with timeout protection.
+
+    Args:
+        prompt: Task prompt
+        task_id: Optional task ID for tracking
+
+    Returns:
+        SubagentState: Final execution state
+    """
+    task_id = task_id or str(uuid.uuid4())[:8]
+    self.state = SubagentState(
+        id=task_id,
+        subagent_type=self.subagent_type,
+        status="pending",
+        prompt=prompt,
+    )
+
+    try:
+        result = await asyncio.wait_for(
+            self._run_loop(),
+            timeout=self.timeout
+        )
+        self.state.status = "completed"
+        self.state.result = result
+
+    except asyncio.TimeoutError:
+        self.state.status = "timeout"
+        self.state.error = f"Execution timed out after {self.timeout} seconds"
+
+    except Exception as e:
+        self.state.status = "failed"
+        self.state.error = str(e)
+
+    return self.state
+```
+
+#### `_run_loop() -> str`
+
+Internal execution loop matching AgentLoop pattern.
+
+```python
+async def _run_loop(self) -> str:
+    """Main execution loop."""
+    iteration = 0
+
+    while iteration < self.max_iterations:
+        iteration += 1
+        self.state.iterations = iteration
+
+        messages = self._build_messages()
+        response = await self.gateway.chat_completion(
+            self.model_id,
+            messages,
+            tools=self.tools.get_schemas()
+        )
+
+        choice = response['choices'][0]
+        message = choice['message']
+        self.history.append(message)
+
+        if message.get('tool_calls'):
+            tool_results = await self._execute_tool_calls(message['tool_calls'])
+            self.history.extend(tool_results)
+        else:
+            # No tool calls = task complete
+            return message.get('content', '')
+
+    raise RuntimeError(f"Exceeded maximum iterations ({self.max_iterations})")
+```
+
+#### SubagentResult
+
+Wrapper class providing convenient access to execution results.
+
+```python
+class SubagentResult:
+    """Subagent 执行结果"""
+
+    def __init__(self, state: SubagentState):
+        self.state = state
+
+    @property
+    def success(self) -> bool:
+        return self.state.status == "completed"
+
+    @property
+    def result(self) -> Optional[str]:
+        return self.state.result
+
+    @property
+    def error(self) -> Optional[str]:
+        return self.state.error
+
+    @property
+    def summary(self) -> str:
+        """Returns truncated result summary."""
+        if self.success:
+            r = self.result or ""
+            if len(r) > 500:
+                return r[:500] + "...(truncated)"
+            return r
+        return f"[{self.state.status.upper()}] {self.error}"
+```
+
+### System Prompts
+
+Each subagent type has a predefined system prompt guiding behavior:
+
+| Type | Core Responsibilities |
+|------|----------------------|
+| `EXPLORE` | Search/analyze files, understand structure, report findings (no modifications) |
+| `REVIEW` | Review quality/security, run tests, check best practices (no modifications) |
+| `IMPLEMENT` | Implement features, fix bugs, refactor (full file permissions) |
+| `PLAN` | Analyze requirements, create execution plan, record decisions (no file modifications) |
+
+### Usage Example
+
+```python
+from subagent import SubagentInstance, SubagentType
+from client import LLMGateway
+
+# Initialize gateway
+gateway = LLMGateway("~/.seed/config.json")
+
+# Create explore subagent
+explore_agent = SubagentInstance(
+    gateway=gateway,
+    subagent_type=SubagentType.EXPLORE,
+    timeout=60  # Quick exploration
+)
+
+# Execute task
+state = await explore_agent.run("Find all Python files in the src/tools directory")
+if state.status == "completed":
+    print(state.result)
+else:
+    print(f"Error: {state.error}")
+```
+
+---
+
+## SubagentManager
+
+The `subagent_manager` module orchestrates subagent lifecycle, parallel execution, and result aggregation. It manages concurrent subagent instances with resource limits and provides convenient factory methods.
+
+### Purpose
+
+SubagentManager provides:
+
+- **Lifecycle Management**: Create, execute, and cleanup subagents
+- **Parallel Execution**: Run multiple subagents concurrently with semaphore control
+- **Result Collection**: Aggregate results from multiple tasks
+- **Resource Limits**: Maximum concurrent subagent count
+- **Status Tracking**: Monitor task states with callbacks
+
+### Key Classes
+
+#### SubagentTask
+
+Task definition dataclass for subagent configuration.
+
+```python
+@dataclass
+class SubagentTask:
+    """Subagent 任务定义"""
+    id: str
+    subagent_type: SubagentType
+    prompt: str
+    custom_tools: Optional[set] = None
+    custom_system_prompt: Optional[str] = None
+    max_iterations: Optional[int] = None
+    timeout: Optional[int] = None
+    priority: int = 0  # Higher priority executes first
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `str` | Unique task identifier |
+| `subagent_type` | `SubagentType` | Subagent type |
+| `prompt` | `str` | Task prompt |
+| `custom_tools` | `Optional[set]` | Override default permission set |
+| `custom_system_prompt` | `Optional[str]` | Override default system prompt |
+| `max_iterations` | `Optional[int]` | Override default iteration limit |
+| `timeout` | `Optional[int]` | Override default timeout |
+| `priority` | `int` | Execution priority (higher = first) |
+
+#### SubagentManager
+
+Main orchestration class managing subagent lifecycle.
+
+```python
+class SubagentManager:
+    """Subagent 管理器"""
+
+    DEFAULT_MAX_CONCURRENT = 3  # Default parallel limit
+    DEFAULT_TIMEOUT = 300       # Default timeout 5 minutes
+    DEFAULT_MAX_ITERATIONS = 15 # Default iteration limit
+
+    def __init__(
+        self,
+        gateway: LLMGateway,
+        model_id: Optional[str] = None,
+        max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+    ):
+        """
+        Initialize SubagentManager.
+
+        Args:
+            gateway: LLM gateway instance
+            model_id: Default model ID
+            max_concurrent: Maximum concurrent subagents
+        """
+        self.gateway = gateway
+        self.model_id = model_id or self._get_primary_model()
+        self.max_concurrent = max_concurrent
+
+        # Active subagent instances
+        self._instances: Dict[str, SubagentInstance] = {}
+
+        # Task state tracking
+        self._tasks: Dict[str, SubagentTask] = {}
+
+        # Execution results
+        self._results: Dict[str, SubagentResult] = {}
+
+        # Concurrency control semaphore
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+```
+
+### Key Methods
+
+#### Lifecycle Methods
+
+```python
+def create_task(
+    self,
+    subagent_type: SubagentType,
+    prompt: str,
+    custom_tools: Optional[set] = None,
+    custom_system_prompt: Optional[str] = None,
+    max_iterations: Optional[int] = None,
+    timeout: Optional[int] = None,
+    priority: int = 0,
+) -> str:
+    """Create Subagent task, returns task ID."""
+
+def spawn_subagent(self, task_id: str) -> SubagentInstance:
+    """Create SubagentInstance for existing task."""
+
+async def run_subagent(self, task_id: str) -> SubagentResult:
+    """Execute single subagent task with semaphore control."""
+
+def cleanup(self, task_id: Optional[str] = None):
+    """Clean up task resources (all if task_id is None)."""
+```
+
+#### Parallel Execution
+
+```python
+async def run_parallel(
+    self,
+    task_ids: List[str],
+    fail_fast: bool = False,
+) -> Dict[str, SubagentResult]:
+    """Execute multiple subagents concurrently.
+
+    Args:
+        task_ids: List of task IDs to execute
+        fail_fast: Stop on first failure (sequential if True)
+
+    Returns:
+        Dict[str, SubagentResult]: Task ID -> result mapping
+    """
+```
+
+#### Status and Results
+
+```python
+def get_status(self, task_id: str) -> Optional[str]:
+    """Get task status (pending/running/completed/failed/timeout)."""
+
+def get_result(self, task_id: str) -> Optional[SubagentResult]:
+    """Get task result."""
+
+def get_all_results(self) -> Dict[str, SubagentResult]:
+    """Get all results."""
+
+def list_tasks(self, status: Optional[str] = None) -> List[Dict]:
+    """List all tasks, optionally filtered by status."""
+```
+
+#### Result Aggregation
+
+```python
+def aggregate_results(
+    self,
+    task_ids: List[str],
+    include_errors: bool = True,
+    max_length: int = 2000,
+) -> str:
+    """Aggregate results from multiple tasks.
+
+    Args:
+        task_ids: List of task IDs
+        include_errors: Include error messages
+        max_length: Max length per result
+
+    Returns:
+        str: Aggregated summary
+    """
+```
+
+### Convenience Methods
+
+Factory methods for creating specific subagent types:
+
+```python
+def spawn_explore(self, prompt: str, **kwargs) -> str:
+    """Create EXPLORE subagent task."""
+
+def spawn_review(self, prompt: str, **kwargs) -> str:
+    """Create REVIEW subagent task."""
+
+def spawn_implement(self, prompt: str, **kwargs) -> str:
+    """Create IMPLEMENT subagent task."""
+
+def spawn_plan(self, prompt: str, **kwargs) -> str:
+    """Create PLAN subagent task."""
+```
+
+### Status Callbacks
+
+```python
+def register_status_callback(self, callback: Callable[[str, str], None]):
+    """Register callback for status changes (task_id, status)."""
+
+def _notify_status(self, task_id: str, status: str):
+    """Notify all registered callbacks."""
+```
+
+### Usage Example
+
+```python
+from subagent_manager import SubagentManager
+from subagent import SubagentType
+from client import LLMGateway
+
+# Initialize
+gateway = LLMGateway("~/.seed/config.json")
+manager = SubagentManager(gateway, max_concurrent=3)
+
+# Create multiple tasks
+task1 = manager.spawn_explore("Analyze the authentication module")
+task2 = manager.spawn_explore("Find database connection patterns")
+task3 = manager.spawn_review("Check for SQL injection vulnerabilities")
+
+# Execute in parallel
+results = await manager.run_parallel([task1, task2, task3])
+
+# Aggregate results
+summary = manager.aggregate_results([task1, task2, task3])
+print(summary)
+
+# Cleanup
+manager.cleanup()
+```
+
+---
+
+## RalphSubagentOrchestrator
+
+The `RalphSubagentOrchestrator` provides a Plan→Implement→Review workflow for RalphLoop integration, enabling structured multi-phase task execution with external verification.
+
+### Purpose
+
+RalphSubagentOrchestrator implements a three-phase execution pattern:
+
+1. **Plan Phase**: Analyze task, create execution plan
+2. **Implement Phase**: Parallel execution of subtasks
+3. **Review Phase**: Verify implementation quality
+
+This pattern integrates with RalphLoop's external verification for deterministic completion.
+
+### Execution Workflow
+
+```
+RalphSubagentOrchestrator Flow:
+
+┌─────────────────────────────────────────────────────┐
+│ 1. plan_phase(task_prompt)                          │
+│    → Spawn PLAN subagent                            │
+│    → Returns execution plan                         │
+└────────────────────────┬────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│ 2. implement_phase(implement_prompts)               │
+│    → Spawn multiple IMPLEMENT subagents (parallel) │
+│    → Returns results for each subtask               │
+└────────────────────────┬────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│ 3. review_phase(review_prompt)                      │
+│    → Spawn REVIEW subagent                          │
+│    → Returns verification result                    │
+└────────────────────────┬────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│ 4. get_execution_report()                           │
+│    → Returns structured report of all phases        │
+└─────────────────────────────────────────────────────┘
+```
+
+### Key Methods
+
+#### `__init__(manager: SubagentManager)`
+
+```python
+class RalphSubagentOrchestrator:
+    """RalphLoop 升级的 Subagent 编排器"""
+
+    def __init__(self, manager: SubagentManager):
+        self.manager = manager
+        self._plan_task_id: Optional[str] = None
+        self._implement_task_ids: List[str] = []
+        self._review_task_id: Optional[str] = None
+```
+
+#### Phase Methods
+
+```python
+async def plan_phase(self, task_prompt: str) -> str:
+    """规划阶段: Spawn PLAN subagent to create execution plan."""
+    self._plan_task_id = self.manager.spawn_plan(
+        f"请分析以下任务并制定执行计划:\n\n{task_prompt}"
+    )
+    result = await self.manager.run_subagent(self._plan_task_id)
+    return result.summary
+
+async def implement_phase(
+    self,
+    implement_prompts: List[str],
+) -> Dict[str, SubagentResult]:
+    """实现阶段: Parallel execution of multiple IMPLEMENT subagents."""
+    self._implement_task_ids = []
+    for prompt in implement_prompts:
+        task_id = self.manager.spawn_implement(prompt)
+        self._implement_task_ids.append(task_id)
+
+    return await self.manager.run_parallel(self._implement_task_ids)
+
+async def review_phase(self, review_prompt: str) -> str:
+    """审查阶段: Spawn REVIEW subagent for verification."""
+    self._review_task_id = self.manager.spawn_review(review_prompt)
+    result = await self.manager.run_subagent(self._review_task_id)
+    return result.summary
+```
+
+#### Report and Cleanup
+
+```python
+def get_execution_report(self) -> Dict:
+    """获取执行报告: Returns structured report of all phases."""
+    return {
+        "plan": {
+            "task_id": self._plan_task_id,
+            "result": self.manager.get_result(self._plan_task_id).summary,
+        },
+        "implement": [
+            {
+                "task_id": task_id,
+                "result": self.manager.get_result(task_id).summary,
+            }
+            for task_id in self._implement_task_ids
+        ],
+        "review": {
+            "task_id": self._review_task_id,
+            "result": self.manager.get_result(self._review_task_id).summary,
+        },
+    }
+
+def cleanup(self):
+    """清理所有任务: Clear all task resources."""
+```
+
+### Usage Example
+
+```python
+from subagent_manager import SubagentManager, RalphSubagentOrchestrator
+from client import LLMGateway
+
+# Initialize
+gateway = LLMGateway("~/.seed/config.json")
+manager = SubagentManager(gateway)
+orchestrator = RalphSubagentOrchestrator(manager)
+
+# Phase 1: Plan
+plan_result = await orchestrator.plan_phase(
+    "Implement user authentication with JWT tokens"
+)
+
+# Phase 2: Implement (parallel)
+implement_prompts = [
+    "Implement JWT token generation in auth.py",
+    "Implement token validation middleware",
+    "Create user login endpoint",
+]
+implement_results = await orchestrator.implement_phase(implement_prompts)
+
+# Phase 3: Review
+review_result = await orchestrator.review_phase(
+    "Review the authentication implementation for security issues"
+)
+
+# Get full report
+report = orchestrator.get_execution_report()
+print(f"Plan: {report['plan']['result']}")
+print(f"Implement tasks: {len(report['implement'])}")
+print(f"Review: {report['review']['result']}")
+
+# Cleanup
+orchestrator.cleanup()
+```
+
+### Integration with RalphLoop
+
+```python
+from ralph_loop import RalphLoop, CompletionType
+
+# Create orchestrator
+orchestrator = RalphSubagentOrchestrator(manager)
+
+# RalphLoop iteration using orchestrator
+async def ralph_iteration():
+    # Plan
+    plan = await orchestrator.plan_phase(task_prompt)
+    
+    # Parse plan into implement prompts
+    implement_prompts = parse_plan_into_subtasks(plan)
+    
+    # Execute
+    results = await orchestrator.implement_phase(implement_prompts)
+    
+    # Review
+    review = await orchestrator.review_phase("Verify all implementations")
+    
+    # Return for external verification
+    return review
+
+# Use with RalphLoop
+ralph = RalphLoop.create_test_driven(
+    agent_loop=agent,
+    task_prompt_path=Path(".seed/tasks/auth.md"),
+    test_command="pytest tests/auth/",
+    pass_rate=100
+)
+```
+
+---
+
 ## models
 
 The `models` module provides Pydantic-based configuration validation for the agent system. It defines data structures for provider configuration, model settings, and agent defaults with automatic migration support for legacy config formats.
@@ -757,9 +2195,11 @@ class TaskScheduler:
     # Built-in task types with default intervals
     BUILTIN_TASKS = {
         "autodream": 12 * 60 * 60,      # Every 12 hours
-        "autonomous_explore": 30 * 60,  # Every 15 minutes
         "health_check": 60 * 60,        # Every hour
     }
+
+    # Note: autonomous_explore is handled by AutonomousExplorer class (30-minute idle monitoring)
+    # It is NOT a scheduler built-in task
 
     def __init__(self, agent_loop=None):
         self.agent = agent_loop

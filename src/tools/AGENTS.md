@@ -4,7 +4,7 @@ This module provides a comprehensive tool registration and execution framework f
 
 ## Module Overview
 
-The tool registry system is located in `src/tools/` and consists of six main components:
+The tool registry system is located in `src/tools/` and consists of seven main components:
 
 | File | Purpose |
 |------|---------|
@@ -14,6 +14,7 @@ The tool registry system is located in `src/tools/` and consists of six main com
 | `skill_loader.py` | Dynamic skill loading with progressive disclosure pattern |
 | `ralph_tools.py` | Ralph Loop management tools for long-cycle task execution |
 | `session_db.py` | SQLite+FTS5 session storage with Chinese full-text search |
+| `subagent_tools.py` | Subagent management tools for spawning, waiting, aggregating |
 
 ---
 
@@ -791,6 +792,244 @@ def search_with_filters(
 
 ---
 
+## Subagent Tools
+
+The subagent tools (`subagent_tools.py`) provide tools for managing subagent execution. These tools enable the agent to spawn independent context-isolated subagents, wait for their completion, aggregate results, and manage the subagent lifecycle.
+
+### Overview
+
+Subagents operate with independent context windows, enabling parallel execution without polluting the main conversation history. They support different permission sets for various task types.
+
+**Related Components:** See [src/AGENTS.md](../src/AGENTS.md) for SubagentManager architecture details.
+
+### Subagent Types
+
+| Type | Permission Set | Description |
+|------|----------------|-------------|
+| `explore` | read_only | Read-only exploration: file search, code reading |
+| `review` | review | Review verification: read-only + code execution |
+| `implement` | implement | Implementation execution: full permissions |
+| `plan` | plan | Planning analysis: read-only + memory write |
+
+### Permission Sets
+
+| Permission Set | Allowed Tools |
+|----------------|---------------|
+| `read_only` | file_read, search_history, ask_user |
+| `review` | file_read, code_as_policy, search_history, ask_user |
+| `implement` | file_read, file_write, file_edit, code_as_policy, memory tools, search_history |
+| `plan` | file_read, write_memory, search_history, ask_user |
+
+---
+
+### spawn_subagent
+
+Creates and starts a subagent task with specified type and prompt.
+
+**Function Signature:**
+```python
+def spawn_subagent(
+    type: str,
+    prompt: str,
+    custom_tools: List[str] = None,
+    timeout: int = 300,
+) -> str
+```
+
+**Parameters:**
+- `type` (str): Subagent type - `"explore"`, `"review"`, `"implement"`, or `"plan"`
+- `prompt` (str): Task prompt describing what the subagent should accomplish
+- `custom_tools` (List[str], optional): Custom tool list overriding default permission set
+- `timeout` (int, optional): Execution timeout in seconds. Defaults to 300.
+
+**Returns:**
+- str: Task ID, type, and status information for tracking
+
+**Error Handling:**
+- Returns error if SubagentManager not initialized
+- Returns error if unknown subagent type specified
+
+---
+
+### wait_for_subagent
+
+Waits for a subagent to complete and returns results (synchronous wrapper).
+
+**Function Signature:**
+```python
+def wait_for_subagent(
+    task_id: str,
+    timeout: float = None,
+) -> str
+```
+
+**Parameters:**
+- `task_id` (str): Task ID to wait for
+- `timeout` (float, optional): Wait timeout in seconds. None means no timeout.
+
+**Returns:**
+- str: Task execution result or status message if not yet complete
+
+**Note:** In AgentLoop's async context, actual execution is handled by `_execute_tool_calls`.
+
+---
+
+### wait_for_subagent_async
+
+Async version that properly waits for subagent completion.
+
+**Function Signature:**
+```python
+async def wait_for_subagent_async(
+    task_id: str,
+    timeout: float = None,
+) -> str
+```
+
+**Parameters:**
+- `task_id` (str): Task ID to wait for
+- `timeout` (float, optional): Wait timeout in seconds. None means infinite wait.
+
+**Returns:**
+- str: Task execution result summary or timeout error message
+
+**Error Handling:**
+- Returns timeout error if wait exceeds specified timeout
+- Returns error if SubagentManager not initialized
+
+---
+
+### aggregate_subagent_results
+
+Aggregates results from multiple subagent tasks.
+
+**Function Signature:**
+```python
+def aggregate_subagent_results(
+    task_ids: List[str],
+    include_errors: bool = True,
+    max_length: int = 2000,
+) -> str
+```
+
+**Parameters:**
+- `task_ids` (List[str]): List of task IDs to aggregate
+- `include_errors` (bool, optional): Include failed task error info. Defaults to True.
+- `max_length` (int, optional): Maximum display length per result. Defaults to 2000.
+
+**Returns:**
+- str: Aggregated result summary from all specified tasks
+
+---
+
+### list_subagents
+
+Lists all subagent tasks with their status.
+
+**Function Signature:**
+```python
+def list_subagents(status: str = None) -> str
+```
+
+**Parameters:**
+- `status` (str, optional): Filter by status - `"pending"`, `"running"`, `"completed"`, `"failed"`, `"timeout"`
+
+**Returns:**
+- str: Task list with ID, type, status, and prompt preview
+
+**Output Format:**
+```
+Subagent Tasks:
+  [task_id] explore - running
+    Prompt: Search for...
+```
+
+---
+
+### kill_subagent
+
+Terminates a running subagent task.
+
+**Function Signature:**
+```python
+def kill_subagent(task_id: str) -> str
+```
+
+**Parameters:**
+- `task_id` (str): Task ID to terminate
+
+**Returns:**
+- str: Operation result or error message
+
+**Behavior:**
+- Returns message if task already completed (no need to kill)
+- Cleans up task resources on termination
+
+---
+
+### get_subagent_status
+
+Gets detailed status for a single subagent.
+
+**Function Signature:**
+```python
+def get_subagent_status(task_id: str) -> str
+```
+
+**Parameters:**
+- `task_id` (str): Task ID to query
+
+**Returns:**
+- str: Detailed status including execution count, duration, and result details if completed
+
+---
+
+### spawn_parallel_subagents
+
+Creates and starts multiple subagent tasks in parallel.
+
+**Function Signature:**
+```python
+def spawn_parallel_subagents(
+    tasks: List[Dict],
+) -> str
+```
+
+**Parameters:**
+- `tasks` (List[Dict]): Task specification list, each containing:
+  - `type` (str): Subagent type
+  - `prompt` (str): Task prompt
+  - `timeout` (int, optional): Custom timeout
+
+**Returns:**
+- str: List of created task IDs with startup information
+
+**Example:**
+```python
+spawn_parallel_subagents([
+    {"type": "explore", "prompt": "Search for authentication code"},
+    {"type": "explore", "prompt": "Find database connection logic"}
+])
+```
+
+---
+
+### init_subagent_manager
+
+Initializes the global SubagentManager instance.
+
+**Function Signature:**
+```python
+def init_subagent_manager(manager) -> None
+```
+
+**Parameters:**
+- `manager`: SubagentManager instance from AgentLoop initialization
+
+**Note:** This is called internally by AgentLoop during initialization.
+
+---
+
 ## Registration Functions
 
 These functions register the respective tools with a ToolRegistry instance:
@@ -798,6 +1037,7 @@ These functions register the respective tools with a ToolRegistry instance:
 - `register_builtin_tools(registry)`: Registers the 5 core tools
 - `register_memory_tools(registry)`: Registers memory and session tools
 - `register_skill_tools(registry)`: Registers skill loading tools
+- `register_subagent_tools(registry)`: Registers 7 subagent management tools
 
 **Example Usage:**
 ```python
@@ -805,11 +1045,13 @@ from src.tools import ToolRegistry
 from src.tools.builtin_tools import register_builtin_tools
 from src.tools.memory_tools import register_memory_tools
 from src.tools.skill_loader import register_skill_tools
+from src.tools.subagent_tools import register_subagent_tools
 
 registry = ToolRegistry()
 register_builtin_tools(registry)
 register_memory_tools(registry)
 register_skill_tools(registry)
+register_subagent_tools(registry)
 
 # Now tools can be executed
 schemas = registry.get_schemas()

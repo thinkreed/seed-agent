@@ -16,6 +16,9 @@
 | **AutonomousExplorer** | `src/autonomous.py` | 空闲自主探索：30分钟触发、SOP驱动执行 |
 | **SubagentManager** | `src/subagent_manager.py` | 子代理管理器：创建、调度、并行执行、结果聚合 |
 | **SubagentInstance** | `src/subagent.py` | 独立上下文的子代理：权限隔离、执行循环 |
+| **RateLimiter** | `src/rate_limiter.py` | 双重限流：TokenBucket + RollingWindow |
+| **RateLimitSQLite** | `src/rate_limit_db.py` | 限流状态持久化（SQLite+WAL） |
+| **RequestQueue** | `src/request_queue.py` | 请求队列：TurnTicket模式、优先级调度 |
 
 ### 工具系统
 
@@ -91,10 +94,41 @@ RalphSubagentOrchestrator 执行模式:
 | 任务 | 间隔 | 功能 |
 |------|------|------|
 | `autodream` | 12小时 | 记忆整理与清理 |
-| `autonomous_explore` | 30分钟 | 空闲自主探索触发 |
 | `health_check` | 1小时 | 系统健康检查 |
 
+**注意**：`autonomous_explore` 不是 Scheduler 的内置任务，而是由 `AutonomousExplorer` 类独立管理（30分钟空闲监控触发）。
+
 支持CRUD操作：`create_scheduled_task`, `remove_scheduled_task`, `list_scheduled_tasks`
+
+### Rate Limiting System
+
+双重限流机制，保护系统免受过载：
+
+| 组件 | 功能 |
+|------|------|
+| **TokenBucket** | 令牌桶算法：平滑限流，支持突发流量 |
+| **RollingWindow** | 滑动窗口算法：精确控制时间窗口内请求数 |
+
+核心特性：
+- **双重限流**：同时启用 TokenBucket 和 RollingWindow，取两者更严格限制
+- **状态持久化**：使用 SQLite + WAL 模式保存限流状态
+- **Provider级别**：每个 LLM Provider 独立限流配置
+
+详细设计：[docs/rate_limiting_system_design.md](docs/rate_limiting_system_design.md)
+
+### Request Queue System
+
+请求队列系统，实现公平调度：
+
+| 机制 | 描述 |
+|------|------|
+| **TurnTicket** | 排队票据：按到达顺序分配优先级 |
+| **Priority Scheduling** | 优先级调度：VIP用户、系统任务可插队 |
+
+核心特性：
+- **公平队列**：FIFO 机制确保请求顺序
+- **优先级注入**：支持系统任务和VIP用户优先
+- **超时管理**：等待超时自动降级或拒绝
 
 ### 记忆层级
 
