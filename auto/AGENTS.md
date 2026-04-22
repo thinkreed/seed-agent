@@ -40,7 +40,7 @@ Maximum iteration and duration protection:
 
 The autonomous exploration activates when specific conditions are met:
 
-**Idle Timeout**: The system monitors for a continuous idle period of **30 minutes** (IDLE_TIMEOUT = 30 * 60 seconds). This value is configured as a class constant in the AutonomousExplorer class.
+**Idle Timeout**: The system monitors for a continuous idle period of **1 hour** (IDLE_TIMEOUT = 60 * 60 seconds). This value is configured as a class constant in the AutonomousExplorer class.
 
 **Monitoring Mechanism**: The AutonomousExplorer class runs an idle monitoring loop that checks the time since the last user activity every 30 seconds. When the idle duration exceeds the threshold, the exploration workflow is triggered automatically.
 

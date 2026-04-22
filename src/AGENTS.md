@@ -199,7 +199,7 @@ Initializes the autonomous explorer with agent loop reference.
 class AutonomousExplorer:
     """自主探索执行器"""
 
-    IDLE_TIMEOUT = 30 * 60  # 30 minutes in seconds
+    IDLE_TIMEOUT = 60 * 60  # 1 hour in seconds
 
     def __init__(self, agent_loop, on_explore_complete: Callable = None):
         self.agent = agent_loop

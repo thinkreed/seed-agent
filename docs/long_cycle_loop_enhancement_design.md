@@ -57,7 +57,7 @@ main.py
    │
    ├── AutonomousExplorer (src/autonomous.py)
    │     │
-   │     ├── 触发: 30分钟空闲
+   │     ├── 触发: 1小时空闲
    │     ├── 检查周期: 30秒
    │     ├── max_iterations: 100 (临时提升)
    │     ├── 退出: TODO完成或空响应
@@ -66,7 +66,7 @@ main.py
    └── TaskScheduler (src/scheduler.py)
          │
          ├── autodream: 每12小时
-         ├── autonomous_explore: 每30分钟
+         ├── autonomous_explore: 每1小时
          └── health_check: 每1小时
 ```
 
@@ -122,7 +122,7 @@ main.py
 │  │ ───────────────────────────────────                          ││
 │  │                                                              ││
 │  │ 角色: 中周期自主任务执行器                                    ││
-│  │ 触发: 30分钟空闲                                              ││
+│  │ 触发: 1小时空闲                                              ││
 │  │                                                              ││
 │  │ 新增特性:                                                    ││
 │  │   ✓ completion_promise 检测                                  ││
