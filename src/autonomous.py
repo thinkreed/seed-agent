@@ -240,6 +240,9 @@ class AutonomousExplorer:
         original_max_iterations = self.agent.max_iterations
 
         try:
+            # 初始化 response，防止循环提前退出时 UnboundLocalError
+            response = None
+
             # 临时设置自主探索的 system prompt 和更高的迭代限制
             self.agent.system_prompt = prompt
             # 自主探索任务通常需要更多迭代（执行多个TODO、调用多个工具）
