@@ -33,6 +33,9 @@ CONTEXT_RESET_INTERVAL = 5    # 每5轮迭代重置
 RALPH_MAX_ITERATIONS = 1000   # 理论上限
 RALPH_MAX_DURATION = 8 * 60 * 60  # 8小时最大执行时间
 
+# 任务完成检测标记（支持多语言）
+COMPLETION_MARKERS = ["任务完成", "已完成", "DONE", "COMPLETE", "FINISHED", "done", "complete", "finished"]
+
 
 class CompletionType(Enum):
     """完成验证类型"""
@@ -62,7 +65,9 @@ class AutonomousExplorer:
         self._task: Optional[asyncio.Task] = None
         self._sop_content: Optional[str] = None
         self._iteration_count: int = 0  # Ralph Loop 迭代计数
-        self._ralph_start_time: float = 0  # Ralph Loop 开始时间
+        self._ralph_start_time: float = 0  # 当前会话开始时间
+        self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
+        self._empty_response_count: int = 0  # 空响应计数
         self._state_file: Path = SEED_DIR / "ralph_state.json"  # 状态持久化
         self._load_sop()
 
@@ -86,6 +91,11 @@ class AutonomousExplorer:
     async def start(self):
         """启动空闲监控"""
         if self._running:
+            return
+
+        # 检查 SOP 文件是否存在
+        if not self._sop_content:
+            logger.error(f"SOP file not found: {SOP_PATH} - autonomous exploration disabled")
             return
 
         self._running = True
@@ -136,11 +146,13 @@ class AutonomousExplorer:
             logger.warning(f"Ralph Loop exceeded max iterations ({RALPH_MAX_ITERATIONS})")
             return True
 
-        # 时间上限
+        # 时间上限（累计 + 当前会话）
         if self._ralph_start_time > 0:
-            elapsed = time.time() - self._ralph_start_time
-            if elapsed >= RALPH_MAX_DURATION:
-                logger.warning(f"Ralph Loop exceeded max duration ({RALPH_MAX_DURATION}s)")
+            current_elapsed = time.time() - self._ralph_start_time
+            total_elapsed = self._accumulated_duration + current_elapsed
+            if total_elapsed >= RALPH_MAX_DURATION:
+                logger.warning(f"Ralph Loop exceeded max duration ({RALPH_MAX_DURATION}s, "
+                              f"accumulated: {self._accumulated_duration}s, current: {current_elapsed}s)")
                 return True
 
         return False
@@ -184,9 +196,12 @@ class AutonomousExplorer:
     def _persist_state(self, response: str = ""):
         """持久化当前状态（支持进程恢复）"""
         SEED_DIR.mkdir(parents=True, exist_ok=True)
+        # 计算当前会话已执行时间，累加到总时间
+        current_elapsed = time.time() - self._ralph_start_time if self._ralph_start_time > 0 else 0
+        total_accumulated = self._accumulated_duration + current_elapsed
         state = {
             "iteration": self._iteration_count,
-            "start_time": self._ralph_start_time,
+            "accumulated_duration": total_accumulated,  # 保存累计时间
             "last_response": response[:500] if response else "",
             "timestamp": time.time()
         }
@@ -198,14 +213,22 @@ class AutonomousExplorer:
             try:
                 state = json.loads(self._state_file.read_text())
                 self._iteration_count = state.get("iteration", 0)
-                self._ralph_start_time = state.get("start_time", time.time())
-                logger.info(f"Resumed Ralph Loop from iteration {self._iteration_count}")
+                self._accumulated_duration = state.get("accumulated_duration", 0)
+                # FIX: 重置 start_time 为当前时间，而非使用旧时间戳
+                self._ralph_start_time = time.time()
+                self._empty_response_count = 0  # 重置空响应计数
+                logger.info(f"Resumed Ralph Loop from iteration {self._iteration_count}, "
+                           f"accumulated: {self._accumulated_duration}s")
             except (json.JSONDecodeError, KeyError):
                 self._iteration_count = 0
                 self._ralph_start_time = time.time()
+                self._accumulated_duration = 0
+                self._empty_response_count = 0
         else:
             self._iteration_count = 0
             self._ralph_start_time = time.time()
+            self._accumulated_duration = 0
+            self._empty_response_count = 0
 
     def _cleanup_state(self):
         """清理状态文件"""
@@ -277,17 +300,23 @@ class AutonomousExplorer:
                 # 5. 持久化状态
                 self._persist_state(response)
 
-                # 6. 检查是否完成任务
-                if response and "任务完成" in response or "已完成" in response:
+                # 6. 检查是否完成任务（使用扩展的检测标记）
+                if response and any(marker in response for marker in COMPLETION_MARKERS):
                     logger.info(f"Autonomous exploration completed at iteration {self._iteration_count}")
                     self._cleanup_state()
                     break
 
-                # 7. 空响应检测（可能需要重新注入 prompt）
+                # 7. 空响应检测（添加策略切换）
                 if not response:
-                    logger.warning(f"Empty response at iteration {self._iteration_count}, re-injecting prompt")
-                    # 重新注入任务 prompt
-                    self.agent.history.append({"role": "user", "content": prompt})
+                    self._empty_response_count += 1
+                    logger.warning(f"Empty response at iteration {self._iteration_count} "
+                                   f"(count: {self._empty_response_count})")
+                    if self._empty_response_count >= 3:
+                        # 多次空响应时，尝试简化 prompt
+                        logger.warning("Too many empty responses, trying simplified prompt")
+                        self.agent.history.append({"role": "user", "content": "请报告当前状态"})
+                    else:
+                        self.agent.history.append({"role": "user", "content": prompt})
 
                 # 8. 短暂等待（防止过快循环）
                 await asyncio.sleep(2)

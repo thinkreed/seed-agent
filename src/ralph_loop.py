@@ -93,7 +93,8 @@ class RalphLoop:
 
         # 运行状态
         self._iteration_count: int = 0
-        self._start_time: float = 0
+        self._start_time: float = 0  # 当前会话开始时间
+        self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
         self._state_file: Path = SEED_DIR / "ralph" / f"task_{task_prompt_path.stem}_state.json"
         self._is_running: bool = False
 
@@ -348,21 +349,29 @@ class RalphLoop:
             try:
                 state = json.loads(self._state_file.read_text())
                 self._iteration_count = state.get("iteration", 0)
-                self._start_time = state.get("start_time", time.time())
-                logger.info(f"Resumed Ralph Loop from iteration {self._iteration_count}")
+                self._accumulated_duration = state.get("accumulated_duration", 0)
+                # FIX: 重置 start_time 为当前时间，而非使用旧时间戳
+                self._start_time = time.time()
+                logger.info(f"Resumed Ralph Loop from iteration {self._iteration_count}, "
+                           f"accumulated: {self._accumulated_duration}s")
             except (json.JSONDecodeError, KeyError) as e:
                 logger.warning(f"State file corrupted, starting fresh: {e}")
                 self._iteration_count = 0
                 self._start_time = time.time()
+                self._accumulated_duration = 0
         else:
             self._iteration_count = 0
             self._start_time = time.time()
+            self._accumulated_duration = 0
 
     def _persist_state(self, response: str):
         """持久化当前状态"""
+        # 计算当前会话已执行时间，累加到总时间
+        current_elapsed = time.time() - self._start_time if self._start_time > 0 else 0
+        total_accumulated = self._accumulated_duration + current_elapsed
         state = {
             "iteration": self._iteration_count,
-            "start_time": self._start_time,
+            "accumulated_duration": total_accumulated,  # 保存累计时间
             "last_response": response[:500] if response else "",
             "timestamp": time.time(),
             "task_file": str(self.task_prompt_path),
@@ -379,11 +388,14 @@ class RalphLoop:
             logger.warning(f"Ralph Loop exceeded max iterations ({self.max_iterations})")
             return True
 
-        # 时间上限
-        elapsed = time.time() - self._start_time
-        if elapsed >= self.max_duration:
-            logger.warning(f"Ralph Loop exceeded max duration ({self.max_duration}s)")
-            return True
+        # 时间上限（累计 + 当前会话）
+        if self._start_time > 0:
+            current_elapsed = time.time() - self._start_time
+            total_elapsed = self._accumulated_duration + current_elapsed
+            if total_elapsed >= self.max_duration:
+                logger.warning(f"Ralph Loop exceeded max duration ({self.max_duration}s, "
+                              f"accumulated: {self._accumulated_duration}s, current: {current_elapsed}s)")
+                return True
 
         return False
 
@@ -397,12 +409,13 @@ class RalphLoop:
 
     def _generate_status_report(self) -> str:
         """生成状态报告"""
-        elapsed = time.time() - self._start_time
+        current_elapsed = time.time() - self._start_time
+        total_elapsed = self._accumulated_duration + current_elapsed
         report = f"""
 Ralph Loop Status Report:
 - Task: {self.task_prompt_path}
 - Iterations: {self._iteration_count}
-- Duration: {elapsed/60:.1f} minutes
+- Total Duration: {total_elapsed/60:.1f} minutes (accumulated: {self._accumulated_duration/60:.1f} min)
 - Exit Reason: Safety limit reached
 - Completion Type: {self.completion_type.value}
 - State File: {self._state_file}
