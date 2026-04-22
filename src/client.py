@@ -6,11 +6,61 @@ from typing import List, Dict, AsyncGenerator, Any, Optional, Tuple
 from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
 from models import load_config, FullConfig, ProviderConfig, ModelConfig, RateLimitConfig
 from rate_limiter import RateLimiter, RateLimitStatus, TokenBucketState, RollingWindowState
-from request_queue import RequestQueue, RequestPriority, QueueFullError
+from request_queue import (
+    RequestQueue, RequestPriority, QueueFullError, TurnWaitTimeout,
+    TurnTicket, QueueConfig
+)
 from rate_limit_db import RateLimitSQLite, RateLimitState
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from dataclasses import dataclass, field
 
 logger = logging.getLogger("seed_agent")
+
+
+@dataclass
+class TimeoutConfig:
+    """等待超时配置（可动态调整）"""
+
+    # 基础超时（秒）
+    base_timeouts: Dict[RequestPriority, float] = field(
+        default_factory=lambda: {
+            RequestPriority.CRITICAL: 30.0,
+            RequestPriority.HIGH: 60.0,
+            RequestPriority.NORMAL: 120.0,
+            RequestPriority.LOW: 300.0,
+        }
+    )
+
+    # 动态调整参数
+    auto_adjust_enabled: bool = True
+    load_factor_threshold: float = 0.7
+    min_multiplier: float = 0.5
+    max_multiplier: float = 2.0
+
+    def get_timeout(self, priority: RequestPriority, load_factor: float) -> float:
+        """获取动态超时
+
+        Args:
+            priority: 请求优先级
+            load_factor: 当前负载因子（0.0-1.0）
+
+        Returns:
+            动态超时时间（秒）
+        """
+        base = self.base_timeouts.get(priority, 120.0)
+
+        if load_factor > self.load_factor_threshold:
+            # 高负载：延长超时，给更多等待时间
+            excess = load_factor - self.load_factor_threshold
+            multiplier = 1.0 + excess * 1.5
+            multiplier = min(multiplier, self.max_multiplier)
+        else:
+            # 低负载：缩短超时，快速处理或快速失败
+            deficit = self.load_factor_threshold - load_factor
+            multiplier = 1.0 - deficit * 0.5
+            multiplier = max(multiplier, self.min_multiplier)
+
+        return base * multiplier
 
 
 class FallbackChain:
@@ -66,7 +116,14 @@ class FallbackChain:
 
 
 class LLMGateway:
-    """通用 LLM 网关，支持跨 Provider 降级和请求限流"""
+    """通用 LLM 网关，支持跨 Provider 降级和请求限流
+
+    TurnTicket 模式：
+    - 阶段1：排队入场（request_turn + wait_for_turn）
+    - 阶段2：抢执行位置（semaphore）
+    - 阶段3：限流检查（rate_limiter）
+    - 阶段4：执行（execute with fallback）
+    """
 
     def __init__(self, config_path: str):
         self.config: FullConfig = load_config(config_path)
@@ -78,9 +135,15 @@ class LLMGateway:
         self._rate_config: Optional[RateLimitConfig] = None
         self._request_semaphore: Optional[asyncio.Semaphore] = None
 
-        # 请求队列
+        # 请求队列（TurnTicket 模式）
         self._request_queue: Optional[RequestQueue] = None
+        self._queue_config: Optional[QueueConfig] = None
+        self._timeout_config: TimeoutConfig = TimeoutConfig()
         self._queue_started = False
+
+        # 活跃请求数（用于负载因子计算）
+        self._active_count: int = 0
+        self._active_count_lock = asyncio.Lock()
 
         # 状态持久化
         self._state_db: Optional[RateLimitSQLite] = None
@@ -135,12 +198,10 @@ class LLMGateway:
             window_duration=config.get_window_duration(),
         )
 
-        # 3. Request Queue
-        self._request_queue = RequestQueue(
-            max_size=config.queueMaxSize,
-            dispatch_rate=config.get_effective_rate(),
-            backpressure_threshold=config.queueBackpressureThreshold,
-        )
+        # 3. Request Queue (TurnTicket 模式)
+        # 尝试从配置加载 QueueConfig
+        queue_config = self._load_queue_config()
+        self._request_queue = RequestQueue(config=queue_config)
 
         logger.info(
             f"Rate limiting initialized: "
@@ -148,8 +209,28 @@ class LLMGateway:
             f"burst={config.burstCapacity}, "
             f"window={config.get_window_limit()}/{config.get_window_duration():.0f}s, "
             f"concurrent={config.maxConcurrent}, "
-            f"queue_size={config.queueMaxSize}"
+            f"queue_critical={queue_config.critical_max_size}, "
+            f"queue_normal={queue_config.normal_max_size}"
         )
+
+    def _load_queue_config(self) -> QueueConfig:
+        """从配置加载 QueueConfig"""
+        # 尝试从 FullConfig 的 queue 字段加载
+        if hasattr(self.config, 'queue') and self.config.queue:
+            return QueueConfig(
+                critical_max_size=self.config.queue.critical_max_size,
+                critical_backpressure_threshold=self.config.queue.critical_backpressure_threshold,
+                critical_dispatch_rate=self.config.queue.critical_dispatch_rate,
+                critical_target_wait_time=self.config.queue.critical_target_wait_time,
+                normal_max_size=self.config.queue.normal_max_size,
+                normal_backpressure_threshold=self.config.queue.normal_backpressure_threshold,
+                normal_dispatch_rate=self.config.queue.normal_dispatch_rate,
+                normal_target_wait_time=self.config.queue.normal_target_wait_time,
+                auto_adjust_enabled=self.config.queue.auto_adjust_enabled,
+            )
+
+        # 使用默认值
+        return QueueConfig()
 
     def _init_state_persistence(self):
         """初始化状态持久化"""
@@ -163,7 +244,6 @@ class LLMGateway:
 
         try:
             state = await self._state_db.load_state()
-            now = time.time()
 
             # 恢复 Token Bucket 状态
             bucket_state = TokenBucketState(
@@ -337,7 +417,39 @@ class LLMGateway:
             return status.window_usage_ratio > 0.9
         return False
 
-    # ==================== 队列管理 ====================
+    def get_load_factor(self) -> float:
+        """计算当前负载因子
+
+        负载因子 = 队列填充率 * 0.4 + 限流窗口使用率 * 0.6
+        """
+        # 队列填充率
+        queue_fill = 0.0
+        if self._request_queue:
+            queue_fill = self._request_queue.get_total_fill_ratio()
+
+        # 限流窗口使用率
+        window_usage = 0.0
+        if self._rate_limiter:
+            status = self._rate_limiter.get_status()
+            window_usage = status.window_usage_ratio
+
+        # 综合负载因子
+        load_factor = queue_fill * 0.4 + window_usage * 0.6
+        return load_factor
+
+    def get_dynamic_timeout(self, priority: RequestPriority) -> float:
+        """获取动态超时
+
+        Args:
+            priority: 请求优先级
+
+        Returns:
+            动态超时时间（秒）
+        """
+        load_factor = self.get_load_factor()
+        return self._timeout_config.get_timeout(priority, load_factor)
+
+    # ==================== 队列管理（TurnTicket 模式） ====================
 
     async def start_queue_dispatcher(self):
         """启动队列调度器"""
@@ -346,7 +458,7 @@ class LLMGateway:
             return
 
         if self._request_queue:
-            await self._request_queue.start_dispatcher(self._execute_with_rate_limit)
+            await self._request_queue.start_dispatcher()
             self._queue_started = True
 
     async def stop_queue_dispatcher(self):
@@ -361,23 +473,14 @@ class LLMGateway:
             return self._request_queue.get_stats()
         return None
 
-    async def submit_to_queue(
-        self,
-        model_id: str,
-        messages: List[Dict],
-        priority: RequestPriority = RequestPriority.NORMAL,
-        **kwargs
-    ) -> str:
-        """提交请求到队列
+    async def request_turn(self, priority: RequestPriority = RequestPriority.NORMAL) -> TurnTicket:
+        """申请轮次（TurnTicket 模式核心入口）
 
         Args:
-            model_id: 模型 ID
-            messages: 消息列表
             priority: 请求优先级
-            **kwargs: 其他参数
 
         Returns:
-            request_id: 请求 ID
+            TurnTicket: 轮次票
 
         Raises:
             QueueFullError: 队列已满
@@ -389,67 +492,209 @@ class LLMGateway:
         if not self._queue_started:
             await self.start_queue_dispatcher()
 
-        return await self._request_queue.submit(model_id, messages, priority, **kwargs)
+        return await self._request_queue.request_turn(priority)
 
-    async def wait_for_queue_result(self, request_id: str, timeout: float = 300.0) -> Dict:
-        """等待队列请求完成
-
-        Args:
-            request_id: 请求 ID
-            timeout: 最大等待时间（秒）
-
-        Returns:
-            请求结果
-        """
-        if not self._request_queue:
-            raise ValueError("Request queue not initialized")
-
-        return await self._request_queue.wait_for_result(request_id, timeout)
-
-    async def cancel_queue_request(self, request_id: str) -> bool:
-        """取消队列请求"""
+    async def cancel_ticket(self, ticket_id: str, reason: str = "User cancelled") -> bool:
+        """取消 ticket"""
         if self._request_queue:
-            return await self._request_queue.cancel_request(request_id)
+            return await self._request_queue.cancel_ticket(ticket_id, reason)
         return False
 
-    async def clear_queue(self):
-        """清空队列"""
+    async def cancel_all_tickets(self, reason: str = "Emergency cleanup"):
+        """取消所有 ticket"""
         if self._request_queue:
-            await self._request_queue.clear_queue()
+            await self._request_queue.cancel_all_tickets(reason)
 
-    async def _execute_with_rate_limit(
+    # ==================== 三阶段等待执行 ====================
+
+    async def _execute_three_phase(
+        self,
+        model_id: str,
+        messages: List[Dict],
+        priority: RequestPriority,
+        **kwargs
+    ) -> Dict:
+        """三阶段等待执行（非流式）
+
+        阶段1：排队入场（request_turn + wait_for_turn）
+        阶段2：抢执行位置（semaphore）
+        阶段3：限流检查（rate_limiter）
+        阶段4：执行（execute with fallback）
+        """
+        # 获取动态超时
+        turn_timeout = self.get_dynamic_timeout(priority)
+
+        # 阶段1：排队入场
+        ticket = await self.request_turn(priority)
+        logger.debug(f"Ticket {ticket.id}: submitted (priority={priority.name})")
+
+        try:
+            await ticket.wait_for_turn(timeout=turn_timeout)
+        except TurnWaitTimeout as e:
+            logger.warning(f"Ticket {ticket.id}: turn wait timeout ({turn_timeout:.1f}s)")
+            raise
+        except asyncio.CancelledError:
+            logger.info(f"Ticket {ticket.id}: cancelled during turn wait")
+            raise
+
+        logger.debug(f"Ticket {ticket.id}: turn assigned (wait={ticket.get_wait_duration():.2f}s)")
+
+        # 阶段2-4：执行（带 semaphore 和限流）
+        async with self._request_semaphore:
+            logger.debug(f"Ticket {ticket.id}: concurrent acquired")
+
+            # 活跃计数
+            async with self._active_count_lock:
+                self._active_count += 1
+
+            try:
+                # 阶段3：限流检查（CRITICAL 不等待）
+                if self._rate_limiter:
+                    max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
+                    acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
+                    if not acquired:
+                        raise RateLimitError(
+                            "Rate limit wait timeout, please retry later",
+                            response=None,
+                            body=None
+                        )
+
+                logger.debug(f"Ticket {ticket.id}: rate limit acquired")
+
+                # 阶段4：执行
+                result = await self._chat_completion_with_fallback_internal(model_id, messages, **kwargs)
+                logger.debug(f"Ticket {ticket.id}: execution completed")
+                return result
+
+            finally:
+                async with self._active_count_lock:
+                    self._active_count -= 1
+
+    async def _stream_three_phase(
+        self,
+        model_id: str,
+        messages: List[Dict],
+        priority: RequestPriority,
+        **kwargs
+    ) -> AsyncGenerator[Dict, None]:
+        """三阶段等待执行（流式）
+
+        返回 generator，由调用者迭代
+        """
+        # 获取动态超时
+        turn_timeout = self.get_dynamic_timeout(priority)
+
+        # 阶段1：排队入场
+        ticket = await self.request_turn(priority)
+        logger.debug(f"Ticket {ticket.id}: submitted (priority={priority.name}, stream=True)")
+
+        try:
+            await ticket.wait_for_turn(timeout=turn_timeout)
+        except TurnWaitTimeout as e:
+            logger.warning(f"Ticket {ticket.id}: turn wait timeout ({turn_timeout:.1f}s)")
+            raise
+        except asyncio.CancelledError:
+            logger.info(f"Ticket {ticket.id}: cancelled during turn wait")
+            raise
+
+        logger.debug(f"Ticket {ticket.id}: turn assigned (wait={ticket.get_wait_duration():.2f}s)")
+
+        # 阶段2-4：返回 generator（调度器不介入）
+        async def actual_stream():
+            async with self._request_semaphore:
+                logger.debug(f"Ticket {ticket.id}: concurrent acquired (stream)")
+
+                async with self._active_count_lock:
+                    self._active_count += 1
+
+                try:
+                    if self._rate_limiter:
+                        max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
+                        acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
+                        if not acquired:
+                            raise RateLimitError(
+                                "Rate limit wait timeout, please retry later",
+                                response=None,
+                                body=None
+                            )
+
+                    logger.debug(f"Ticket {ticket.id}: rate limit acquired (stream)")
+
+                    async for chunk in self._stream_chat_completion_with_fallback_internal(model_id, messages, **kwargs):
+                        yield chunk
+
+                    logger.debug(f"Ticket {ticket.id}: stream completed")
+
+                finally:
+                    async with self._active_count_lock:
+                        self._active_count -= 1
+
+        return actual_stream()
+
+    # ==================== 核心聊天接口（TurnTicket 模式） ====================
+
+    async def chat_completion(
         self,
         model_id: str,
         messages: List[Dict],
         priority: int = RequestPriority.NORMAL,
         **kwargs
     ) -> Dict:
-        """带限流的请求执行
+        """非流式聊天补全（TurnTicket 模式）
 
         Args:
-            model_id: 模型 ID
+            model_id: 模型 ID (格式: provider/model)
+            messages: 消息列表
+            priority: 请求优先级
+                - CRITICAL: 用户直接交互，最高优先级，独立队列
+                - HIGH: RalphLoop 迭代，优先处理
+                - NORMAL: Subagent 任务，标准处理
+                - LOW: Scheduler 后台任务，队列等待
+            **kwargs: 其他参数（如 tools, temperature 等）
+
+        Returns:
+            请求结果字典
+
+        Raises:
+            QueueFullError: 队列已满
+            TurnWaitTimeout: 轮次等待超时
+        """
+        # 转换 priority 类型
+        if isinstance(priority, int):
+            priority = RequestPriority(priority)
+
+        return await self._execute_three_phase(model_id, messages, priority, **kwargs)
+
+    async def stream_chat_completion(
+        self,
+        model_id: str,
+        messages: List[Dict],
+        priority: int = RequestPriority.NORMAL,
+        **kwargs
+    ) -> AsyncGenerator[Dict, None]:
+        """流式聊天补全（TurnTicket 模式）
+
+        Args:
+            model_id: 模型 ID (格式: provider/model)
             messages: 消息列表
             priority: 请求优先级
             **kwargs: 其他参数
+
+        Returns:
+            AsyncGenerator[Dict]: 流式结果
+
+        Raises:
+            QueueFullError: 队列已满
+            TurnWaitTimeout: 轮次等待超时
         """
-        # CRITICAL 优先级跳过限流等待，但仍需并发控制
-        max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
+        # 转换 priority 类型
+        if isinstance(priority, int):
+            priority = RequestPriority(priority)
 
-        # 1. 并发控制
-        async with self._request_semaphore:
-            # 2. 限流控制
-            if self._rate_limiter:
-                acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
-                if not acquired:
-                    # 限流超时，抛出异常让上层处理
-                    raise RateLimitError(
-                        "Rate limit wait timeout, please retry later",
-                        response=None,
-                        body=None
-                    )
+        async for chunk in self._stream_three_phase(model_id, messages, priority, **kwargs):
+            yield chunk
 
-            # 3. 执行请求（带降级）
-            return await self._chat_completion_with_fallback_internal(model_id, messages, **kwargs)
+    # ==================== 执行层（带降级） ====================
 
     async def _chat_completion_with_fallback_internal(
         self,
@@ -523,69 +768,6 @@ class LLMGateway:
             **kwargs
         )
         return response.model_dump()
-
-    async def chat_completion(
-        self,
-        model_id: str,
-        messages: List[Dict],
-        priority: int = RequestPriority.NORMAL,
-        **kwargs
-    ) -> Dict:
-        """非流式聊天补全（使用限流和降级机制）
-
-        Args:
-            model_id: 模型 ID (格式: provider/model)
-            messages: 消息列表
-            priority: 请求优先级
-                - CRITICAL: 用户直接交互，立即执行（跳过限流等待）
-                - HIGH: RalphLoop 迭代，优先处理
-                - NORMAL: Subagent 任务，标准处理
-                - LOW: Scheduler 后台任务，入队等待执行
-            **kwargs: 其他参数（如 tools, temperature 等）
-
-        Returns:
-            请求结果字典
-        """
-        # LOW 优先级 → 入队等待执行
-        if priority == RequestPriority.LOW:
-            request_id = await self.submit_to_queue(model_id, messages, priority, **kwargs)
-            return await self.wait_for_queue_result(request_id)
-
-        # 其他优先级 → 直接执行（CRITICAL 不等待限流）
-        return await self._execute_with_rate_limit(model_id, messages, priority, **kwargs)
-
-    # 兼容旧接口
-    async def chat_completion_with_fallback(
-        self,
-        model_id: str,
-        messages: List[Dict],
-        **kwargs
-    ) -> Dict:
-        """带跨 Provider 降级的非流式聊天补全（兼容旧接口）"""
-        return await self._execute_with_rate_limit(model_id, messages, RequestPriority.NORMAL, **kwargs)
-
-    async def _stream_execute_with_rate_limit(
-        self,
-        model_id: str,
-        messages: List[Dict],
-        priority: int = RequestPriority.NORMAL,
-        **kwargs
-    ) -> AsyncGenerator[Dict, None]:
-        """带限流的流式请求执行"""
-        max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
-
-        async with self._request_semaphore:
-            if self._rate_limiter:
-                acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
-                if not acquired:
-                    raise RateLimitError(
-                        "Rate limit wait timeout, please retry later",
-                        response=None,
-                        body=None
-                    )
-
-            async for chunk in self._stream_chat_completion_with_fallback_internal(model_id, messages, **kwargs):
-                yield chunk
 
     async def _stream_chat_completion_with_fallback_internal(
         self,
@@ -685,47 +867,3 @@ class LLMGateway:
                     yield chunk_dict
             except Exception:
                 continue
-
-    async def stream_chat_completion(
-        self,
-        model_id: str,
-        messages: List[Dict],
-        priority: int = RequestPriority.NORMAL,
-        **kwargs
-    ) -> AsyncGenerator[Dict, None]:
-        """流式聊天补全（使用限流和降级机制）
-        
-        Args:
-            priority: 请求优先级
-                - CRITICAL: 用户直接交互，立即执行（跳过限流等待）
-                - HIGH/NORMAL: 直接执行，有限流等待
-                - LOW: 先入队等待轮次，再流式执行
-        """
-        # LOW 优先级 → 先入队等待轮次，再流式执行
-        if priority == RequestPriority.LOW:
-            # 提交一个空请求到队列，等待轮次
-            request_id = await self.submit_to_queue(model_id, [{"role": "user", "content": "__wait_for_queue_slot__"}], priority)
-            # 等待轮次（这个请求会被队列 dispatcher 执行，但我们不关心结果）
-            try:
-                await self.wait_for_queue_result(request_id, timeout=300.0)
-            except Exception:
-                pass  # 忽略结果，我们只是等待轮次
-            # 现在轮到我们了，开始流式输出
-            async for chunk in self._stream_execute_with_rate_limit(model_id, messages, priority, **kwargs):
-                yield chunk
-            return
-
-        # 其他优先级 → 直接执行（CRITICAL 不等待限流）
-        async for chunk in self._stream_execute_with_rate_limit(model_id, messages, priority, **kwargs):
-            yield chunk
-
-    # 兼容旧接口
-    async def stream_chat_completion_with_fallback(
-        self,
-        model_id: str,
-        messages: List[Dict],
-        **kwargs
-    ) -> AsyncGenerator[Dict, None]:
-        """带跨 Provider 降级的流式聊天补全（兼容旧接口）"""
-        async for chunk in self._stream_execute_with_rate_limit(model_id, messages, RequestPriority.NORMAL, **kwargs):
-            yield chunk

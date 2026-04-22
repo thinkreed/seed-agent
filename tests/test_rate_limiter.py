@@ -26,8 +26,9 @@ from rate_limiter import (
 from request_queue import (
     RequestQueue,
     RequestPriority,
-    RequestItem,
+    TurnTicket,
     QueueFullError,
+    QueueConfig,
 )
 from rate_limit_db import (
     RateLimitSQLite,
@@ -296,41 +297,44 @@ class TestRateLimiter(unittest.TestCase):
 
 
 class TestRequestQueue(unittest.TestCase):
-    """测试请求队列"""
+    """测试请求队列（TurnTicket 模式）"""
 
     def test_initial_state(self):
         """测试初始状态"""
-        queue = RequestQueue(max_size=50)
-        self.assertEqual(queue.max_size, 50)
-        self.assertEqual(queue.get_queue_size(), 0)
+        config = QueueConfig(normal_max_size=50)
+        queue = RequestQueue(config=config)
+        self.assertEqual(queue.config.normal_max_size, 50)
+        self.assertEqual(queue.get_queue_size()["total"], 0)
 
-    def test_submit_success(self):
-        """测试提交请求成功"""
-        queue = RequestQueue(max_size=10)
+    def test_request_turn_success(self):
+        """测试申请轮次成功"""
+        config = QueueConfig(normal_max_size=10)
+        queue = RequestQueue(config=config)
 
         async def run():
-            request_id = await queue.submit(
-                model_id="test/model",
-                messages=[{"role": "user", "content": "test"}],
-                priority=RequestPriority.NORMAL
-            )
-            return request_id, queue.get_queue_size()
+            ticket = await queue.request_turn(RequestPriority.NORMAL)
+            return ticket.id, ticket.priority, queue.get_queue_size()["normal"]
 
-        request_id, size = asyncio.run(run())
-        self.assertIsNotNone(request_id)
-        self.assertEqual(size, 1)
+        ticket_id, priority, normal_size = asyncio.run(run())
+        self.assertIsNotNone(ticket_id)
+        self.assertEqual(priority, RequestPriority.NORMAL)
+        self.assertEqual(normal_size, 1)
 
     def test_queue_full_error(self):
         """测试队列满时拒绝"""
-        queue = RequestQueue(max_size=2, backpressure_threshold=1.0)
+        config = QueueConfig(
+            normal_max_size=2,
+            normal_backpressure_threshold=1.0,
+        )
+        queue = RequestQueue(config=config)
 
         async def run():
-            await queue.submit("test/model", [], RequestPriority.NORMAL)
-            await queue.submit("test/model", [], RequestPriority.NORMAL)
+            await queue.request_turn(RequestPriority.NORMAL)
+            await queue.request_turn(RequestPriority.NORMAL)
 
             # 第三次应该抛出异常
             try:
-                await queue.submit("test/model", [], RequestPriority.NORMAL)
+                await queue.request_turn(RequestPriority.NORMAL)
                 return False
             except QueueFullError:
                 return True
@@ -340,16 +344,20 @@ class TestRequestQueue(unittest.TestCase):
 
     def test_backpressure_threshold(self):
         """测试反压阈值"""
-        queue = RequestQueue(max_size=10, backpressure_threshold=0.5)
+        config = QueueConfig(
+            normal_max_size=10,
+            normal_backpressure_threshold=0.5,
+        )
+        queue = RequestQueue(config=config)
 
         async def run():
-            # 填充到阈值
+            # 填充到阈值（5 个）
             for i in range(5):
-                await queue.submit("test/model", [], RequestPriority.NORMAL)
+                await queue.request_turn(RequestPriority.NORMAL)
 
-            # 下一个应该被拒绝
+            # 第六个应该被拒绝
             try:
-                await queue.submit("test/model", [], RequestPriority.NORMAL)
+                await queue.request_turn(RequestPriority.NORMAL)
                 return False
             except QueueFullError:
                 return True
@@ -359,35 +367,48 @@ class TestRequestQueue(unittest.TestCase):
 
     def test_priority_ordering(self):
         """测试优先级排序"""
-        queue = RequestQueue(max_size=10)
+        config = QueueConfig(normal_max_size=10)
+        queue = RequestQueue(config=config)
 
         async def run():
             # 按反序提交
-            await queue.submit("test/model", [], RequestPriority.LOW)
-            await queue.submit("test/model", [], RequestPriority.HIGH)
-            await queue.submit("test/model", [], RequestPriority.NORMAL)
-            await queue.submit("test/model", [], RequestPriority.CRITICAL)
+            await queue.request_turn(RequestPriority.LOW)
+            await queue.request_turn(RequestPriority.HIGH)
+            await queue.request_turn(RequestPriority.NORMAL)
+            await queue.request_turn(RequestPriority.CRITICAL)
 
-            # 获取下一个请求
-            next_item = await queue._get_next_request()
-            return next_item.priority
+            # CRITICAL 有独立队列，先处理
+            # 普通队列按优先级：HIGH > NORMAL > LOW
+
+            # 获取下一个 CRITICAL 请求
+            critical_ticket = await queue._pop_ticket(RequestPriority.CRITICAL)
+            if critical_ticket:
+                return critical_ticket.priority
+
+            # 获取下一个 HIGH 请求
+            high_ticket = await queue._pop_ticket(RequestPriority.HIGH)
+            if high_ticket:
+                return high_ticket.priority
+
+            return None
 
         priority = asyncio.run(run())
         self.assertEqual(priority, RequestPriority.CRITICAL)
 
     def test_get_stats(self):
         """测试获取统计信息"""
-        queue = RequestQueue(max_size=10)
+        config = QueueConfig(normal_max_size=10)
+        queue = RequestQueue(config=config)
 
         async def run():
-            await queue.submit("test/model", [], RequestPriority.NORMAL)
+            await queue.request_turn(RequestPriority.NORMAL)
             stats = queue.get_stats()
             return stats
 
         stats = asyncio.run(run())
-        self.assertEqual(stats["queue_size"], 1)
-        self.assertEqual(stats["total_submitted"], 1)
-        self.assertEqual(stats["pending_by_priority"]["NORMAL"], 1)
+        self.assertEqual(stats["queue_lengths"]["normal"], 1)
+        self.assertIn("stats", stats)
+        self.assertEqual(stats["stats"]["submitted"]["NORMAL"], 1)
 
 
 class TestRateLimitSQLite(unittest.TestCase):

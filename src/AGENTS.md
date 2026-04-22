@@ -528,74 +528,75 @@ def __init__(self, config_path: str):
     self._init_fallback_chain()
 ```
 
-#### `chat_completion(model_id, messages, **kwargs) -> Dict`
+#### `chat_completion(model_id, messages, priority, **kwargs) -> Dict`
 
-Non-streaming chat completion with automatic fallback.
+Non-streaming chat completion with TurnTicket mode (three-phase waiting).
 
 ```python
 async def chat_completion(
     self,
     model_id: str,
     messages: List[Dict],
+    priority: RequestPriority = RequestPriority.NORMAL,
     **kwargs
 ) -> Dict:
-    """非流式聊天补全（使用降级机制）"""
-    return await self.chat_completion_with_fallback(model_id, messages, **kwargs)
+    """非流式聊天补全（TurnTicket 模式）
 
-async def chat_completion_with_fallback(
-    self,
-    model_id: str,
-    messages: List[Dict],
-    **kwargs
-) -> Dict:
-    """带跨 Provider 降级的非流式聊天补全"""
-    provider_id = model_id.split('/')[0]
-    
-    # Try current provider with retry
-    for attempt in range(3):
-        try:
-            result = await self._chat_completion_single(model_id, messages, **kwargs)
-            if self._fallback_chain:
-                self._fallback_chain.mark_healthy(provider_id)
-            return result
-        except (APIConnectionError, RateLimitError, APIStatusError) as e:
-            if attempt < 2:
-                wait_time = 2 ** attempt
-                await asyncio.sleep(wait_time)
-    
-    # Trigger fallback
-    if self._fallback_chain:
-        self._fallback_chain.mark_degraded(provider_id)
-        
-        for fallback_provider in self._fallback_chain._providers:
-            if fallback_provider == provider_id:
-                continue
-            
-            fallback_model_id = self._get_fallback_model_id(model_id, fallback_provider)
-            try:
-                result = await self._chat_completion_single(fallback_model_id, messages, **kwargs)
-                self._fallback_chain.mark_healthy(fallback_provider)
-                return result
-            except Exception as fallback_e:
-                self._fallback_chain.mark_degraded(fallback_provider)
-    
-    raise APIConnectionError("All providers failed")
+    三阶段等待：
+    1. 排队入场 (request_turn + wait_for_turn)
+    2. 抢执行位置 (semaphore)
+    3. 限流检查 (rate_limiter)
+    4. 执行 (execute with fallback)
+    """
+    # 获取动态超时
+    turn_timeout = self.get_dynamic_timeout(priority)
+
+    # 阶段1：排队入场
+    ticket = await self.request_turn(priority)
+    await ticket.wait_for_turn(timeout=turn_timeout)
+
+    # 阶段2-4：执行（带 semaphore 和限流）
+    async with self._request_semaphore:
+        if self._rate_limiter:
+            max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
+            await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
+
+        result = await self._chat_completion_with_fallback_internal(model_id, messages, **kwargs)
+
+    return result
 ```
 
-#### `stream_chat_completion(model_id, messages, **kwargs) -> AsyncGenerator[Dict, None]`
+#### `stream_chat_completion(model_id, messages, priority, **kwargs) -> AsyncGenerator[Dict, None]`
 
-Streaming chat completion with automatic fallback.
+Streaming chat completion with TurnTicket mode.
 
 ```python
 async def stream_chat_completion(
     self,
     model_id: str,
     messages: List[Dict],
+    priority: RequestPriority = RequestPriority.NORMAL,
     **kwargs
 ) -> AsyncGenerator[Dict, None]:
-    """流式聊天补全（使用降级机制）"""
-    async for chunk in self.stream_chat_completion_with_fallback(model_id, messages, **kwargs):
-        yield chunk
+    """流式聊天补全（TurnTicket 模式）
+
+    返回 generator，由调用者迭代
+    """
+    # 阶段1：排队入场
+    ticket = await self.request_turn(priority)
+    await ticket.wait_for_turn(timeout=self.get_dynamic_timeout(priority))
+
+    # 阶段2-4：返回 generator（调度器不介入）
+    async def actual_stream():
+        async with self._request_semaphore:
+            if self._rate_limiter:
+                max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
+                await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
+
+            async for chunk in self._stream_chat_completion_with_fallback_internal(model_id, messages, **kwargs):
+                yield chunk
+
+    return actual_stream()
 ```
 
 #### `_resolve_api_key(api_key: str) -> str`

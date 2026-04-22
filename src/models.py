@@ -91,10 +91,51 @@ class AgentConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
     defaults: AgentModelConfig
 
+
+class QueueConfigModel(BaseModel):
+    """队列配置（TurnTicket 模式）"""
+    model_config = ConfigDict(extra='ignore')
+
+    # CRITICAL 队列配置
+    critical_max_size: int = 10
+    critical_backpressure_threshold: float = 0.9
+    critical_dispatch_rate: float = 10.0
+    critical_target_wait_time: float = 5.0
+
+    # 普通队列配置（HIGH/NORMAL/LOW 共享）
+    normal_max_size: int = 50
+    normal_backpressure_threshold: float = 0.8
+    normal_dispatch_rate: float = 0.33
+    normal_target_wait_time: float = 30.0
+
+    # 自动调整
+    auto_adjust_enabled: bool = True
+    adjust_interval: float = 60.0
+
+
+class TimeoutConfigModel(BaseModel):
+    """等待超时配置（动态调整）"""
+    model_config = ConfigDict(extra='ignore')
+
+    # 基础超时（秒）
+    critical_base_timeout: float = 30.0
+    high_base_timeout: float = 60.0
+    normal_base_timeout: float = 120.0
+    low_base_timeout: float = 300.0
+
+    # 动态调整参数
+    auto_adjust_enabled: bool = True
+    load_factor_threshold: float = 0.7
+    min_multiplier: float = 0.5
+    max_multiplier: float = 2.0
+
+
 class FullConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
     models: Dict[str, ProviderConfig]
     agents: Dict[str, AgentConfig]
+    queue: Optional[QueueConfigModel] = None
+    timeout: Optional[TimeoutConfigModel] = None
 
 def load_config(config_path: str = None) -> FullConfig:
     """加载并解析配置文件，支持旧版 JSON 结构自动迁移

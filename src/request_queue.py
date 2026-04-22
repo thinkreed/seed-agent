@@ -1,13 +1,14 @@
-"""LLM 请求队列系统
+"""LLM 请求队列系统 - TurnTicket 模式
 
 实现异步请求调度、优先级队列和反压机制
+核心设计：队列只管"轮次分配"，不介入执行细节
 """
 
 import asyncio
 import logging
 import time
 import uuid
-from typing import Dict, Deque, Optional, Callable, Any, List
+from typing import Dict, Deque, Optional, Any, List
 from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -17,215 +18,377 @@ logger = logging.getLogger("seed_agent")
 
 class RequestPriority(IntEnum):
     """请求优先级"""
-    CRITICAL = 0    # 用户直接交互，跳过队列
+    CRITICAL = 0    # 用户直接交互，最高优先级，独立队列
     HIGH = 1        # RalphLoop 迭代，优先处理
     NORMAL = 2      # Subagent 任务，标准处理
     LOW = 3         # Scheduler 后台，队列处理
 
 
+class QueueFullError(Exception):
+    """队列已满异常"""
+
+    def __init__(self, fill_ratio: float, threshold: float, queue_type: str):
+        self.fill_ratio = fill_ratio
+        self.threshold = threshold
+        self.queue_type = queue_type
+        super().__init__(
+            f"Queue ({queue_type}) at {fill_ratio:.1%} capacity "
+            f"(threshold: {threshold:.1%}), rejecting requests"
+        )
+
+
+class TurnWaitTimeout(Exception):
+    """轮次等待超时"""
+
+    def __init__(self, ticket_id: str, waited_seconds: float, queue_status: dict):
+        self.ticket_id = ticket_id
+        self.waited_seconds = waited_seconds
+        self.queue_status = queue_status
+        super().__init__(
+            f"Ticket {ticket_id} waited {waited_seconds}s for turn, "
+            f"queue status: {queue_status}"
+        )
+
+
 @dataclass
-class RequestItem:
-    """队列中的请求项"""
+class TurnTicket:
+    """轮次票 - 代表"轮到你执行了"的信号
+
+    核心理念：队列只管"轮次分配"，不介入执行细节
+    """
+
+    # 基本信息
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    model_id: str = ""
-    messages: List[Dict] = field(default_factory=list)
-    kwargs: Dict = field(default_factory=dict)
     priority: RequestPriority = RequestPriority.NORMAL
     created_at: float = field(default_factory=time.time)
 
-    # 结果存储
-    result: Optional[Dict] = None
-    error: Optional[Exception] = None
-    completed: bool = False
+    # 轮次信号
+    _turn_event: asyncio.Event = field(default_factory=asyncio.Event)
+    _turn_time: Optional[float] = None
+    _cancelled: bool = False
+    _cancel_reason: Optional[str] = None
 
-    # 等待事件
-    _completion_event: asyncio.Event = field(default_factory=asyncio.Event)
+    async def wait_for_turn(self, timeout: float) -> None:
+        """等待轮次到达
+
+        Args:
+            timeout: 最大等待时间（秒）
+
+        Raises:
+            TurnWaitTimeout: 等待超时
+            asyncio.CancelledError: 被取消
+        """
+        try:
+            await asyncio.wait_for(self._turn_event.wait(), timeout)
+        except asyncio.TimeoutError:
+            raise TurnWaitTimeout(self.id, timeout, {})
+
+        if self._cancelled:
+            raise asyncio.CancelledError(self._cancel_reason)
+
+    def signal_turn(self) -> None:
+        """调度器通知：轮次到了"""
+        self._turn_time = time.time()
+        self._turn_event.set()
+
+    def cancel(self, reason: str = "User cancelled") -> None:
+        """取消排队"""
+        self._cancelled = True
+        self._cancel_reason = reason
+        self._turn_event.set()  # 唤醒等待者，让其抛出 CancelledError
+
+    def get_wait_duration(self) -> float:
+        """获取等待时长"""
+        if self._turn_time:
+            return self._turn_time - self.created_at
+        return time.time() - self.created_at
+
+    def is_signaled(self) -> bool:
+        """是否已分配轮次"""
+        return self._turn_event.is_set() and not self._cancelled
 
 
-class QueueFullError(Exception):
-    """队列已满异常"""
-    pass
+@dataclass
+class QueueConfig:
+    """队列配置（可动态调整）"""
+
+    # CRITICAL 队列配置
+    critical_max_size: int = 10
+    critical_backpressure_threshold: float = 0.9
+    critical_dispatch_rate: float = 10.0
+    critical_target_wait_time: float = 5.0
+
+    # 普通队列配置（HIGH/NORMAL/LOW 共享）
+    normal_max_size: int = 50
+    normal_backpressure_threshold: float = 0.8
+    normal_dispatch_rate: float = 0.33
+    normal_target_wait_time: float = 30.0
+
+    # 自动调整
+    auto_adjust_enabled: bool = True
+    adjust_interval: float = 60.0  # 每60秒检查一次
+
+
+@dataclass
+class QueueStats:
+    """队列统计（用于智能调整和监控）"""
+
+    # 等待时间记录（每个优先级最近100条）
+    wait_times: Dict[RequestPriority, List[float]] = field(
+        default_factory=lambda: {p: [] for p in RequestPriority}
+    )
+
+    # 计数
+    submitted: Dict[RequestPriority, int] = field(
+        default_factory=lambda: {p: 0 for p in RequestPriority}
+    )
+    signaled: Dict[RequestPriority, int] = field(
+        default_factory=lambda: {p: 0 for p in RequestPriority}
+    )
+    rejected: Dict[RequestPriority, int] = field(
+        default_factory=lambda: {p: 0 for p in RequestPriority}
+    )
+    cancelled: Dict[RequestPriority, int] = field(
+        default_factory=lambda: {p: 0 for p in RequestPriority}
+    )
+
+    def record_submit(self, priority: RequestPriority):
+        self.submitted[priority] += 1
+
+    def record_signal(self, priority: RequestPriority):
+        self.signaled[priority] += 1
+
+    def record_rejected(self, priority: RequestPriority):
+        self.rejected[priority] += 1
+
+    def record_cancelled(self, priority: RequestPriority):
+        self.cancelled[priority] += 1
+
+    def record_wait_time(self, priority: RequestPriority, duration: float):
+        self.wait_times[priority].append(duration)
+        # 只保留最近100条
+        if len(self.wait_times[priority]) > 100:
+            self.wait_times[priority] = self.wait_times[priority][-100:]
+
+    def get_avg_wait_time(self, priority: RequestPriority) -> float:
+        times = self.wait_times[priority]
+        if not times:
+            return 0.0
+        return sum(times) / len(times)
+
+    def get_p95_wait_time(self, priority: RequestPriority) -> float:
+        times = self.wait_times[priority]
+        if not times:
+            return 0.0
+        sorted_times = sorted(times)
+        idx = int(len(sorted_times) * 0.95)
+        return sorted_times[min(idx, len(sorted_times) - 1)]
+
+    def get_reject_rate(self, priority: RequestPriority) -> float:
+        submitted = self.submitted[priority]
+        if submitted == 0:
+            return 0.0
+        return self.rejected[priority] / submitted
+
+    def get_stats_dict(self) -> Dict[str, Any]:
+        """获取统计字典"""
+        return {
+            "submitted": {p.name: self.submitted[p] for p in RequestPriority},
+            "signaled": {p.name: self.signaled[p] for p in RequestPriority},
+            "rejected": {p.name: self.rejected[p] for p in RequestPriority},
+            "cancelled": {p.name: self.cancelled[p] for p in RequestPriority},
+            "avg_wait_times": {p.name: self.get_avg_wait_time(p) for p in RequestPriority},
+            "p95_wait_times": {p.name: self.get_p95_wait_time(p) for p in RequestPriority},
+            "reject_rates": {p.name: self.get_reject_rate(p) for p in RequestPriority},
+        }
 
 
 class RequestQueue:
-    """请求队列系统
+    """请求队列系统 - TurnTicket 模式
 
     特性:
-    - 多优先级队列
-    - FIFO + 优先级排序
-    - 异步调度分发
+    - CRITICAL 独立队列，最高优先级
+    - 多优先级队列（HIGH/NORMAL/LOW 共享）
+    - TurnTicket 模式：只管轮次分配，不介入执行
     - 反压机制（队列满时拒绝新请求）
+    - 智能配置调整
     """
 
-    def __init__(
-        self,
-        max_size: int = 50,
-        dispatch_rate: float = 0.33,
-        backpressure_threshold: float = 0.8,
-    ):
+    def __init__(self, config: QueueConfig = None):
         """
         Args:
-            max_size: 队列最大容量
-            dispatch_rate: 调度速率（requests/sec）
-            backpressure_threshold: 反压阈值（0.0-1.0）
+            config: 队列配置，默认使用默认配置
         """
-        self.max_size = max_size
-        self.dispatch_rate = dispatch_rate
-        self.backpressure_threshold = backpressure_threshold
+        self.config = config or QueueConfig()
 
-        # 多优先级队列
-        self._queues: Dict[RequestPriority, Deque[RequestItem]] = {
-            p: deque() for p in RequestPriority
+        # CRITICAL 独立队列
+        self._critical_queue: Deque[TurnTicket] = deque()
+
+        # 普通队列（HIGH/NORMAL/LOW 共享）
+        self._normal_queues: Dict[RequestPriority, Deque[TurnTicket]] = {
+            RequestPriority.HIGH: deque(),
+            RequestPriority.NORMAL: deque(),
+            RequestPriority.LOW: deque(),
         }
 
-        # 结果存储
-        self._results: Dict[str, RequestItem] = {}
+        # 所有活跃 ticket 的索引（用于取消）
+        self._active_tickets: Dict[str, TurnTicket] = {}
 
         # 调度控制
         self._dispatcher_task: Optional[asyncio.Task] = None
-        self._executor: Optional[Callable] = None
         self._new_request_event = asyncio.Event()
         self._running = False
         self._lock = asyncio.Lock()
 
         # 统计
-        self._total_submitted = 0
-        self._total_completed = 0
-        self._total_rejected = 0
+        self._stats = QueueStats()
 
-    def get_fill_ratio(self) -> float:
-        """获取队列填充率"""
-        total = sum(len(q) for q in self._queues.values())
-        return total / self.max_size
+        # 智能调整
+        self._adjust_task: Optional[asyncio.Task] = None
 
-    def get_queue_size(self) -> int:
-        """获取当前队列大小"""
-        return sum(len(q) for q in self._queues.values())
+    def get_critical_fill_ratio(self) -> float:
+        """获取 CRITICAL 队列填充率"""
+        return len(self._critical_queue) / self.config.critical_max_size
 
-    async def submit(
+    def get_normal_fill_ratio(self) -> float:
+        """获取普通队列填充率"""
+        total = sum(len(q) for q in self._normal_queues.values())
+        return total / self.config.normal_max_size
+
+    def get_total_fill_ratio(self) -> float:
+        """获取总体队列填充率（用于负载因子计算）"""
+        critical_fill = self.get_critical_fill_ratio()
+        normal_fill = self.get_normal_fill_ratio()
+        # 综合填充率，CRITICAL 权重较低
+        return critical_fill * 0.2 + normal_fill * 0.8
+
+    def get_queue_size(self) -> Dict[str, int]:
+        """获取各队列大小"""
+        return {
+            "critical": len(self._critical_queue),
+            "high": len(self._normal_queues[RequestPriority.HIGH]),
+            "normal": len(self._normal_queues[RequestPriority.NORMAL]),
+            "low": len(self._normal_queues[RequestPriority.LOW]),
+            "total": len(self._critical_queue) + sum(len(q) for q in self._normal_queues.values()),
+        }
+
+    async def request_turn(
         self,
-        model_id: str,
-        messages: List[Dict],
-        priority: RequestPriority = RequestPriority.NORMAL,
-        **kwargs
-    ) -> str:
-        """提交请求到队列
+        priority: RequestPriority = RequestPriority.NORMAL
+    ) -> TurnTicket:
+        """申请轮次（核心入口）
 
         Args:
-            model_id: 模型 ID
-            messages: 消息列表
             priority: 请求优先级
-            **kwargs: 其他参数
 
         Returns:
-            request_id: 请求 ID
+            TurnTicket: 轮次票
 
         Raises:
             QueueFullError: 队列已满
         """
-        # 反压检查
-        fill_ratio = self.get_fill_ratio()
-        if fill_ratio >= self.backpressure_threshold:
-            self._total_rejected += 1
-            raise QueueFullError(
-                f"Queue at {fill_ratio:.1%} capacity (threshold: {self.backpressure_threshold:.1%}), "
-                f"rejecting requests"
-            )
-
-        item = RequestItem(
-            model_id=model_id,
-            messages=messages,
-            kwargs=kwargs,
-            priority=priority,
-        )
+        ticket = TurnTicket(priority=priority)
 
         async with self._lock:
-            self._queues[priority].append(item)
-            self._results[item.id] = item
-            self._total_submitted += 1
+            # CRITICAL 使用独立队列
+            if priority == RequestPriority.CRITICAL:
+                fill_ratio = self.get_critical_fill_ratio()
+                threshold = self.config.critical_backpressure_threshold
+                max_size = self.config.critical_max_size
 
+                if fill_ratio >= threshold:
+                    self._stats.record_rejected(priority)
+                    raise QueueFullError(fill_ratio, threshold, "critical")
+
+                self._critical_queue.append(ticket)
+            else:
+                # HIGH/NORMAL/LOW 共享普通队列
+                fill_ratio = self.get_normal_fill_ratio()
+                threshold = self.config.normal_backpressure_threshold
+                max_size = self.config.normal_max_size
+
+                if fill_ratio >= threshold:
+                    self._stats.record_rejected(priority)
+                    raise QueueFullError(fill_ratio, threshold, "normal")
+
+                self._normal_queues[priority].append(ticket)
+
+            # 记录活跃 ticket
+            self._active_tickets[ticket.id] = ticket
+            self._stats.record_submit(priority)
+
+        # 触发调度器
         self._new_request_event.set()
 
-        logger.debug(f"Request {item.id} submitted with priority {priority.name}")
-        return item.id
+        logger.debug(f"Ticket {ticket.id} submitted (priority={priority.name})")
+        return ticket
 
-    async def wait_for_result(
-        self,
-        request_id: str,
-        timeout: float = 300.0
-    ) -> Dict:
-        """等待请求完成
-
-        Args:
-            request_id: 请求 ID
-            timeout: 最大等待时间（秒）
-
-        Returns:
-            请求结果
-
-        Raises:
-            TimeoutError: 等待超时
-            Exception: 请求执行失败
-        """
-        if request_id not in self._results:
-            raise ValueError(f"Unknown request ID: {request_id}")
-
-        item = self._results[request_id]
-
-        try:
-            await asyncio.wait_for(item._completion_event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"Request {request_id} timed out after {timeout}s")
-
-        if item.error:
-            raise item.error
-
-        return item.result
-
-    async def start_dispatcher(self, executor: Callable):
-        """启动异步调度器
-
-        Args:
-            executor: 执行函数，签名: async fn(model_id, messages, **kwargs) -> Dict
-        """
+    async def start_dispatcher(self):
+        """启动异步调度器"""
         if self._running:
             logger.warning("Dispatcher already running")
             return
 
-        self._executor = executor
         self._running = True
         self._dispatcher_task = asyncio.create_task(self._dispatch_loop())
-        logger.info(f"Request queue dispatcher started (rate: {self.dispatch_rate} req/sec)")
+
+        # 启动智能调整任务（如果启用）
+        if self.config.auto_adjust_enabled:
+            self._adjust_task = asyncio.create_task(self._adjust_loop())
+
+        logger.info(
+            f"Request queue dispatcher started "
+            f"(critical_rate={self.config.critical_dispatch_rate}, "
+            f"normal_rate={self.config.normal_dispatch_rate})"
+        )
 
     async def stop_dispatcher(self):
         """停止调度器"""
         self._running = False
+
         if self._dispatcher_task:
             self._dispatcher_task.cancel()
             try:
                 await self._dispatcher_task
             except asyncio.CancelledError:
                 pass
+            self._dispatcher_task = None
+
+        if self._adjust_task:
+            self._adjust_task.cancel()
+            try:
+                await self._adjust_task
+            except asyncio.CancelledError:
+                pass
+            self._adjust_task = None
+
         logger.info("Request queue dispatcher stopped")
 
     async def _dispatch_loop(self):
-        """调度循环核心"""
+        """调度循环核心：CRITICAL 优先"""
         while self._running:
             try:
                 # 等待新请求
                 await self._new_request_event.wait()
 
-                # 获取下一个请求
-                item = await self._get_next_request()
-                if not item:
-                    self._new_request_event.clear()
+                # 1. 先处理 CRITICAL（最高优先级）
+                ticket = await self._pop_ticket(RequestPriority.CRITICAL)
+                if ticket:
+                    await self._signal_turn(ticket)
+                    await asyncio.sleep(1.0 / self.config.critical_dispatch_rate)
                     continue
 
-                # 创建执行任务
-                asyncio.create_task(self._execute_request(item))
+                # 2. CRITICAL 空，处理普通队列（按优先级）
+                for priority in [RequestPriority.HIGH, RequestPriority.NORMAL, RequestPriority.LOW]:
+                    ticket = await self._pop_ticket(priority)
+                    if ticket:
+                        await self._signal_turn(ticket)
+                        await asyncio.sleep(1.0 / self.config.normal_dispatch_rate)
+                        break
 
-                # 控制调度速率
-                await asyncio.sleep(1.0 / self.dispatch_rate)
+                # 3. 所有队列都空，清除事件
+                if not await self._has_pending_tickets():
+                    self._new_request_event.clear()
 
             except asyncio.CancelledError:
                 break
@@ -233,108 +396,207 @@ class RequestQueue:
                 logger.error(f"Dispatch loop error: {e}")
                 await asyncio.sleep(1.0)
 
-    async def _get_next_request(self) -> Optional[RequestItem]:
-        """按优先级获取下一个请求"""
+    async def _pop_ticket(self, priority: RequestPriority) -> Optional[TurnTicket]:
+        """从指定优先级队列弹出 ticket"""
         async with self._lock:
-            for priority in RequestPriority:
-                if self._queues[priority]:
-                    return self._queues[priority].popleft()
+            if priority == RequestPriority.CRITICAL:
+                if self._critical_queue:
+                    return self._critical_queue.popleft()
+            else:
+                if self._normal_queues[priority]:
+                    return self._normal_queues[priority].popleft()
         return None
 
-    async def _execute_request(self, item: RequestItem):
-        """执行单个请求"""
-        try:
-            logger.debug(f"Executing request {item.id} (priority: {item.priority.name})")
+    async def _signal_turn(self, ticket: TurnTicket):
+        """通知 ticket 轮次到了"""
+        ticket.signal_turn()
+        self._stats.record_signal(ticket.priority)
 
-            result = await self._executor(
-                item.model_id,
-                item.messages,
-                item.priority,
-                **item.kwargs
-            )
+        # 记录等待时间
+        wait_duration = ticket.get_wait_duration()
+        self._stats.record_wait_time(ticket.priority, wait_duration)
 
-            item.result = result
-            item.completed = True
-            self._total_completed += 1
+        # 从活跃索引中移除
+        async with self._lock:
+            self._active_tickets.pop(ticket.id, None)
 
-            logger.debug(f"Request {item.id} completed successfully")
+        logger.debug(
+            f"Ticket {ticket.id} signaled (priority={ticket.priority.name}, "
+            f"wait_duration={wait_duration:.2f}s)"
+        )
 
-        except Exception as e:
-            item.error = e
-            item.completed = True
-            logger.error(f"Request {item.id} failed: {e}")
+    async def _has_pending_tickets(self) -> bool:
+        """检查是否有待处理的 ticket"""
+        async with self._lock:
+            if self._critical_queue:
+                return True
+            for q in self._normal_queues.values():
+                if q:
+                    return True
+        return False
 
-        finally:
-            item._completion_event.set()
-
-            # 清理旧结果（保留最近 100 个）
-            if len(self._results) > 100:
-                async with self._lock:
-                    # 只保留未完成的和最近完成的
-                    to_remove = []
-                    for rid, ritem in self._results.items():
-                        if ritem.completed and ritem.id != item.id:
-                            age = time.time() - ritem.created_at
-                            if age > 300:  # 5 分钟前的已完成请求
-                                to_remove.append(rid)
-                    for rid in to_remove:
-                        self._results.pop(rid, None)
-
-    def get_stats(self) -> Dict[str, Any]:
-        """获取队列统计信息"""
-        return {
-            "queue_size": self.get_queue_size(),
-            "fill_ratio": self.get_fill_ratio(),
-            "max_size": self.max_size,
-            "backpressure_threshold": self.backpressure_threshold,
-            "dispatch_rate": self.dispatch_rate,
-            "total_submitted": self._total_submitted,
-            "total_completed": self._total_completed,
-            "total_rejected": self._total_rejected,
-            "pending_by_priority": {
-                p.name: len(self._queues[p]) for p in RequestPriority
-            },
-            "running": self._running,
-        }
-
-    async def cancel_request(self, request_id: str) -> bool:
-        """取消请求
+    async def cancel_ticket(self, ticket_id: str, reason: str = "User cancelled") -> bool:
+        """取消指定的 ticket
 
         Args:
-            request_id: 请求 ID
+            ticket_id: ticket ID
+            reason: 取消原因
 
         Returns:
             是否成功取消
         """
         async with self._lock:
-            # 从队列中移除
-            for priority in RequestPriority:
-                for i, item in enumerate(self._queues[priority]):
-                    if item.id == request_id:
-                        self._queues[priority].remove(item)
-                        item.error = asyncio.CancelledError("Request cancelled")
-                        item.completed = True
-                        item._completion_event.set()
-                        return True
-
-        # 可能正在执行中
-        if request_id in self._results:
-            item = self._results[request_id]
-            if not item.completed:
-                # 标记为取消（执行中的无法真正中断）
-                item.error = asyncio.CancelledError("Request cancelled during execution")
+            ticket = self._active_tickets.get(ticket_id)
+            if not ticket:
                 return False
 
-        return False
+            # 从队列中移除
+            if ticket.priority == RequestPriority.CRITICAL:
+                try:
+                    self._critical_queue.remove(ticket)
+                except ValueError:
+                    pass
+            else:
+                try:
+                    self._normal_queues[ticket.priority].remove(ticket)
+                except ValueError:
+                    pass
 
-    async def clear_queue(self):
-        """清空队列"""
+            # 取消 ticket
+            ticket.cancel(reason)
+            self._active_tickets.pop(ticket_id, None)
+            self._stats.record_cancelled(ticket.priority)
+
+            logger.info(f"Ticket {ticket_id} cancelled: reason={reason}")
+            return True
+
+    async def cancel_all_by_priority(self, priority: RequestPriority, reason: str = "Batch cancel"):
+        """取消指定优先级的所有 ticket"""
         async with self._lock:
-            for priority in RequestPriority:
-                while self._queues[priority]:
-                    item = self._queues[priority].popleft()
-                    item.error = asyncio.CancelledError("Queue cleared")
-                    item.completed = True
-                    item._completion_event.set()
+            if priority == RequestPriority.CRITICAL:
+                tickets = list(self._critical_queue)
+                self._critical_queue.clear()
+            else:
+                tickets = list(self._normal_queues[priority])
+                self._normal_queues[priority].clear()
 
-        logger.info("Request queue cleared")
+            for ticket in tickets:
+                ticket.cancel(reason)
+                self._active_tickets.pop(ticket.id, None)
+                self._stats.record_cancelled(priority)
+
+            logger.info(f"Cancelled {len(tickets)} tickets with priority={priority.name}")
+
+    async def cancel_all_tickets(self, reason: str = "Emergency cleanup"):
+        """取消所有 ticket"""
+        async with self._lock:
+            # CRITICAL
+            for ticket in list(self._critical_queue):
+                ticket.cancel(reason)
+                self._stats.record_cancelled(RequestPriority.CRITICAL)
+            self._critical_queue.clear()
+
+            # 普通
+            for priority, queue in self._normal_queues.items():
+                for ticket in list(queue):
+                    ticket.cancel(reason)
+                    self._stats.record_cancelled(priority)
+                queue.clear()
+
+            self._active_tickets.clear()
+            logger.info(f"All tickets cancelled: reason={reason}")
+
+    async def _adjust_loop(self):
+        """智能调整循环"""
+        while self._running:
+            try:
+                await asyncio.sleep(self.config.adjust_interval)
+                await self._adjust_config()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Adjust loop error: {e}")
+                await asyncio.sleep(30.0)
+
+    async def _adjust_config(self):
+        """根据统计数据智能调整配置"""
+        # 1. CRITICAL 队列调整
+        critical_avg_wait = self._stats.get_avg_wait_time(RequestPriority.CRITICAL)
+        critical_p95_wait = self._stats.get_p95_wait_time(RequestPriority.CRITICAL)
+
+        # 如果 CRITICAL 平均等待超过目标，增加调度速率
+        if critical_avg_wait > self.config.critical_target_wait_time:
+            old_rate = self.config.critical_dispatch_rate
+            self.config.critical_dispatch_rate *= 1.2
+            self.config.critical_dispatch_rate = min(self.config.critical_dispatch_rate, 50.0)
+
+            if self.config.critical_dispatch_rate != old_rate:
+                logger.info(
+                    f"Auto-adjust: CRITICAL dispatch_rate increased to "
+                    f"{self.config.critical_dispatch_rate:.2f}"
+                )
+
+            # 如果 P95 很高，增加容量
+            if critical_p95_wait > self.config.critical_target_wait_time * 2:
+                old_size = self.config.critical_max_size
+                self.config.critical_max_size = min(
+                    self.config.critical_max_size + 5,
+                    30  # 最大不超过 30
+                )
+                if self.config.critical_max_size != old_size:
+                    logger.info(
+                        f"Auto-adjust: CRITICAL max_size increased to "
+                        f"{self.config.critical_max_size}"
+                    )
+
+        # 2. 反压阈值调整（根据拒绝率）
+        critical_reject_rate = self._stats.get_reject_rate(RequestPriority.CRITICAL)
+
+        if critical_reject_rate > 0.1:  # 拒绝率超过 10%
+            old_threshold = self.config.critical_backpressure_threshold
+            self.config.critical_backpressure_threshold = min(
+                self.config.critical_backpressure_threshold + 0.05,
+                0.95
+            )
+            if self.config.critical_backpressure_threshold != old_threshold:
+                logger.info(
+                    f"Auto-adjust: CRITICAL backpressure_threshold increased to "
+                    f"{self.config.critical_backpressure_threshold:.2f}"
+                )
+
+        # 3. 普通队列调整
+        normal_avg_wait = self._stats.get_avg_wait_time(RequestPriority.NORMAL)
+        if normal_avg_wait > self.config.normal_target_wait_time:
+            old_rate = self.config.normal_dispatch_rate
+            self.config.normal_dispatch_rate *= 1.2
+            self.config.normal_dispatch_rate = min(self.config.normal_dispatch_rate, 5.0)
+
+            if self.config.normal_dispatch_rate != old_rate:
+                logger.info(
+                    f"Auto-adjust: NORMAL dispatch_rate increased to "
+                    f"{self.config.normal_dispatch_rate:.2f}"
+                )
+
+    def get_stats(self) -> Dict[str, Any]:
+        """获取队列统计信息"""
+        return {
+            "queue_lengths": self.get_queue_size(),
+            "fill_ratios": {
+                "critical": self.get_critical_fill_ratio(),
+                "normal": self.get_normal_fill_ratio(),
+                "total": self.get_total_fill_ratio(),
+            },
+            "config": {
+                "critical_max_size": self.config.critical_max_size,
+                "critical_backpressure_threshold": self.config.critical_backpressure_threshold,
+                "critical_dispatch_rate": self.config.critical_dispatch_rate,
+                "critical_target_wait_time": self.config.critical_target_wait_time,
+                "normal_max_size": self.config.normal_max_size,
+                "normal_backpressure_threshold": self.config.normal_backpressure_threshold,
+                "normal_dispatch_rate": self.config.normal_dispatch_rate,
+                "normal_target_wait_time": self.config.normal_target_wait_time,
+                "auto_adjust_enabled": self.config.auto_adjust_enabled,
+            },
+            "stats": self._stats.get_stats_dict(),
+            "running": self._running,
+        }
