@@ -31,6 +31,7 @@ def _resolve_path(path: str) -> str:
 def file_read(path: str, start: int = 1, count: int = 100) -> str:
     """
     Read file content with line numbers.
+    支持自动编码检测 (UTF-8, GBK, GB2312, Latin-1)。
 
     Args:
         path: File path to read (absolute or relative to .seed directory).
@@ -42,20 +43,33 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
     """
     try:
         resolved_path = _resolve_path(path)
+        content = None
+        detected_encoding = 'utf-8'
 
-        with open(resolved_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        # 尝试多种编码
+        for enc in ['utf-8', 'gbk', 'gb2312', 'latin-1']:
+            try:
+                with open(resolved_path, 'r', encoding=enc) as f:
+                    content = f.readlines()
+                detected_encoding = enc
+                break
+            except UnicodeDecodeError:
+                continue
 
-        total_lines = len(lines)
+        if content is None:
+            return f"Error: Unable to decode file {path} with supported encodings"
+
+        total_lines = len(content)
         start_idx = max(0, start - 1)
         end_idx = min(total_lines, start_idx + count)
-        selected = lines[start_idx:end_idx]
+        selected = content[start_idx:end_idx]
 
         if not selected:
             return f"Empty range: lines {start}-{start+count-1} (file has {total_lines} lines)"
 
         result = "".join(f"{i+start_idx+1}|{line}" for i, line in enumerate(selected))
-        result += f"\n--- File: {resolved_path}, Lines: {start}-{end_idx}/{total_lines} ---"
+        enc_note = f" (decoded as {detected_encoding})" if detected_encoding != 'utf-8' else ""
+        result += f"\n--- File: {resolved_path}{enc_note}, Lines: {start}-{end_idx}/{total_lines} ---"
         return result
 
     except FileNotFoundError:

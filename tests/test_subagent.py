@@ -197,8 +197,20 @@ class TestSubagentInstance(unittest.TestCase):
 
         self.assertEqual(instance.subagent_type, SubagentType.EXPLORE)
         self.assertEqual(instance.max_iterations, 15)
-        self.assertEqual(instance.timeout, 300)
+        self.assertEqual(instance.timeout, 180)  # EXPLORE 默认 180s
         self.assertEqual(len(instance.history), 0)
+
+    def test_instance_type_based_defaults(self):
+        """测试基于类型的默认超时配置"""
+        from subagent import DEFAULT_TIMEOUTS
+
+        # EXPLORE: 180s, REVIEW: 600s, IMPLEMENT: 900s, PLAN: 300s
+        for sub_type, expected_timeout in DEFAULT_TIMEOUTS.items():
+            instance = SubagentInstance(
+                gateway=self.gateway_mock,
+                subagent_type=sub_type,
+            )
+            self.assertEqual(instance.timeout, expected_timeout, f"Timeout mismatch for {sub_type}")
 
     def test_tool_filtering(self):
         """测试工具过滤"""

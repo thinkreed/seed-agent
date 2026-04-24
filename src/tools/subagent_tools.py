@@ -29,7 +29,7 @@ def spawn_subagent(
     type: str,
     prompt: str,
     custom_tools: List[str] = None,
-    timeout: int = 300,
+    timeout: int = None,
 ) -> str:
     """
     创建并启动一个子代理任务。
@@ -38,7 +38,7 @@ def spawn_subagent(
         type: 子代理类型 - 'explore', 'review', 'implement', 'plan'
         prompt: 任务提示，描述子代理需要完成的工作
         custom_tools: 自定义工具列表（可选，覆盖默认权限集）
-        timeout: 执行超时时间（秒），默认 300 秒
+        timeout: 执行超时时间（秒），默认根据任务类型动态配置 (180s-900s)
 
     Returns:
         任务 ID，用于后续跟踪和等待

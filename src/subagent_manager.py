@@ -23,6 +23,7 @@ from subagent import (
     SubagentState,
     SubagentResult,
     PERMISSION_SETS,
+    DEFAULT_TIMEOUTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,7 +166,7 @@ class SubagentManager:
             subagent_type=task.subagent_type,
             model_id=self.model_id,
             max_iterations=task.max_iterations or self.DEFAULT_MAX_ITERATIONS,
-            timeout=task.timeout or self.DEFAULT_TIMEOUT,
+            timeout=task.timeout or DEFAULT_TIMEOUTS.get(task.subagent_type, 300),
             custom_system_prompt=task.custom_system_prompt,
             custom_tools=task.custom_tools,
         )

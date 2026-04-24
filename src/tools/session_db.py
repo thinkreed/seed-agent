@@ -257,6 +257,38 @@ class SessionDB:
         except Exception as e:
             return f"Error recording outcome: {str(e)}"
 
+    def _get_skill_basic_stats(self, skill_name: str) -> Dict:
+        """获取 Skill 基础统计信息"""
+        row = self.conn.execute("""
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as successes,
+                SUM(CASE WHEN outcome_status = 'failed' THEN 1 ELSE 0 END) as failures,
+                MAX(CASE WHEN outcome_status = 'success' THEN timestamp ELSE NULL END) as last_success,
+                MAX(CASE WHEN outcome_status = 'failed' THEN timestamp ELSE NULL END) as last_failure,
+                AVG(outcome_score) as avg_score
+            FROM gene_outcomes
+            WHERE skill_name = ?
+        """, (skill_name,)).fetchone()
+        return dict(row) if row else {}
+
+    def _get_skill_recent_stats(self, skill_name: str, recent_days: int = 30) -> Dict:
+        """获取 Skill 近期统计信息 (最近 N 天)"""
+        recent_row = self.conn.execute("""
+            SELECT
+                COUNT(*) as recent_total,
+                SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as recent_successes
+            FROM gene_outcomes
+            WHERE skill_name = ? AND timestamp > datetime('now', ?)
+        """, (skill_name, f'-{recent_days} days')).fetchone()
+        return dict(recent_row) if recent_row else {}
+
+    def _compute_ban_status(self, skill_name: str, total: int, selection_value: float) -> bool:
+        """检查 Skill 是否应被禁用"""
+        min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
+        ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
+        return total >= min_attempts and selection_value < ban_threshold
+
     def get_skill_stats(self, skill_name: str) -> Dict:
         """
         获取 Skill 的聚合统计信息
@@ -276,19 +308,9 @@ class SessionDB:
             }
         """
         try:
-            row = self.conn.execute("""
-                SELECT
-                    COUNT(*) as total,
-                    SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as successes,
-                    SUM(CASE WHEN outcome_status = 'failed' THEN 1 ELSE 0 END) as failures,
-                    MAX(CASE WHEN outcome_status = 'success' THEN timestamp ELSE NULL END) as last_success,
-                    MAX(CASE WHEN outcome_status = 'failed' THEN timestamp ELSE NULL END) as last_failure,
-                    AVG(outcome_score) as avg_score
-                FROM gene_outcomes
-                WHERE skill_name = ?
-            """, (skill_name,)).fetchone()
+            row = self._get_skill_basic_stats(skill_name)
 
-            if not row or row['total'] == 0:
+            if not row or row.get('total', 0) == 0:
                 return {
                     'total': 0, 'successes': 0, 'failures': 0,
                     'success_rate': 0.0, 'recent_success_rate': 0.0,
@@ -307,25 +329,17 @@ class SessionDB:
 
             # 近期成功率 (最近 30 天)
             recent_days = MEMORY_GRAPH_CONFIG['recent_days']
-            recent_row = self.conn.execute("""
-                SELECT
-                    COUNT(*) as recent_total,
-                    SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as recent_successes
-                FROM gene_outcomes
-                WHERE skill_name = ? AND timestamp > datetime('now', ?)
-            """, (skill_name, f'-{recent_days} days')).fetchone()
+            recent_row = self._get_skill_recent_stats(skill_name, recent_days)
 
             recent_success_rate = 0.0
-            if recent_row and recent_row['recent_total'] > 0:
+            if recent_row and recent_row.get('recent_total', 0) > 0:
                 recent_success_rate = recent_row['recent_successes'] / recent_row['recent_total']
 
             # 计算选择分数 (带衰减)
             selection_value = self._compute_selection_value(skill_name, successes, total, recent_success_rate)
 
             # 禁用检查
-            min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
-            ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
-            is_banned = total >= min_attempts and selection_value < ban_threshold
+            is_banned = self._compute_ban_status(skill_name, total, selection_value)
 
             return {
                 'total': total,

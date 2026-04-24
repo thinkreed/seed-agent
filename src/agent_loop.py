@@ -1,3 +1,4 @@
+import tiktoken
 import asyncio
 import json
 import os
@@ -67,6 +68,10 @@ class AgentLoop:
         self.context_window = self._get_model_context_window()
         self.context_usage_threshold = 0.75  # Trigger summary at 75% usage
 
+        # Context Token Cache: 缓存每条消息的 token 计数，避免重复编码
+        self._message_token_cache: List[int] = []  # 与 self.history 一一对应
+        self._system_prompt_tokens: int = 0
+
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
@@ -102,9 +107,26 @@ class AgentLoop:
 
         self._pending_user_input: Optional[str] = None
 
+        self._encoding = self._get_tokenizer()
+
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         return self.gateway.config.agents['defaults'].defaults.primary
+
+    def _get_tokenizer(self):
+        """获取当前模型的 tokenizer"""
+        try:
+            # Extract model name from "provider/model" format
+            model_name = self.model_id.split('/', 1)[-1] if '/' in self.model_id else self.model_id
+            return tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            # Fallback: try common encodings
+            for enc_name in ["cl100k_base", "p50k_base", "r50k_base"]:
+                try:
+                    return tiktoken.get_encoding(enc_name)
+                except KeyError:
+                    continue
+            return None
 
     def _get_model_context_window(self) -> int:
         """获取当前模型的上下文窗口大小"""
@@ -118,23 +140,55 @@ class AgentLoop:
                         return m.contextWindow
         return 100000  # Default fallback
 
+    def _encode_text(self, text: str) -> int:
+        """编码文本并返回 token 计数"""
+        if self._encoding:
+            return len(self._encoding.encode(text))
+        return int(len(text) * 0.7)
+
+    def _cache_message_tokens(self, msg: Dict) -> int:
+        """计算并缓存单条消息的 token 数"""
+        content = msg.get('content', '')
+        tokens = 0
+        if isinstance(content, str):
+            tokens = self._encode_text(content)
+        elif isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and 'text' in item:
+                    tokens += self._encode_text(item['text'])
+        # tool_calls 也有 token 开销，简单估算
+        if msg.get('tool_calls'):
+            tc_text = json.dumps(msg['tool_calls'])
+            tokens += self._encode_text(tc_text)
+        return tokens
+
     def _estimate_context_size(self) -> int:
-        """估算当前上下文的 Token 数量 (粗略估算: 字符数 * 0.7)"""
-        # 包含 system prompt 和 history
-        total_chars = len(self.system_prompt) if self.system_prompt else 0
-        for msg in self.history:
-            content = msg.get('content', '')
-            if isinstance(content, str):
-                total_chars += len(content)
-            elif isinstance(content, list):
-                # For multimodal content, estimate text length
-                for item in content:
-                    if isinstance(item, dict) and 'text' in item:
-                        total_chars += len(item['text'])
+        """估算当前上下文的 Token 数量
         
-        # 简单的 heuristic: 1 token ≈ 1.5 characters for mixed text, or 1 char ≈ 0.7 tokens for Chinese
-        # Using 0.7 as a safe upper bound for token count relative to chars
-        return int(total_chars * 0.7)
+        使用增量缓存：仅对新消息编码，已缓存的消息直接求和。
+        """
+        # 缓存 system prompt（仅首次或变化时）
+        if self._system_prompt_tokens == 0 and self.system_prompt:
+            self._system_prompt_tokens = self._encode_text(self.system_prompt)
+
+        # 增量更新 token 缓存
+        cache_len = len(self._message_token_cache)
+        history_len = len(self.history)
+        
+        if cache_len < history_len:
+            # 有新消息，仅编码新增部分
+            for msg in self.history[cache_len:]:
+                self._message_token_cache.append(self._cache_message_tokens(msg))
+        elif cache_len > history_len:
+            # 历史被截断（如 summarize 后），重建缓存
+            self._message_token_cache = []
+            self._system_prompt_tokens = 0
+            for msg in self.history:
+                self._message_token_cache.append(self._cache_message_tokens(msg))
+            if self.system_prompt:
+                self._system_prompt_tokens = self._encode_text(self.system_prompt)
+
+        return self._system_prompt_tokens + sum(self._message_token_cache)
 
     def _build_messages(self) -> List[Dict]:
         """构建完整的消息列表"""
@@ -192,6 +246,11 @@ class AgentLoop:
 
         if not is_context_full and not is_round_limit_reached:
             return
+
+        logger.info(
+            f"Summary triggered: context_tokens={estimated_tokens}/{self.context_window} "
+            f"(threshold={token_threshold}), rounds={self._conversation_rounds}/{self.summary_interval}"
+        )
 
         # 生成摘要
         summary = await self._summarize_history()
@@ -449,6 +508,8 @@ class AgentLoop:
         self.history.clear()
         self._conversation_rounds = 0
         self._last_summary = None
+        self._message_token_cache.clear()
+        self._system_prompt_tokens = 0
         self.session_id = _generate_session_filename()  # 新会话ID
 
     def interrupt(self, user_input: str):

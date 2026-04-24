@@ -29,6 +29,18 @@ class SubagentType(Enum):
     IMPLEMENT = "implement" # 实现执行：全权限
     PLAN = "plan"           # 规划分析：只读 + 记忆写入
 
+# 不同类型任务的默认超时时间（秒）
+# EXPLORE: 快速查询 (3m)
+# REVIEW: 审查+测试 (10m)
+# IMPLEMENT: 实现+调试 (15m)
+# PLAN: 规划分析 (5m)
+DEFAULT_TIMEOUTS: Dict[SubagentType, int] = {
+    SubagentType.EXPLORE: 180,
+    SubagentType.REVIEW: 600,
+    SubagentType.IMPLEMENT: 900,
+    SubagentType.PLAN: 300,
+}
+
 
 # 权限集定义
 PERMISSION_SETS: Dict[str, Set[str]] = {
@@ -161,7 +173,7 @@ class SubagentInstance:
         subagent_type: SubagentType,
         model_id: Optional[str] = None,
         max_iterations: int = MAX_SUBAGENT_ITERATIONS,
-        timeout: int = 300,  # 5 分钟超时
+        timeout: Optional[int] = None,
         custom_system_prompt: Optional[str] = None,
         custom_tools: Optional[Set[str]] = None,
     ):
@@ -173,7 +185,7 @@ class SubagentInstance:
             subagent_type: Subagent 类型
             model_id: 模型 ID（默认使用主模型）
             max_iterations: 最大迭代次数
-            timeout: 超时时间（秒）
+            timeout: 超时时间（秒），默认根据任务类型动态设置
             custom_system_prompt: 自定义 system prompt
             custom_tools: 自定义工具集（覆盖默认权限集）
         """
@@ -181,7 +193,7 @@ class SubagentInstance:
         self.subagent_type = subagent_type
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
-        self.timeout = timeout
+        self.timeout = timeout or DEFAULT_TIMEOUTS.get(subagent_type, 300)
 
         # 独立的对话历史
         self.history: List[Dict] = []
