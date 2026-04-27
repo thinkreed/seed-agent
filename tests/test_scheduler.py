@@ -163,43 +163,49 @@ class TestTaskScheduler:
         assert scheduler_mock._tasks["my_task"].interval_seconds == 600
         assert scheduler_mock._tasks["my_task"].enabled is True
 
-    def test_get_task(self, mock_tasks_dir):
-        """Test getting a task."""
+    def test_get_task_status(self, mock_tasks_dir):
+        """Test getting task status."""
         scheduler_mock = TaskScheduler()
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
         
-        task = scheduler_mock.get_task("my_task")
-        assert task is not None
-        assert task.task_id == "my_task"
+        status = scheduler_mock.get_task_status("my_task")
+        assert status['task_id'] == "my_task"
+        assert status['enabled'] is True
 
     def test_get_task_missing(self, mock_tasks_dir):
-        """Test getting a non-existent task."""
+        """Test getting status of non-existent task."""
         scheduler_mock = TaskScheduler()
-        task = scheduler_mock.get_task("missing_task")
-        assert task is None
+        status = scheduler_mock.get_task_status("missing_task")
+        assert "error" in status
 
     def test_remove_task(self, mock_tasks_dir):
         """Test removing a task."""
         scheduler_mock = TaskScheduler()
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
         
-        scheduler_mock.remove_task("my_task")
+        result = scheduler_mock.remove_task("my_task")
         
         assert "my_task" not in scheduler_mock._tasks
+        # Should return error if called again
+        result2 = scheduler_mock.remove_task("my_task")
+        assert "error" in result2.lower() or "not found" in result2.lower()
 
     def test_add_task_duplicate(self, mock_tasks_dir):
-        """Test adding a duplicate task updates it."""
+        """Test adding a duplicate task returns error."""
         scheduler_mock = TaskScheduler()
         
-        scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-        scheduler_mock.add_task("my_task", "custom", 300, "Do something else")
+        result1 = scheduler_mock.add_task("my_task", "custom", 600, "Do something")
+        result2 = scheduler_mock.add_task("my_task", "custom", 300, "Do something else")
         
-        assert scheduler_mock._tasks["my_task"].interval_seconds == 300
-        assert scheduler_mock._tasks["my_task"].prompt == "Do something else"
+        # Should not update, should return error message
+        assert "already exists" in result2
+        assert scheduler_mock._tasks["my_task"].interval_seconds == 600
+        assert scheduler_mock._tasks["my_task"].prompt == "Do something"
 
     def test_save_tasks(self, mock_tasks_dir):
         """Test saving tasks to file."""
         scheduler_mock = TaskScheduler()
+        # Add a new task
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
         
         scheduler_mock._save_tasks()
@@ -207,11 +213,15 @@ class TestTaskScheduler:
         tasks_file = scheduler.TASKS_FILE
         assert tasks_file.exists()
         
-        with open(tasks_file, 'r') as f:
+        with open(tasks_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        assert len(data) == 1
-        assert data[0]['task_id'] == "my_task"
+        # Should contain builtin tasks + my_task
+        task_ids = [t['task_id'] for t in data['tasks']]
+        assert "my_task" in task_ids
+        # Builtins should also be present
+        assert "autodream" in task_ids
+        assert "health_check" in task_ids
 
     def test_load_tasks(self, mock_tasks_dir):
         """Test loading tasks from file."""
