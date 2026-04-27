@@ -349,7 +349,11 @@ class AutonomousExplorer:
             signals = self._extract_task_signals(todo_content, has_todo)
             best_skill = self.agent.skill_loader.select_best_skill(
                 signals=signals,
-                available_tools=self.agent.tools.get_tool_names() if hasattr(self.agent.tools, 'get_tool_names') else None
+                available_tools=(
+                    self.agent.tools.get_tool_names()
+                    if hasattr(self.agent.tools, 'get_tool_names')
+                    else None
+                )
             )
 
             if best_skill:

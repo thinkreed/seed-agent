@@ -117,7 +117,7 @@ class SessionDB:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        for idx in ['session', 'timestamp', 'role']:
+        for idx in ['session_id', 'timestamp', 'role']:
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_session_messages_{idx} ON session_messages({idx})")
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS session_messages_fts
@@ -244,14 +244,19 @@ class SessionDB:
         try:
             self.conn.execute("""
                 INSERT INTO gene_outcomes
-                (skill_name, signal_pattern, outcome_status, outcome_score, session_id, timestamp, iteration_context, intent, blast_radius)
+                    (skill_name, signal_pattern, outcome_status, outcome_score,
+                     session_id, timestamp, iteration_context, intent, blast_radius)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (skill_name, signal_pattern, outcome, score, session_id, timestamp, context, intent, blast_radius_json))
+            """, (skill_name, signal_pattern, outcome, score, session_id,
+                  timestamp, context, intent, blast_radius_json))
             self.conn.commit()
 
             # 返回更新后的统计
             stats = self.get_skill_stats(skill_name)
-            return f"Outcome recorded: {skill_name} -> {outcome} (score: {score}). Stats: {stats['total']} total, {stats['success_rate']:.1%} success"
+            msg = (f"Outcome recorded: {skill_name} -> {outcome} "
+                   f"(score: {score}). Stats: {stats['total']} total, "
+                   f"{stats['success_rate']:.1%} success")
+            return msg
         except sqlite3.IntegrityError:
             return f"Duplicate outcome ignored: {skill_name} at {timestamp}"
         except Exception as e:
@@ -545,15 +550,57 @@ class SessionDB:
 
     # ==================== 原有 Session 方法 ====================
 
+    def _build_message_batches(
+        self, messages: List[Dict], session_id: str, now: str
+    ) -> Tuple[List[Tuple], List[Tuple]]:
+        """构建消息批次 (session_messages + FTS)"""
+        batch = []
+        fts_batch = []
+        for msg in messages:
+            ts = msg.get('timestamp', now)
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            tool_calls = self._parse_tool_calls(msg.get('tool_calls'))
+            tool_call_id = msg.get('tool_call_id')
+
+            batch.append((session_id, ts, role, content, tool_calls, tool_call_id, 'message'))
+            tokenized = tokenize_for_fts5(content) if content else ''
+            fts_batch.append((session_id, tokenized, role))
+        return batch, fts_batch
+
+    def _insert_fts_index(self, cursor, fts_batch: List[Tuple], start_id: int):
+        """插入 FTS 索引"""
+        for i, (sid, tokenized, role) in enumerate(fts_batch):
+            rowid = start_id + i
+            cursor.execute(
+                "INSERT INTO session_messages_fts(rowid, content, session_id, role) VALUES (?, ?, ?, ?)",
+                (rowid, tokenized, sid, role)
+            )
+
+    def _upsert_session_meta(self, cursor, session_id: str, now: str, msg_count: int, summary: str, is_new: bool):
+        """插入或更新会话元数据"""
+        if is_new:
+            cursor.execute(
+                "INSERT INTO sessions_meta "
+                "(session_id, created_at, last_updated, message_count, summary) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, now, now, msg_count, summary)
+            )
+        else:
+            cursor.execute(
+                "UPDATE sessions_meta SET last_updated = ?, "
+                "message_count = message_count + ?, "
+                "summary = COALESCE(?, summary) WHERE session_id = ?",
+                (now, msg_count, summary, session_id)
+            )
+
     def save_session_history(
         self,
         messages: List[Dict],
         summary: str = None,
         session_id: str = None
     ) -> str:
-        """
-        保存会话历史到 SQLite
-        """
+        """保存会话历史到 SQLite"""
         try:
             if not session_id:
                 session_id = self._generate_session_filename()
@@ -561,63 +608,30 @@ class SessionDB:
             now = datetime.now().isoformat()
 
             existing = self.conn.execute(
-                "SELECT session_id FROM sessions_meta WHERE session_id = ?",
-                (session_id,)
+                "SELECT session_id FROM sessions_meta WHERE session_id = ?", (session_id,)
             ).fetchone()
-
             is_new = existing is None
 
             cursor = self.conn.cursor()
+            batch, fts_batch = self._build_message_batches(messages, session_id, now)
 
-            batch = []
-            fts_batch = []
-            for msg in messages:
-                ts = msg.get('timestamp', now)
-                role = msg.get('role', 'unknown')
-                content = msg.get('content', '')
-                tool_calls = self._parse_tool_calls(msg.get('tool_calls'))
-                tool_call_id = msg.get('tool_call_id')
-
-                batch.append((
-                    session_id, ts, role, content,
-                    tool_calls, tool_call_id, 'message'
-                ))
-
-                tokenized = tokenize_for_fts5(content) if content else ''
-                fts_batch.append((session_id, tokenized, role))
-
-            cursor.executemany("""
-                INSERT INTO session_messages
-                (session_id, timestamp, role, content, tool_calls_json, tool_call_id, message_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, batch)
+            cursor.executemany(
+                "INSERT INTO session_messages "
+                "(session_id, timestamp, role, content, tool_calls_json, "
+                " tool_call_id, message_type) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                batch
+            )
 
             if batch:
-                last_id = cursor.lastrowid
-                start_id = last_id - len(batch) + 1
-
-                for i, (sid, tokenized, role) in enumerate(fts_batch):
-                    rowid = start_id + i
-                    cursor.execute("""
-                        INSERT INTO session_messages_fts(rowid, content, session_id, role)
-                        VALUES (?, ?, ?, ?)
-                    """, (rowid, tokenized, sid, role))
+                # executemany doesn't set lastrowid, so query for it
+                start_id = cursor.execute("SELECT MAX(id) FROM session_messages").fetchone()[0] - len(batch) + 1
+                self._insert_fts_index(cursor, fts_batch, start_id)
 
             msg_count = len(messages)
-            if is_new:
-                cursor.execute("""
-                    INSERT INTO sessions_meta (session_id, created_at, last_updated, message_count, summary)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (session_id, now, now, msg_count, summary))
-            else:
-                cursor.execute("""
-                    UPDATE sessions_meta
-                    SET last_updated = ?, message_count = message_count + ?, summary = COALESCE(?, summary)
-                    WHERE session_id = ?
-                """, (now, msg_count, summary, session_id))
+            self._upsert_session_meta(cursor, session_id, now, msg_count, summary, is_new)
 
             self.conn.commit()
-
             return f"Session saved: {session_id} ({msg_count} messages)"
         except Exception as e:
             self.conn.rollback()
@@ -816,6 +830,35 @@ class SessionDB:
         except:
             return []
 
+    def _apply_filters(
+        self,
+        base_sql: str,
+        params: list,
+        session_id: Optional[str],
+        role: Optional[str],
+        start_time: Optional[str],
+        end_time: Optional[str],
+        order_by: str,
+        limit: int
+    ) -> Tuple[str, list]:
+        """添加通用过滤条件到 SQL 查询"""
+        if session_id:
+            base_sql += " AND m.session_id = ?"
+            params.append(session_id)
+        if role:
+            base_sql += " AND m.role = ?"
+            params.append(role)
+        if start_time:
+            base_sql += " AND m.timestamp >= ?"
+            params.append(start_time)
+        if end_time:
+            base_sql += " AND m.timestamp <= ?"
+            params.append(end_time)
+
+        base_sql += f" ORDER BY {order_by} LIMIT ?"
+        params.append(limit)
+        return base_sql, params
+
     def search_with_filters(
         self,
         keyword: str,
@@ -827,65 +870,37 @@ class SessionDB:
     ) -> List[Dict]:
         """增强搜索：支持多条件组合"""
         try:
+            # 基础查询模板
+            SELECT_CLAUSE = """
+                SELECT m.id, m.session_id, m.timestamp, m.role, m.content, m.tool_calls_json, m.tool_call_id
+                FROM session_messages m
+            """
+            WHERE_CLAUSE = "WHERE m.message_type = 'message'"
+
             if keyword.strip():
                 fts_query = _sanitize_fts_query(keyword)
                 if not fts_query:
                     return []
 
-                base_sql = """
-                    SELECT m.id, m.session_id, m.timestamp, m.role, m.content, m.tool_calls_json, m.tool_call_id
-                    FROM session_messages m
+                base_sql = f"""{SELECT_CLAUSE}
                     JOIN session_messages_fts fts ON m.id = fts.rowid
-                    WHERE session_messages_fts MATCH ?
-                    AND m.message_type = 'message'
+                    {WHERE_CLAUSE}
+                    AND session_messages_fts MATCH ?
                 """
                 params = [fts_query]
-
-                if session_id:
-                    base_sql += " AND m.session_id = ?"
-                    params.append(session_id)
-                if role:
-                    base_sql += " AND m.role = ?"
-                    params.append(role)
-                if start_time:
-                    base_sql += " AND m.timestamp >= ?"
-                    params.append(start_time)
-                if end_time:
-                    base_sql += " AND m.timestamp <= ?"
-                    params.append(end_time)
-
-                base_sql += " ORDER BY fts.rank LIMIT ?"
-                params.append(limit)
-
-                rows = self.conn.execute(base_sql, params).fetchall()
+                order_by = "fts.rank"
             else:
-                base_sql = """
-                    SELECT m.id, m.session_id, m.timestamp, m.role, m.content, m.tool_calls_json, m.tool_call_id
-                    FROM session_messages m
-                    WHERE m.message_type = 'message'
-                """
+                base_sql = f"{SELECT_CLAUSE} {WHERE_CLAUSE}"
                 params = []
+                order_by = "m.timestamp DESC"
 
-                if session_id:
-                    base_sql += " AND m.session_id = ?"
-                    params.append(session_id)
-                if role:
-                    base_sql += " AND m.role = ?"
-                    params.append(role)
-                if start_time:
-                    base_sql += " AND m.timestamp >= ?"
-                    params.append(start_time)
-                if end_time:
-                    base_sql += " AND m.timestamp <= ?"
-                    params.append(end_time)
+            base_sql, params = self._apply_filters(
+                base_sql, params, session_id, role, start_time, end_time, order_by, limit
+            )
 
-                base_sql += " ORDER BY m.timestamp DESC LIMIT ?"
-                params.append(limit)
-
-                rows = self.conn.execute(base_sql, params).fetchall()
-
+            rows = self.conn.execute(base_sql, params).fetchall()
             return [dict(row) for row in rows]
-        except Exception as e:
+        except Exception:
             return []
 
     def get_session_stats(self, session_id: str) -> Dict:

@@ -145,7 +145,9 @@ class TaskScheduler:
                 task_id="health_check",
                 task_type="custom",
                 interval_seconds=self.BUILTIN_TASKS["health_check"],
-                prompt="运行诊断脚本 `python scripts/diagnose_seed_agent.py --json -q`，统计 FAIL/WARN。如有 FAIL，尝试修复。将结果摘要追加到任务日志。",
+                prompt=("运行诊断脚本 `python scripts/diagnose_seed_agent.py --json -q`，"
+                        "统计 FAIL/WARN。如有 FAIL，尝试修复。"
+                        "将结果摘要追加到任务日志。"),
                 last_run=now,  # 启动时设置，避免立即触发
                 enabled=True
             )

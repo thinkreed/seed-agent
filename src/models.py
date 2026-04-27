@@ -1,3 +1,19 @@
+"""
+数据模型与配置加载模块
+
+负责:
+1. Pydantic 数据模型定义 (配置验证、类型安全)
+2. 配置文件加载与解析 (config.json → FullConfig)
+3. 提供商配置管理 (多 API Key、路由策略)
+4. 限流参数建模 (RPM、Rolling Window、并发控制)
+5. 环境变量注入 (.env 文件加载、配置覆盖)
+
+核心模型:
+- FullConfig: 完整系统配置
+- ProviderConfig: LLM 提供商配置
+- ModelConfig: 模型参数 (temperature, max_tokens 等)
+- RateLimitConfig: 限流策略
+"""
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError
 from typing import List, Dict, Optional

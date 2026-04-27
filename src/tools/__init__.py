@@ -1,3 +1,20 @@
+"""
+工具系统模块
+
+负责:
+1. 工具注册与发现 (ToolRegistry、动态加载)
+2. 工具调用验证 (参数检查、权限控制、路径安全)
+3. 工具并发执行 (asyncio.gather、路径重叠防护)
+4. 工具结果处理 (输出截断、错误格式化)
+
+核心组件:
+- ToolRegistry: 全局工具注册表
+- builtin_tools: 内置工具实现
+- memory_tools: 记忆系统工具
+- skill_loader: 技能加载器
+- session_db: 会话数据库
+"""
+
 import asyncio
 import inspect
 from typing import Dict, List, Callable, Any
@@ -37,72 +54,81 @@ class ToolRegistry:
             return await func(**kwargs)
         return func(**kwargs)
     
-    def _infer_schema(self, func: Callable) -> Dict:
-        """从函数签名推断 JSON Schema，支持嵌套类型(List, Dict)推断及更好的 Docstring 解析"""
-        import typing
+    @staticmethod
+    def _parse_docstring(doc: str) -> Dict[str, str]:
+        """解析 docstring 获取参数描述"""
         import re
+        param_descriptions = {}
+        if not doc:
+            return param_descriptions
+        
+        skip_headers = {"args", "returns", "raises", "yields", "note", "example"}
+        for line in doc.split('\n'):
+            line = line.strip()
+            if not line or line.endswith(':'):
+                continue
+            match = re.match(r'([a-zA-Z_]\w*)\s*:\s*(.+)', line)
+            if match:
+                name, desc = match.group(1), match.group(2).strip()
+                if name.lower() not in skip_headers:
+                    param_descriptions[name] = desc
+        return param_descriptions
+
+    @staticmethod
+    def _resolve_type_to_schema(ann) -> Dict:
+        """将 Python 类型转换为 JSON Schema 结构"""
+        import typing
+        
+        origin = typing.get_origin(ann)
+        args = typing.get_args(ann)
+
+        # 处理 List[T]
+        if ann is list or origin is list:
+            item_schema = {"type": "string"}  # Default
+            if args:
+                item_schema = ToolRegistry._resolve_type_to_schema(args[0])
+            return {"type": "array", "items": item_schema}
+        
+        # 处理 Dict
+        if ann is dict or origin is dict:
+            return {"type": "object"}
+
+        # 处理 Union (包括 Optional[T] -> Union[T, None])
+        if origin is typing.Union:
+            non_none = [a for a in args if a is not type(None)]
+            if len(non_none) == 1:
+                return ToolRegistry._resolve_type_to_schema(non_none[0])
+            # 复杂 Union 默认返回 string
+            return {"type": "string"}
+
+        # 基础类型
+        type_map = {
+            str: {"type": "string"},
+            int: {"type": "integer"},
+            float: {"type": "number"},
+            bool: {"type": "boolean"},
+        }
+        return type_map.get(ann, {"type": "string"})
+
+    def _infer_schema(self, func: Callable) -> Dict:
+        """从函数签名推断 JSON Schema"""
         import inspect
 
         sig = inspect.signature(func)
         params = sig.parameters
         
-        # 解析 docstring 以获取参数描述 (支持 Args: 块格式)
-        param_descriptions = {}
-        if func.__doc__:
-            # 逐行解析以兼容缩进不一致或混合格式
-            skip_headers = {"args", "returns", "raises", "yields", "note", "example"}
-            for line in func.__doc__.split('\n'):
-                line = line.strip()
-                if not line or line.endswith(':'):
-                    continue
-                match = re.match(r'([a-zA-Z_]\w*)\s*:\s*(.+)', line)
-                if match:
-                    name, desc = match.group(1), match.group(2).strip()
-                    if name.lower() not in skip_headers:
-                        param_descriptions[name] = desc
+        # 解析 docstring
+        param_descriptions = self._parse_docstring(func.__doc__)
 
         properties = {}
         required = []
         
-        def _resolve_type_to_schema(ann):
-            """将 Python 类型转换为 JSON Schema 结构"""
-            origin = typing.get_origin(ann)
-            args = typing.get_args(ann)
-
-            # 处理 List[T]
-            if ann is list or origin is list:
-                item_schema = {"type": "string"} # Default
-                if args:
-                    item_schema = _resolve_type_to_schema(args[0])
-                return {"type": "array", "items": item_schema}
-            
-            # 处理 Dict
-            if ann is dict or origin is dict:
-                return {"type": "object"}
-
-            # 处理 Union (包括 Optional[T] -> Union[T, None])
-            if origin is typing.Union:
-                non_none = [a for a in args if a is not type(None)]
-                if len(non_none) == 1:
-                    return _resolve_type_to_schema(non_none[0])
-                # 复杂 Union 默认返回 string
-                return {"type": "string"}
-
-            # 基础类型
-            type_map = {
-                str: {"type": "string"},
-                int: {"type": "integer"},
-                float: {"type": "number"},
-                bool: {"type": "boolean"},
-            }
-            return type_map.get(ann, {"type": "string"})
-
         for param_name, param in params.items():
             if param_name in ("self", "cls"):
                 continue
             
             # 生成类型 schema
-            param_schema = _resolve_type_to_schema(param.annotation)
+            param_schema = self._resolve_type_to_schema(param.annotation)
             
             # 添加描述
             description = param_descriptions.get(param_name, "")

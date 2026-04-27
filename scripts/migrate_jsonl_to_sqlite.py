@@ -429,11 +429,21 @@ def optimize_fts5(conn):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Migrate JSONL session history to SQLite + FTS5")
-    parser.add_argument("--backup", action="store_true", default=True, help="Backup JSONL files after migration (default)")
-    parser.add_argument("--no-backup", action="store_true", help="Skip JSONL backup")
-    parser.add_argument("--cleanup", action="store_true", help="Delete original JSONL after successful migration")
-    parser.add_argument("--dry-run", action="store_true", help="Analyze only, don't migrate")
+    """主入口：解析命令行参数并执行迁移或分析。"""
+    parser = argparse.ArgumentParser(
+        description="Migrate JSONL session history to SQLite + FTS5")
+    parser.add_argument(
+        "--backup", action="store_true", default=True,
+        help="Backup JSONL files after migration (default)")
+    parser.add_argument(
+        "--no-backup", action="store_true",
+        help="Skip JSONL backup")
+    parser.add_argument(
+        "--cleanup", action="store_true",
+        help="Delete original JSONL after successful migration")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Analyze only, don't migrate")
     
     args = parser.parse_args()
     

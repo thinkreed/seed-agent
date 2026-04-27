@@ -168,7 +168,9 @@ def wait_for_subagent(
     if status is None:
         return f"Error: Task {task_id} not found"
 
-    return f"Task {task_id} status: {status}\nResult not yet available. Use 'wait_for_subagent_async' or check again later."
+    return (f"Task {task_id} status: {status}\n"
+            f"Result not yet available. "
+            f"Use 'wait_for_subagent_async' or check again later.")
 
 
 def aggregate_subagent_results(

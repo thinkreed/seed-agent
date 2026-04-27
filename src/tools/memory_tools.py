@@ -1,3 +1,19 @@
+"""
+记忆工具模块
+
+负责:
+1. 四级记忆写入 (L1 索引、L2 技能、L3 知识、L4 原始数据)
+2. 会话历史管理 (SQLite 存储、JSONL 备份)
+3. 技能执行结果记录 (gene_outcomes 表、成功率追踪)
+4. 记忆内容验证 (长度限制、格式检查、YAML frontmatter)
+5. 会话文件管理 (按时间分割、归档清理)
+
+核心功能:
+- write_memory: 标准化记忆写入接口
+- _save_session_history: 会话持久化
+- _record_skill_outcome: 技能执行追踪
+"""
+
 import os
 import re
 import json
@@ -85,7 +101,9 @@ def _validate_skill_format(content: str, name: str = "") -> str:
         skill_name = name_match.group(1).strip()
         # name 校验规则：小写字母/数字/连字符，1-64字符
         if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', skill_name):
-            return f"Error: L2 Skill name '{skill_name}' must be lowercase letters/numbers/hyphens, 1-64 chars, no leading/trailing/consecutive hyphens."
+            return (f"Error: L2 Skill name '{skill_name}' must be lowercase "
+                    f"letters/numbers/hyphens, 1-64 chars, "
+                    f"no leading/trailing/consecutive hyphens.")
         if len(skill_name) > 64:
             return "Error: L2 Skill name exceeds 64 chars limit."
 

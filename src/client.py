@@ -1,3 +1,19 @@
+"""
+LLM 网关客户端模块
+
+负责:
+1. 多提供商 API 调用 (OpenAI 兼容接口、配置化路由)
+2. 智能重试机制 (指数退避、429 限流处理、超时重试)
+3. 请求队列管理 (优先级调度、并发控制、背压处理)
+4. 限流保护 (Token Bucket、Rolling Window、SQLite 持久化)
+5. 流式响应处理 (Server-Sent Events、Tool Call 累积)
+
+核心特性:
+- 支持多提供商故障转移
+- 动态超时调整 (基于负载因子)
+- 完整的错误分类与日志记录
+"""
+
 import os
 import time
 import asyncio
@@ -102,7 +118,11 @@ class FallbackChain:
                 return
 
         # 无可用 fallback
+        self._active_provider = None
         self._status = "unavailable"
+        # 移除失败的 provider 防止 get_active_client 重新选中
+        if failed_provider in self._providers:
+            self._providers.remove(failed_provider)
         logger.error("All providers failed, no fallback available")
 
     def mark_healthy(self, provider: str):
@@ -620,7 +640,8 @@ class LLMGateway:
 
                     logger.debug(f"Ticket {ticket.id}: rate limit acquired (stream)")
 
-                    async for chunk in self._stream_chat_completion_with_fallback_internal(model_id, messages, **kwargs):
+                    async for chunk in self._stream_chat_completion_with_fallback_internal(
+                            model_id, messages, **kwargs):
                         yield chunk
 
                     logger.debug(f"Ticket {ticket.id}: stream completed")
@@ -771,6 +792,36 @@ class LLMGateway:
         )
         return response.model_dump()
 
+    def _should_continue_retry(self, attempt: int, max_retries: int = 3) -> bool:
+        """判断是否应该继续重试"""
+        return attempt < max_retries - 1
+
+    def _get_retry_wait_time(self, attempt: int) -> int:
+        """计算指数退避等待时间"""
+        return 2 ** attempt
+
+    def _iterate_fallback_models(self, model_id: str, exclude_provider: str) -> List[Tuple[str, str]]:
+        """生成fallback provider和model_id列表
+        
+        Returns:
+            List of (fallback_provider, fallback_model_id) tuples
+        """
+        fallbacks = []
+        if not self._fallback_chain:
+            return fallbacks
+            
+        for fallback_provider in self._fallback_chain._providers:
+            if fallback_provider == exclude_provider:
+                continue
+            if fallback_provider not in self.clients:
+                continue
+                
+            fallback_model_id = self._get_fallback_model_id(model_id, fallback_provider)
+            if fallback_model_id:
+                fallbacks.append((fallback_provider, fallback_model_id))
+        
+        return fallbacks
+
     async def _stream_chat_completion_with_fallback_internal(
         self,
         model_id: str,
@@ -781,7 +832,7 @@ class LLMGateway:
         provider_id = model_id.split('/')[0]
         last_error = None
 
-        # 尝试当前 provider（带重试）
+        # 尝试主 provider（带重试）
         for attempt in range(3):
             try:
                 async for chunk in self._stream_chat_completion_single(model_id, messages, **kwargs):
@@ -791,8 +842,8 @@ class LLMGateway:
                 return
             except (APIConnectionError, RateLimitError, APIStatusError) as e:
                 last_error = e
-                if attempt < 2:
-                    wait_time = 2 ** attempt
+                if self._should_continue_retry(attempt):
+                    wait_time = self._get_retry_wait_time(attempt)
                     logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
                     await asyncio.sleep(wait_time)
                 else:
@@ -803,16 +854,8 @@ class LLMGateway:
         if self._fallback_chain:
             self._fallback_chain.mark_degraded(provider_id)
 
-            for fallback_provider in self._fallback_chain._providers:
-                if fallback_provider == provider_id:
-                    continue
-                if fallback_provider not in self.clients:
-                    continue
-
-                fallback_model_id = self._get_fallback_model_id(model_id, fallback_provider)
-                if not fallback_model_id:
-                    continue
-
+            # 遍历 fallback providers
+            for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, provider_id):
                 try:
                     logger.info(f"Trying fallback stream: {fallback_model_id}")
                     async for chunk in self._stream_chat_completion_single(fallback_model_id, messages, **kwargs):

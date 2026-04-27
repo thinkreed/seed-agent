@@ -153,30 +153,37 @@ class QueueStats:
     )
 
     def record_submit(self, priority: RequestPriority):
+        """记录指定优先级的提交次数。"""
         self.submitted[priority] += 1
 
     def record_signal(self, priority: RequestPriority):
+        """记录指定优先级的信号触发次数。"""
         self.signaled[priority] += 1
 
     def record_rejected(self, priority: RequestPriority):
+        """记录指定优先级的拒绝次数。"""
         self.rejected[priority] += 1
 
     def record_cancelled(self, priority: RequestPriority):
+        """记录指定优先级的取消次数。"""
         self.cancelled[priority] += 1
 
     def record_wait_time(self, priority: RequestPriority, duration: float):
+        """记录指定优先级的等待时间，保留最近100条。"""
         self.wait_times[priority].append(duration)
         # 只保留最近100条
         if len(self.wait_times[priority]) > 100:
             self.wait_times[priority] = self.wait_times[priority][-100:]
 
     def get_avg_wait_time(self, priority: RequestPriority) -> float:
+        """计算指定优先级的平均等待时间。"""
         times = self.wait_times[priority]
         if not times:
             return 0.0
         return sum(times) / len(times)
 
     def get_p95_wait_time(self, priority: RequestPriority) -> float:
+        """计算指定优先级的 P95 等待时间。"""
         times = self.wait_times[priority]
         if not times:
             return 0.0
@@ -185,6 +192,7 @@ class QueueStats:
         return sorted_times[min(idx, len(sorted_times) - 1)]
 
     def get_reject_rate(self, priority: RequestPriority) -> float:
+        """计算指定优先级的拒绝率（拒绝次数/提交次数）。"""
         submitted = self.submitted[priority]
         if submitted == 0:
             return 0.0

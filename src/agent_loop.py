@@ -1,3 +1,18 @@
+"""
+Agent 主循环模块
+
+负责:
+1. 消息历史管理 (上下文窗口控制、摘要压缩)
+2. 工具调用执行 (并发安全、路径重叠检查)
+3. 技能加载与匹配 (渐进式披露、Memory Graph 选择)
+4. 子代理生命周期管理 (创建、等待、结果聚合)
+5. 会话持久化 (SQLite 存储、历史回溯)
+
+核心流程:
+- 接收用户输入 → 构建 messages → 调用 LLM → 解析 tool_calls → 执行工具 → 返回结果 → 循环
+- 支持流式响应、上下文压缩、双重 System Message 防护
+"""
+
 import tiktoken
 import asyncio
 import json
@@ -268,9 +283,9 @@ class AgentLoop:
         # 简单切片，保留最后 keep_count 条
         preserved = self.history[-keep_count:] if len(self.history) > keep_count else self.history
 
-        # 用摘要替换旧历史
+        # 用摘要替换旧历史 (使用 user role 避免双重 system message 问题)
         self.history = [
-            {"role": "system", "content": f"[对话摘要]\n{summary}"}
+            {"role": "user", "content": f"[System Note: 以下是之前对话的摘要，请作为当前任务的背景参考]\n{summary}"}
         ] + preserved
 
         self._last_summary = summary
@@ -323,20 +338,41 @@ class AgentLoop:
             f"Agent exceeded maximum iterations ({self.max_iterations})"
         )
 
+    def _process_tool_delta(self, tc_list: List[Dict], accumulator: Dict[int, Dict]):
+        """处理流式响应中的 Tool Call 增量块"""
+        for tc in tc_list:
+            idx = tc.get('index', 0)
+            if idx not in accumulator:
+                accumulator[idx] = {
+                    'id': tc.get('id'),
+                    'type': tc.get('type', 'function'),
+                    'function': {'name': '', 'arguments': ''}
+                }
+            acc = accumulator[idx]
+            if tc.get('id'):
+                acc['id'] = tc['id']
+            if tc.get('type'):
+                acc['type'] = tc['type']
+            func = tc.get('function', {})
+            if func.get('name'):
+                acc['function']['name'] = func['name']
+            if func.get('arguments'):
+                acc['function']['arguments'] += func['arguments']
+
+    async def _process_final_completion(self, full_content: str):
+        """处理对话完成的收尾工作 (总结 + 评估)"""
+        await self._maybe_summarize()
+        self._evaluate_and_record_skill_outcomes(final_success=True)
+        yield {"type": "final", "content": full_content}
+
     async def stream_run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> AsyncGenerator[Dict, None]:
-        """流式处理用户输入
-        
-        Args:
-            user_input: 用户输入文本
-            priority: 请求优先级，默认 CRITICAL（用户请求最高优先级）
-        """
+        """流式处理用户输入"""
         self.history.append({"role": "user", "content": user_input})
         self._conversation_rounds += 1
 
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
-
             messages = self._build_messages()
             full_content = ""
             tool_calls_accumulator: Dict[int, Dict] = {}
@@ -344,7 +380,7 @@ class AgentLoop:
             async for chunk in self.gateway.stream_chat_completion(
                 self.model_id,
                 messages,
-                priority=priority,  # 使用传入的优先级
+                priority=priority,
                 tools=self.tools.get_schemas()
             ):
                 delta = chunk['choices'][0].get('delta', {})
@@ -355,48 +391,51 @@ class AgentLoop:
 
                 tc_list = delta.get('tool_calls')
                 if tc_list:
-                    for tc in tc_list:
-                        idx = tc.get('index', 0)
-                        if idx not in tool_calls_accumulator:
-                            tool_calls_accumulator[idx] = {
-                                'id': tc.get('id'),
-                                'type': tc.get('type', 'function'),
-                                'function': {'name': '', 'arguments': ''}
-                            }
-                        acc = tool_calls_accumulator[idx]
-                        if tc.get('id'):
-                            acc['id'] = tc['id']
-                        if tc.get('type'):
-                            acc['type'] = tc['type']
-                        func = tc.get('function', {})
-                        if func.get('name'):
-                            acc['function']['name'] = func['name']
-                        if func.get('arguments'):
-                            acc['function']['arguments'] += func['arguments']
+                    self._process_tool_delta(tc_list, tool_calls_accumulator)
 
-            tool_calls = [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())] if tool_calls_accumulator else []
+            tool_calls = (
+                [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
+                if tool_calls_accumulator else []
+            )
 
-            assistant_message = {
+            self.history.append({
                 "role": "assistant",
                 "content": full_content or None,
                 "tool_calls": tool_calls if tool_calls else None
-            }
-            self.history.append(assistant_message)
+            })
 
             if tool_calls:
                 yield {"type": "tool_call", "calls": tool_calls}
                 tool_results = await self._execute_tool_calls(tool_calls)
                 self.history.extend(tool_results)
             else:
-                # 对话完成，检查是否需要总结
-                await self._maybe_summarize()
-                # Memory Graph: 评估并记录 Skill 执行结果
-                self._evaluate_and_record_skill_outcomes(final_success=True)
-                yield {"type": "final", "content": full_content}
+                async for final_chunk in self._process_final_completion(full_content):
+                    yield final_chunk
                 return
 
     async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
-        """批量并行执行工具调用 (含 Memory Graph 自动记录)"""
+        """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查)"""
+        # 路径重叠检查：防止多个写工具并发修改同一文件
+        write_tools = {'file_write', 'file_edit'}
+        write_paths = []
+        for tc in tool_calls:
+            if tc['function']['name'] in write_tools:
+                try:
+                    args = json.loads(tc['function']['arguments']) if isinstance(tc['function']['arguments'], str) else tc['function']['arguments']
+                    path = args.get('path', '')
+                    if path:
+                        write_paths.append((tc['id'], path))
+                except:
+                    pass
+        
+        # 检查是否有重复路径
+        seen_paths = {}
+        for tc_id, path in write_paths:
+            if path in seen_paths:
+                logger.warning(f"Concurrent write conflict detected: {path}")
+                return [{"role": "tool", "tool_call_id": tc['id'], "content": f"Error: Concurrent write conflict on '{path}'. Please execute sequentially."} for tc in tool_calls]
+            seen_paths[path] = tc_id
+
         async def _run_single_call(tool_call: Dict) -> Dict:
             tool_id = tool_call['id']
             tool_name = tool_call['function']['name']

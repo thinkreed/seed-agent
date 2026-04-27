@@ -355,10 +355,79 @@ class SkillLoader:
         
         return "\n".join(lines)
 
+    def _tokenize_query(self, query: str) -> Tuple[List[str], List[str], List[str]]:
+        """分词: 英文单词 + 中文字符串"""
+        query_lower = query.lower()
+        en_words = re.findall(r'[a-zA-Z0-9_-]+', query_lower)
+        cn_words = re.findall(r'[\u4e00-\u9fa5]+', query_lower)
+        query_words = en_words + cn_words
+        if not query_words and query.strip():
+            query_words = [query_lower]
+        return en_words, cn_words, query_words
+
+    def _score_name_match(self, name: str, query_lower: str) -> float:
+        """Name 精确匹配: +3.0"""
+        if name.lower() == query_lower or name.lower() in query_lower or query_lower in name.lower():
+            return 3.0
+        return 0.0
+
+    def _score_trigger_match(self, triggers: List[str], query_words: List[str]) -> Tuple[float, bool]:
+        """
+        Trigger 匹配 - 精确匹配优先于部分匹配
+        返回 (score, matched)
+        """
+        for trigger in triggers:
+            trigger_lower = trigger.lower()
+            for qw in query_words:
+                if trigger_lower == qw:
+                    # 精确匹配 - 最高优先级
+                    return 3.0, True
+                elif qw in trigger_lower:
+                    # 查询词是触发词的子串 (e.g. "诊断" in "诊断趋势")
+                    ratio = len(qw) / max(len(trigger_lower), 1)
+                    return 1.0 + ratio, True  # 1.0~2.0
+                elif trigger_lower in qw:
+                    # 触发词是查询词的子串
+                    return 1.5, True
+        return 0.0, False
+
+    def _score_description_match(self, description: str, query_words: List[str]) -> Tuple[float, Set[str]]:
+        """
+        Description 关键词匹配 (仅在没有 trigger 匹配时生效)
+        返回 (score, desc_words)
+        """
+        desc_words = set(re.findall(r'[a-zA-Z0-9_]+', description.lower()))
+        desc_words.update(re.findall(r'[\u4e00-\u9fa5]+', description.lower()))
+        score = 0.0
+        for qw in query_words:
+            for dw in desc_words:
+                if qw in dw or dw in qw:
+                    score += 0.5
+                    break
+        return score, desc_words
+
+    def _score_fuzzy_match(self, name: str, triggers: List[str], desc_words: Set[str],
+                           en_words: List[str], current_score: float) -> float:
+        """模糊匹配 (仅英文，仅在当前得分 < 1.0 时生效)"""
+        if current_score >= 1.0 or not en_words:
+            return 0.0
+        all_keywords = set()
+        all_keywords.add(name.lower())
+        all_keywords.update(desc_words)
+        all_keywords.update(t.lower() for t in triggers)
+        keyword_list = list(all_keywords)
+        score = 0.0
+        for qw in en_words:
+            if len(qw) >= 3:
+                matches = difflib.get_close_matches(qw, keyword_list, n=1, cutoff=0.75)
+                if matches:
+                    score += 0.5
+        return score
+
     def match_skill(self, query: str, available_tools: Set[str] = None) -> Optional[str]:
         """
         根据查询匹配最相关的 skill
-        
+
         评分策略:
         - name 精确匹配: +3.0
         - trigger 精确匹配: +2.0
@@ -366,80 +435,40 @@ class SkillLoader:
         - 模糊匹配: +0.5
         """
         query_lower = query.lower()
-        
-        # 分词: 英文单词 + 中文字符串
-        en_words = re.findall(r'[a-zA-Z0-9_-]+', query_lower)
-        cn_words = re.findall(r'[\u4e00-\u9fa5]+', query_lower)
-        query_words = en_words + cn_words
-        if not query_words and query.strip():
-            query_words = [query_lower]
-        
+        en_words, cn_words, query_words = self._tokenize_query(query)
+
         best_match = None
         best_score = 0.0
-        
+
         for name, meta in self._skills_meta.items():
             # 条件激活过滤
             if not self.should_show_skill(name, available_tools):
                 continue
-            
+
             score = 0.0
-            
+
             # 1. Name 精确匹配
-            if name.lower() == query_lower or name.lower() in query_lower or query_lower in name.lower():
-                score += 3.0
-            
-            # 2. Trigger 匹配 - 精确匹配优先于部分匹配
-            trigger_matched = False
-            for trigger in meta.get('triggers', []):
-                trigger_lower = trigger.lower()
-                for qw in query_words:
-                    if trigger_lower == qw:
-                        # 精确匹配 - 最高优先级
-                        score += 3.0
-                        trigger_matched = True
-                        break
-                    elif qw in trigger_lower:
-                        # 查询词是触发词的子串 (e.g. "诊断" in "诊断趋势")
-                        # 给予部分分数，但低于精确匹配
-                        ratio = len(qw) / max(len(trigger_lower), 1)
-                        score += 1.0 + ratio  # 1.0~2.0
-                        trigger_matched = True
-                        break
-                    elif trigger_lower in qw:
-                        # 触发词是查询词的子串
-                        score += 1.5
-                        trigger_matched = True
-                        break
-                if trigger_matched:
-                    break
-            
+            score += self._score_name_match(name, query_lower)
+
+            # 2. Trigger 匹配
+            triggers = meta.get('triggers', [])
+            trigger_score, trigger_matched = self._score_trigger_match(triggers, query_words)
+            score += trigger_score
+
             # 3. Description 关键词匹配 (仅在没有 trigger 匹配时生效)
             if not trigger_matched:
-                desc_words = set(re.findall(r'[a-zA-Z0-9_]+', meta['description'].lower()))
-                desc_words.update(re.findall(r'[\u4e00-\u9fa5]+', meta['description'].lower()))
-                for qw in query_words:
-                    for dw in desc_words:
-                        if qw in dw or dw in qw:
-                            score += 0.5
-                            break
-            
+                desc_score, desc_words = self._score_description_match(meta['description'], query_words)
+                score += desc_score
+            else:
+                desc_words = set()
+
             # 4. 模糊匹配 (仅英文)
-            if score < 1.0 and en_words:
-                all_keywords = set()
-                all_keywords.add(name.lower())
-                all_keywords.update(desc_words)
-                all_keywords.update(t.lower() for t in meta.get('triggers', []))
-                keyword_list = list(all_keywords)
-                for qw in en_words:
-                    if len(qw) >= 3:
-                        matches = difflib.get_close_matches(qw, keyword_list, n=1, cutoff=0.75)
-                        if matches:
-                            score += 0.5
-            
+            score += self._score_fuzzy_match(name, triggers, desc_words, en_words, score)
+
             if score > best_score:
                 best_score = score
                 best_match = name
-        
+
         return best_match if best_score >= 1.0 else None
 
     def load_skill_content(self, name: str) -> Optional[str]:
