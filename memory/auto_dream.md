@@ -1,5 +1,5 @@
 # 物理级全能进化型Agent 记忆整理SOP
-**适配路径**：`.seed/memory/`
+**适配路径**：用户主目录/.seed/memory/
 **层级对应**：L1=notes | L2=skills | L3=knowledge | L4=raw
 **核心原则**：记忆只为**降错、提效、进化**服务，无价值不留存，精简至上
 
