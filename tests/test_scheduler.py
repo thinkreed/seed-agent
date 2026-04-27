@@ -23,25 +23,16 @@ from scheduler import ScheduledTask, TaskScheduler
 # ==================== Fixtures ====================
 
 @pytest.fixture
-def mock_tasks_dir():
-    """Mock tasks directory and file for TaskScheduler tests."""
+def mock_tasks_dir(monkeypatch):
+    """Mock tasks directory and file for TaskScheduler tests using monkeypatch."""
     temp_dir = tempfile.mkdtemp()
-    tasks_file = os.path.join(temp_dir, 'scheduled_tasks.json')
+    tasks_file = Path(temp_dir) / 'scheduled_tasks.json'
     
-    # Patch global constants
-    original_dir = scheduler.TASKS_DIR
-    original_file = scheduler.TASKS_FILE
+    # Use monkeypatch to safely modify module-level constants
+    monkeypatch.setattr(scheduler, 'TASKS_DIR', Path(temp_dir))
+    monkeypatch.setattr(scheduler, 'TASKS_FILE', tasks_file)
     
-    scheduler.TASKS_DIR = Path(temp_dir)
-    scheduler.TASKS_FILE = Path(tasks_file)
-    
-    yield temp_dir
-    
-    scheduler.TASKS_DIR = original_dir
-    scheduler.TASKS_FILE = original_file
-    if os.path.exists(temp_dir):
-        import shutil
-        shutil.rmtree(temp_dir)
+    return temp_dir
 
 # ==================== Tests for ScheduledTask ====================
 
@@ -225,14 +216,17 @@ class TestTaskScheduler:
     def test_load_tasks(self, mock_tasks_dir):
         """Test loading tasks from file."""
         tasks_file = scheduler.TASKS_FILE
-        data = [{
-            "task_id": "saved_task",
-            "task_type": "custom",
-            "interval_seconds": 123,
-            "prompt": "Saved prompt",
-            "last_run": 0,
-            "enabled": True
-        }]
+        # Data must be wrapped in {"tasks": [...]}
+        data = {
+            "tasks": [{
+                "task_id": "saved_task",
+                "task_type": "custom",
+                "interval_seconds": 123,
+                "prompt": "Saved prompt",
+                "last_run": 0,
+                "enabled": True
+            }]
+        }
         
         with open(tasks_file, 'w') as f:
             json.dump(data, f)
@@ -249,9 +243,10 @@ class TestTaskScheduler:
         scheduler_mock.add_task("task_1", "type1", 100, "p1")
         scheduler_mock.add_task("task_2", "type2", 200, "p2")
         
-        tasks = scheduler_mock.list_tasks()
-        assert len(tasks) == 2
-        assert tasks[0]['task_id'] == "task_1"
+        tasks_list = scheduler_mock.list_tasks()
+        # list_tasks returns a formatted string, check if tasks are present
+        assert "task_1" in tasks_list
+        assert "task_2" in tasks_list
 
     def test_enable_disable_task(self, mock_tasks_dir):
         """Test enabling/disabling tasks."""
