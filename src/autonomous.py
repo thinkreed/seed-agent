@@ -95,12 +95,12 @@ class AutonomousExplorer:
 
         # 检查 SOP 文件是否存在
         if not self._sop_content:
-            logger.error(f"SOP file not found: {SOP_PATH} - autonomous exploration disabled")
+            logger.warning(f"SOP file not found: {SOP_PATH} - autonomous exploration disabled")
             return
 
         self._running = True
         self._task = asyncio.create_task(self._idle_monitor_loop())
-        logger.info("Autonomous explorer started")
+        logger.warning("Autonomous explorer started")
 
     async def stop(self):
         """停止空闲监控"""
@@ -111,7 +111,7 @@ class AutonomousExplorer:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        logger.info("Autonomous explorer stopped")
+        logger.warning("Autonomous explorer stopped")
 
     async def _idle_monitor_loop(self):
         """空闲监控循环"""
@@ -119,9 +119,12 @@ class AutonomousExplorer:
             idle_time = self.get_idle_time()
 
             if idle_time >= self.IDLE_TIMEOUT:
-                logger.info(f"Idle for {idle_time/60:.1f} minutes, starting autonomous exploration")
-                await self._execute_autonomous_task()
-                self.record_activity()  # 执行后重置计时
+                logger.warning(f"Idle for {idle_time/60:.1f} minutes, starting autonomous exploration")
+                result = await self._execute_autonomous_task()
+                if result:
+                    self.record_activity()  # 仅成功时重置计时
+                else:
+                    logger.warning("Autonomous exploration failed, not resetting idle timer")
 
             # 每30秒检查一次
             await asyncio.sleep(30)
@@ -239,7 +242,7 @@ class AutonomousExplorer:
         """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强）"""
         if not self._sop_content:
             logger.warning("No SOP loaded, skipping autonomous exploration")
-            return
+            return None
 
         self._load_or_init_state()
         todo_content = self._load_todo_content()
@@ -263,10 +266,10 @@ class AutonomousExplorer:
                         await self.on_explore_complete(response)
                     else:
                         self.on_explore_complete(response)
+                return response
             else:
                 logger.warning("Autonomous exploration returned empty response")
-
-            return response
+                return None
 
         except Exception as e:
             logger.exception(f"Autonomous exploration failed: {e}")
@@ -274,6 +277,7 @@ class AutonomousExplorer:
             return None
         finally:
             self.agent.system_prompt = original_system_prompt
+            self.agent.history = original_history
             self.agent.max_iterations = original_max_iterations
 
     def _load_todo_content(self) -> str:

@@ -210,11 +210,13 @@ class SkillLoader:
             try:
                 meta = self._parse_frontmatter(skill_file)
                 if meta and 'name' in meta:
-                    # 解析 triggers
+                    # 解析 triggers (支持嵌套列表扁平化)
                     triggers = meta.get('triggers', [])
                     if isinstance(triggers, str):
                         triggers = [t.strip() for t in triggers.split(',') if t.strip()]
-                    elif not isinstance(triggers, list):
+                    elif isinstance(triggers, list):
+                        triggers = self._flatten_triggers(triggers)
+                    else:
                         triggers = []
 
                     # 解析 platforms
@@ -265,6 +267,26 @@ class SkillLoader:
             return yaml.safe_load(parts[1].strip())
         except (yaml.YAMLError, OSError, UnicodeDecodeError):
             return None
+
+    def _flatten_triggers(self, triggers: List) -> List[str]:
+        """扁平化嵌套的 triggers 列表
+
+        YAML 中 `- [xxx]` 格式会产生嵌套列表，此方法将其展开为单层字符串列表。
+
+        Args:
+            triggers: 可能包含嵌套列表的 triggers
+
+        Returns:
+            扁平化后的字符串列表
+        """
+        result = []
+        for item in triggers:
+            if isinstance(item, str):
+                result.append(item.strip())
+            elif isinstance(item, list):
+                # 递归处理嵌套列表
+                result.extend(self._flatten_triggers(item))
+        return result
 
     def should_show_skill(self, name: str, available_tools: Set[str] = None) -> bool:
         """
