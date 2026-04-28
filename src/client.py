@@ -737,7 +737,7 @@ class LLMGateway:
                 return result
             except (APIConnectionError, RateLimitError, APIStatusError) as e:
                 if attempt < 2:
-                    wait_time = 2 ** attempt
+                    wait_time = self._get_retry_wait_time(attempt, e)
                     logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
                     await asyncio.sleep(wait_time)
                 else:
@@ -796,8 +796,20 @@ class LLMGateway:
         """判断是否应该继续重试"""
         return attempt < max_retries - 1
 
-    def _get_retry_wait_time(self, attempt: int) -> int:
-        """计算指数退避等待时间"""
+    def _get_retry_wait_time(self, attempt: int, error: Exception = None) -> int:
+        """计算重试等待时间 (支持 Retry-After 头解析)"""
+        # 1. Check for Retry-After header (common in 429 Rate Limit errors)
+        if error and hasattr(error, 'response') and error.response is not None:
+            retry_after = error.response.headers.get('retry-after')
+            if retry_after:
+                try:
+                    wait_time = int(retry_after)
+                    # Cap at 60s to prevent excessive blocking if server requests long wait
+                    return min(wait_time, 60)
+                except (ValueError, TypeError):
+                    pass # Fall back to exponential backoff if header is invalid
+        
+        # 2. Default exponential backoff: 1s, 2s, 4s...
         return 2 ** attempt
 
     def _iterate_fallback_models(self, model_id: str, exclude_provider: str) -> List[Tuple[str, str]]:
@@ -843,7 +855,7 @@ class LLMGateway:
             except (APIConnectionError, RateLimitError, APIStatusError) as e:
                 last_error = e
                 if self._should_continue_retry(attempt):
-                    wait_time = self._get_retry_wait_time(attempt)
+                    wait_time = self._get_retry_wait_time(attempt, e)
                     logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
                     await asyncio.sleep(wait_time)
                 else:

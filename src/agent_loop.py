@@ -425,7 +425,7 @@ class AgentLoop:
                     path = args.get('path', '')
                     if path:
                         write_paths.append((tc['id'], path))
-                except:
+                except Exception:
                     pass
         
         # 检查是否有重复路径
