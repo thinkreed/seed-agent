@@ -23,6 +23,7 @@ from observability.setup import (
     get_tracer,
     get_meter,
     is_initialized,
+    shutdown_observability,
 )
 
 # Metrics (NoOp 实现，因为 Jaeger OTLP Metrics 有兼容性问题)
@@ -60,6 +61,7 @@ __all__ = [
     "get_tracer",
     "get_meter",
     "is_initialized",
+    "shutdown_observability",
     # Metrics
     "record_llm_success",
     "record_llm_error",

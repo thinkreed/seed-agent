@@ -34,7 +34,7 @@ logger = logging.getLogger("seed_agent")
 
 # 初始化 OpenTelemetry 可观测性
 try:
-    from observability import setup_observability, is_initialized
+    from observability import setup_observability, is_initialized, shutdown_observability
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
     if not otlp_endpoint:
         otlp_endpoint = "http://localhost:4318"
@@ -49,8 +49,11 @@ try:
         logger.info(f"Observability initialized: endpoint={otlp_endpoint}")
 except ImportError:
     logger.warning("OpenTelemetry not installed, observability disabled")
+    # 定义 dummy shutdown 函数
+    def shutdown_observability(): pass
 except Exception as e:
     logger.warning(f"Failed to initialize observability: {e}")
+    def shutdown_observability(): pass
 
 from agent_loop import AgentLoop
 from client import LLMGateway
@@ -199,4 +202,9 @@ if __name__ == "__main__":
     parser.add_argument('--chat', '-c', type=str, help="One-shot chat message")
     parser.add_argument('--no-check', action='store_true', help="Skip pre-start diagnosis check")
     args = parser.parse_args()
-    asyncio.run(main(args))
+
+    try:
+        asyncio.run(main(args))
+    finally:
+        # 程序退出时强制 flush 所有 pending traces
+        shutdown_observability()

@@ -6,7 +6,10 @@ OpenTelemetry SDK 初始化模块
 2. OTLP HTTP Exporter 配置
 3. Resource 配置 (服务名、版本等)
 
-注意：使用 OTLP HTTP 协议，因为 Jaeger 的 OTLP gRPC 在 Windows Docker 环境下有兼容性问题
+配置说明:
+- 使用 OTLP HTTP 协议（比 gRPC 更稳定）
+- 使用 BatchSpanProcessor 批量发送 traces（生产环境推荐）
+- 批量参数: 队列大小 2048, 每 5秒发送, 每批最大 512 spans
 """
 
 import os
@@ -15,7 +18,7 @@ from typing import Optional
 
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
 
 # 使用 OTLP HTTP exporter（更稳定）
@@ -75,11 +78,15 @@ def setup_observability(
         "deployment.environment": os.getenv("DEPLOYMENT_ENV", "local"),
     })
 
-    # Traces - 使用 SimpleSpanProcessor 立即发送
+    # Traces - 使用 BatchSpanProcessor 批量发送（生产环境推荐）
     trace_provider = TracerProvider(resource=resource)
     trace_provider.add_span_processor(
-        SimpleSpanProcessor(
-            OTLPSpanExporter(endpoint=endpoint)
+        BatchSpanProcessor(
+            OTLPSpanExporter(endpoint=endpoint),
+            max_queue_size=2048,           # 最大队列大小
+            schedule_delay_millis=5000,    # 5秒批量发送一次
+            export_timeout_millis=30000,   # 导出超时 30秒
+            max_export_batch_size=512,     # 每批最大 512 个 span
         )
     )
     trace.set_tracer_provider(trace_provider)
@@ -111,3 +118,25 @@ def get_meter() -> metrics.Meter:
 def is_initialized() -> bool:
     """检查是否已初始化"""
     return _initialized
+
+
+def shutdown_observability():
+    """
+    关闭可观测性系统，强制 flush 所有 pending spans
+    
+    应在程序退出前调用，确保所有 traces 发送到 collector
+    """
+    global _tracer, _meter, _initialized
+    
+    if not _initialized:
+        return
+    
+    # 获取 TracerProvider 并强制 shutdown
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, 'shutdown'):
+        provider.shutdown()
+        logger.info("Observability shutdown complete")
+    
+    _tracer = None
+    _meter = None
+    _initialized = False

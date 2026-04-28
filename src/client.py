@@ -755,147 +755,141 @@ class LLMGateway:
         messages: List[Dict],
         **kwargs
     ) -> Dict:
-        """内部方法：带跨 Provider 降级的非流式聊天补全
-
-        OpenTelemetry 嵌入点：
-        - Span: seed.llm.request
-        - Metrics: tokens, request count, duration, error count
-        - Fallback Event: seed.llm.fallback
-        """
+        """内部方法：带跨 Provider 降级的非流式聊天补全"""
         provider_id = model_id.split('/')[0]
         active_provider = self.get_active_provider()
         start_time = time.time()
-
-        # OpenTelemetry Span 创建
-        tracer = get_tracer()
-        span = None
-        if tracer and _OBSERVABILITY_ENABLED:
-            span = tracer.start_span(SPAN_LLM_REQUEST)
-            set_llm_span_attributes(
-                span,
-                model=model_id,
-                provider=active_provider,
-                streaming=False
-            )
+        
+        span = self._create_llm_span(model_id, active_provider, streaming=False)
 
         try:
-            # 尝试当前 provider（带重试）
-            for attempt in range(3):
-                try:
-                    result = await self._chat_completion_single(model_id, messages, **kwargs)
-                    if self._fallback_chain:
-                        self._fallback_chain.mark_healthy(provider_id)
-
-                    # 记录成功 Metrics
-                    duration_ms = (time.time() - start_time) * 1000
-                    usage = result.get('usage')
-                    if usage:
-                        input_tokens = usage.get('prompt_tokens', 0)
-                        output_tokens = usage.get('completion_tokens', 0)
-
-                        record_llm_success(
-                            provider=active_provider,
-                            model=model_id,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            duration_ms=duration_ms
-                        )
-
-                        if span:
-                            span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
-                            span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
-                            span.set_status(StatusCode.OK)
-
-                    return result
-
-                except (APIConnectionError, RateLimitError, APIStatusError) as e:
-                    if attempt < 2:
-                        wait_time = self._get_retry_wait_time(attempt, e)
-                        logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
-                        await asyncio.sleep(wait_time)
-                    else:
-                        logger.warning(f"Provider {provider_id} exhausted retries")
-                        break
+            # 尝试主 provider（带重试）
+            success, result = await self._try_provider_with_retry(model_id, messages, **kwargs)
+            
+            if success:
+                if self._fallback_chain:
+                    self._fallback_chain.mark_healthy(provider_id)
+                
+                duration_ms = (time.time() - start_time) * 1000
+                usage = result.get('usage')
+                self._record_success_metrics(span, active_provider, model_id, usage, duration_ms)
+                return result
 
             # 触发降级
             if self._fallback_chain:
                 self._fallback_chain.mark_degraded(provider_id)
+                fallback_success, fallback_result = await self._try_fallback_providers(
+                    span, model_id, messages, start_time, **kwargs
+                )
+                if fallback_success:
+                    return fallback_result
 
-                for fallback_provider in self._fallback_chain._providers:
-                    if fallback_provider == provider_id:
-                        continue
-                    if fallback_provider not in self.clients:
-                        continue
-
-                    fallback_model_id = self._get_fallback_model_id(model_id, fallback_provider)
-                    if not fallback_model_id:
-                        continue
-
-                    # 记录 Fallback Event
-                    if span:
-                        add_fallback_event(
-                            span,
-                            from_provider=active_provider,
-                            to_provider=fallback_provider,
-                            reason=classify_error(Exception("provider degraded")),
-                            attempt=self._fallback_chain._providers.index(fallback_provider)
-                        )
-
-                    try:
-                        logger.info(f"Trying fallback: {fallback_model_id}")
-                        result = await self._chat_completion_single(fallback_model_id, messages, **kwargs)
-                        self._fallback_chain.mark_healthy(fallback_provider)
-
-                        # 记录成功 Metrics (使用 fallback provider)
-                        duration_ms = (time.time() - start_time) * 1000
-                        usage = result.get('usage')
-                        if usage:
-                            input_tokens = usage.get('prompt_tokens', 0)
-                            output_tokens = usage.get('completion_tokens', 0)
-
-                            record_llm_success(
-                                provider=fallback_provider,
-                                model=fallback_model_id,
-                                input_tokens=input_tokens,
-                                output_tokens=output_tokens,
-                                duration_ms=duration_ms
-                            )
-
-                            if span:
-                                span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
-                                span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
-                                span.set_attribute("seed.provider", fallback_provider)
-                                span.set_status(StatusCode.OK)
-
-                        return result
-
-                    except Exception as fallback_e:
-                        logger.warning(f"Fallback {fallback_provider} failed: {fallback_e}")
-                        self._fallback_chain.mark_degraded(fallback_provider)
-
-            # 所有 provider 失败
             raise APIConnectionError("All providers failed")
 
         except Exception as e:
-            # 记录失败 Metrics
-            duration_ms = (time.time() - start_time) * 1000
-            error_type = classify_error(e)
-
-            record_llm_error(
-                provider=active_provider,
-                model=model_id,
-                duration_ms=duration_ms,
-                error_type=error_type
-            )
-
-            if span:
-                record_llm_span_error(span, e)
-
+            self._handle_llm_error(span, active_provider, model_id, start_time, e)
             raise
-
         finally:
             if span:
                 span.end()
+
+    def _create_llm_span(self, model_id: str, provider: str, streaming: bool = False):
+        """创建 OpenTelemetry LLM Span"""
+        tracer = get_tracer()
+        if tracer and _OBSERVABILITY_ENABLED:
+            span = tracer.start_span(SPAN_LLM_REQUEST)
+            set_llm_span_attributes(span, model=model_id, provider=provider, streaming=streaming)
+            return span
+        return None
+
+    def _record_success_metrics(self, span, provider: str, model_id: str, usage: Dict, duration_ms: float):
+        """记录成功调用的 Metrics 和 Span 属性"""
+        if usage:
+            input_tokens = usage.get('prompt_tokens', 0)
+            output_tokens = usage.get('completion_tokens', 0)
+            
+            record_llm_success(
+                provider=provider,
+                model=model_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                duration_ms=duration_ms
+            )
+            
+            if span:
+                span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
+                span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
+                span.set_status(StatusCode.OK)
+        
+        if span and provider != model_id.split('/')[0]:
+            span.set_attribute("seed.provider", provider)
+
+    def _handle_llm_error(self, span, provider: str, model_id: str, start_time: float, e: Exception):
+        """记录失败调用的 Metrics 和 Span 错误"""
+        duration_ms = (time.time() - start_time) * 1000
+        error_type = classify_error(e)
+        
+        record_llm_error(provider=provider, model=model_id, duration_ms=duration_ms, error_type=error_type)
+        
+        if span:
+            record_llm_span_error(span, e)
+
+    async def _try_provider_with_retry(self, model_id: str, messages: List[Dict], **kwargs) -> Tuple[bool, Dict]:
+        """尝试单个 provider 调用（带重试）
+        
+        Returns:
+            (success, result) - success为True表示成功，result为响应数据
+        """
+        for attempt in range(3):
+            try:
+                result = await self._chat_completion_single(model_id, messages, **kwargs)
+                return True, result
+            except (APIConnectionError, RateLimitError, APIStatusError) as e:
+                if attempt < 2:
+                    wait_time = self._get_retry_wait_time(attempt, e)
+                    logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.warning(f"Provider {model_id.split('/')[0]} exhausted retries")
+                    break
+        return False, None
+
+    async def _try_fallback_providers(self, span, model_id: str, messages: List[Dict], start_time: float, **kwargs) -> Tuple[bool, Dict]:
+        """尝试所有 fallback providers
+        
+        Returns:
+            (success, result) - success为True表示成功，result为响应数据
+        """
+        if not self._fallback_chain:
+            return False, None
+            
+        active_provider = self.get_active_provider()
+        
+        for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, model_id.split('/')[0]):
+            if span:
+                add_fallback_event(
+                    span,
+                    from_provider=active_provider,
+                    to_provider=fallback_provider,
+                    reason="provider_degraded",
+                    attempt=self._fallback_chain._providers.index(fallback_provider)
+                )
+            
+            try:
+                logger.info(f"Trying fallback: {fallback_model_id}")
+                result = await self._chat_completion_single(fallback_model_id, messages, **kwargs)
+                self._fallback_chain.mark_healthy(fallback_provider)
+                
+                duration_ms = (time.time() - start_time) * 1000
+                usage = result.get('usage')
+                self._record_success_metrics(span, fallback_provider, fallback_model_id, usage, duration_ms)
+                
+                return True, result
+            except Exception as fallback_e:
+                logger.warning(f"Fallback {fallback_provider} failed: {fallback_e}")
+                self._fallback_chain.mark_degraded(fallback_provider)
+        
+        return False, None
 
     async def _chat_completion_single(
         self,
@@ -968,143 +962,125 @@ class LLMGateway:
         messages: List[Dict],
         **kwargs
     ) -> AsyncGenerator[Dict, None]:
-        """内部方法：带跨 Provider 降级的流式聊天补全
-
-        OpenTelemetry 嵌入点：
-        - Span: seed.llm.request
-        - Metrics: tokens (从最后一个 chunk 估算), request count, duration
-        - Fallback Event: seed.llm.fallback
-        """
+        """内部方法：带跨 Provider 降级的流式聊天补全"""
         provider_id = model_id.split('/')[0]
         active_provider = self.get_active_provider()
         last_error = None
         start_time = time.time()
-
-        # OpenTelemetry Span 创建
-        tracer = get_tracer()
-        span = None
-        if tracer and _OBSERVABILITY_ENABLED:
-            span = tracer.start_span(SPAN_LLM_REQUEST)
-            set_llm_span_attributes(
-                span,
-                model=model_id,
-                provider=active_provider,
-                streaming=True
-            )
+        
+        span = self._create_llm_span(model_id, active_provider, streaming=True)
 
         try:
             # 尝试主 provider（带重试）
-            for attempt in range(3):
-                try:
-                    chunk_count = 0
-                    async for chunk in self._stream_chat_completion_single(model_id, messages, **kwargs):
-                        yield chunk
-                        chunk_count += 1
+            async for chunk in self._stream_with_retry(model_id, messages, span, active_provider, start_time, **kwargs):
+                yield chunk
+            return
 
-                    if self._fallback_chain:
-                        self._fallback_chain.mark_healthy(provider_id)
-
-                    # 流式响应的 token 估算：基于 chunk 数量
-                    # (流式响应通常不返回 usage，需要估算)
-                    duration_ms = (time.time() - start_time) * 1000
-                    estimated_tokens = chunk_count * 10  # 保守估算
-
-                    record_llm_success(
-                        provider=active_provider,
-                        model=model_id,
-                        input_tokens=0,  # 流式无法精确测量
-                        output_tokens=estimated_tokens,
-                        duration_ms=duration_ms
-                    )
-
-                    if span:
-                        span.set_attribute("gen_ai.usage.output_tokens", estimated_tokens)
-                        span.set_attribute("seed.streaming", True)
-                        span.set_status(StatusCode.OK)
-
-                    return
-
-                except (APIConnectionError, RateLimitError, APIStatusError) as e:
-                    last_error = e
-                    if self._should_continue_retry(attempt):
-                        wait_time = self._get_retry_wait_time(attempt, e)
-                        logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
-                        await asyncio.sleep(wait_time)
-                    else:
-                        logger.warning(f"Provider {provider_id} exhausted retries")
-                        break
-
+        except (APIConnectionError, RateLimitError, APIStatusError) as e:
+            last_error = e
             # 触发降级
             if self._fallback_chain:
                 self._fallback_chain.mark_degraded(provider_id)
-
-                # 遍历 fallback providers
-                for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, provider_id):
-                    # 记录 Fallback Event
-                    if span:
-                        add_fallback_event(
-                            span,
-                            from_provider=active_provider,
-                            to_provider=fallback_provider,
-                            reason="stream_failure",
-                            attempt=self._fallback_chain._providers.index(fallback_provider)
-                        )
-
-                    try:
-                        logger.info(f"Trying fallback stream: {fallback_model_id}")
-                        chunk_count = 0
-                        async for chunk in self._stream_chat_completion_single(fallback_model_id, messages, **kwargs):
-                            yield chunk
-                            chunk_count += 1
-
-                        self._fallback_chain.mark_healthy(fallback_provider)
-
-                        # 流式成功 Metrics
-                        duration_ms = (time.time() - start_time) * 1000
-                        estimated_tokens = chunk_count * 10
-
-                        record_llm_success(
-                            provider=fallback_provider,
-                            model=fallback_model_id,
-                            input_tokens=0,
-                            output_tokens=estimated_tokens,
-                            duration_ms=duration_ms
-                        )
-
-                        if span:
-                            span.set_attribute("gen_ai.usage.output_tokens", estimated_tokens)
-                            span.set_attribute("seed.provider", fallback_provider)
-                            span.set_status(StatusCode.OK)
-
-                        return
-
-                    except Exception as fallback_e:
-                        logger.warning(f"Fallback {fallback_provider} failed: {fallback_e}")
-                        self._fallback_chain.mark_degraded(fallback_provider)
+                async for chunk in self._stream_fallback_providers(
+                    model_id, messages, span, active_provider, start_time, provider_id, **kwargs
+                ):
+                    yield chunk
+                return
 
             if last_error:
+                self._handle_llm_error(span, active_provider, model_id, start_time, last_error)
                 raise last_error
 
         except Exception as e:
-            # 记录失败 Metrics
-            duration_ms = (time.time() - start_time) * 1000
-            error_type = classify_error(e)
-
-            record_llm_error(
-                provider=active_provider,
-                model=model_id,
-                duration_ms=duration_ms,
-                error_type=error_type
-            )
-
-            if span:
-                record_llm_span_error(span, e)
-
+            self._handle_llm_error(span, active_provider, model_id, start_time, e)
             raise
-
         finally:
             if span:
                 span.end()
+
+    async def _stream_with_retry(self, model_id: str, messages: List[Dict], span, active_provider: str, start_time: float, **kwargs) -> AsyncGenerator[Dict, None]:
+        """流式响应重试逻辑"""
+        for attempt in range(3):
+            try:
+                chunk_count = 0
+                async for chunk in self._stream_chat_completion_single(model_id, messages, **kwargs):
+                    yield chunk
+                    chunk_count += 1
+
+                if self._fallback_chain:
+                    self._fallback_chain.mark_healthy(model_id.split('/')[0])
+
+                # 流式 token 估算
+                duration_ms = (time.time() - start_time) * 1000
+                estimated_tokens = chunk_count * 10
+
+                record_llm_success(
+                    provider=active_provider,
+                    model=model_id,
+                    input_tokens=0,
+                    output_tokens=estimated_tokens,
+                    duration_ms=duration_ms
+                )
+
+                if span:
+                    span.set_attribute("gen_ai.usage.output_tokens", estimated_tokens)
+                    span.set_attribute("seed.streaming", True)
+                    span.set_status(StatusCode.OK)
+
+                return
+
+            except (APIConnectionError, RateLimitError, APIStatusError) as e:
+                if self._should_continue_retry(attempt):
+                    wait_time = self._get_retry_wait_time(attempt, e)
+                    logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.warning(f"Provider {model_id.split('/')[0]} exhausted retries")
+                    raise
+
+    async def _stream_fallback_providers(self, model_id: str, messages: List[Dict], span, active_provider: str, start_time: float, exclude_provider: str, **kwargs) -> AsyncGenerator[Dict, None]:
+        """流式 fallback providers 尝试"""
+        for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, exclude_provider):
+            if span:
+                add_fallback_event(
+                    span,
+                    from_provider=active_provider,
+                    to_provider=fallback_provider,
+                    reason="stream_failure",
+                    attempt=self._fallback_chain._providers.index(fallback_provider)
+                )
+
+            try:
+                logger.info(f"Trying fallback stream: {fallback_model_id}")
+                chunk_count = 0
+                async for chunk in self._stream_chat_completion_single(fallback_model_id, messages, **kwargs):
+                    yield chunk
+                    chunk_count += 1
+
+                self._fallback_chain.mark_healthy(fallback_provider)
+
+                # 流式成功 Metrics
+                duration_ms = (time.time() - start_time) * 1000
+                estimated_tokens = chunk_count * 10
+
+                record_llm_success(
+                    provider=fallback_provider,
+                    model=fallback_model_id,
+                    input_tokens=0,
+                    output_tokens=estimated_tokens,
+                    duration_ms=duration_ms
+                )
+
+                if span:
+                    span.set_attribute("gen_ai.usage.output_tokens", estimated_tokens)
+                    span.set_attribute("seed.provider", fallback_provider)
+                    span.set_status(StatusCode.OK)
+
+                return
+
+            except Exception as fallback_e:
+                logger.warning(f"Fallback {fallback_provider} failed: {fallback_e}")
+                self._fallback_chain.mark_degraded(fallback_provider)
 
     async def _stream_chat_completion_single(
         self,
