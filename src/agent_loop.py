@@ -11,6 +11,10 @@ Agent 主循环模块
 核心流程:
 - 接收用户输入 → 构建 messages → 调用 LLM → 解析 tool_calls → 执行工具 → 返回结果 → 循环
 - 支持流式响应、上下文压缩、双重 System Message 防护
+
+OpenTelemetry 嵌入:
+- 工具调用 Span (seed.tool.{name})
+- Session Span (seed.session)
 """
 
 import tiktoken
@@ -18,6 +22,7 @@ import asyncio
 import json
 import os
 import logging
+import time
 from typing import List, Dict, Optional, AsyncGenerator, Set
 from pathlib import Path
 from tools import ToolRegistry
@@ -27,6 +32,26 @@ from scheduler import TaskScheduler
 from client import LLMGateway
 from request_queue import RequestPriority
 from subagent_manager import SubagentManager
+
+# OpenTelemetry 可观测性
+try:
+    from observability import (
+        get_tracer,
+        SPAN_SESSION,
+        SPAN_TOOL_PREFIX,
+        set_tool_span_attributes,
+        traced,
+    )
+    from opentelemetry.trace import StatusCode
+    _OBSERVABILITY_ENABLED = True
+except ImportError:
+    _OBSERVABILITY_ENABLED = False
+    def get_tracer(): return None
+    def set_tool_span_attributes(*args, **kwargs): pass
+    def traced(*args, **kwargs): return lambda f: f
+    SPAN_SESSION = "seed.session"
+    SPAN_TOOL_PREFIX = "seed.tool."
+    StatusCode = None
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +439,7 @@ class AgentLoop:
                 return
 
     async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
-        """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查)"""
+        """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
         # 路径重叠检查：防止多个写工具并发修改同一文件
         write_tools = {'file_write', 'file_edit'}
         write_paths = []
@@ -454,8 +479,27 @@ class AgentLoop:
                 logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
                 tool_args = {}
 
+            # OpenTelemetry Span 创建
+            tracer = get_tracer()
+            span = None
+            start_time = time.time()
+
+            if tracer and _OBSERVABILITY_ENABLED:
+                span_name = f"{SPAN_TOOL_PREFIX}{tool_name}"
+                span = tracer.start_span(span_name)
+
+                # 设置工具属性
+                file_path = tool_args.get('path', '')
+                set_tool_span_attributes(span, tool_name, file_path=file_path)
+
             try:
                 result = await self.tools.execute(tool_name, **tool_args)
+
+                # 记录执行耗时
+                duration_ms = (time.time() - start_time) * 1000
+                if span:
+                    span.set_attribute("seed.tool.duration_ms", duration_ms)
+                    span.set_status(StatusCode.OK)
 
                 # Memory Graph: 跟踪 skill 执行
                 if tool_name == 'load_skill':
@@ -472,7 +516,14 @@ class AgentLoop:
                     "tool_call_id": tool_id,
                     "content": str(result)
                 }
+
             except Exception as e:
+                # 记录错误
+                if span:
+                    span.record_exception(e)
+                    span.set_attribute("seed.error.message", str(e)[:500])
+                    span.set_status(StatusCode.ERROR, str(e)[:200])
+
                 # Memory Graph: 记录失败
                 if tool_name == 'load_skill':
                     skill_name = tool_args.get('name', '')
@@ -489,6 +540,10 @@ class AgentLoop:
                     "tool_call_id": tool_id,
                     "content": f"Error: {str(e)}"
                 }
+
+            finally:
+                if span:
+                    span.end()
 
         results = await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
         return results

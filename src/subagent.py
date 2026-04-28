@@ -6,10 +6,15 @@ Subagent 机制 - 独立上下文的子代理执行器
 - 可配置权限集（read-only, review, implement, plan）
 - 并行执行支持
 - 结果聚合（只返回关键结果，不污染主上下文）
+
+OpenTelemetry 嵌入:
+- Span: seed.subagent.execute
+- Attributes: type, task_id, status
 """
 
 import asyncio
 import uuid
+import time
 from enum import Enum
 from typing import Dict, List, Optional, Set, Any, Callable
 from dataclasses import dataclass, field
@@ -18,6 +23,22 @@ import logging
 
 from client import LLMGateway
 from tools import ToolRegistry
+
+# OpenTelemetry 可观测性
+try:
+    from observability import (
+        get_tracer,
+        SPAN_SUBAGENT_EXECUTE,
+        set_subagent_span_attributes,
+    )
+    from opentelemetry.trace import StatusCode
+    _OBSERVABILITY_ENABLED = True
+except ImportError:
+    _OBSERVABILITY_ENABLED = False
+    def get_tracer(): return None
+    def set_subagent_span_attributes(*args, **kwargs): pass
+    SPAN_SUBAGENT_EXECUTE = "seed.subagent.execute"
+    StatusCode = None
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +317,10 @@ class SubagentInstance:
 
         Returns:
             SubagentState: 执行状态
+
+        OpenTelemetry 嵌入点:
+        - Span: seed.subagent.execute
+        - Attributes: type, task_id, status
         """
         task_id = task_id or str(uuid.uuid4())[:8]
         self.state = SubagentState(
@@ -309,6 +334,20 @@ class SubagentInstance:
 
         self.history.append({"role": "user", "content": prompt})
 
+        # OpenTelemetry Span 创建
+        tracer = get_tracer()
+        span = None
+        start_time = time.time()
+
+        if tracer and _OBSERVABILITY_ENABLED:
+            span = tracer.start_span(SPAN_SUBAGENT_EXECUTE)
+            set_subagent_span_attributes(
+                span,
+                subagent_type=self.subagent_type.value,
+                task_id=task_id,
+                status="running"
+            )
+
         try:
             # 超时执行
             result = await asyncio.wait_for(
@@ -318,18 +357,40 @@ class SubagentInstance:
             self.state.status = "completed"
             self.state.result = result
 
+            # 记录成功
+            if span:
+                duration_ms = (time.time() - start_time) * 1000
+                span.set_attribute("seed.subagent.status", "completed")
+                span.set_attribute("seed.subagent.duration_ms", duration_ms)
+                span.set_status(StatusCode.OK)
+
         except asyncio.TimeoutError:
             logger.warning(f"Subagent {task_id} timed out after {self.timeout}s")
             self.state.status = "timeout"
             self.state.error = f"Execution timed out after {self.timeout} seconds"
+
+            # 记录超时
+            if span:
+                span.set_attribute("seed.subagent.status", "timeout")
+                span.set_attribute("seed.error.message", self.state.error)
+                span.set_status(StatusCode.ERROR)
 
         except Exception as e:
             logger.error(f"Subagent {task_id} failed: {e}")
             self.state.status = "failed"
             self.state.error = str(e)
 
+            # 记录失败
+            if span:
+                span.record_exception(e)
+                span.set_attribute("seed.subagent.status", "failed")
+                span.set_attribute("seed.error.message", str(e)[:500])
+                span.set_status(StatusCode.ERROR, str(e)[:200])
+
         finally:
             self.state.completed_at = datetime.now()
+            if span:
+                span.end()
 
         return self.state
 

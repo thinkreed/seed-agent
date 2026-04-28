@@ -32,6 +32,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger("seed_agent")
 
+# 初始化 OpenTelemetry 可观测性
+try:
+    from observability import setup_observability, is_initialized
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    if not otlp_endpoint:
+        otlp_endpoint = "http://localhost:4318"
+    observability_enabled = os.getenv("OTEL_ENABLED", "true").lower().strip() == "true"
+
+    if observability_enabled and not is_initialized():
+        setup_observability(
+            service_name="seed-agent",
+            otlp_endpoint=otlp_endpoint,
+            enabled=True
+        )
+        logger.info(f"Observability initialized: endpoint={otlp_endpoint}")
+except ImportError:
+    logger.warning("OpenTelemetry not installed, observability disabled")
+except Exception as e:
+    logger.warning(f"Failed to initialize observability: {e}")
+
 from agent_loop import AgentLoop
 from client import LLMGateway
 from autonomous import AutonomousExplorer
