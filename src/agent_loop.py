@@ -438,114 +438,99 @@ class AgentLoop:
                     yield final_chunk
                 return
 
-    async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
-        """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
-        # 路径重叠检查：防止多个写工具并发修改同一文件
+    def _check_write_conflicts(self, tool_calls: List[Dict]) -> Optional[List[Dict]]:
+        """检查写工具调用的路径重叠，防止并发冲突。
+        
+        Returns:
+            Error response list if conflict detected, None otherwise.
+        """
         write_tools = {'file_write', 'file_edit'}
-        write_paths = []
+        seen_paths = {}
         for tc in tool_calls:
             if tc['function']['name'] in write_tools:
                 try:
                     args = json.loads(tc['function']['arguments']) if isinstance(tc['function']['arguments'], str) else tc['function']['arguments']
                     path = args.get('path', '')
                     if path:
-                        write_paths.append((tc['id'], path))
+                        if path in seen_paths:
+                            logger.warning(f"Concurrent write conflict detected: {path}")
+                            return [{"role": "tool", "tool_call_id": tc['id'], "content": f"Error: Concurrent write conflict on '{path}'. Please execute sequentially."} for tc in tool_calls]
+                        seen_paths[path] = tc['id']
                 except Exception:
                     pass
-        
-        # 检查是否有重复路径
-        seen_paths = {}
-        for tc_id, path in write_paths:
-            if path in seen_paths:
-                logger.warning(f"Concurrent write conflict detected: {path}")
-                return [{"role": "tool", "tool_call_id": tc['id'], "content": f"Error: Concurrent write conflict on '{path}'. Please execute sequentially."} for tc in tool_calls]
-            seen_paths[path] = tc_id
+        return None
 
-        async def _run_single_call(tool_call: Dict) -> Dict:
-            tool_id = tool_call['id']
-            tool_name = tool_call['function']['name']
-            raw_args = tool_call['function']['arguments']
+    async def _run_single_tool_call(self, tool_call: Dict) -> Dict:
+        """执行单个工具调用，包含追踪和记录逻辑"""
+        tool_id = tool_call['id']
+        tool_name = tool_call['function']['name']
+        raw_args = tool_call['function']['arguments']
 
-            # 鲁棒的 JSON 解析：处理空字符串、无效 JSON 等边界情况
-            try:
-                if isinstance(raw_args, str):
-                    raw_args = raw_args.strip()
-                    tool_args = json.loads(raw_args) if raw_args else {}
-                else:
-                    tool_args = raw_args if raw_args else {}
-                if not isinstance(tool_args, dict):
-                    tool_args = {}
-            except (json.JSONDecodeError, TypeError, ValueError):
-                logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
+        # 鲁棒的 JSON 解析
+        try:
+            if isinstance(raw_args, str):
+                raw_args = raw_args.strip()
+                tool_args = json.loads(raw_args) if raw_args else {}
+            else:
+                tool_args = raw_args if raw_args else {}
+            if not isinstance(tool_args, dict):
                 tool_args = {}
+        except (json.JSONDecodeError, TypeError, ValueError):
+            logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
+            tool_args = {}
 
-            # OpenTelemetry Span 创建
-            tracer = get_tracer()
-            span = None
-            start_time = time.time()
+        # OpenTelemetry Span 创建
+        tracer = get_tracer()
+        span = None
+        start_time = time.time()
+        if tracer and _OBSERVABILITY_ENABLED:
+            span = tracer.start_span(f"{SPAN_TOOL_PREFIX}{tool_name}")
+            set_tool_span_attributes(span, tool_name, file_path=tool_args.get('path', ''))
 
-            if tracer and _OBSERVABILITY_ENABLED:
-                span_name = f"{SPAN_TOOL_PREFIX}{tool_name}"
-                span = tracer.start_span(span_name)
+        try:
+            result = await self.tools.execute(tool_name, **tool_args)
+            duration_ms = (time.time() - start_time) * 1000
+            if span:
+                span.set_attribute("seed.tool.duration_ms", duration_ms)
+                span.set_status(StatusCode.OK)
 
-                # 设置工具属性
-                file_path = tool_args.get('path', '')
-                set_tool_span_attributes(span, tool_name, file_path=file_path)
+            # Memory Graph 跟踪
+            if tool_name == 'load_skill':
+                self._pending_skill_outcomes.append({
+                    'skill_name': tool_args.get('name', ''),
+                    'tool_call_id': tool_id,
+                    'result': result,
+                    'signals': self._extract_signals_from_context()
+                })
 
-            try:
-                result = await self.tools.execute(tool_name, **tool_args)
+            return {"role": "tool", "tool_call_id": tool_id, "content": str(result)}
 
-                # 记录执行耗时
-                duration_ms = (time.time() - start_time) * 1000
-                if span:
-                    span.set_attribute("seed.tool.duration_ms", duration_ms)
-                    span.set_status(StatusCode.OK)
+        except Exception as e:
+            if span:
+                span.record_exception(e)
+                span.set_attribute("seed.error.message", str(e)[:500])
+                span.set_status(StatusCode.ERROR, str(e)[:200])
 
-                # Memory Graph: 跟踪 skill 执行
-                if tool_name == 'load_skill':
-                    skill_name = tool_args.get('name', '')
-                    self._pending_skill_outcomes.append({
-                        'skill_name': skill_name,
-                        'tool_call_id': tool_id,
-                        'result': result,
-                        'signals': self._extract_signals_from_context()
-                    })
+            if tool_name == 'load_skill':
+                self._pending_skill_outcomes.append({
+                    'skill_name': tool_args.get('name', ''),
+                    'tool_call_id': tool_id,
+                    'result': f"Error: {str(e)}",
+                    'signals': self._extract_signals_from_context(),
+                    'failed': True
+                })
+            return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {str(e)}"}
+        finally:
+            if span:
+                span.end()
 
-                return {
-                    "role": "tool",
-                    "tool_call_id": tool_id,
-                    "content": str(result)
-                }
+    async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
+        """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
+        conflict_result = self._check_write_conflicts(tool_calls)
+        if conflict_result:
+            return conflict_result
 
-            except Exception as e:
-                # 记录错误
-                if span:
-                    span.record_exception(e)
-                    span.set_attribute("seed.error.message", str(e)[:500])
-                    span.set_status(StatusCode.ERROR, str(e)[:200])
-
-                # Memory Graph: 记录失败
-                if tool_name == 'load_skill':
-                    skill_name = tool_args.get('name', '')
-                    self._pending_skill_outcomes.append({
-                        'skill_name': skill_name,
-                        'tool_call_id': tool_id,
-                        'result': f"Error: {str(e)}",
-                        'signals': self._extract_signals_from_context(),
-                        'failed': True
-                    })
-
-                return {
-                    "role": "tool",
-                    "tool_call_id": tool_id,
-                    "content": f"Error: {str(e)}"
-                }
-
-            finally:
-                if span:
-                    span.end()
-
-        results = await asyncio.gather(*[_run_single_call(tc) for tc in tool_calls])
+        results = await asyncio.gather(*[self._run_single_tool_call(tc) for tc in tool_calls])
         return results
 
     def _extract_signals_from_context(self) -> List[str]:

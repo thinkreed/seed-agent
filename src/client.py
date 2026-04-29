@@ -18,6 +18,7 @@ LLM 网关客户端模块
 import os
 import time
 import asyncio
+import random
 import logging
 from typing import List, Dict, AsyncGenerator, Any, Optional, Tuple
 from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
@@ -57,7 +58,6 @@ from request_queue import (
     TurnTicket, QueueConfig
 )
 from rate_limit_db import RateLimitSQLite, RateLimitState
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("seed_agent")
@@ -918,8 +918,10 @@ class LLMGateway:
         """判断是否应该继续重试"""
         return attempt < max_retries - 1
 
-    def _get_retry_wait_time(self, attempt: int, error: Exception = None) -> int:
-        """计算重试等待时间 (支持 Retry-After 头解析)"""
+    def _get_retry_wait_time(self, attempt: int, error: Exception = None) -> float:
+        """计算重试等待时间 (支持 Retry-After 头解析 + Jitter)"""
+        import random
+        
         # 1. Check for Retry-After header (common in 429 Rate Limit errors)
         if error and hasattr(error, 'response') and error.response is not None:
             retry_after = error.response.headers.get('retry-after')
@@ -927,12 +929,15 @@ class LLMGateway:
                 try:
                     wait_time = int(retry_after)
                     # Cap at 60s to prevent excessive blocking if server requests long wait
-                    return min(wait_time, 60)
+                    return min(float(wait_time), 60.0)
                 except (ValueError, TypeError):
                     pass # Fall back to exponential backoff if header is invalid
         
-        # 2. Default exponential backoff: 1s, 2s, 4s...
-        return 2 ** attempt
+        # 2. Default exponential backoff with Jitter: 1s, 2s, 4s (+/- 20%)
+        # Jitter prevents "thundering herd" problem
+        base_wait = 2 ** attempt
+        jitter = random.uniform(-0.2, 0.2) * base_wait
+        return base_wait + jitter
 
     def _iterate_fallback_models(self, model_id: str, exclude_provider: str) -> List[Tuple[str, str]]:
         """生成fallback provider和model_id列表
@@ -1030,6 +1035,12 @@ class LLMGateway:
                 return
 
             except (APIConnectionError, RateLimitError, APIStatusError) as e:
+                # Safety check: Do not retry if partial stream was already yielded
+                # to avoid duplicate data in the consumer
+                if chunk_count > 0:
+                    logger.warning(f"Stream failed after {chunk_count} chunks, cannot safely retry")
+                    raise
+                
                 if self._should_continue_retry(attempt):
                     wait_time = self._get_retry_wait_time(attempt, e)
                     logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
