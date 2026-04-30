@@ -95,7 +95,7 @@ class RalphLoop:
         self._iteration_count: int = 0
         self._start_time: float = 0  # 当前会话开始时间
         self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
-        self._state_file: Path = SEED_DIR / "ralph" / f"task_{task_prompt_path.stem}_state.json"
+        self._state_file: Path = SEED_DIR / "ralph" / f"task_{task_prompt_path.stem if task_prompt_path else 'unknown'}_state.json"
         self._is_running: bool = False
 
     # === 核心方法 ===
@@ -194,6 +194,9 @@ class RalphLoop:
 
     def _check_test_pass(self) -> bool:
         """检查测试通过率"""
+        if not self.completion_criteria:
+            return False
+            
         import shlex
 
         required_rate = self.completion_criteria.get("pass_rate", 100)
@@ -225,8 +228,12 @@ class RalphLoop:
             logger.warning(f"Test execution failed: {e}")
             return False
 
-    def _parse_test_pass_rate(self, output: str) -> float:
+    def _parse_test_pass_rate(self, output: str | bytes) -> float:
         """解析测试输出获取通过率"""
+        # 处理 bytes 类型
+        if isinstance(output, bytes):
+            output = output.decode('utf-8', errors='replace')
+        
         # pytest 输出格式: "X passed, Y failed" 或 "X passed"
         import re
 
@@ -247,6 +254,8 @@ class RalphLoop:
 
     def _check_file_exists(self) -> bool:
         """检查目标文件存在"""
+        if not self.completion_criteria:
+            return False
         files = self.completion_criteria.get("files", [])
         if not files:
             return False
@@ -258,6 +267,8 @@ class RalphLoop:
 
     def _check_marker_file(self) -> bool:
         """检查完成标志文件"""
+        if not self.completion_criteria:
+            return False
         marker_path = Path(self.completion_criteria.get("marker_path", SEED_DIR / "completion_marker"))
         marker_content = self.completion_criteria.get("marker_content", "DONE")
 
@@ -273,6 +284,8 @@ class RalphLoop:
 
     def _check_git_clean(self) -> bool:
         """检查 Git 工作区状态"""
+        if not self.completion_criteria:
+            return False
         repo_path = self.completion_criteria.get("repo_path", str(SEED_DIR))
 
         try:
@@ -293,6 +306,8 @@ class RalphLoop:
 
     def _check_custom(self) -> bool:
         """自定义验证函数"""
+        if not self.completion_criteria:
+            return False
         checker = self.completion_criteria.get("checker")
         if checker and callable(checker):
             try:

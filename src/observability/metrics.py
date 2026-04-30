@@ -72,7 +72,7 @@ def _init_instruments():
     )
 
 
-def get_tokens_input_counter() -> metrics.Counter:
+def get_tokens_input_counter() -> metrics.Counter | None:
     """获取输入 Token Counter"""
     global _tokens_input_counter
     if _tokens_input_counter is None:
@@ -80,7 +80,7 @@ def get_tokens_input_counter() -> metrics.Counter:
     return _tokens_input_counter
 
 
-def get_tokens_output_counter() -> metrics.Counter:
+def get_tokens_output_counter() -> metrics.Counter | None:
     """获取输出 Token Counter"""
     global _tokens_output_counter
     if _tokens_output_counter is None:
@@ -88,7 +88,7 @@ def get_tokens_output_counter() -> metrics.Counter:
     return _tokens_output_counter
 
 
-def get_request_counter() -> metrics.Counter:
+def get_request_counter() -> metrics.Counter | None:
     """获取请求计数 Counter"""
     global _request_counter
     if _request_counter is None:
@@ -96,7 +96,7 @@ def get_request_counter() -> metrics.Counter:
     return _request_counter
 
 
-def get_error_counter() -> metrics.Counter:
+def get_error_counter() -> metrics.Counter | None:
     """获取错误计数 Counter"""
     global _error_counter
     if _error_counter is None:
@@ -104,7 +104,7 @@ def get_error_counter() -> metrics.Counter:
     return _error_counter
 
 
-def get_duration_histogram() -> metrics.Histogram:
+def get_duration_histogram() -> metrics.Histogram | None:
     """获取延迟 Histogram"""
     global _duration_histogram
     if _duration_histogram is None:
@@ -135,10 +135,19 @@ def record_llm_success(
         "status": "success",
     }
 
-    get_tokens_input_counter().add(input_tokens, attrs)
-    get_tokens_output_counter().add(output_tokens, attrs)
-    get_request_counter().add(1, attrs)
-    get_duration_histogram().record(duration_ms, attrs)
+    counter_input = get_tokens_input_counter()
+    counter_output = get_tokens_output_counter()
+    counter_req = get_request_counter()
+    histogram = get_duration_histogram()
+    
+    if counter_input:
+        counter_input.add(input_tokens, attrs)
+    if counter_output:
+        counter_output.add(output_tokens, attrs)
+    if counter_req:
+        counter_req.add(1, attrs)
+    if histogram:
+        histogram.record(duration_ms, attrs)
 
 
 def record_llm_error(
@@ -162,8 +171,14 @@ def record_llm_error(
         "status": "error",
     }
 
-    get_request_counter().add(1, attrs)
-    get_duration_histogram().record(duration_ms, attrs)
+    counter_req = get_request_counter()
+    histogram = get_duration_histogram()
+    counter_err = get_error_counter()
+    
+    if counter_req:
+        counter_req.add(1, attrs)
+    if histogram:
+        histogram.record(duration_ms, attrs)
 
     # 错误类型计数
     error_attrs: Attributes = {
@@ -171,4 +186,5 @@ def record_llm_error(
         "model": model,
         "error_type": error_type,
     }
-    get_error_counter().add(1, error_attrs)
+    if counter_err:
+        counter_err.add(1, error_attrs)

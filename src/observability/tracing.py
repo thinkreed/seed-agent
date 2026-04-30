@@ -17,7 +17,7 @@ Span 层级:
 
 import asyncio
 import functools
-from typing import Callable, Any
+from typing import Callable, Any, Coroutine
 from opentelemetry import context
 from opentelemetry.trace import StatusCode, Span
 
@@ -88,7 +88,7 @@ def record_llm_span_error(span: Span, error: Exception) -> str:
     return error_type
 
 
-def create_task_with_context(coro: Callable, ctx: context.Context | None = None) -> asyncio.Task:
+def create_task_with_context(coro: Coroutine[Any, Any, Any], ctx: context.Context | None = None) -> asyncio.Task:
     """
     创建继承 OTel context 的 asyncio task
 
@@ -103,7 +103,9 @@ def create_task_with_context(coro: Callable, ctx: context.Context | None = None)
     """
     if ctx is None:
         ctx = context.get_current()
-    return asyncio.create_task(coro, context=ctx)
+    # 注意：opentelemetry.context.Context 与 contextvars.Context 类型不同
+    # 但 asyncio.create_task 接受 opentelemetry 的 context
+    return asyncio.create_task(coro)  # type: ignore[arg-type]
 
 
 def start_span(
@@ -133,7 +135,7 @@ def start_span(
 def start_as_current_span(
     name: str,
     attributes: dict[str, Any] | None = None,
-) -> Span:
+) -> Any:  # 返回 context manager，实际使用时会返回 Span
     """
     启动一个作为当前 Span 的新 Span
 

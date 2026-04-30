@@ -55,10 +55,10 @@ class ToolRegistry:
         return func(**kwargs)
     
     @staticmethod
-    def _parse_docstring(doc: str) -> dict[str, str]:
+    def _parse_docstring(doc: str | None) -> dict[str, str]:
         """解析 docstring 获取参数描述"""
         import re
-        param_descriptions = {}
+        param_descriptions: dict[str, str] = {}
         if not doc:
             return param_descriptions
         

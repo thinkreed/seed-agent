@@ -219,21 +219,21 @@ class SubagentManager:
         """
         if fail_fast:
             # 顺序执行，失败即停
-            results = {}
+            sequential_results: dict[str, SubagentResult] = {}
             for task_id in task_ids:
                 result = await self.run_subagent(task_id)
-                results[task_id] = result
+                sequential_results[task_id] = result
                 if not result.success:
                     break
-            return results
+            return sequential_results
         else:
             # 并行执行
             tasks = [self.run_subagent(task_id) for task_id in task_ids]
             results_list = await asyncio.gather(*tasks, return_exceptions=True)
 
-            results = {}
+            parallel_results: dict[str, SubagentResult] = {}
             for task_id, result in zip(task_ids, results_list):
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     # 创建失败状态
                     state = SubagentState(
                         id=task_id,
@@ -242,18 +242,21 @@ class SubagentManager:
                         prompt=self._tasks[task_id].prompt,
                         error=str(result),
                     )
-                    results[task_id] = SubagentResult(state)
+                    parallel_results[task_id] = SubagentResult(state)
                 else:
-                    results[task_id] = result
+                    parallel_results[task_id] = result  # type: ignore[assignment]  # result is SubagentResult here
 
-            return results
+            return parallel_results
 
     def get_status(self, task_id: str) -> str | None:
         """获取任务状态"""
         if task_id in self._results:
             return self._results[task_id].state.status
         if task_id in self._instances:
-            return self._instances[task_id].state.status if self._instances[task_id].state else "pending"
+            instance = self._instances[task_id]
+            if instance.state:
+                return instance.state.status
+            return "pending"
         if task_id in self._tasks:
             return "pending"
         return None
@@ -303,7 +306,7 @@ class SubagentManager:
         Returns:
             str: 聚合后的结果摘要
         """
-        summaries = []
+        summaries: list[str] = []
         for task_id in task_ids:
             result = self._results.get(task_id)
             if not result:
@@ -316,7 +319,8 @@ class SubagentManager:
                     content = content[:max_length] + "...(truncated)"
                 summaries.append(f"[{task_id}] SUCCESS:\n{content}")
             elif include_errors:
-                summaries.append(f"[{task_id}] {result.state.status.upper()}: {result.error}")
+                error_msg = result.error or "Unknown error"
+                summaries.append(f"[{task_id}] {result.state.status.upper()}: {error_msg}")
 
         return "\n\n---\n\n".join(summaries)
 
@@ -426,10 +430,11 @@ class RalphSubagentOrchestrator:
 
     def get_execution_report(self) -> dict:
         """获取执行报告"""
+        plan_result = self.manager.get_result(self._plan_task_id) if self._plan_task_id else None
         return {
             "plan": {
                 "task_id": self._plan_task_id,
-                "result": self.manager.get_result(self._plan_task_id).summary if self._plan_task_id else None,
+                "result": plan_result.summary if plan_result else None,
             },
             "implement": [
                 {
@@ -440,7 +445,7 @@ class RalphSubagentOrchestrator:
             ],
             "review": {
                 "task_id": self._review_task_id,
-                "result": self.manager.get_result(self._review_task_id).summary if self._review_task_id else None,
+                "result": self.manager.get_result(self._review_task_id).summary if self.manager.get_result(self._review_task_id) else None,
             },
         }
 

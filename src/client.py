@@ -20,9 +20,24 @@ import time
 import asyncio
 import random
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass, field
+
 from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
+
+from src.models import load_config, FullConfig, ModelConfig, RateLimitConfig
+from src.rate_limiter import RateLimiter, RateLimitStatus, TokenBucketState, RollingWindowState
+from src.request_queue import (
+    RequestQueue, RequestPriority, TurnWaitTimeout,
+    TurnTicket, QueueConfig
+)
+from src.rate_limit_db import RateLimitSQLite
+
+# 使用自定义限流异常，避免 OpenAI SDK 的类型限制
+class RateLimitTimeoutError(Exception):
+    """自定义限流等待超时异常"""
+    pass
 
 # OpenTelemetry 可观测性
 try:
@@ -41,25 +56,25 @@ try:
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    # Fallback: 创建 dummy 函数
-    def get_tracer(): return None
-    def record_llm_success(*args, **kwargs): pass
-    def record_llm_error(*args, **kwargs): pass
-    def classify_error(e): return "api_error"
-    def record_llm_span_error(span, e): return "api_error"
-    def set_llm_span_attributes(*args, **kwargs): pass
-    def add_fallback_event(*args, **kwargs): pass
+    # Fallback: 创建 dummy 函数 (签名匹配，避免 mypy 错误)
+
+    def get_tracer() -> Any:
+        return None
+    def record_llm_success(provider: str, model: str, input_tokens: int, output_tokens: int, duration_ms: float) -> None:
+        pass
+    def record_llm_error(provider: str, model: str, duration_ms: float, error_type: str) -> None:
+        pass
+    def classify_error(error: Exception) -> str:
+        return "api_error"
+    def record_llm_span_error(span: Any, error: Exception) -> str:
+        return "api_error"
+    def set_llm_span_attributes(span: Any, model: str, provider: str, streaming: bool = False, input_tokens: Optional[int] = None, output_tokens: Optional[int] = None) -> None:
+        pass
+    def add_fallback_event(span: Any, from_provider: str, to_provider: str, reason: str, attempt: int) -> None:
+        pass
     SPAN_LLM_REQUEST = "seed.llm.request"
-    StatusCode = None
-    trace = None
-from src.models import load_config, FullConfig, ModelConfig, RateLimitConfig
-from src.rate_limiter import RateLimiter, RateLimitStatus, TokenBucketState, RollingWindowState
-from src.request_queue import (
-    RequestQueue, RequestPriority, TurnWaitTimeout,
-    TurnTicket, QueueConfig
-)
-from src.rate_limit_db import RateLimitSQLite
-from dataclasses import dataclass, field
+    StatusCode = None  # type: ignore[misc,assignment]
+    trace = None  # type: ignore[misc,assignment]
 
 logger = logging.getLogger("seed_agent")
 
@@ -372,7 +387,8 @@ class LLMGateway:
                 await self.save_state()
 
                 # 定期清理过期历史
-                await self._state_db.cleanup_old_history(max_age=86400.0)
+                if self._state_db:
+                    await self._state_db.cleanup_old_history(max_age=86400.0)
 
             except asyncio.CancelledError:
                 break
@@ -597,6 +613,9 @@ class LLMGateway:
         is_stream: bool = False
     ):
         """阶段 2-4: 获取信号量、限流并执行"""
+        if not self._request_semaphore:
+            raise ValueError("Request semaphore not initialized")
+            
         async with self._request_semaphore:
             logger.debug(f"Ticket {ticket.id}: concurrent acquired{' (stream)' if is_stream else ''}")
 
@@ -609,10 +628,8 @@ class LLMGateway:
                     max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
                     acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
                     if not acquired:
-                        raise RateLimitError(
-                            "Rate limit wait timeout, please retry later",
-                            response=None,
-                            body=None
+                        raise RateLimitTimeoutError(
+                            "Rate limit wait timeout, please retry later"
                         )
 
                 logger.debug(f"Ticket {ticket.id}: rate limit acquired{' (stream)' if is_stream else ''}")
@@ -645,10 +662,8 @@ class LLMGateway:
                     max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
                     acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
                     if not acquired:
-                        raise RateLimitError(
-                            "Rate limit wait timeout, please retry later",
-                            response=None,
-                            body=None
+                        raise RateLimitTimeoutError(
+                            "Rate limit wait timeout, please retry later"
                         )
 
                 logger.debug(f"Ticket {ticket.id}: rate limit acquired (stream)")
@@ -786,9 +801,9 @@ class LLMGateway:
                     self._fallback_chain.mark_healthy(provider_id)
                 
                 duration_ms = self._calc_duration_ms(start_time)
-                usage = result.get('usage')
+                usage = result.get('usage') if result else None
                 self._record_success_metrics(span, active_provider, model_id, usage, duration_ms)
-                return result
+                return result  # type: ignore[return-value]  # result is dict here
 
             # 触发降级
             if self._fallback_chain:
@@ -796,10 +811,10 @@ class LLMGateway:
                 fallback_success, fallback_result = await self._try_fallback_providers(
                     span, model_id, messages, start_time, **kwargs
                 )
-                if fallback_success:
+                if fallback_success and fallback_result:
                     return fallback_result
 
-            raise APIConnectionError("All providers failed")
+            raise RuntimeError("All providers failed")
 
         except Exception as e:
             self._handle_llm_error(span, active_provider, model_id, start_time, e)
@@ -817,8 +832,10 @@ class LLMGateway:
             return span
         return None
 
-    def _record_success_metrics(self, span, provider: str, model_id: str, usage: dict, duration_ms: float):
+    def _record_success_metrics(self, span, provider: str, model_id: str, usage: dict | None, duration_ms: float):
         """记录成功调用的 Metrics 和 Span 属性"""
+        if usage is None:
+            usage = {}
         if usage:
             input_tokens = usage.get('prompt_tokens', 0)
             output_tokens = usage.get('completion_tokens', 0)
@@ -849,7 +866,7 @@ class LLMGateway:
         if span:
             record_llm_span_error(span, e)
 
-    async def _try_provider_with_retry(self, model_id: str, messages: list[dict], **kwargs) -> tuple[bool, dict]:
+    async def _try_provider_with_retry(self, model_id: str, messages: list[dict], **kwargs) -> tuple[bool, dict | None]:
         """尝试单个 provider 调用（带重试）
         
         Returns:
@@ -869,7 +886,7 @@ class LLMGateway:
                     break
         return False, None
 
-    async def _try_fallback_providers(self, span, model_id: str, messages: list[dict], start_time: float, **kwargs) -> tuple[bool, dict]:
+    async def _try_fallback_providers(self, span, model_id: str, messages: list[dict], start_time: float, **kwargs) -> tuple[bool, dict | None]:
         """尝试所有 fallback providers
         
         Returns:

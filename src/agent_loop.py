@@ -44,12 +44,16 @@ try:
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    def get_tracer(): return None
-    def set_tool_span_attributes(*args, **kwargs): pass
-    def traced(*args, **kwargs): return lambda f: f
+    from typing import Any, Optional
+    def get_tracer() -> Any:
+        return None
+    def set_tool_span_attributes(span: Any, tool_name: str, file_path: Optional[str] = None, duration_ms: Optional[float] = None) -> None:
+        pass
+    def traced(name: Optional[str] = None, attributes: Optional[dict] = None) -> Any:
+        return lambda f: f
     SPAN_SESSION = "seed.session"
     SPAN_TOOL_PREFIX = "seed.tool."
-    StatusCode = None
+    StatusCode = None  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +347,7 @@ class AgentLoop:
         # Apply summary and truncate history
         await self._apply_summary(summary, is_context_full)
 
-    async def _process_run_response(self, response: dict, iteration: int) -> tuple[str, int, bool]:
+    async def _process_run_response(self, response: dict, iteration: int) -> tuple[str | None, int, bool]:
         """处理 LLM 响应并执行相应动作
         
         Returns:
@@ -402,7 +406,7 @@ class AgentLoop:
 
             final_response, iteration, should_return = await self._process_run_response(response, iteration)
             if should_return:
-                return final_response
+                return final_response or ""  # 确保返回非空字符串
 
         raise MaxIterationsExceeded(
             f"Agent exceeded maximum iterations ({self.max_iterations})"
@@ -652,7 +656,7 @@ class AgentLoop:
         set_tool_span_attributes(span, tool_name, file_path=tool_args.get('path', ''))
         return span
 
-    def _finish_tool_span(self, span, start_time: float, success: bool, error: Exception = None):
+    def _finish_tool_span(self, span, start_time: float, success: bool, error: Exception | None = None):
         """完成 Span 并记录指标"""
         if not span:
             return
@@ -680,9 +684,9 @@ class AgentLoop:
         )
 
         # 处理可能的异常结果，转换为错误响应
-        processed_results = []
+        processed_results: list[dict[str, Any]] = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Tool call {tool_calls[i].get('function', {}).get('name', 'unknown')} failed: {result}")
                 processed_results.append({
                     "tool_call_id": tool_calls[i].get("id", "unknown"),
@@ -690,7 +694,7 @@ class AgentLoop:
                     "content": f"Error: Tool execution failed - {type(result).__name__}: {str(result)}"
                 })
             else:
-                processed_results.append(result)
+                processed_results.append(result)  # type: ignore[misc]  # result is dict here
 
         return processed_results
 

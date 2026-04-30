@@ -84,7 +84,7 @@ class SkillLoader:
     - Tier 3: 参考文件 - 通过 load_skill_ref 加载支撑文件
     """
 
-    def __init__(self, skills_dir: Path = None):
+    def __init__(self, skills_dir: Path | None = None):
         self.skills_dir = skills_dir or SKILLS_DIR
         self._skills_meta: dict[str, dict] = {}
         self._lock = threading.Lock()
@@ -183,7 +183,7 @@ class SkillLoader:
                 result.extend(self._flatten_triggers(item))
         return result
 
-    def should_show_skill(self, name: str, available_tools: Set[str] = None) -> bool:
+    def should_show_skill(self, name: str, available_tools: Set[str] | None = None) -> bool:
         """
         条件激活: 判断 skill 是否应该在当前环境下显示
 
@@ -231,7 +231,7 @@ class SkillLoader:
         lines.extend(["</category>", ""])
         return lines
 
-    def get_skills_prompt(self, available_tools: Set[str] = None) -> str:
+    def get_skills_prompt(self, available_tools: Set[str] | None = None) -> str:
         """生成 Tier 1 索引 - 注入到 System Prompt"""
         visible_skills = {
             name: meta for name, meta in self._skills_meta.items()
@@ -320,7 +320,7 @@ class SkillLoader:
 
         return score
 
-    def match_skill(self, query: str, available_tools: Set[str] = None) -> str | None:
+    def match_skill(self, query: str, available_tools: Set[str] | None = None) -> str | None:
         """
         根据查询匹配最相关的 skill
 
@@ -446,7 +446,7 @@ class SkillLoader:
     def select_best_skill(
         self,
         signals: list[str],
-        available_tools: Set[str] = None
+        available_tools: Set[str] | None = None
     ) -> str | None:
         """Memory Graph 增强的 Skill 选择算法"""
         if not MEMORY_GRAPH_CONFIG.get('enabled', True):

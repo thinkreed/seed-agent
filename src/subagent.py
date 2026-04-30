@@ -19,6 +19,7 @@ from enum import Enum
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
+from typing import cast
 
 from src.client import LLMGateway
 from src.tools import ToolRegistry
@@ -34,10 +35,13 @@ try:
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    def get_tracer(): return None
-    def set_subagent_span_attributes(*args, **kwargs): pass
+    from typing import Any, Optional
+    def get_tracer() -> Any:
+        return None
+    def set_subagent_span_attributes(span: Any, subagent_type: str, task_id: str, status: Optional[str] = None) -> None:
+        pass
     SPAN_SUBAGENT_EXECUTE = "seed.subagent.execute"
-    StatusCode = None
+    StatusCode = None  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +220,7 @@ class SubagentInstance:
         self.subagent_type = subagent_type
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
-        self.timeout = timeout or DEFAULT_TIMEOUTS.get(subagent_type.value if hasattr(subagent_type, 'value') else subagent_type, 300)
+        self.timeout = timeout or DEFAULT_TIMEOUTS.get(cast(str, subagent_type.value if hasattr(subagent_type, 'value') else subagent_type), 300)
 
         # 独立的对话历史
         self.history: list[dict] = []
@@ -226,7 +230,7 @@ class SubagentInstance:
         self._setup_tools(custom_tools)
 
         # System prompt
-        base_prompt = SUBAGENT_SYSTEM_PROMPTS[subagent_type.value if hasattr(subagent_type, 'value') else subagent_type]
+        base_prompt = SUBAGENT_SYSTEM_PROMPTS[cast(str, subagent_type.value if hasattr(subagent_type, 'value') else subagent_type)]
         self.system_prompt = custom_system_prompt or base_prompt
 
         # 状态
@@ -239,10 +243,11 @@ class SubagentInstance:
     def _setup_tools(self, custom_tools: set[str] | None = None):
         """设置工具集"""
         # 确定权限集
+        type_key = cast(str, self.subagent_type.value if hasattr(self.subagent_type, 'value') else self.subagent_type)
         if custom_tools:
             allowed_tools = custom_tools
         else:
-            permission_set_name = SUBAGENT_TYPE_PERMISSIONS[self.subagent_type.value if hasattr(self.subagent_type, 'value') else self.subagent_type]
+            permission_set_name = SUBAGENT_TYPE_PERMISSIONS[type_key]
             allowed_tools = PERMISSION_SETS[permission_set_name]
 
         self._allowed_tools = allowed_tools

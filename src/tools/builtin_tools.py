@@ -344,7 +344,7 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
         return f"Error executing code: {str(e)}"
 
 
-def ask_user(question: str, options: list = None) -> str:
+def ask_user(question: str, options: list | None = None) -> str:
     """
     Ask user for input/confirmation during task execution.
 

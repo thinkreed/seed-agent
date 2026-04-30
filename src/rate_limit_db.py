@@ -10,7 +10,7 @@ import asyncio
 import threading
 import logging
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.rate_limiter import TokenBucketState, RollingWindowState
 
@@ -21,10 +21,10 @@ logger = logging.getLogger("seed_agent")
 class RateLimitState:
     """完整的限流状态"""
     timestamp: float
-    tokens_available: float
-    last_refill_time: float
-    requests_in_window: list[float]
-    total_requests_lifetime: int
+    tokens_available: float = 100.0
+    last_refill_time: float = 0.0
+    requests_in_window: list[float] = field(default_factory=list)
+    total_requests_lifetime: int = 0
 
 
 class RateLimitSQLite:

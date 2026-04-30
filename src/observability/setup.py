@@ -36,7 +36,7 @@ def setup_observability(
     service_name: str = "seed-agent",
     otlp_endpoint: str | None = None,
     enabled: bool = True,
-) -> tuple[trace.Tracer, metrics.Meter]:
+) -> tuple[trace.Tracer | None, metrics.Meter | None]:
     """
     初始化 OpenTelemetry SDK
 
@@ -68,7 +68,7 @@ def setup_observability(
     )
     
     # 确保路径正确
-    if not endpoint.endswith("/v1/traces"):
+    if endpoint and not endpoint.endswith("/v1/traces"):
         endpoint = endpoint.rstrip("/") + "/v1/traces"
 
     # Resource 配置

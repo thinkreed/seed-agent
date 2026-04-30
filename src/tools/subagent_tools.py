@@ -84,6 +84,9 @@ def spawn_subagent(
 
 async def _run_subagent_async(task_id: str):
     """异步执行 subagent"""
+    if _subagent_manager is None:
+        logger.error(f"SubagentManager not initialized, cannot run {task_id}")
+        return
     try:
         await _subagent_manager.run_subagent(task_id)
     except Exception as e:
@@ -332,6 +335,9 @@ def spawn_parallel_subagents(
 
 async def _run_parallel_async(task_ids: list[str]):
     """异步并行执行多个 subagent"""
+    if _subagent_manager is None:
+        logger.error("SubagentManager not initialized, cannot run parallel")
+        return
     try:
         await _subagent_manager.run_parallel(task_ids)
     except Exception as e:

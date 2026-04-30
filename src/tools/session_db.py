@@ -322,7 +322,7 @@ class SessionDB:
         success_rate = successes / total if total > 0 else 0.0
         laplace_rate = (successes + 1) / (total + 2)
 
-        recent_days = MEMORY_GRAPH_CONFIG['recent_days']
+        recent_days: int = MEMORY_GRAPH_CONFIG['recent_days']  # type: ignore[assignment]
         recent_row = self._get_skill_recent_stats(skill_name, recent_days)
         recent_success_rate = 0.0
         if recent_row and recent_row.get('recent_total', 0) > 0:
@@ -554,7 +554,7 @@ class SessionDB:
                 (rowid, tokenized, sid, role)
             )
 
-    def _upsert_session_meta(self, cursor, session_id: str, now: str, msg_count: int, summary: str, is_new: bool):
+    def _upsert_session_meta(self, cursor, session_id: str, now: str, msg_count: int, summary: str | None, is_new: bool):
         """插入或更新会话元数据"""
         if is_new:
             cursor.execute(
@@ -801,7 +801,7 @@ class SessionDB:
 
         return preview
 
-    def _get_context(self, session_id: str, msg_id: int, context_size: int = 1) -> str:
+    def _get_context(self, session_id: str, msg_id: int, context_size: int = 1) -> list[str]:
         """获取消息的上下文"""
         try:
             context_msgs = self.conn.execute("""
