@@ -282,6 +282,7 @@ class AutonomousExplorer:
 
     async def _run_ralph_loop(self) -> str | None:
         """执行Ralph Loop主循环"""
+        response: str | None = None  # Initialize before loop to avoid UnboundLocalError
         while True:
             self._iteration_count += 1
 

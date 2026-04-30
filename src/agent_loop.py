@@ -17,36 +17,46 @@ OpenTelemetry 嵌入:
 - Session Span (seed.session)
 """
 
-import tiktoken
 import asyncio
 import json
 import logging
 import time
-from typing import Any
 from collections.abc import AsyncGenerator
-from src.tools import ToolRegistry
-from src.tools.memory_tools import _save_session_history, _generate_session_filename, _record_skill_outcome
-from src.tools.skill_loader import SkillLoader
+from typing import Any
+
+import tiktoken
+
 from src.client import LLMGateway
 from src.request_queue import RequestPriority
 from src.subagent_manager import SubagentManager
+from src.tools import ToolRegistry
+from src.tools.memory_tools import (
+    _generate_session_filename,
+    _record_skill_outcome,
+    _save_session_history,
+)
+from src.tools.skill_loader import SkillLoader
 
 # OpenTelemetry 可观测性
 try:
+    from opentelemetry.trace import StatusCode
+
     from src.observability import (
-        get_tracer,
         SPAN_SESSION,
         SPAN_TOOL_PREFIX,
+        get_tracer,
         set_tool_span_attributes,
         traced,
     )
-    from opentelemetry.trace import StatusCode
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    from typing import Any as _Any
-    from opentelemetry.trace import Tracer as _Tracer, Span as _Span, StatusCode as _StatusCode
     from collections.abc import Callable as _Callable
+    from typing import Any as _Any
+
+    from opentelemetry.trace import Span as _Span
+    from opentelemetry.trace import StatusCode as _StatusCode
+    from opentelemetry.trace import Tracer as _Tracer
 
     def get_tracer() -> _Tracer:  # type: ignore[misc]
         from opentelemetry.trace import NoOpTracer
@@ -113,14 +123,14 @@ class AgentLoop:
         self._setup_internal_state()
         self._setup_tools_and_skills()
         self._setup_subsystems(system_prompt)
-        
+
         self._encoding = self._get_tokenizer()
 
     def _setup_internal_state(self) -> None:
         """初始化内部状态与上下文管理"""
         # Memory Graph: Skill 执行跟踪
         self._pending_skill_outcomes: list[dict] = []
-        
+
         # Context Window Management
         self.context_window = self._get_model_context_window()
         self.context_usage_threshold = 0.75  # Trigger summary at 75% usage
@@ -133,11 +143,11 @@ class AgentLoop:
     def _setup_tools_and_skills(self) -> None:
         """注册工具并加载技能"""
         self.tools = ToolRegistry()
+        from scheduler import register_scheduler_tools
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
-        from tools.skill_loader import register_skill_tools
-        from scheduler import register_scheduler_tools
         from tools.ralph_tools import register_ralph_tools
+        from tools.skill_loader import register_skill_tools
         from tools.subagent_tools import register_subagent_tools
 
         register_builtin_tools(self.tools)
@@ -238,7 +248,7 @@ class AgentLoop:
         """更新消息 Token 缓存（增量或全量重建）"""
         cache_len = len(self._message_token_cache)
         history_len = len(self.history)
-        
+
         if cache_len < history_len:
             # 增量：仅编码新增部分
             for msg in self.history[cache_len:]:
@@ -508,75 +518,6 @@ class AgentLoop:
             f"Agent exceeded maximum iterations ({self.max_iterations})"
         )
 
-    async def _process_stream_iteration(self, priority: int) -> bool:
-        """执行流式循环的单次迭代"""
-        messages = self._build_messages()
-        full_content, tool_calls = await self._consume_stream_response(messages, priority)
-        return await self._handle_iteration_result(full_content, tool_calls)
-
-    async def _consume_stream_response(self, messages: list[dict], priority: int) -> tuple[str, list[dict]]:
-        """流式消费 LLM 响应并累积内容/工具调用"""
-        full_content = ""
-        tool_calls_accumulator: dict[int, dict] = {}
-
-        async for chunk in self.gateway.stream_chat_completion(
-            self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
-        ):
-            delta = chunk['choices'][0].get('delta', {})
-            content = delta.get('content')
-            if content:
-                full_content += content
-
-            tc_list = delta.get('tool_calls')
-            if tc_list:
-                self._process_tool_delta(tc_list, tool_calls_accumulator)
-        
-        tool_calls = [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
-        return full_content, tool_calls
-
-    async def _handle_iteration_result(self, full_content: str, tool_calls: list[dict]) -> bool:
-        """处理迭代结果（记录历史、执行工具或完成对话）"""
-        self.history.append({
-            "role": "assistant",
-            "content": full_content or None,
-            "tool_calls": tool_calls if tool_calls else None
-        })
-
-        if tool_calls:
-            tool_results = await self._execute_tool_calls(tool_calls)
-            self.history.extend(tool_results)
-            return False  # Continue loop
-        else:
-            return True  # Stop loop
-
-    async def _stream_and_accumulate_response(self, messages: list[dict], priority: int):
-        """流式调用 LLM 并累积内容/工具调用"""
-        full_content = ""
-        tool_calls_accumulator: dict[int, dict] = {}
-
-        async for chunk in self.gateway.stream_chat_completion(
-            self.model_id,
-            messages,
-            priority=priority,
-            tools=self.tools.get_schemas()
-        ):
-            delta = chunk['choices'][0].get('delta', {})
-            content = delta.get('content')
-            if content:
-                full_content += content
-                yield {"type": "chunk", "content": content}
-
-            tc_list = delta.get('tool_calls')
-            if tc_list:
-                self._process_tool_delta(tc_list, tool_calls_accumulator)
-        
-        # Yield the accumulated result at the end
-        tool_calls = (
-            [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
-            if tool_calls_accumulator else []
-        )
-        yield {"type": "final_result", "content": full_content, "tool_calls": tool_calls}
-
     def _check_write_conflicts(self, tool_calls: list[dict]) -> list[dict] | None:
         """检查写工具调用的路径重叠，防止并发冲突。
         
@@ -631,11 +572,11 @@ class AgentLoop:
 
         span = self._start_tool_span(tool_name, tool_args)
         start_time = time.time()
-        
+
         try:
             result = await self.tools.execute(tool_name, **tool_args)
             self._finish_tool_span(span, start_time, success=True)
-            
+
             # Memory Graph 跟踪
             self._record_load_skill_if_needed(tool_name, tool_args, tool_id, str(result), failed=False)
 
@@ -643,7 +584,7 @@ class AgentLoop:
 
         except Exception as e:
             self._finish_tool_span(span, start_time, success=False, error=e)
-            
+
             # Memory Graph 跟踪 (失败情况)
             self._record_load_skill_if_needed(tool_name, tool_args, tool_id, f"Error: {str(e)}", failed=True)
             return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {str(e)}"}
@@ -658,7 +599,7 @@ class AgentLoop:
         tracer = get_tracer()
         if not (tracer and _OBSERVABILITY_ENABLED):
             return None
-        
+
         span = tracer.start_span(f"{SPAN_TOOL_PREFIX}{tool_name}")
         set_tool_span_attributes(span, tool_name, file_path=tool_args.get('path', ''))
         return span
@@ -667,7 +608,7 @@ class AgentLoop:
         """完成 Span 并记录指标"""
         if not span:
             return
-            
+
         duration_ms = (time.time() - start_time) * 1000
         if success:
             span.set_attribute("seed.tool.duration_ms", duration_ms)
@@ -740,8 +681,8 @@ class AgentLoop:
 
             try:
                 outcome, score = self._evaluate_skill_outcome(
-                    pending.get('result', ''), 
-                    pending.get('failed', False), 
+                    pending.get('result', ''),
+                    pending.get('failed', False),
                     final_success
                 )
                 _record_skill_outcome(

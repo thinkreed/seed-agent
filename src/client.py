@@ -15,24 +15,33 @@ LLM 网关客户端模块
 - OpenTelemetry 可观测性 (Token/Metrics/Tracing)
 """
 
-import os
-import time
 import asyncio
-import random
 import logging
-from typing import Any, Callable, Optional
+import os
+import random
+import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
 
-from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
+from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
 
-from src.models import load_config, FullConfig, ModelConfig, RateLimitConfig
-from src.rate_limiter import RateLimiter, RateLimitStatus, TokenBucketState, RollingWindowState
-from src.request_queue import (
-    RequestQueue, RequestPriority, TurnWaitTimeout,
-    TurnTicket, QueueConfig
-)
+from src.models import FullConfig, ModelConfig, RateLimitConfig, load_config
 from src.rate_limit_db import RateLimitSQLite
+from src.rate_limiter import (
+    RateLimiter,
+    RateLimitStatus,
+    RollingWindowState,
+    TokenBucketState,
+)
+from src.request_queue import (
+    QueueConfig,
+    RequestPriority,
+    RequestQueue,
+    TurnTicket,
+    TurnWaitTimeout,
+)
+
 
 # 使用自定义限流异常，避免 OpenAI SDK 的类型限制
 class RateLimitTimeoutError(Exception):
@@ -41,24 +50,27 @@ class RateLimitTimeoutError(Exception):
 
 # OpenTelemetry 可观测性
 try:
-    from src.observability import (
-        get_tracer,
-        SPAN_LLM_REQUEST,
-        record_llm_success,
-        record_llm_error,
-        classify_error,
-        record_llm_span_error,
-        set_llm_span_attributes,
-        add_fallback_event,
-    )
     from opentelemetry import trace
     from opentelemetry.trace import StatusCode
+
+    from src.observability import (
+        SPAN_LLM_REQUEST,
+        add_fallback_event,
+        classify_error,
+        get_tracer,
+        record_llm_error,
+        record_llm_span_error,
+        record_llm_success,
+        set_llm_span_attributes,
+    )
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
     # Fallback: 创建 dummy 函数（使用 type: ignore 避免签名不一致警告）
-    from opentelemetry.trace import Tracer as _Tracer, Span as _Span, StatusCode as _StatusCode
     from opentelemetry import trace as _trace
+    from opentelemetry.trace import Span as _Span
+    from opentelemetry.trace import StatusCode as _StatusCode
+    from opentelemetry.trace import Tracer as _Tracer
 
     def get_tracer() -> _Tracer:  # type: ignore[misc]
         return _trace.NoOpTracer()
@@ -624,7 +636,7 @@ class LLMGateway:
         """阶段 2-4: 获取信号量、限流并执行"""
         if not self._request_semaphore:
             raise ValueError("Request semaphore not initialized")
-            
+
         async with self._request_semaphore:
             logger.debug(f"Ticket {ticket.id}: concurrent acquired{' (stream)' if is_stream else ''}")
 
@@ -801,17 +813,17 @@ class LLMGateway:
         provider_id = model_id.split('/')[0]
         active_provider = self.get_active_provider()
         start_time = time.time()
-        
+
         span = self._create_llm_span(model_id, active_provider, streaming=False)
 
         try:
             # 尝试主 provider（带重试）
             success, result = await self._try_provider_with_retry(model_id, messages, **kwargs)
-            
+
             if success:
                 if self._fallback_chain:
                     self._fallback_chain.mark_healthy(provider_id)
-                
+
                 duration_ms = self._calc_duration_ms(start_time)
                 usage = result.get('usage') if result else None
                 self._record_success_metrics(span, active_provider, model_id, usage, duration_ms)
@@ -851,7 +863,7 @@ class LLMGateway:
         if usage:
             input_tokens = usage.get('prompt_tokens', 0)
             output_tokens = usage.get('completion_tokens', 0)
-            
+
             record_llm_success(
                 provider=provider,
                 model=model_id,
@@ -859,12 +871,12 @@ class LLMGateway:
                 output_tokens=output_tokens,
                 duration_ms=duration_ms
             )
-            
+
             if span:
                 span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
                 span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
                 span.set_status(StatusCode.OK)
-        
+
         if span and provider != model_id.split('/')[0]:
             span.set_attribute("seed.provider", provider)
 
@@ -872,9 +884,9 @@ class LLMGateway:
         """记录失败调用的 Metrics 和 Span 错误"""
         duration_ms = self._calc_duration_ms(start_time)
         error_type = classify_error(e)
-        
+
         record_llm_error(provider=provider, model=model_id, duration_ms=duration_ms, error_type=error_type)
-        
+
         if span:
             record_llm_span_error(span, e)
 
@@ -906,9 +918,9 @@ class LLMGateway:
         """
         if not self._fallback_chain:
             return False, None
-            
+
         active_provider = self.get_active_provider()
-        
+
         for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, model_id.split('/')[0]):
             if span:
                 add_fallback_event(
@@ -918,21 +930,21 @@ class LLMGateway:
                     reason="provider_degraded",
                     attempt=self._fallback_chain._providers.index(fallback_provider)
                 )
-            
+
             try:
                 logger.info(f"Trying fallback: {fallback_model_id}")
                 result = await self._chat_completion_single(fallback_model_id, messages, **kwargs)
                 self._fallback_chain.mark_healthy(fallback_provider)
-                
+
                 duration_ms = self._calc_duration_ms(start_time)
                 usage = result.get('usage')
                 self._record_success_metrics(span, fallback_provider, fallback_model_id, usage, duration_ms)
-                
+
                 return True, result
             except Exception as fallback_e:
                 logger.warning(f"Fallback {fallback_provider} failed: {fallback_e}")
                 self._fallback_chain.mark_degraded(fallback_provider)
-        
+
         return False, None
 
     async def _chat_completion_single(
@@ -964,7 +976,7 @@ class LLMGateway:
 
     def _get_retry_wait_time(self, attempt: int, error: Exception | None = None) -> float:
         """计算重试等待时间 (支持 Retry-After 头解析 + Jitter)"""
-        
+
         # 1. Check for Retry-After header (common in 429 Rate Limit errors)
         if error and hasattr(error, 'response') and error.response is not None:
             retry_after = error.response.headers.get('retry-after')
@@ -975,7 +987,7 @@ class LLMGateway:
                     return min(float(wait_time), 60.0)
                 except (ValueError, TypeError):
                     pass # Fall back to exponential backoff if header is invalid
-        
+
         # 2. Default exponential backoff with Jitter: 1s, 2s, 4s (+/- 20%)
         # Jitter prevents "thundering herd" problem
         base_wait = 2 ** attempt
@@ -991,17 +1003,17 @@ class LLMGateway:
         fallbacks: list[tuple[str, str]] = []
         if not self._fallback_chain:
             return fallbacks
-            
+
         for fallback_provider in self._fallback_chain._providers:
             if fallback_provider == exclude_provider:
                 continue
             if fallback_provider not in self.clients:
                 continue
-                
+
             fallback_model_id = self._get_fallback_model_id(model_id, fallback_provider)
             if fallback_model_id:
                 fallbacks.append((fallback_provider, fallback_model_id))
-        
+
         return fallbacks
 
     async def _stream_chat_completion_with_fallback_internal(
@@ -1015,7 +1027,7 @@ class LLMGateway:
         active_provider = self.get_active_provider()
         last_error = None
         start_time = time.time()
-        
+
         span = self._create_llm_span(model_id, active_provider, streaming=True)
 
         try:
@@ -1048,9 +1060,10 @@ class LLMGateway:
 
     async def _stream_with_retry(self, model_id: str, messages: list[dict], span, active_provider: str, start_time: float, **kwargs) -> AsyncGenerator[dict, None]:
         """流式响应重试逻辑"""
+        chunk_count = 0  # Initialize before retry loop to avoid UnboundLocalError
         for attempt in range(3):
             try:
-                chunk_count = 0
+                chunk_count = 0  # Reset for each attempt
                 async for chunk in self._stream_chat_completion_single(model_id, messages, **kwargs):
                     yield chunk
                     chunk_count += 1
@@ -1083,7 +1096,7 @@ class LLMGateway:
                 if chunk_count > 0:
                     logger.warning(f"Stream failed after {chunk_count} chunks, cannot safely retry")
                     raise
-                
+
                 if self._should_continue_retry(attempt):
                     wait_time = self._get_retry_wait_time(attempt, e)
                     logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
