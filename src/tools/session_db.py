@@ -14,8 +14,11 @@ import sqlite3
 import json
 import os
 import re
+import logging
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 try:
     import jieba
@@ -426,7 +429,8 @@ class SessionDB:
                     })
 
             return banned
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get context messages: {e}")
             return []
 
     def get_top_skills(self, limit: int = 10) -> list[dict]:
@@ -455,7 +459,8 @@ class SessionDB:
             # 按选择分数排序
             skill_values.sort(key=lambda x: x['selection_value'], reverse=True)
             return skill_values[:limit]
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get context messages: {e}")
             return []
 
     def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> list[dict]:
@@ -485,7 +490,8 @@ class SessionDB:
             """, (fts_query, limit)).fetchall()
 
             return [dict(row) for row in rows]
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get context messages: {e}")
             return []
 
     def cleanup_old_outcomes(self, max_entries_per_skill: int | None = None):
@@ -522,8 +528,8 @@ class SessionDB:
                 """, (skill_name, skill_name, excess))
 
             self.conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to cleanup old outcomes: {e}")
 
     # ==================== 原有 Session 方法 ====================
 
@@ -670,8 +676,8 @@ class SessionDB:
                 tc_list = json.loads(msg['tool_calls_json'])
                 tc_names = [tc.get('function', {}).get('name', 'unknown') for tc in tc_list]
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to parse tool_calls_json: {e}")
 
         if msg['tool_call_id']:
             content = (msg['content'] or '')[:200]
@@ -813,7 +819,8 @@ class SessionDB:
             """, (session_id, msg_id - context_size, msg_id + context_size)).fetchall()
 
             return [f"{m['role']}: {(m['content'] or '')[:100]}" for m in context_msgs]
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get context messages: {e}")
             return []
 
     def _apply_filters(
@@ -886,7 +893,8 @@ class SessionDB:
 
             rows = self.conn.execute(base_sql, params).fetchall()
             return [dict(row) for row in rows]
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to get context messages: {e}")
             return []
 
     def get_session_stats(self, session_id: str) -> dict:
@@ -953,8 +961,11 @@ class SessionDB:
     def __del__(self):
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # __del__ 中不应抛出异常，但记录 debug 级别日志
+            import sys
+            if hasattr(sys, '_getframe'):
+                logger.debug(f"SessionDB close in __del__ failed: {e}")
 
 
 # ==================== 模块级便捷函数 ====================
