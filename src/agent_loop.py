@@ -20,16 +20,13 @@ OpenTelemetry 嵌入:
 import tiktoken
 import asyncio
 import json
-import os
 import logging
 import time
 from typing import Any
 from collections.abc import AsyncGenerator
-from pathlib import Path
 from src.tools import ToolRegistry
 from src.tools.memory_tools import _save_session_history, _generate_session_filename, _record_skill_outcome
 from src.tools.skill_loader import SkillLoader
-from src.scheduler import TaskScheduler
 from src.client import LLMGateway
 from src.request_queue import RequestPriority
 from src.subagent_manager import SubagentManager
@@ -130,7 +127,7 @@ class AgentLoop:
         from tools.skill_loader import register_skill_tools
         from scheduler import register_scheduler_tools
         from tools.ralph_tools import register_ralph_tools
-        from tools.subagent_tools import register_subagent_tools, init_subagent_manager
+        from tools.subagent_tools import register_subagent_tools
 
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)

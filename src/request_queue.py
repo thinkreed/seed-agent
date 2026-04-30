@@ -8,7 +8,7 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any
+from typing import Any, Deque
 from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -315,7 +315,6 @@ class RequestQueue:
             if priority == RequestPriority.CRITICAL:
                 fill_ratio = self.get_critical_fill_ratio()
                 threshold = self.config.critical_backpressure_threshold
-                max_size = self.config.critical_max_size
 
                 if fill_ratio >= threshold:
                     self._stats.record_rejected(priority)
@@ -326,7 +325,6 @@ class RequestQueue:
                 # HIGH/NORMAL/LOW 共享普通队列
                 fill_ratio = self.get_normal_fill_ratio()
                 threshold = self.config.normal_backpressure_threshold
-                max_size = self.config.normal_max_size
 
                 if fill_ratio >= threshold:
                     self._stats.record_rejected(priority)

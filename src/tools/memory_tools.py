@@ -18,7 +18,6 @@ import os
 import re
 import json
 from datetime import datetime
-from pathlib import Path
 
 # 定位 ~/.seed/memory
 MEMORY_ROOT = os.path.join(os.path.expanduser("~"), ".seed", "memory")
@@ -48,7 +47,8 @@ def write_memory(level: str, content: str, title: str = "", metadata: str = "") 
             return validation
 
     path = _get_path(level, title)
-    if not path: return "Error: Invalid level or missing filename."
+    if not path:
+        return "Error: Invalid level or missing filename."
 
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -129,13 +129,15 @@ def _validate_skill_format(content: str, name: str = "") -> str:
 def _get_path(level, filename=None):
     """获取记忆文件路径"""
     mapping = {'L1': 'notes.md', 'L2': 'skills', 'L3': 'knowledge', 'L4': 'raw'}
-    if level not in mapping: return None
+    if level not in mapping:
+        return None
     base = mapping[level]
 
     if base.endswith('.md'):
         return os.path.join(MEMORY_ROOT, base)
 
-    if not filename: return None
+    if not filename:
+        return None
 
     # L2 特殊处理：skill 目录结构
     if level == 'L2':
@@ -180,16 +182,21 @@ def search_memory(keyword: str, levels: list = ["L1", "L2", "L3"]) -> str:
         return "Memory root not found."
         
     for root, dirs, files in os.walk(MEMORY_ROOT):
-        if '.git' in root or '__pycache__' in root: continue
+        if '.git' in root or '__pycache__' in root:
+            continue
         for file in files:
             if file.endswith(('.md', '.txt')):
                 # Determine level
                 rel = os.path.relpath(root, MEMORY_ROOT)
                 lvl = 'Unknown'
-                if 'notes' in rel or file == 'notes.md': lvl = 'L1'
-                elif 'skills' in rel: lvl = 'L2'
-                elif 'knowledge' in rel: lvl = 'L3'
-                elif 'raw' in rel: lvl = 'L4'
+                if 'notes' in rel or file == 'notes.md':
+                    lvl = 'L1'
+                elif 'skills' in rel:
+                    lvl = 'L2'
+                elif 'knowledge' in rel:
+                    lvl = 'L3'
+                elif 'raw' in rel:
+                    lvl = 'L4'
                 
                 if lvl in levels:
                     try:
@@ -197,7 +204,8 @@ def search_memory(keyword: str, levels: list = ["L1", "L2", "L3"]) -> str:
                         with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
                             if keyword.lower() in f.read().lower():
                                 results.append(f"[{lvl}] {file}")
-                    except Exception: pass
+                    except Exception:
+                        pass
     return "\n".join(results) if results else "No matching memory found."
 
 
@@ -325,18 +333,25 @@ def _load_session_history_jsonl(session_id: str) -> str:
                 filepath = os.path.join(SESSIONS_DIR, matches[0])
             else:
                 return f"Session not found: {session_id}"
-        messages = []; meta = {}; summary = None
+        messages = []
+        meta = {}
+        summary = None
         with open(filepath, 'r', encoding='utf-8') as f:
             for line in f:
-                if not line.strip(): continue
+                if not line.strip():
+                    continue
                 obj = json.loads(line)
-                if obj.get('type') == 'session_meta': meta = obj
-                elif obj.get('type') == 'message': messages.append(obj)
-                elif obj.get('type') == 'summary': summary = obj.get('content')
+                if obj.get('type') == 'session_meta':
+                    meta = obj
+                elif obj.get('type') == 'message':
+                    messages.append(obj)
+                elif obj.get('type') == 'summary':
+                    summary = obj.get('content')
         output = f"Session: {meta.get('session_id', session_id)}\n"
         output += f"Created: {meta.get('created_at', 'unknown')}\n"
         output += f"Messages: {len(messages)}\n"
-        if summary: output += f"Summary: {summary}\n"
+        if summary:
+            output += f"Summary: {summary}\n"
         output += "---\n"
         for msg in messages:
             role = msg.get('role', 'unknown')
@@ -344,8 +359,10 @@ def _load_session_history_jsonl(session_id: str) -> str:
             if msg.get('tool_calls'):
                 tc_names = [tc.get('function', {}).get('name', 'unknown') for tc in msg['tool_calls']]
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
-            if msg.get('tool_call_id'): content = msg.get('content', '')[:200]
-            if len(content) > 500: content = content[:500] + "..."
+            if msg.get('tool_call_id'):
+                content = msg.get('content', '')[:200]
+            if len(content) > 500:
+                content = content[:500] + "..."
             output += f"{role}: {content}\n"
         return output
     except Exception as e:
@@ -360,20 +377,28 @@ def _list_sessions_jsonl(limit: int = 10) -> str:
         results = []
         for f in session_files[:limit]:
             filepath = os.path.join(SESSIONS_DIR, f)
-            msg_count = 0; created_at = 'unknown'; summary = None
+            msg_count = 0
+            created_at = 'unknown'
+            summary = None
             with open(filepath, 'r', encoding='utf-8') as fp:
                 for line in fp:
-                    if not line.strip(): continue
+                    if not line.strip():
+                        continue
                     obj = json.loads(line)
-                    if obj.get('type') == 'session_meta': created_at = obj.get('created_at', 'unknown')
-                    elif obj.get('type') == 'message': msg_count += 1
-                    elif obj.get('type') == 'summary': summary = obj.get('content', '')[:100]
+                    if obj.get('type') == 'session_meta':
+                        created_at = obj.get('created_at', 'unknown')
+                    elif obj.get('type') == 'message':
+                        msg_count += 1
+                    elif obj.get('type') == 'summary':
+                        summary = obj.get('content', '')[:100]
             results.append({'session_id': f, 'created_at': created_at, 'message_count': msg_count, 'summary': summary})
-        if not results: return "No sessions found."
+        if not results:
+            return "No sessions found."
         output = "Recent Sessions:\n"
         for s in results:
             output += f"- {s['session_id']}: {s['message_count']} msgs, {s['created_at']}\n"
-            if s['summary']: output += f"  Summary: {s['summary']}...\n"
+            if s['summary']:
+                output += f"  Summary: {s['summary']}...\n"
         return output
     except Exception as e:
         return f"Error listing sessions: {str(e)}"
@@ -383,28 +408,35 @@ def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
     try:
         _ensure_sessions_dir()
         files = [f for f in os.listdir(SESSIONS_DIR) if f.startswith('session_') and f.endswith('.jsonl')]
-        results = []; keyword_lower = keyword.lower()
+        results = []
+        keyword_lower = keyword.lower()
         for f in files:
             filepath = os.path.join(SESSIONS_DIR, f)
             messages = []
             with open(filepath, 'r', encoding='utf-8') as fp:
                 for line in fp:
-                    if not line.strip(): continue
+                    if not line.strip():
+                        continue
                     obj = json.loads(line)
-                    if obj.get('type') == 'message': messages.append(obj)
+                    if obj.get('type') == 'message':
+                        messages.append(obj)
             for i, msg in enumerate(messages):
                 content = msg.get('content', '')
                 if content and keyword_lower in content.lower():
-                    context_start = max(0, i - 1); context_end = min(len(messages), i + 2)
+                    context_start = max(0, i - 1)
+                    context_end = min(len(messages), i + 2)
                     context = messages[context_start:context_end]
                     results.append({
                         'session_id': f, 'timestamp': msg.get('timestamp', 'unknown'), 'role': msg.get('role'),
                         'matched': content[:300] + "..." if len(content) > 300 else content,
                         'context': [f"{m.get('role')}: {m.get('content', '')[:100]}" for m in context]
                     })
-                    if len(results) >= limit: break
-            if len(results) >= limit: break
-        if not results: return f"No matches found for: {keyword}"
+                    if len(results) >= limit:
+                        break
+            if len(results) >= limit:
+                break
+        if not results:
+            return f"No matches found for: {keyword}"
         output = f"Found {len(results)} matches for '{keyword}':\n"
         for r in results:
             output += f"\n[{r['session_id']}] {r['timestamp']}\n"
@@ -448,7 +480,7 @@ def _record_skill_outcome(
         from src.tools.session_db import record_skill_outcome as db_record
         return db_record(skill_name, outcome, score, signals, session_id, context)
     except ImportError:
-        return f"Error: session_db module not available"
+        return "Error: session_db module not available"
 
 def _get_skill_stats(skill_name: str) -> str:
     """
@@ -480,7 +512,7 @@ def _get_skill_stats(skill_name: str) -> str:
             output += f"- Last failure: {stats['last_failure']}\n"
         return output
     except ImportError:
-        return f"Error: session_db module not available"
+        return "Error: session_db module not available"
 
 def _list_banned_skills() -> str:
     """
@@ -505,7 +537,7 @@ def _list_banned_skills() -> str:
             output += f"  Action: {s['suggested_action']}\n"
         return output
     except ImportError:
-        return f"Error: session_db module not available"
+        return "Error: session_db module not available"
 
 def _get_top_skills(limit: int = 10) -> str:
     """
@@ -530,4 +562,4 @@ def _get_top_skills(limit: int = 10) -> str:
             output += f"  Attempts: {s['total']}\n"
         return output
     except ImportError:
-        return f"Error: session_db module not available"
+        return "Error: session_db module not available"

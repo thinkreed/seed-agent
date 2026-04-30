@@ -14,7 +14,6 @@ Usage:
     results = idx.search("query text", top_k=3)
 """
 
-import os
 import json
 import math
 import pickle

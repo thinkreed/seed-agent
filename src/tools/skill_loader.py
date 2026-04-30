@@ -23,7 +23,6 @@ Token 节约估算:
 import os
 import re
 import sys
-import json
 import yaml
 import difflib
 import threading
@@ -32,8 +31,8 @@ from typing import Set
 from pathlib import Path
 from datetime import datetime
 
-from .skill_cache import load_snapshot, save_snapshot, clear_snapshot, build_manifest, SNAPSHOT_PATH
-from .skill_security import scan_for_injections, validate_skill_structure, validate_path_within_dir, INJECTION_PATTERNS
+from .skill_cache import load_snapshot, save_snapshot, clear_snapshot, build_manifest
+from .skill_security import scan_for_injections, validate_skill_structure, validate_path_within_dir
 
 # 兼容性导出：保持原有私有函数名可用
 _build_manifest = build_manifest

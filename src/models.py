@@ -15,11 +15,10 @@
 - RateLimitConfig: 限流策略
 """
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError
+from pydantic import BaseModel, ConfigDict, field_validator, ValidationError
 # 类型注解使用内置类型，不再需要从 typing 导入
 import json
 import os
-import sys
 
 DEFAULT_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
 
@@ -198,5 +197,5 @@ def load_config(config_path: str = None) -> FullConfig:
 
     try:
         return FullConfig(**data)
-    except ValidationError as e:
+    except ValidationError:
         raise

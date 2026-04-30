@@ -71,7 +71,7 @@ def spawn_subagent(
 
     # 尝试启动异步执行（仅在事件循环存在时）
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         asyncio.create_task(_run_subagent_async(task_id))
     except RuntimeError:
         # 没有运行的事件循环，任务只创建不启动
@@ -321,7 +321,7 @@ def spawn_parallel_subagents(
 
     # 尝试并行启动所有任务（仅在事件循环存在时）
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         asyncio.create_task(_run_parallel_async(task_ids))
     except RuntimeError:
         # 没有运行的事件循环，任务只创建不启动

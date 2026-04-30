@@ -52,13 +52,13 @@ except ImportError:
     SPAN_LLM_REQUEST = "seed.llm.request"
     StatusCode = None
     trace = None
-from src.models import load_config, FullConfig, ProviderConfig, ModelConfig, RateLimitConfig
+from src.models import load_config, FullConfig, ModelConfig, RateLimitConfig
 from src.rate_limiter import RateLimiter, RateLimitStatus, TokenBucketState, RollingWindowState
 from src.request_queue import (
-    RequestQueue, RequestPriority, QueueFullError, TurnWaitTimeout,
+    RequestQueue, RequestPriority, TurnWaitTimeout,
     TurnTicket, QueueConfig
 )
-from src.rate_limit_db import RateLimitSQLite, RateLimitState
+from src.rate_limit_db import RateLimitSQLite
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("seed_agent")
@@ -568,7 +568,7 @@ class LLMGateway:
 
     # ==================== 三阶段等待执行 ====================
 
-    async def _wait_for_turn_and_acquire(self, priority: RequestPriority) -> 'Ticket':
+    async def _wait_for_turn_and_acquire(self, priority: RequestPriority) -> TurnTicket:
         """阶段 1 & 2 & 3: 排队、等待、获取并发槽位和限流许可"""
         # 获取动态超时
         turn_timeout = self.get_dynamic_timeout(priority)
@@ -579,7 +579,7 @@ class LLMGateway:
 
         try:
             await ticket.wait_for_turn(timeout=turn_timeout)
-        except TurnWaitTimeout as e:
+        except TurnWaitTimeout:
             logger.warning(f"Ticket {ticket.id}: turn wait timeout ({turn_timeout:.1f}s)")
             raise
         except asyncio.CancelledError:
@@ -591,7 +591,7 @@ class LLMGateway:
 
     async def _execute_with_concurrency_and_rate_limit(
         self,
-        ticket: 'Ticket',
+        ticket: TurnTicket,
         priority: RequestPriority,
         execution_func: callable,
         is_stream: bool = False
@@ -626,7 +626,7 @@ class LLMGateway:
 
     async def _stream_with_concurrency_and_rate_limit(
         self,
-        ticket: 'Ticket',
+        ticket: TurnTicket,
         priority: RequestPriority,
         stream_func: callable
     ) -> AsyncGenerator[dict, None]:
@@ -935,7 +935,6 @@ class LLMGateway:
 
     def _get_retry_wait_time(self, attempt: int, error: Exception = None) -> float:
         """计算重试等待时间 (支持 Retry-After 头解析 + Jitter)"""
-        import random
         
         # 1. Check for Retry-After header (common in 429 Rate Limit errors)
         if error and hasattr(error, 'response') and error.response is not None:

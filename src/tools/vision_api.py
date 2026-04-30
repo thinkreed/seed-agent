@@ -5,9 +5,7 @@ Vision API Helper - 视觉识别基础模块
 import base64
 import io
 import os
-import sys
 import logging
-from typing import Any
 from pathlib import Path
 
 try:

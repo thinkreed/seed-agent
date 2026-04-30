@@ -162,7 +162,7 @@ def check_ralph_status(ralph_id: str = None) -> str:
             result += f"- Iteration: {state.get('iteration', 'N/A')}\n"
             result += f"- Started: {state.get('start_time', 'N/A')}\n"
             result += f"- Last Response: {state.get('last_response', '')[:100]}...\n"
-            result += f"- Status: running\n"
+            result += "- Status: running\n"
 
         if config_file.exists():
             config = json.loads(config_file.read_text())

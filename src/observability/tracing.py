@@ -16,12 +16,10 @@ Span 层级:
 """
 
 import asyncio
-import time
 import functools
 from typing import Callable, Any
-from opentelemetry import trace, context
-from opentelemetry.trace import StatusCode, Span, Status
-from opentelemetry.util.types import Attributes
+from opentelemetry import context
+from opentelemetry.trace import StatusCode, Span
 
 from .setup import get_tracer
 

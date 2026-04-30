@@ -112,7 +112,6 @@ class ToolRegistry:
 
     def _infer_schema(self, func: Callable) -> dict:
         """从函数签名推断 JSON Schema"""
-        import inspect
 
         sig = inspect.signature(func)
         params = sig.parameters

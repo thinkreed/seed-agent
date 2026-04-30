@@ -12,7 +12,6 @@ SubagentManager - 子代理生命周期管理和调度
 import asyncio
 import uuid
 from typing import Callable
-from datetime import datetime
 from dataclasses import dataclass
 import logging
 
@@ -22,7 +21,6 @@ from src.subagent import (
     SubagentInstance,
     SubagentState,
     SubagentResult,
-    PERMISSION_SETS,
     DEFAULT_TIMEOUTS,
 )
 

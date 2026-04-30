@@ -3,7 +3,6 @@
 import subprocess
 import os
 from pathlib import Path
-import re
 import logging
 
 logger = logging.getLogger("seed_agent.path")
@@ -31,12 +30,6 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
         (is_safe, error_message): 安全返回 (True, ""), 不安全返回 (False, 错误信息)
     """
     # 检查危险路径模式
-    dangerous_patterns = [
-        "..",           # 路径遍历
-        "~",            # 可能指向不允许的位置（单独处理）
-        "\\",           # Windows 路径分隔符（需要规范化）
-        "//",           # 双斜杠可能被解释为网络路径
-    ]
 
     # 检查 .. 序列
     normalized = path.replace("\\", "/")
@@ -73,7 +66,6 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
 
 def _resolve_path(path: str) -> str:
     """解析路径，相对路径默认从 .seed 目录解析（含路径遍历防护）"""
-    import logging
 
     # 安全验证
     is_safe, error = _validate_path_safety(path)

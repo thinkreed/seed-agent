@@ -107,7 +107,7 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
     regions = []
     address = 0
     mbi = ctypes.c_ulonglong(0)
-    mbi_size = ctypes.sizeof(ctypes.c_ulonglong) * 7  # MEMORY_BASIC_INFORMATION64 size
+    ctypes.sizeof(ctypes.c_ulonglong) * 7  # MEMORY_BASIC_INFORMATION64 size
     
     # MEMORY_BASIC_INFORMATION64 structure
     class MEMORY_BASIC_INFORMATION(ctypes.Structure):

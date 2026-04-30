@@ -10,7 +10,6 @@ import asyncio
 import threading
 import logging
 from pathlib import Path
-from typing import Any
 from dataclasses import dataclass
 
 from src.rate_limiter import TokenBucketState, RollingWindowState

@@ -14,10 +14,8 @@ import sqlite3
 import json
 import os
 import re
-import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Tuple
 
 try:
     import jieba
@@ -428,7 +426,7 @@ class SessionDB:
                     })
 
             return banned
-        except Exception as e:
+        except Exception:
             return []
 
     def get_top_skills(self, limit: int = 10) -> list[dict]:
@@ -457,7 +455,7 @@ class SessionDB:
             # 按选择分数排序
             skill_values.sort(key=lambda x: x['selection_value'], reverse=True)
             return skill_values[:limit]
-        except Exception as e:
+        except Exception:
             return []
 
     def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> list[dict]:
@@ -487,7 +485,7 @@ class SessionDB:
             """, (fts_query, limit)).fetchall()
 
             return [dict(row) for row in rows]
-        except Exception as e:
+        except Exception:
             return []
 
     def cleanup_old_outcomes(self, max_entries_per_skill: int = None):
@@ -524,7 +522,7 @@ class SessionDB:
                 """, (skill_name, skill_name, excess))
 
             self.conn.commit()
-        except Exception as e:
+        except Exception:
             pass
 
     # ==================== 原有 Session 方法 ====================
@@ -753,7 +751,7 @@ class SessionDB:
                 output += f"Context: {context}\n"
 
             return output
-        except sqlite3.OperationalError as e:
+        except sqlite3.OperationalError:
             return self._fallback_search(keyword, limit)
         except Exception as e:
             return f"Error searching history: {str(e)}"

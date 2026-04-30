@@ -9,7 +9,7 @@ import time
 import asyncio
 import logging
 from typing import Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 logger = logging.getLogger("seed_agent")
 

@@ -10,7 +10,6 @@ import time
 import logging
 import asyncio
 from pathlib import Path
-from typing import Callable
 from datetime import datetime
 from src.request_queue import RequestPriority
 
