@@ -13,7 +13,6 @@ import os
 import time
 import json
 import asyncio
-import subprocess
 import logging
 from pathlib import Path
 from typing import Callable
@@ -142,8 +141,8 @@ class RalphLoop:
             # 5. 持久化状态
             self._persist_state(response)
 
-            # 6. 外部完成验证
-            if self._check_completion():
+            # 6. 外部完成验证（异步）
+            if await self._check_completion():
                 logger.info(f"Ralph Loop completed at iteration {self._iteration_count}")
                 self._cleanup()
                 return "DONE"
@@ -170,8 +169,8 @@ class RalphLoop:
 
     # === 完成验证 ===
 
-    def _check_completion(self) -> bool:
-        """外部完成验证（核心机制）"""
+    async def _check_completion(self) -> bool:
+        """外部完成验证（核心机制）- 异步版本"""
         validators = {
             CompletionType.TEST_PASS: self._check_test_pass,
             CompletionType.FILE_EXISTS: self._check_file_exists,
@@ -183,7 +182,11 @@ class RalphLoop:
         validator = validators.get(self.completion_type)
         if validator:
             try:
-                result = validator()
+                # 异步验证方法需要 await
+                if asyncio.iscoroutinefunction(validator):
+                    result = await validator()
+                else:
+                    result = validator()
                 if result:
                     logger.info(f"Completion verified: {self.completion_type}")
                 return result
@@ -192,7 +195,7 @@ class RalphLoop:
                 return False
         return False
 
-    def _check_test_pass(self) -> bool:
+    async def _check_test_pass(self) -> bool:
         """检查测试通过率"""
         if not self.completion_criteria:
             return False
@@ -208,21 +211,27 @@ class RalphLoop:
             # 注意：这不支持复杂的 shell 管道/重定向，但对于测试命令足够
             cmd_args = shlex.split(test_command)
 
-            result = subprocess.run(
-                cmd_args,
-                shell=False,  # 安全：不使用 shell 解释
-                capture_output=True,
-                cwd=cwd,
-                timeout=300  # 5分钟超时
+            # 使用异步 subprocess 避免阻塞事件循环
+            proc = await asyncio.create_subprocess_exec(
+                *cmd_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd
             )
 
+            # 异步等待完成（5分钟超时）
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+
             # 解析测试结果（pytest 输出）
-            pass_rate = self._parse_test_pass_rate(result.stdout)
+            pass_rate = self._parse_test_pass_rate(stdout)
 
             logger.info(f"Test pass rate: {pass_rate}% (required: {required_rate}%)")
             return pass_rate >= required_rate
-        except subprocess.TimeoutExpired:
+        except asyncio.TimeoutError:
             logger.warning("Test execution timed out")
+            # 尝试终止超时的进程
+            if 'proc' in dir() and proc:
+                proc.kill()
             return False
         except Exception as e:
             logger.warning(f"Test execution failed: {e}")
@@ -282,24 +291,33 @@ class RalphLoop:
                 return True
         return False
 
-    def _check_git_clean(self) -> bool:
-        """检查 Git 工作区状态"""
+    async def _check_git_clean(self) -> bool:
+        """检查 Git 工作区状态（异步版本，不阻塞事件循环）"""
         if not self.completion_criteria:
             return False
         repo_path = self.completion_criteria.get("repo_path", str(SEED_DIR))
 
         try:
-            result = subprocess.run(
-                "git status --porcelain",
-                shell=True,
-                capture_output=True,
-                cwd=repo_path,
-                timeout=30
+            # 使用异步 subprocess 执行 git 命令
+            proc = await asyncio.create_subprocess_exec(
+                "git", "status", "--porcelain",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=repo_path
             )
-            is_clean = result.stdout.strip() == ""
+
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+
+            is_clean = stdout.strip() == b"" or stdout.strip() == ""
             if is_clean:
                 logger.info("Git working directory is clean")
             return is_clean
+        except asyncio.TimeoutError:
+            logger.warning("Git status check timed out")
+            return False
+        except FileNotFoundError:
+            logger.warning("git command not found")
+            return False
         except Exception as e:
             logger.warning(f"Git check failed: {e}")
             return False
