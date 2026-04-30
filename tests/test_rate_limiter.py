@@ -1,13 +1,11 @@
 """LLM 请求限流系统单元测试"""
 
-import os
 import sys
 import asyncio
 import time
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -17,16 +15,13 @@ sys.path.insert(0, str(project_root / "src"))
 # 导入测试模块
 from rate_limiter import (
     TokenBucket,
-    TokenBucketState,
     RollingWindowTracker,
-    RollingWindowState,
     RateLimiter,
     RateLimitStatus,
 )
 from request_queue import (
     RequestQueue,
     RequestPriority,
-    TurnTicket,
     QueueFullError,
     QueueConfig,
 )

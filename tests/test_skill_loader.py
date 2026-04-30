@@ -17,7 +17,6 @@ import tempfile
 import shutil
 import threading
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -29,9 +28,7 @@ from tools.skill_loader import (
     clear_snapshot,
     _scan_for_injections,
     _validate_skill_structure,
-    INJECTION_PATTERNS,
     MEMORY_GRAPH_CONFIG,
-    SKILLS_DIR,
     SNAPSHOT_PATH,
     PLATFORM_MAP,
     load_skill,
@@ -347,7 +344,7 @@ class TestLoadSkillContent:
 
     def test_content_caching(self, loader):
         # First load
-        content1 = loader.load_skill_content('test-skill-a')
+        loader.load_skill_content('test-skill-a')
         assert 'test-skill-a' in loader._content_cache
 
     def test_security_warning_on_injection(self, loader, temp_skills_dir):

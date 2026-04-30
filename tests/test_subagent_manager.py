@@ -14,10 +14,8 @@
 - RalphSubagentOrchestrator: 编排流程、执行报告
 """
 
-import os
 import sys
 import asyncio
-import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
@@ -32,7 +30,6 @@ from src.subagent import (
     SubagentInstance,
     SubagentState,
     SubagentResult,
-    DEFAULT_TIMEOUTS,
 )
 from src.subagent_manager import (
     SubagentManager,
@@ -647,7 +644,7 @@ class TestSubagentManagerListTasks(unittest.TestCase):
     def test_list_tasks_with_status_filter(self):
         """测试按状态过滤"""
         id1 = self.manager.create_task(SubagentType.EXPLORE, "Task 1")
-        id2 = self.manager.create_task(SubagentType.EXPLORE, "Task 2")
+        self.manager.create_task(SubagentType.EXPLORE, "Task 2")
         
         # 设置 id1 为 completed
         state = SubagentState(

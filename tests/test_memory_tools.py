@@ -13,12 +13,10 @@ import sys
 import pytest
 import tempfile
 import shutil
-from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # We need to mock MEMORY_ROOT for tests to avoid writing to real ~/.seed/memory
-from unittest.mock import patch
 
 # Import the module
 import tools.memory_tools as memory_tools

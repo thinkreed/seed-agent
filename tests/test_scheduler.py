@@ -13,7 +13,6 @@ import tempfile
 import json
 import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -183,7 +182,7 @@ class TestTaskScheduler:
         scheduler_mock = TaskScheduler()
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
         
-        result = scheduler_mock.remove_task("my_task")
+        scheduler_mock.remove_task("my_task")
         
         assert "my_task" not in scheduler_mock._tasks
         # Should return error if called again
@@ -194,7 +193,7 @@ class TestTaskScheduler:
         """Test adding a duplicate task returns error."""
         scheduler_mock = TaskScheduler()
         
-        result1 = scheduler_mock.add_task("my_task", "custom", 600, "Do something")
+        scheduler_mock.add_task("my_task", "custom", 600, "Do something")
         result2 = scheduler_mock.add_task("my_task", "custom", 300, "Do something else")
         
         # Should not update, should return error message

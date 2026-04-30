@@ -1,12 +1,10 @@
 """Subagent 机制单元测试"""
 
-import os
 import sys
 import asyncio
-import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -21,11 +19,9 @@ from src.subagent import (
     PERMISSION_SETS,
     SUBAGENT_TYPE_PERMISSIONS,
     SUBAGENT_SYSTEM_PROMPTS,
-    DEFAULT_TIMEOUTS,
 )
 from src.subagent_manager import (
     SubagentManager,
-    SubagentTask,
     RalphSubagentOrchestrator,
 )
 
@@ -382,8 +378,8 @@ class TestSubagentManager(unittest.TestCase):
         """测试清理所有任务"""
         manager = SubagentManager(gateway=self.gateway_mock)
 
-        task_id1 = manager.create_task(SubagentType.EXPLORE, "Test 1")
-        task_id2 = manager.create_task(SubagentType.REVIEW, "Test 2")
+        manager.create_task(SubagentType.EXPLORE, "Test 1")
+        manager.create_task(SubagentType.REVIEW, "Test 2")
 
         manager.cleanup()
 

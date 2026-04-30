@@ -1,12 +1,9 @@
 """Request Queue TurnTicket 模式单元测试"""
 
-import os
 import sys
 import asyncio
-import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent

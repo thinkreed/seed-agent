@@ -12,10 +12,8 @@ import os
 import sys
 import pytest
 import tempfile
-import json
-import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 

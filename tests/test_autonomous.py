@@ -14,14 +14,13 @@
 - _handle_response: 空响应处理
 """
 
-import os
 import sys
 import json
 import time
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -32,8 +31,6 @@ sys.path.insert(0, str(project_root / "src"))
 from ralph_loop import CompletionType
 from autonomous import (
     AutonomousExplorer,
-    COMPLETION_PROMISE_TOKENS,
-    COMPLETION_MARKERS,
     RALPH_MAX_ITERATIONS,
     RALPH_MAX_DURATION,
 )
@@ -377,7 +374,7 @@ class TestTodoLoading(unittest.TestCase):
         todo_content = "# TODO\n- [ ] Task 1\n- [ ] Task 2"
         todo_file.write_text(todo_content)
 
-        explorer = AutonomousExplorer(self.mock_agent)
+        AutonomousExplorer(self.mock_agent)
         with patch('autonomous.SEED_DIR', Path(self.tmpdir.name)):
             # 需要重新设置 SEED_DIR 常量
             pass

@@ -1,7 +1,5 @@
 """Ralph Loop 功能验证（无 pytest）"""
 
-import os
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -10,10 +8,9 @@ from unittest.mock import Mock, patch
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.ralph_loop import RalphLoop, CompletionType, create_ralph_loop
+from src.ralph_loop import RalphLoop, CompletionType
 from src.tools.ralph_tools import (
     write_completion_marker,
-    check_ralph_status,
     create_ralph_task_file
 )
 
