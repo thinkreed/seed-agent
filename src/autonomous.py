@@ -57,7 +57,7 @@ class AutonomousExplorer:
 
     IDLE_TIMEOUT = 2 * 60 * 60  # 2小时（秒）
 
-    def __init__(self, agent_loop, on_explore_complete: Callable = None):
+    def __init__(self, agent_loop, on_explore_complete: Callable | None = None):
         self.agent = agent_loop
         self.on_explore_complete = on_explore_complete
         self._last_activity: float = time.time()
@@ -463,7 +463,7 @@ class AutonomousExplorer:
         return "\n".join(prompt_parts)
 
 
-async def create_autonomous_explorer(agent_loop, on_explore_complete: Callable = None) -> AutonomousExplorer:
+async def create_autonomous_explorer(agent_loop, on_explore_complete: Callable | None = None) -> AutonomousExplorer:
     """创建自主探索器"""
     explorer = AutonomousExplorer(agent_loop, on_explore_complete)
     await explorer.start()

@@ -61,12 +61,12 @@ class RalphLoop:
         self,
         agent_loop,
         completion_type: CompletionType,
-        completion_criteria: dict,
-        task_prompt_path: Path,
-        on_iteration_complete: Callable = None,
-        max_iterations: int = None,
-        max_duration: int = None,
-        context_reset_interval: int = None
+        completion_criteria: dict | None = None,
+        task_prompt_path: Path | None = None,
+        on_iteration_complete: Callable | None = None,
+        max_iterations: int | None = None,
+        max_duration: int | None = None,
+        context_reset_interval: int | None = None
     ):
         """初始化 Ralph Loop
 
@@ -455,7 +455,7 @@ Ralph Loop Status Report:
         cls,
         agent_loop,
         task_prompt_path: Path,
-        marker_path: Path = None,
+        marker_path: Path | None = None,
         marker_content: str = "DONE"
     ) -> 'RalphLoop':
         """创建标志文件驱动的 Ralph Loop"""
@@ -474,7 +474,7 @@ async def create_ralph_loop(
     agent_loop,
     task_file: str,
     completion_type: str = "marker_file",
-    completion_criteria: dict = None,
+    completion_criteria: dict | None = None,
     **kwargs
 ) -> RalphLoop:
     """创建 Ralph Loop 实例

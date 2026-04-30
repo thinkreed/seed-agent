@@ -152,7 +152,7 @@ class FullConfig(BaseModel):
     queue: QueueConfigModel | None = None
     timeout: TimeoutConfigModel | None = None
 
-def load_config(config_path: str = None) -> FullConfig:
+def load_config(config_path: str | None = None) -> FullConfig:
     """加载并解析配置文件，支持旧版 JSON 结构自动迁移
     
     Args:

@@ -235,7 +235,7 @@ class RequestQueue:
     - 智能配置调整
     """
 
-    def __init__(self, config: QueueConfig = None):
+    def __init__(self, config: QueueConfig | None = None):
         """
         Args:
             config: 队列配置，默认使用默认配置

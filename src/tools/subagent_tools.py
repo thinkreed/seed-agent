@@ -28,8 +28,8 @@ def init_subagent_manager(manager):
 def spawn_subagent(
     type: str,
     prompt: str,
-    custom_tools: list[str] = None,
-    timeout: int = None,
+    custom_tools: list[str] | None = None,
+    timeout: int | None = None,
 ) -> str:
     """
     创建并启动一个子代理任务。
@@ -92,7 +92,7 @@ async def _run_subagent_async(task_id: str):
 
 async def wait_for_subagent_async(
     task_id: str,
-    timeout: float = None,
+    timeout: float | None = None,
 ) -> str:
     """
     等待子代理完成并返回结果（异步版本）。
@@ -142,7 +142,7 @@ async def wait_for_subagent_async(
 
 def wait_for_subagent(
     task_id: str,
-    timeout: float = None,
+    timeout: float | None = None,
 ) -> str:
     """
     等待子代理完成并返回结果（同步包装）。
@@ -199,7 +199,7 @@ def aggregate_subagent_results(
     )
 
 
-def list_subagents(status: str = None) -> str:
+def list_subagents(status: str | None = None) -> str:
     """
     列出所有子代理任务及其状态。
 

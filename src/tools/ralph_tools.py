@@ -97,7 +97,7 @@ To execute, use: check_ralph_status("{ralph_id}") or run Ralph Loop via schedule
 Note: Ralph Loop requires AgentLoop instance to execute. Use write_completion_marker() to signal completion."""
 
 
-def write_completion_marker(content: str = "DONE", marker_path: str = None) -> str:
+def write_completion_marker(content: str = "DONE", marker_path: str | None = None) -> str:
     """写入完成标志（用于 Ralph Loop 的 marker_file 完成验证）
 
     当 Agent 完成任务后，调用此工具写入完成标志。
@@ -131,7 +131,7 @@ def write_completion_marker(content: str = "DONE", marker_path: str = None) -> s
     return f"Completion marker written: {path} -> {content}"
 
 
-def check_ralph_status(ralph_id: str = None) -> str:
+def check_ralph_status(ralph_id: str | None = None) -> str:
     """检查 Ralph Loop 状态
 
     Args:

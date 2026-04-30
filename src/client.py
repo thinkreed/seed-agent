@@ -20,7 +20,7 @@ import time
 import asyncio
 import random
 import logging
-from typing import Any
+from typing import Any, Callable
 from collections.abc import AsyncGenerator
 from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
 
@@ -403,7 +403,7 @@ class LLMGateway:
             return os.environ.get(env_var, "").strip()
         return api_key.strip()
 
-    def get_client(self, model_id: str = None) -> AsyncOpenAI:
+    def get_client(self, model_id: str | None = None) -> AsyncOpenAI:
         """获取客户端，支持降级链
 
         Args:
@@ -593,7 +593,7 @@ class LLMGateway:
         self,
         ticket: TurnTicket,
         priority: RequestPriority,
-        execution_func: callable,
+        execution_func: Callable[[], Any],
         is_stream: bool = False
     ):
         """阶段 2-4: 获取信号量、限流并执行"""
@@ -628,7 +628,7 @@ class LLMGateway:
         self,
         ticket: TurnTicket,
         priority: RequestPriority,
-        stream_func: callable
+        stream_func: Callable[[], AsyncGenerator[dict, None]]
     ) -> AsyncGenerator[dict, None]:
         """阶段 2-4: 获取信号量、限流并执行（流式）
         

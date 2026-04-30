@@ -64,8 +64,8 @@ def image_to_base64(img: "Image.Image", format: str = "PNG") -> str:
 async def analyze_image_async(
     image: "Image.Image",
     prompt: str,
-    model_id: str = None,
-    config_path: str = None
+    model_id: str | None = None,
+    config_path: str | None = None
 ) -> str:
     """
     异步分析图像 - 通过 LLMGateway 调用多模态模型

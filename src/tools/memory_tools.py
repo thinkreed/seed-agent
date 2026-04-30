@@ -261,7 +261,7 @@ def _ensure_sessions_dir():
     """确保 sessions 目录存在（保留兼容）"""
     os.makedirs(SESSIONS_DIR, exist_ok=True)
 
-def _save_session_history(messages: list, summary: str = None, session_id: str = None) -> str:
+def _save_session_history(messages: list, summary: str | None = None, session_id: str | None = None) -> str:
     """Save conversation history to SQLite (wrapper for session_db.py)"""
     try:
         from src.tools.session_db import save_session_history as sqlite_save
@@ -300,7 +300,7 @@ def _generate_session_filename() -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"session_{timestamp}.jsonl"
 
-def _save_session_history_jsonl(messages: list, summary: str = None, session_id: str = None) -> str:
+def _save_session_history_jsonl(messages: list, summary: str | None = None, session_id: str | None = None) -> str:
     """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
@@ -453,9 +453,9 @@ def _record_skill_outcome(
     skill_name: str,
     outcome: str,
     score: float = 1.0,
-    signals: list = None,
-    session_id: str = None,
-    context: str = None
+    signals: list | None = None,
+    session_id: str | None = None,
+    context: str | None = None
 ) -> str:
     """
     Record skill execution outcome to gene_outcomes table.

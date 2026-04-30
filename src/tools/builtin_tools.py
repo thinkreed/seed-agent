@@ -298,7 +298,7 @@ def _format_execution_result(result: subprocess.CompletedProcess, language: str)
     return output if output.strip() else f"Code executed successfully ({language})"
 
 
-def code_as_policy(code: str, language: str = "python", cwd: str = None, timeout: int = 60) -> str:
+def code_as_policy(code: str, language: str = "python", cwd: str | None = None, timeout: int = 60) -> str:
     """
     Execute code in various languages (python, js, shell, bash, powershell).
 

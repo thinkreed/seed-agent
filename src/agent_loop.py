@@ -83,11 +83,11 @@ class AgentLoop:
     def __init__(
         self,
         gateway: LLMGateway,
-        model_id: str = None,
-        system_prompt: str = None,
+        model_id: str | None = None,
+        system_prompt: str | None = None,
         max_iterations: int = 30,
         summary_interval: int = 10,
-        session_id: str = None
+        session_id: str | None = None
     ):
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
@@ -140,7 +140,7 @@ class AgentLoop:
         self.skill_loader = SkillLoader()
         self._available_tools: set[str] | None = None
 
-    def _setup_subsystems(self, system_prompt: str = None):
+    def _setup_subsystems(self, system_prompt: str | None = None):
         """初始化子系统（Subagent、调度器、Prompt）"""
         # 初始化 SubagentManager
         from tools.subagent_tools import init_subagent_manager

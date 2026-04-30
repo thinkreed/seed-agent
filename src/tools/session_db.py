@@ -72,7 +72,7 @@ def _sanitize_fts_query(query: str) -> str:
 class SessionDB:
     """Session 数据库管理类 (SQLite + FTS5 + Memory Graph)"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path or str(DB_PATH)
         self._init_db()
 
@@ -207,10 +207,10 @@ class SessionDB:
         skill_name: str,
         outcome: str,
         score: float = 1.0,
-        signals: list[str] = None,
-        session_id: str = None,
-        context: str = None,
-        intent: str = None,
+        signals: list[str] | None = None,
+        session_id: str | None = None,
+        context: str | None = None,
+        intent: str | None = None,
         blast_radius: dict | None = None
     ) -> str:
         """记录 Skill 执行结果到 gene_outcomes 表"""
@@ -488,7 +488,7 @@ class SessionDB:
         except Exception:
             return []
 
-    def cleanup_old_outcomes(self, max_entries_per_skill: int = None):
+    def cleanup_old_outcomes(self, max_entries_per_skill: int | None = None):
         """
         清理过旧的执行记录 (FIFO)
 
@@ -969,7 +969,7 @@ def _get_db() -> SessionDB:
     return _db_instance
 
 
-def save_session_history(messages: list, summary: str = None, session_id: str = None) -> str:
+def save_session_history(messages: list, summary: str | None = None, session_id: str | None = None) -> str:
     """Save conversation history to SQLite"""
     return _get_db().save_session_history(messages, summary, session_id)
 
@@ -995,9 +995,9 @@ def record_skill_outcome(
     skill_name: str,
     outcome: str,
     score: float = 1.0,
-    signals: list[str] = None,
-    session_id: str = None,
-    context: str = None
+    signals: list[str] | None = None,
+    session_id: str | None = None,
+    context: str | None = None
 ) -> str:
     """记录 Skill 执行结果"""
     return _get_db().record_skill_outcome(skill_name, outcome, score, signals, session_id, context)
