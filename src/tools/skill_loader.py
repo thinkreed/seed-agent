@@ -31,13 +31,38 @@ from typing import Set
 from pathlib import Path
 from datetime import datetime
 
-from .skill_cache import load_snapshot, save_snapshot, clear_snapshot, build_manifest
-from .skill_security import scan_for_injections, validate_skill_structure, validate_path_within_dir
+from .skill_cache import load_snapshot, save_snapshot, clear_snapshot, build_manifest, SNAPSHOT_PATH
+from .skill_security import scan_for_injections, validate_skill_structure, validate_path_within_dir, INJECTION_PATTERNS
 
 # 兼容性导出：保持原有私有函数名可用
 _build_manifest = build_manifest
 _scan_for_injections = scan_for_injections
 _validate_skill_structure = validate_skill_structure
+
+# 显式导出列表（用于向后兼容和避免 ruff F401 警告）
+__all__ = [
+    'SkillLoader',
+    'get_loader',
+    '_get_loader',
+    'load_skill',
+    'list_skills',
+    'search_skill',
+    'MEMORY_GRAPH_CONFIG',
+    'SKILLS_DIR',
+    'PLATFORM_MAP',
+    'SNAPSHOT_PATH',
+    'INJECTION_PATTERNS',
+    '_build_manifest',
+    '_scan_for_injections',
+    '_validate_skill_structure',
+    'load_snapshot',
+    'save_snapshot',
+    'clear_snapshot',
+    'build_manifest',
+    'scan_for_injections',
+    'validate_skill_structure',
+    'validate_path_within_dir',
+]
 
 # ==================== 常量配置 ====================
 
@@ -702,6 +727,10 @@ def get_loader() -> SkillLoader:
             if _global_loader is None:
                 _global_loader = SkillLoader()
     return _global_loader
+
+
+# 兼容性别名：旧测试中使用 _get_loader 名称
+_get_loader = get_loader
 
 
 def load_skill(name: str) -> str:

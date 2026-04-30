@@ -92,7 +92,6 @@ def agent_patches(session_id='test_session'):
         'agent_loop',
         ToolRegistry=MagicMock,
         SkillLoader=MagicMock,
-        TaskScheduler=MagicMock,
         SubagentManager=MagicMock,
     )
 
@@ -112,7 +111,7 @@ def full_agent_patches(session_id='test_session'):
     return [
         patch('agent_loop.ToolRegistry', return_value=MagicMock()),
         patch('agent_loop.SkillLoader', mock_skill_loader),
-        patch('agent_loop.TaskScheduler', return_value=MagicMock()),
+        patch('scheduler.TaskScheduler', return_value=MagicMock()),
         patch('agent_loop.SubagentManager', return_value=MagicMock()),
         patch('tools.subagent_tools.init_subagent_manager', mock_init),
         patch('tools.builtin_tools.register_builtin_tools', noop),
