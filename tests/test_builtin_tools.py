@@ -37,6 +37,12 @@ from tools.builtin_tools import (
     PROJECT_ROOT,
     ALLOWED_DIRS,
     _validate_path_safety,
+    _check_code_security,
+    _resolve_execution_cwd,
+    _build_command,
+    _format_execution_result,
+    SHELL_BLACKLIST,
+    POWERSHELL_BLACKLIST,
 )
 
 
@@ -347,6 +353,100 @@ class TestCodeAsPolicy(unittest.TestCase):
         result = code_as_policy("pass", language="python")
         # 应返回成功消息而非空字符串
         self.assertIn("executed successfully", result.lower())
+
+
+class TestCodeAsPolicyHelpers(unittest.TestCase):
+    """测试 code_as_policy 辅助函数"""
+
+    def test_check_shell_security_clean(self):
+        """安全检查通过"""
+        result = _check_code_security("echo hello", "shell", None)
+        self.assertIsNone(result)
+
+    def test_check_shell_security_blocked(self):
+        """安全检查拦截危险命令"""
+        result = _check_code_security("rm -rf /", "shell", None)
+        self.assertIsNotNone(result)
+        self.assertIn("rm -rf", result)
+
+    def test_check_powershell_security_clean(self):
+        """PowerShell 安全检查通过"""
+        result = _check_code_security("Get-Process", "powershell", None)
+        self.assertIsNone(result)
+
+    def test_check_powershell_security_blocked(self):
+        """PowerShell 安全检查拦截危险命令"""
+        result = _check_code_security("Remove-Item C:\\", "powershell", None)
+        self.assertIsNotNone(result)
+        self.assertIn("Remove-Item", result)
+
+    def test_resolve_execution_cwd_default(self):
+        """默认工作目录为 .seed"""
+        result = _resolve_execution_cwd(None)
+        self.assertIn(".seed", result)
+
+    def test_resolve_execution_cwd_absolute(self):
+        """绝对路径保持不变"""
+        result = _resolve_execution_cwd("C:\\temp")
+        self.assertEqual(result, "C:\\temp")
+
+    def test_build_command_python(self):
+        """构建 Python 命令"""
+        cmd = _build_command("print(1)", "python")
+        self.assertIsNotNone(cmd)
+        self.assertEqual(cmd, ["python", "-c", "print(1)"])
+
+    def test_build_command_python_alias(self):
+        """构建 Python 命令（别名 py）"""
+        cmd = _build_command("print(1)", "py")
+        self.assertIsNotNone(cmd)
+        self.assertEqual(cmd, ["python", "-c", "print(1)"])
+
+    def test_build_command_js_alias(self):
+        """构建 JavaScript 命令（别名 js）"""
+        cmd = _build_command("console.log(1)", "js")
+        self.assertIsNotNone(cmd)
+        self.assertEqual(cmd, ["node", "-e", "console.log(1)"])
+
+    def test_build_command_unsupported(self):
+        """不支持的语言"""
+        cmd = _build_command("test", "rust")
+        self.assertIsNone(cmd)
+
+    def test_format_execution_result_success(self):
+        """格式化成功结果"""
+        mock_result = MagicMock(stdout="hello", stderr="", returncode=0)
+        result = _format_execution_result(mock_result, "python")
+        self.assertEqual(result, "hello")
+
+    def test_format_execution_result_with_stderr(self):
+        """格式化含 stderr 的结果"""
+        mock_result = MagicMock(stdout="out", stderr="err", returncode=0)
+        result = _format_execution_result(mock_result, "python")
+        self.assertIn("out", result)
+        self.assertIn("err", result)
+
+    def test_format_execution_result_nonzero_exit(self):
+        """格式化非零退出码"""
+        mock_result = MagicMock(stdout="", stderr="", returncode=42)
+        result = _format_execution_result(mock_result, "python")
+        self.assertIn("Exit Code: 42", result)
+
+    def test_format_execution_result_empty(self):
+        """格式化空输出"""
+        mock_result = MagicMock(stdout="", stderr="", returncode=0)
+        result = _format_execution_result(mock_result, "python")
+        self.assertIn("executed successfully", result.lower())
+
+    def test_shell_blacklist_is_list(self):
+        """SHELL_BLACKLIST 是列表"""
+        self.assertIsInstance(SHELL_BLACKLIST, list)
+        self.assertIn("rm -rf", SHELL_BLACKLIST)
+
+    def test_powershell_blacklist_is_list(self):
+        """POWERSHELL_BLACKLIST 是列表"""
+        self.assertIsInstance(POWERSHELL_BLACKLIST, list)
+        self.assertIn("Remove-Item", POWERSHELL_BLACKLIST)
 
 
 class TestAskUser(unittest.TestCase):

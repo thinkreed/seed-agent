@@ -230,6 +230,82 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
         return f"Error editing file: {str(e)}"
 
 
+# 代码执行安全黑名单（模块级常量）
+SHELL_BLACKLIST = [
+    "rm -rf", "rm -r", "rmdir", "del ", "format",
+    "sudo", "su", "chmod 777", "chown",
+    "wget", "curl -o", "nc ", "netcat",
+    "kill -9", "pkill", "killall",
+    "; rm", "| rm", "& rm", "`rm", "$(rm",
+    "cat /etc/passwd", "cat /etc/shadow",
+]
+
+POWERSHELL_BLACKLIST = [
+    "Remove-Item", "Delete-Item", "Format-Volume",
+    "Set-ExecutionPolicy", "Start-Process -Verb RunAs",
+    "Download-File", "Invoke-WebRequest -OutFile",
+    "Stop-Process -Force", "Kill-Process",
+]
+
+LANGUAGE_MAP = {
+    "python": (["python", "-c"], "py"),
+    "javascript": (["node", "-e"], "js"),
+    "shell": (["bash", "-c"], "sh"),
+    "powershell": (["powershell", "-Command"], "ps"),
+}
+
+
+def _check_code_security(code: str, language: str, logger) -> str | None:
+    """Check code against security blacklists. Returns error message if blocked."""
+    code_lower = code.lower()
+    if language in ("shell", "bash", "sh"):
+        for danger in SHELL_BLACKLIST:
+            if danger.lower() in code_lower:
+                if logger:
+                    logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
+                return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+    elif language in ("powershell", "ps", "pwsh"):
+        for danger in POWERSHELL_BLACKLIST:
+            if danger.lower() in code_lower:
+                if logger:
+                    logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
+                return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+    return None
+
+
+def _resolve_execution_cwd(cwd: str | None) -> str:
+    """Resolve working directory for code execution."""
+    if cwd is None:
+        return str(DEFAULT_WORK_DIR)
+    if os.path.isabs(cwd):
+        return cwd
+    seed_cwd = DEFAULT_WORK_DIR / cwd
+    if seed_cwd.exists():
+        return str(seed_cwd)
+    return str(PROJECT_ROOT / cwd)
+
+
+def _build_command(code: str, language: str) -> list | None:
+    """Build subprocess command for given language. Returns None if unsupported."""
+    for lang_prefix, (cmd_prefix, alias) in LANGUAGE_MAP.items():
+        if language == lang_prefix or language == alias:
+            return cmd_prefix + [code]
+    # Check extended aliases
+    if language in ("js", "node"):
+        return ["node", "-e", code]
+    return None
+
+
+def _format_execution_result(result: subprocess.CompletedProcess, language: str) -> str:
+    """Format subprocess output into result string."""
+    output = result.stdout
+    if result.stderr:
+        output += "\n[Stderr]\n" + result.stderr
+    if result.returncode != 0:
+        output += f"\n[Exit Code: {result.returncode}]"
+    return output if output.strip() else f"Code executed successfully ({language})"
+
+
 def code_as_policy(code: str, language: str = "python", cwd: str = None, timeout: int = 60) -> str:
     """
     Execute code in various languages (python, js, shell, bash, powershell).
@@ -243,114 +319,36 @@ def code_as_policy(code: str, language: str = "python", cwd: str = None, timeout
     Returns:
         Execution output (stdout + stderr), or error message.
     """
-    import logging
-    logger = logging.getLogger("seed_agent.code_exec")
-
-    # 安全检查：危险命令黑名单
-    SHELL_BLACKLIST = [
-        # 系统破坏命令
-        "rm -rf", "rm -r", "rmdir", "del ", "format",
-        # 权限提升
-        "sudo", "su", "chmod 777", "chown",
-        # 网络危险操作
-        "wget", "curl -o", "nc ", "netcat",
-        # 进程控制
-        "kill -9", "pkill", "killall",
-        # Shell 元字符组合攻击
-        "; rm", "| rm", "& rm", "`rm", "$(rm",
-        # 系统信息窃取
-        "cat /etc/passwd", "cat /etc/shadow",
-    ]
-
-    POWERSHELL_BLACKLIST = [
-        # 系统破坏
-        "Remove-Item", "Delete-Item", "Format-Volume",
-        # 权限操作
-        "Set-ExecutionPolicy", "Start-Process -Verb RunAs",
-        # 网络操作
-        "Download-File", "Invoke-WebRequest -OutFile",
-        # 进程控制
-        "Stop-Process -Force", "Kill-Process",
-    ]
-
+    exec_logger = logging.getLogger("seed_agent.code_exec")
     try:
-        # 代码长度限制
         if len(code) > 10000:
             return "Error: Code exceeds maximum length (10000 chars) for security"
 
-        # 默认工作目录为 .seed
-        if cwd is None:
-            cwd = str(DEFAULT_WORK_DIR)
-        elif not os.path.isabs(cwd):
-            seed_cwd = DEFAULT_WORK_DIR / cwd
-            if seed_cwd.exists():
-                cwd = str(seed_cwd)
-            else:
-                cwd = str(PROJECT_ROOT / cwd)
-
+        cwd = _resolve_execution_cwd(cwd)
         language = language.lower()
 
-        # Shell 安全检查
-        if language in ("shell", "bash", "sh"):
-            code_lower = code.lower()
-            for danger in SHELL_BLACKLIST:
-                if danger.lower() in code_lower:
-                    logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
-                    return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+        error = _check_code_security(code, language, exec_logger)
+        if error:
+            return error
 
-        # PowerShell 安全检查
-        if language in ("powershell", "ps", "pwsh"):
-            code_lower = code.lower()
-            for danger in POWERSHELL_BLACKLIST:
-                if danger.lower() in code_lower:
-                    logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
-                    return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+        exec_logger.info(f"Code execution requested: language={language}, cwd={cwd}, timeout={timeout}s, code_preview={code[:100]}...")
 
-        # 审计日志：记录所有执行请求
-        logger.info(f"Code execution requested: language={language}, cwd={cwd}, timeout={timeout}s, code_preview={code[:100]}...")
-
-        # 根据语言选择执行方式
-        if language in ("python", "py"):
-            cmd = ["python", "-c", code]
-        elif language in ("javascript", "js", "node"):
-            cmd = ["node", "-e", code]
-        elif language in ("shell", "bash", "sh"):
-            cmd = ["bash", "-c", code]
-        elif language in ("powershell", "ps", "pwsh"):
-            cmd = ["powershell", "-Command", code]
-        else:
+        cmd = _build_command(code, language)
+        if cmd is None:
             return f"Error: Unsupported language '{language}'. Supported: python, javascript, shell, powershell"
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=cwd,
-            encoding='utf-8',
-            errors='replace'
-        )
-
-        output = result.stdout
-        if result.stderr:
-            output += "\n[Stderr]\n" + result.stderr
-
-        if result.returncode != 0:
-            output += f"\n[Exit Code: {result.returncode}]"
-
-        # 审计日志：记录执行结果
-        logger.info(f"Code execution completed: returncode={result.returncode}, output_length={len(output)}")
-
-        return output if output.strip() else f"Code executed successfully ({language})"
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, encoding='utf-8', errors='replace')
+        exec_logger.info(f"Code execution completed: returncode={result.returncode}, output_length={len(result.stdout)}")
+        return _format_execution_result(result, language)
 
     except subprocess.TimeoutExpired:
-        logger.warning(f"Code execution timed out: language={language}, timeout={timeout}s")
+        exec_logger.warning(f"Code execution timed out: language={language}, timeout={timeout}s")
         return f"Error: Execution timed out ({timeout}s)"
     except FileNotFoundError:
-        logger.error(f"Interpreter not found for '{language}'")
+        exec_logger.error(f"Interpreter not found for '{language}'")
         return f"Error: Interpreter not found for '{language}'. Please ensure it's installed."
     except Exception as e:
-        logger.exception(f"Code execution error: {str(e)}")
+        exec_logger.exception(f"Code execution error: {str(e)}")
         return f"Error executing code: {str(e)}"
 
 
