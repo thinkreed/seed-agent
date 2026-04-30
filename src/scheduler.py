@@ -11,6 +11,7 @@ import logging
 import asyncio
 from pathlib import Path
 from datetime import datetime
+from typing import Any
 from src.request_queue import RequestPriority
 
 logger = logging.getLogger("seed_agent")
@@ -81,7 +82,7 @@ class TaskScheduler:
         "autodream": 12 * 60 * 60,  # 每12小时记忆整理
     }
 
-    def __init__(self, agent_loop=None):
+    def __init__(self, agent_loop: Any = None) -> None:
         self.agent = agent_loop
         self._tasks: dict[str, ScheduledTask] = {}
         self._running: bool = False
@@ -90,7 +91,7 @@ class TaskScheduler:
         self._load_tasks()
         self._init_builtin_tasks()
 
-    def _load_tasks(self):
+    def _load_tasks(self) -> None:
         """加载已保存的任务"""
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -102,7 +103,7 @@ class TaskScheduler:
                     self._tasks[task.task_id] = task
             logger.info(f"Loaded {len(self._tasks)} scheduled tasks")
 
-    def _save_tasks(self):
+    def _save_tasks(self) -> None:
         """保存任务到文件"""
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -116,7 +117,7 @@ class TaskScheduler:
 
         logger.info(f"Saved {len(self._tasks)} scheduled tasks")
 
-    def _init_builtin_tasks(self):
+    def _init_builtin_tasks(self) -> None:
         """初始化内置任务
         
         重要：启动时设置 last_run 为当前时间，避免立即触发到期的任务。
@@ -220,7 +221,7 @@ class TaskScheduler:
             logger.exception(f"Task {task.task_id} failed: {e}")
             self._log_task_execution(task, f"Error: {str(e)}", success=False)
 
-    def _log_task_execution(self, task: ScheduledTask, result: str, success: bool = True):
+    def _log_task_execution(self, task: ScheduledTask, result: str, success: bool = True) -> None:
         """记录任务执行日志"""
         log_file = TASKS_DIR / "execution_log.jsonl"
 

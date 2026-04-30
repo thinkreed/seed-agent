@@ -116,7 +116,7 @@ class AgentLoop:
         
         self._encoding = self._get_tokenizer()
 
-    def _setup_internal_state(self):
+    def _setup_internal_state(self) -> None:
         """初始化内部状态与上下文管理"""
         # Memory Graph: Skill 执行跟踪
         self._pending_skill_outcomes: list[dict] = []
@@ -130,7 +130,7 @@ class AgentLoop:
         self._system_prompt_tokens: int = 0
         self._pending_user_input: str | None = None
 
-    def _setup_tools_and_skills(self):
+    def _setup_tools_and_skills(self) -> None:
         """注册工具并加载技能"""
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
@@ -151,7 +151,7 @@ class AgentLoop:
         self.skill_loader = SkillLoader()
         self._available_tools: set[str] | None = None
 
-    def _setup_subsystems(self, system_prompt: str | None = None):
+    def _setup_subsystems(self, system_prompt: str | None = None) -> None:
         """初始化子系统（Subagent、调度器、Prompt）"""
         # 初始化 SubagentManager
         from tools.subagent_tools import init_subagent_manager
@@ -225,7 +225,7 @@ class AgentLoop:
             tokens += self._encode_text(tc_text)
         return tokens
 
-    def _rebuild_token_cache(self):
+    def _rebuild_token_cache(self) -> None:
         """重建 Token 缓存（用于历史截断后）"""
         self._message_token_cache = []
         self._system_prompt_tokens = 0
@@ -234,7 +234,7 @@ class AgentLoop:
         if self.system_prompt:
             self._system_prompt_tokens = self._encode_text(self.system_prompt)
 
-    def _update_message_token_cache(self):
+    def _update_message_token_cache(self) -> None:
         """更新消息 Token 缓存（增量或全量重建）"""
         cache_len = len(self._message_token_cache)
         history_len = len(self.history)

@@ -26,7 +26,7 @@ from pathlib import Path
 class TFIDFEncoder:
     """Simple TF-IDF encoder (no sklearn dependency)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.vocab: dict[str, int] = {}
         self.idf: list[float] = []
         self._doc_count: int = 0

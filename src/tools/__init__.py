@@ -22,11 +22,11 @@ from typing import Callable, Any
 class ToolRegistry:
     """工具注册表"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._tools: dict[str, Callable] = {}
         self._tool_schemas: dict[str, dict] = {}
 
-    def register(self, name: str, func: Callable, schema: dict | None = None):
+    def register(self, name: str, func: Callable[..., Any], schema: dict[str, Any] | None = None) -> None:
         """注册工具
         
         Args:
@@ -62,7 +62,7 @@ class ToolRegistry:
         if not doc:
             return param_descriptions
         
-        skip_headers = {"args", "returns", "raises", "yields", "note", "example"}
+        skip_headers: set[str] = {"args", "returns", "raises", "yields", "note", "example"}
         for line in doc.split('\n'):
             line = line.strip()
             if not line or line.endswith(':'):
@@ -75,7 +75,7 @@ class ToolRegistry:
         return param_descriptions
 
     @staticmethod
-    def _resolve_type_to_schema(ann) -> dict:
+    def _resolve_type_to_schema(ann: Any) -> dict[str, Any]:
         """将 Python 类型转换为 JSON Schema 结构"""
         import typing
         
