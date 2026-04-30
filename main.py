@@ -147,7 +147,7 @@ async def main(args=None):
         await agent.scheduler.start()
 
         print("Agent initialized successfully. Type 'exit' to quit.\n")
-        print("Starting interactive loop (自主探索: 1小时空闲触发, 定时任务: 自动执行)...")
+        print("Starting interactive loop (自主探索: 2小时空闲触发, 定时任务: 自动执行)...")
     except Exception as e:
         logger.exception("Failed to initialize agent")
         return

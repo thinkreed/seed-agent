@@ -13,7 +13,7 @@
 | **LLMGateway** | `src/client.py` | 多Provider网关：FallbackChain自动降级、重试逻辑 |
 | **RalphLoop** | `src/ralph_loop.py` | 长周期任务执行器：外部验证驱动完成、上下文重置防漂移 |
 | **Scheduler** | `src/scheduler.py` | 定时任务调度：内置任务 + 自定义任务管理 |
-| **AutonomousExplorer** | `src/autonomous.py` | 空闲自主探索：1小时触发、SOP驱动执行 |
+| **AutonomousExplorer** | `src/autonomous.py` | 空闲自主探索：2小时触发、SOP驱动执行 |
 | **SubagentManager** | `src/subagent_manager.py` | 子代理管理器：创建、调度、并行执行、结果聚合 |
 | **SubagentInstance** | `src/subagent.py` | 独立上下文的子代理：权限隔离、执行循环 |
 | **RateLimiter** | `src/rate_limiter.py` | 双重限流：TokenBucket + RollingWindow |

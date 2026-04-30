@@ -55,7 +55,7 @@ class AutonomousExplorer:
     - 防无限循环上限：迭代和时间双重保护
     """
 
-    IDLE_TIMEOUT = 60 * 60  # 1小时（秒）
+    IDLE_TIMEOUT = 2 * 60 * 60  # 2小时（秒）
 
     def __init__(self, agent_loop, on_explore_complete: Callable = None):
         self.agent = agent_loop
@@ -421,7 +421,7 @@ class AutonomousExplorer:
         prompt_parts = [
             "# 自主探索任务触发",
             "",
-            "当前空闲1小时，开始执行自主任务。",
+            "当前空闲2小时，开始执行自主任务。",
             "",
             "## 当前状态",
             f"- TODO状态: {'有待执行任务' if has_todo else '无TODO，进入规划模式'}",

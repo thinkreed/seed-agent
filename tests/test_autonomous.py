@@ -87,7 +87,7 @@ class TestAutonomousExplorerInit(unittest.TestCase):
 
     def test_idle_timeout_constant(self):
         """测试空闲超时常量"""
-        self.assertEqual(AutonomousExplorer.IDLE_TIMEOUT, 60 * 60)  # 1小时
+        self.assertEqual(AutonomousExplorer.IDLE_TIMEOUT, 120 * 60)  # 2小时
 
 
 class TestActivityTracking(unittest.TestCase):
