@@ -12,10 +12,6 @@ import os
 import sys
 import pytest
 import tempfile
-import sqlite3
-import json
-from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -24,16 +20,8 @@ from tools.session_db import (
     SessionDB,
     tokenize_for_fts5,
     _sanitize_fts_query,
-    MEMORY_GRAPH_CONFIG,
     save_session_history,
-    load_session_history,
     list_sessions,
-    search_history,
-    record_skill_outcome,
-    get_skill_stats,
-    list_banned_skills,
-    get_top_skills,
-    search_outcomes_by_signal,
     _get_db,
 )
 
@@ -283,7 +271,7 @@ class TestListSessions:
         result = temp_db.list_sessions(limit=2)
         # Should only show 2 sessions
         lines = result.strip().split('\n')
-        session_lines = [l for l in lines if l.startswith('-')]
+        session_lines = [line for line in lines if line.startswith('-')]
         assert len(session_lines) <= 2
 
     def test_list_ordered_by_created_desc(self, temp_db, sample_messages):
@@ -317,7 +305,7 @@ class TestSearchHistory:
     def test_search_case_insensitive(self, temp_db, sample_messages):
         temp_db.save_session_history(sample_messages, session_id='case_test')
         result_lower = temp_db.search_history('python')
-        result_upper = temp_db.search_history('PYTHON')
+        temp_db.search_history('PYTHON')
         # Both should find the match
         assert 'match' in result_lower.lower() or 'python' in result_lower.lower()
 
@@ -471,9 +459,10 @@ class TestGetSkillStats:
 
     def test_stats_mixed_results(self, temp_db):
         temp_db.record_skill_outcome('mixed', 'success')
-        import time; time.sleep(0.01)
+        import time
+        time.sleep(0.01)
         temp_db.record_skill_outcome('mixed', 'failed')
-        import time; time.sleep(0.01)
+        time.sleep(0.01)
         temp_db.record_skill_outcome('mixed', 'success')
         stats = temp_db.get_skill_stats('mixed')
         assert stats['total'] == 3

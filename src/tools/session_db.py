@@ -10,12 +10,13 @@ Memory Graph 增强:
 - 选择算法支持: 成功率统计、禁用阈值、Laplace 平滑
 """
 
-import sqlite3
 import json
+import logging
 import os
 import re
-import logging
+import sqlite3
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -43,11 +44,13 @@ MEMORY_GRAPH_CONFIG = {
 }
 
 
+@lru_cache(maxsize=1000)
 def tokenize_for_fts5(text: str) -> str:
     """
-    中文分词预处理
+    中文分词预处理（带缓存）
     - 如果有 jieba，使用 jieba 分词
     - 否则 fallback 到 unicode61（单字符）
+    - 使用 LRU 缓存避免重复分词开销
     """
     if _HAS_JIEBA and text:
         tokens = jieba.cut(text)
@@ -195,6 +198,11 @@ class SessionDB:
         for col in ['skill_name', 'timestamp', 'outcome_status', 'session_id']:
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_gene_{col} ON gene_outcomes({col})")
 
+        # 复合索引：优化近期统计查询 (skill_name + timestamp)
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_gene_skill_time ON gene_outcomes(skill_name, timestamp)"
+        )
+
         self.conn.commit()
 
     def _parse_tool_calls(self, tool_calls) -> str | None:
@@ -294,7 +302,7 @@ class SessionDB:
             total = row['total']
             successes = row['successes']
             failures = row['failures']
-            
+
             rates = self._calculate_rates(skill_name, successes, total)
             return {
                 'total': total, 'successes': successes, 'failures': failures,

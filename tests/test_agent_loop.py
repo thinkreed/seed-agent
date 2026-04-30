@@ -17,17 +17,12 @@ Coverage targets:
 import os
 import sys
 import pytest
-import json
-import asyncio
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
-# Configure pytest-asyncio
-pytestmark = pytest.mark.asyncio
+# Note: Only use @pytest.mark.asyncio on actual async test functions
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-import agent_loop
 from agent_loop import AgentLoop, MaxIterationsExceeded, ProviderNotFoundError, ToolNotFoundError
 
 
@@ -370,12 +365,12 @@ class TestContextSizeEstimation:
         agent._encoding.encode.return_value = [1, 2]
         
         # First call
-        result1 = agent._estimate_context_size()
+        agent._estimate_context_size()
         assert len(agent._message_token_cache) == 1
         
         # Add another message
         agent.history.append({"role": "assistant", "content": "Second"})
-        result2 = agent._estimate_context_size()
+        agent._estimate_context_size()
         assert len(agent._message_token_cache) == 2
         # Only new message should be encoded
     
@@ -397,7 +392,7 @@ class TestContextSizeEstimation:
         
         # Truncate history (simulate summarization)
         agent.history = agent.history[-1:]
-        result = agent._estimate_context_size()
+        agent._estimate_context_size()
         assert len(agent._message_token_cache) == 1
         assert agent._system_prompt_tokens > 0
 
@@ -893,7 +888,7 @@ class TestRunLoop:
         agent._pending_user_input = "Interrupt message"
         
         # Run will process the pending input as a new user message
-        response = await agent.run("Initial message")
+        await agent.run("Initial message")
         
         # Should have processed both messages
         assert agent._conversation_rounds >= 1

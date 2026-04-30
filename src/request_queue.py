@@ -8,10 +8,10 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any, Deque
 from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Any, Deque
 
 # Auto-adjust thresholds
 _MAX_CRITICAL_DISPATCH_RATE = 50.0
@@ -334,7 +334,9 @@ class RequestQueue:
 
             # 记录活跃 ticket
             self._active_tickets[ticket.id] = ticket
-            self._stats.record_submit(priority)
+
+        # 统计记录移到锁外（减少锁持有时间）
+        self._stats.record_submit(priority)
 
         # 触发调度器
         self._new_request_event.set()

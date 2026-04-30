@@ -17,7 +17,7 @@ import sys
 import unittest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -35,8 +35,6 @@ from tools.builtin_tools import (
     register_builtin_tools,
     DEFAULT_WORK_DIR,
     PROJECT_ROOT,
-    ALLOWED_DIRS,
-    _validate_path_safety,
     _check_code_security,
     _resolve_execution_cwd,
     _build_command,
@@ -471,26 +469,31 @@ class TestAskUser(unittest.TestCase):
 class TestRunDiagnosis(unittest.TestCase):
     """测试 run_diagnosis 诊断运行功能"""
 
+    @patch('tools.builtin_tools.Path.exists')
     @patch('tools.builtin_tools.subprocess.run')
-    def test_diagnosis_success(self, mock_run):
+    def test_diagnosis_success(self, mock_run, mock_exists):
         """诊断成功"""
+        # Mock script exists
+        mock_exists.return_value = True
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout="PASS: 10 checks passed",
             stderr=""
         )
-        
+
         result = run_diagnosis()
         self.assertIn("PASS", result)
-        
+
         # 验证调用参数（默认不带 --fix）
         mock_run.assert_called_once()
         call_args = mock_run.call_args
         self.assertNotIn("--fix", str(call_args) if call_args else "")
 
+    @patch('tools.builtin_tools.Path.exists')
     @patch('tools.builtin_tools.subprocess.run')
-    def test_diagnosis_with_fix(self, mock_run):
+    def test_diagnosis_with_fix(self, mock_run, mock_exists):
         """带修复参数的诊断"""
+        mock_exists.return_value = True
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout="PASS",
@@ -501,10 +504,12 @@ class TestRunDiagnosis(unittest.TestCase):
         call_args = mock_run.call_args[0][0]
         self.assertIn("--fix", call_args)
 
+    @patch('tools.builtin_tools.Path.exists')
     @patch('tools.builtin_tools.subprocess.run')
-    def test_diagnosis_timeout(self, mock_run):
+    def test_diagnosis_timeout(self, mock_run, mock_exists):
         """诊断超时"""
         import subprocess
+        mock_exists.return_value = True
         mock_run.side_effect = subprocess.TimeoutExpired("cmd", 120)
         
         result = run_diagnosis()
