@@ -4,11 +4,11 @@
 使用 mtime+size manifest 检测文件变更，实现缓存失效机制。
 """
 
-import os
-import json
 import hashlib
-from pathlib import Path
+import json
+import os
 from datetime import datetime
+from pathlib import Path
 
 # 缓存路径配置
 CACHE_DIR = Path(os.path.expanduser("~")) / ".seed" / "cache"
@@ -27,7 +27,7 @@ def build_manifest(skills_dir: Path) -> str:
     """
     if not skills_dir.exists():
         return ""
-    
+
     manifest = {}
     for skill_dir in sorted(skills_dir.iterdir()):
         if skill_dir.is_dir():
@@ -38,7 +38,7 @@ def build_manifest(skills_dir: Path) -> str:
                     'mtime': stat.st_mtime,
                     'size': stat.st_size,
                 }
-    
+
     return hashlib.md5(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
 
 
@@ -55,15 +55,15 @@ def load_snapshot(skills_dir: Path) -> dict | None:
     try:
         if not SNAPSHOT_PATH.exists():
             return None
-            
+
         with open(SNAPSHOT_PATH, 'r', encoding='utf-8') as f:
             snapshot = json.load(f)
-        
+
         # 检查 manifest 是否匹配
         current_manifest = build_manifest(skills_dir)
         if snapshot.get('manifest') != current_manifest:
             return None  # 文件已变更，快照失效
-            
+
         return snapshot
     except (json.JSONDecodeError, OSError):
         return None
@@ -81,13 +81,13 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
     """
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        
+
         snapshot = {
             'manifest': build_manifest(skills_dir),
             'timestamp': datetime.now().isoformat(),
             'skills': skills_meta,
         }
-        
+
         # 原子写入
         tmp_path = SNAPSHOT_PATH.with_suffix('.tmp')
         with open(tmp_path, 'w', encoding='utf-8') as f:

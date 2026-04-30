@@ -4,14 +4,15 @@
 任务存储在 ~/.seed/tasks/ 目录
 """
 
-import os
-import json
-import time
-import logging
 import asyncio
-from pathlib import Path
+import json
+import logging
+import os
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
+
 from src.request_queue import RequestPriority
 
 logger = logging.getLogger("seed_agent")
@@ -137,7 +138,7 @@ class TaskScheduler:
                 enabled=True
             )
             modified = True
-            
+
         if modified:
             self._save_tasks()
 

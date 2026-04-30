@@ -18,42 +18,41 @@ Seed-Agent OpenTelemetry 可观测性模块
 """
 
 # Setup
-from .setup import (
-    setup_observability,
-    get_tracer,
-    get_meter,
-    is_initialized,
-    shutdown_observability,
-)
+# Re-export commonly used types
+from opentelemetry.trace import Span, StatusCode
+from opentelemetry.util.types import Attributes
 
 # Metrics (NoOp 实现，因为 Jaeger OTLP Metrics 有兼容性问题)
 from .metrics import (
-    record_llm_success,
     record_llm_error,
+    record_llm_success,
+)
+from .setup import (
+    get_meter,
+    get_tracer,
+    is_initialized,
+    setup_observability,
+    shutdown_observability,
 )
 
 # Tracing
 from .tracing import (
-    classify_error,
-    record_llm_span_error,
-    create_task_with_context,
-    start_span,
-    start_as_current_span,
-    traced,
-    add_fallback_event,
-    set_llm_span_attributes,
-    set_tool_span_attributes,
-    set_subagent_span_attributes,
-    SPAN_SESSION,
-    SPAN_LLM_REQUEST,
     SPAN_LLM_FALLBACK,
-    SPAN_TOOL_PREFIX,
+    SPAN_LLM_REQUEST,
+    SPAN_SESSION,
     SPAN_SUBAGENT_EXECUTE,
+    SPAN_TOOL_PREFIX,
+    add_fallback_event,
+    classify_error,
+    create_task_with_context,
+    record_llm_span_error,
+    set_llm_span_attributes,
+    set_subagent_span_attributes,
+    set_tool_span_attributes,
+    start_as_current_span,
+    start_span,
+    traced,
 )
-
-# Re-export commonly used types
-from opentelemetry.trace import Span, StatusCode
-from opentelemetry.util.types import Attributes
 
 __all__ = [
     # Setup

@@ -139,7 +139,7 @@ def record_llm_success(
     counter_output = get_tokens_output_counter()
     counter_req = get_request_counter()
     histogram = get_duration_histogram()
-    
+
     if counter_input:
         counter_input.add(input_tokens, attrs)
     if counter_output:
@@ -174,7 +174,7 @@ def record_llm_error(
     counter_req = get_request_counter()
     histogram = get_duration_histogram()
     counter_err = get_error_counter()
-    
+
     if counter_req:
         counter_req.add(1, attrs)
     if histogram:

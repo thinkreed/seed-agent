@@ -20,19 +20,31 @@ Token 节约估算:
 - Gene slice: ~230 tokens  (97.4% 节约)
 """
 
+import difflib
 import os
 import re
 import sys
-import yaml  # type: ignore[import-untyped]
-import difflib
 import threading
 from collections import OrderedDict
-from typing import Set
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import Set
 
-from .skill_cache import load_snapshot, save_snapshot, clear_snapshot, build_manifest, SNAPSHOT_PATH
-from .skill_security import scan_for_injections, validate_skill_structure, validate_path_within_dir, INJECTION_PATTERNS
+import yaml  # type: ignore[import-untyped]
+
+from .skill_cache import (
+    SNAPSHOT_PATH,
+    build_manifest,
+    clear_snapshot,
+    load_snapshot,
+    save_snapshot,
+)
+from .skill_security import (
+    INJECTION_PATTERNS,
+    scan_for_injections,
+    validate_path_within_dir,
+    validate_skill_structure,
+)
 
 # 兼容性导出：保持原有私有函数名可用
 _build_manifest = build_manifest

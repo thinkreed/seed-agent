@@ -61,7 +61,7 @@ def validate_skill_structure(skill_dir: Path) -> str | None:
     """
     try:
         skill_dir_resolved = skill_dir.resolve()
-        
+
         # 单次遍历检查所有安全问题
         for item in skill_dir.rglob('*'):
             # 检查符号链接逃逸
@@ -69,14 +69,14 @@ def validate_skill_structure(skill_dir: Path) -> str | None:
                 resolved = item.resolve()
                 if not str(resolved).startswith(str(skill_dir_resolved)):
                     return f"Symlink escape detected: {item} -> {resolved}"
-            
+
             # 检查可疑二进制文件
             if item.is_file() and item.suffix.lower() in SUSPICIOUS_EXTENSIONS:
                 return f"Suspicious binary file: {item}"
-                
+
     except (OSError, PermissionError):
         pass
-        
+
     return None
 
 

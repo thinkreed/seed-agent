@@ -13,12 +13,12 @@ OpenTelemetry 嵌入:
 """
 
 import asyncio
-import uuid
+import logging
 import time
-from enum import Enum
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-import logging
+from enum import Enum
 from typing import cast
 
 from src.client import LLMGateway
@@ -26,16 +26,19 @@ from src.tools import ToolRegistry
 
 # OpenTelemetry 可观测性
 try:
+    from opentelemetry.trace import StatusCode
+
     from src.observability import (
-        get_tracer,
         SPAN_SUBAGENT_EXECUTE,
+        get_tracer,
         set_subagent_span_attributes,
     )
-    from opentelemetry.trace import StatusCode
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    from opentelemetry.trace import Tracer as _Tracer, Span as _Span, StatusCode as _StatusCode
+    from opentelemetry.trace import Span as _Span
+    from opentelemetry.trace import StatusCode as _StatusCode
+    from opentelemetry.trace import Tracer as _Tracer
 
     def get_tracer() -> _Tracer:  # type: ignore[misc]
         from opentelemetry.trace import NoOpTracer

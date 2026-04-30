@@ -10,18 +10,18 @@ SubagentManager - 子代理生命周期管理和调度
 """
 
 import asyncio
-import uuid
-from typing import Callable
-from dataclasses import dataclass
 import logging
+import uuid
+from dataclasses import dataclass
+from typing import Callable
 
 from src.client import LLMGateway
 from src.subagent import (
-    SubagentType,
-    SubagentInstance,
-    SubagentState,
-    SubagentResult,
     DEFAULT_TIMEOUTS,
+    SubagentInstance,
+    SubagentResult,
+    SubagentState,
+    SubagentType,
 )
 
 logger = logging.getLogger(__name__)

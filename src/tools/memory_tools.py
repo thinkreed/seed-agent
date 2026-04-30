@@ -14,9 +14,9 @@
 - _record_skill_outcome: 技能执行追踪
 """
 
+import json
 import os
 import re
-import json
 from datetime import datetime
 
 # 定位 ~/.seed/memory
@@ -180,7 +180,7 @@ def search_memory(keyword: str, levels: list = ["L1", "L2", "L3"]) -> str:
     results = []
     if not os.path.exists(MEMORY_ROOT):
         return "Memory root not found."
-        
+
     for root, dirs, files in os.walk(MEMORY_ROOT):
         if '.git' in root or '__pycache__' in root:
             continue
@@ -197,7 +197,7 @@ def search_memory(keyword: str, levels: list = ["L1", "L2", "L3"]) -> str:
                     lvl = 'L3'
                 elif 'raw' in rel:
                     lvl = 'L4'
-                
+
                 if lvl in levels:
                     try:
                         fpath = os.path.join(root, file)
@@ -221,7 +221,7 @@ def start_long_term_update(args, **kwargs):
             sop_content = f.read()
     except Exception as e:
         sop_content = f"Error reading SOP: {str(e)}"
-    
+
     return f"""### [经验提炼] 任务即将结束，请提炼并保存本次任务中的有效经验。
 
 以下是必须严格遵守的记忆管理 SOP，请根据 SOP 中的层级定义和约束进行经验提炼：

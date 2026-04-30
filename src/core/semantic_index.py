@@ -17,9 +17,11 @@ Usage:
 import json
 import math
 import pickle
-import numpy as np
 from collections import Counter
 from pathlib import Path
+
+import numpy as np
+
 # 类型注解使用内置类型
 
 

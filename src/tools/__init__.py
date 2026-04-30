@@ -17,7 +17,8 @@
 
 import asyncio
 import inspect
-from typing import Callable, Any
+from typing import Any, Callable
+
 
 class ToolRegistry:
     """工具注册表"""
@@ -36,24 +37,24 @@ class ToolRegistry:
         """
         self._tools[name] = func
         self._tool_schemas[name] = schema or self._infer_schema(func)
-    
+
     def get_tool(self, name: str) -> Callable:
         """获取工具函数"""
         if name not in self._tools:
             raise KeyError(f"Tool not found: {name}")
         return self._tools[name]
-    
+
     def get_schemas(self) -> list[dict]:
         """获取所有工具的 JSON Schema(用于 LLM 调用)"""
         return list(self._tool_schemas.values())
-    
+
     async def execute(self, tool_name: str, **kwargs) -> Any:
         """执行工具(支持异步)"""
         func = self.get_tool(tool_name)
         if asyncio.iscoroutinefunction(func):
             return await func(**kwargs)
         return func(**kwargs)
-    
+
     @staticmethod
     def _parse_docstring(doc: str | None) -> dict[str, str]:
         """解析 docstring 获取参数描述"""
@@ -61,7 +62,7 @@ class ToolRegistry:
         param_descriptions: dict[str, str] = {}
         if not doc:
             return param_descriptions
-        
+
         skip_headers: set[str] = {"args", "returns", "raises", "yields", "note", "example"}
         for line in doc.split('\n'):
             line = line.strip()
@@ -78,7 +79,7 @@ class ToolRegistry:
     def _resolve_type_to_schema(ann: Any) -> dict[str, Any]:
         """将 Python 类型转换为 JSON Schema 结构"""
         import typing
-        
+
         origin = typing.get_origin(ann)
         args = typing.get_args(ann)
 
@@ -88,7 +89,7 @@ class ToolRegistry:
             if args:
                 item_schema = ToolRegistry._resolve_type_to_schema(args[0])
             return {"type": "array", "items": item_schema}
-        
+
         # 处理 Dict
         if ann is dict or origin is dict:
             return {"type": "object"}
@@ -115,31 +116,31 @@ class ToolRegistry:
 
         sig = inspect.signature(func)
         params = sig.parameters
-        
+
         # 解析 docstring
         param_descriptions = self._parse_docstring(func.__doc__)
 
         properties = {}
         required = []
-        
+
         for param_name, param in params.items():
             if param_name in ("self", "cls"):
                 continue
-            
+
             # 生成类型 schema
             param_schema = self._resolve_type_to_schema(param.annotation)
-            
+
             # 添加描述
             description = param_descriptions.get(param_name, "")
             if not description:
                 description = f"The {param_name} parameter"
             param_schema["description"] = description
-            
+
             properties[param_name] = param_schema
-            
+
             if param.default is inspect.Parameter.empty:
                 required.append(param_name)
-                
+
         return {
             "type": "function",
             "function": {

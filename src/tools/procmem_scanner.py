@@ -3,10 +3,11 @@ Memory Scanner Helper - 进程内存扫描基础模块
 支持: Hex/字符串搜索, 特征码定位
 注意: 需要管理员权限及 PROCESS_VM_READ 权限
 """
-import os
-import sys
 import ctypes
 import logging
+import os
+import sys
+
 # 类型注解使用内置类型
 from dataclasses import dataclass
 
@@ -54,7 +55,7 @@ def open_process(pid: int) -> int | None:
     if sys.platform != 'win32':
         logger.error("Memory scanning is currently Windows-only.")
         return None
-    
+
     if not is_admin():
         logger.warning("Administrator privileges required for memory scanning.")
 
@@ -83,7 +84,7 @@ def read_process_memory(handle: int, address: int, size: int) -> bytes | None:
     """读取进程内存"""
     buffer = ctypes.create_string_buffer(size)
     bytes_read = ctypes.c_size_t(0)
-    
+
     success = ctypes.windll.kernel32.ReadProcessMemory(
         handle,
         ctypes.c_void_p(address),
@@ -91,7 +92,7 @@ def read_process_memory(handle: int, address: int, size: int) -> bytes | None:
         size,
         ctypes.byref(bytes_read)
     )
-    
+
     if not success:
         return None
     return buffer.raw[:bytes_read.value]
@@ -106,7 +107,7 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
     """
     regions: list[MemoryRegion] = []
     address = 0
-    
+
     # MEMORY_BASIC_INFORMATION64 structure
     class MEMORY_BASIC_INFORMATION(ctypes.Structure):
         _fields_ = [
@@ -118,9 +119,9 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
             ("Protect", ctypes.c_uint32),
             ("Type", ctypes.c_uint32),
         ]
-    
+
     mbi = MEMORY_BASIC_INFORMATION()
-    
+
     while True:
         result = ctypes.windll.kernel32.VirtualQueryEx(
             handle,
@@ -128,10 +129,10 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
             ctypes.byref(mbi),
             ctypes.sizeof(mbi)
         )
-        
+
         if result == 0:
             break
-        
+
         # 只关注已提交的内存区域
         if mbi.State == 0x1000:  # MEM_COMMIT
             regions.append(MemoryRegion(
@@ -141,13 +142,13 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
                 protect=mbi.Protect,
                 type_=mbi.Type
             ))
-        
+
         address += mbi.RegionSize
-        
+
         # 安全检查：防止无限循环
         if address >= 0x7FFFFFFFFFFF:  # 64-bit user space limit
             break
-    
+
     return regions
 
 
@@ -183,11 +184,11 @@ def _search_region(data: bytes, pattern: bytes, base_addr: int, max_results: int
         idx = data.find(pattern, offset)
         if idx == -1:
             return False
-        
+
         addr = base_addr + idx
         ctx_start = max(0, idx - 16)
         ctx_end = min(len(data), idx + len(pattern) + 16)
-        
+
         results.append({
             "address": addr,
             "address_hex": f"0x{addr:016X}",
@@ -218,32 +219,32 @@ def scan_memory(
     if sys.platform != 'win32':
         logger.error("Memory scanning is Windows-only.")
         return []
-    
+
     search_pattern = _prepare_search_pattern(pattern, mode)
     if not search_pattern:
         return []
-    
+
     handle = open_process(pid)
     if not handle:
         return []
-    
+
     try:
         regions = enumerate_memory_regions(handle)
         logger.info(f"Scanning {len(regions)} regions in PID {pid}")
-        
+
         results: list[dict] = []
         for region in regions:
             if not is_readable_region(region.protect) or region.region_size > 100 * 1024 * 1024:
                 continue
-                
+
             data = read_process_memory(handle, region.base_address, region.region_size)
             if not data:
                 continue
-                
-            if _search_region(data, search_pattern, region.base_address, max_results, results, 
+
+            if _search_region(data, search_pattern, region.base_address, max_results, results,
                              _region_type_name(region.type_), region.region_size):
                 break
-        
+
         logger.info(f"Found {len(results)} matches")
         return results
     except Exception as e:
@@ -266,17 +267,17 @@ def _region_type_name(type_: int) -> str:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     print("Memory Scanner - Real Implementation")
     print(f"Running as Admin: {is_admin()}")
-    
+
     if not is_admin():
         print("Please run as Administrator for full functionality.")
-    
+
     # 示例：扫描自身进程
     current_pid = os.getpid()
     print(f"Current PID: {current_pid}")
-    
+
     results = scan_memory(current_pid, "Python", mode='string', max_results=5)
     if results:
         for r in results:

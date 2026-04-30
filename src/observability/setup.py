@@ -12,17 +12,17 @@ OpenTelemetry SDK 初始化模块
 - 批量参数: 队列大小 2048, 每 5秒发送, 每批最大 512 spans
 """
 
-import os
 import logging
-# 类型注解使用内置类型
+import os
 
-from opentelemetry import trace, metrics
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+# 类型注解使用内置类型
+from opentelemetry import metrics, trace
 
 # 使用 OTLP HTTP exporter（更稳定）
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ def setup_observability(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "http://localhost:4318"
     )
-    
+
     # 确保路径正确
     if endpoint and not endpoint.endswith("/v1/traces"):
         endpoint = endpoint.rstrip("/") + "/v1/traces"
@@ -127,16 +127,16 @@ def shutdown_observability():
     应在程序退出前调用，确保所有 traces 发送到 collector
     """
     global _tracer, _meter, _initialized
-    
+
     if not _initialized:
         return
-    
+
     # 获取 TracerProvider 并强制 shutdown
     provider = trace.get_tracer_provider()
     if hasattr(provider, 'shutdown'):
         provider.shutdown()
         logger.info("Observability shutdown complete")
-    
+
     _tracer = None
     _meter = None
     _initialized = False

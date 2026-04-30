@@ -7,9 +7,10 @@
 - stop_ralph_loop: 停止 Ralph Loop
 """
 
-import os
 import json
+import os
 from pathlib import Path
+
 # 类型注解使用内置类型
 
 SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
