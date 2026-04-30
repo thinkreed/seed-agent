@@ -79,7 +79,6 @@ class TaskScheduler:
     # 内置任务类型及其默认间隔
     BUILTIN_TASKS = {
         "autodream": 12 * 60 * 60,  # 每12小时记忆整理
-        "health_check": 60 * 60,  # 每小时健康检查
     }
 
     def __init__(self, agent_loop=None):
@@ -133,22 +132,6 @@ class TaskScheduler:
                 task_type="autodream",
                 interval_seconds=self.BUILTIN_TASKS["autodream"],
                 prompt="执行 autodream 记忆整理 SOP：分层逐查、ROI评估、低ROI清理、补全高价值项",
-                last_run=now,  # 启动时设置，避免立即触发
-                enabled=True
-            )
-            modified = True
-
-        # 2. health_check: 系统健康检查
-        if "health_check" not in self._tasks:
-            self._tasks["health_check"] = ScheduledTask(
-                task_id="health_check",
-                task_type="custom",
-                interval_seconds=self.BUILTIN_TASKS["health_check"],
-                prompt=("执行系统健康检查："
-                        "1. 检查 memory/ 目录结构完整性"
-                        "2. 检查 session 数据库连接"
-                        "3. 检查日志文件是否有异常"
-                        "将结果摘要追加到任务日志。发现问题时仅报告，不自动修复。"),
                 last_run=now,  # 启动时设置，避免立即触发
                 enabled=True
             )

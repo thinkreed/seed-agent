@@ -2195,7 +2195,6 @@ class TaskScheduler:
     # Built-in task types with default intervals
     BUILTIN_TASKS = {
         "autodream": 12 * 60 * 60,      # Every 12 hours
-        "health_check": 60 * 60,        # Every hour
     }
 
     # Note: autonomous_explore is handled by AutonomousExplorer class (30-minute idle monitoring)

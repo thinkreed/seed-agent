@@ -106,7 +106,6 @@ The scheduler (`src/scheduler.py`) enables autonomous task creation and manageme
 | Task | Interval | Purpose |
 |------|----------|---------|
 | `autodream` | 12 hours | Memory consolidation and cleanup |
-| `health_check` | 1 hour | System diagnostics |
 
 **Note**: `autonomous_explore` is managed by `AutonomousExplorer` class independently (30-minute idle monitoring), not by Scheduler.
 

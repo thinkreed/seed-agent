@@ -67,7 +67,6 @@ main.py
          │
          ├── autodream: 每12小时
          ├── autonomous_explore: 每2小时
-         └── health_check: 每1小时
 ```
 
 ### 2.2 关键代码位置

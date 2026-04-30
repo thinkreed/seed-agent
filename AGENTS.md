@@ -94,7 +94,6 @@ RalphSubagentOrchestrator 执行模式:
 | 任务 | 间隔 | 功能 |
 |------|------|------|
 | `autodream` | 12小时 | 记忆整理与清理 |
-| `health_check` | 1小时 | 系统健康检查 |
 
 **注意**：`autonomous_explore` 不是 Scheduler 的内置任务，而是由 `AutonomousExplorer` 类独立管理（1小时空闲监控触发）。
 

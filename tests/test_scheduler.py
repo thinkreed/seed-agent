@@ -221,7 +221,6 @@ class TestTaskScheduler:
         assert "my_task" in task_ids
         # Builtins should also be present
         assert "autodream" in task_ids
-        assert "health_check" in task_ids
 
     def test_load_tasks(self, mock_tasks_dir):
         """Test loading tasks from file."""
