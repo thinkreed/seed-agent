@@ -7,7 +7,7 @@ import os
 import sys
 import ctypes
 import logging
-from typing import List, Dict, Optional
+# 类型注解使用内置类型
 from dataclasses import dataclass
 
 logger = logging.getLogger("seed_agent")
@@ -49,7 +49,7 @@ def is_admin() -> bool:
         return False
 
 
-def open_process(pid: int) -> Optional[int]:
+def open_process(pid: int) -> int | None:
     """打开进程获取句柄"""
     if sys.platform != 'win32':
         logger.error("Memory scanning is currently Windows-only.")
@@ -79,7 +79,7 @@ def close_process(handle: int) -> None:
         ctypes.windll.kernel32.CloseHandle(handle)
 
 
-def read_process_memory(handle: int, address: int, size: int) -> Optional[bytes]:
+def read_process_memory(handle: int, address: int, size: int) -> bytes | None:
     """读取进程内存"""
     buffer = ctypes.create_string_buffer(size)
     bytes_read = ctypes.c_size_t(0)
@@ -97,7 +97,7 @@ def read_process_memory(handle: int, address: int, size: int) -> Optional[bytes]
     return buffer.raw[:bytes_read.value]
 
 
-def enumerate_memory_regions(handle: int) -> List[MemoryRegion]:
+def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
     """
     枚举进程的所有内存区域
     
@@ -164,7 +164,7 @@ def is_readable_region(protect: int) -> bool:
     return (protect & 0xFF) in readable_flags and not (protect & PAGE_GUARD)
 
 
-def _prepare_search_pattern(pattern: str, mode: str) -> Optional[bytes]:
+def _prepare_search_pattern(pattern: str, mode: str) -> bytes | None:
     """Convert pattern string to bytes based on mode."""
     if mode == 'string':
         return pattern.encode('utf-8', errors='ignore')
@@ -178,7 +178,7 @@ def _prepare_search_pattern(pattern: str, mode: str) -> Optional[bytes]:
     return None
 
 
-def _search_region(data: bytes, pattern: bytes, base_addr: int, max_results: int, results: List[Dict], type_name: str, size: int) -> bool:
+def _search_region(data: bytes, pattern: bytes, base_addr: int, max_results: int, results: list[dict], type_name: str, size: int) -> bool:
     """Search for pattern in data. Returns True if max_results reached."""
     offset = 0
     while len(results) < max_results:
@@ -207,7 +207,7 @@ def scan_memory(
     pattern: str,
     mode: str = 'string',
     max_results: int = 10
-) -> List[Dict]:
+) -> list[dict]:
     """
     扫描进程内存
     

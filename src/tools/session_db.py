@@ -17,7 +17,7 @@ import re
 import math
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import Tuple
 
 try:
     import jieba
@@ -196,7 +196,7 @@ class SessionDB:
 
         self.conn.commit()
 
-    def _parse_tool_calls(self, tool_calls) -> Optional[str]:
+    def _parse_tool_calls(self, tool_calls) -> str | None:
         """序列化 tool_calls 为 JSON"""
         if tool_calls:
             return json.dumps(tool_calls, ensure_ascii=False)
@@ -209,7 +209,7 @@ class SessionDB:
         skill_name: str,
         outcome: str,
         score: float = 1.0,
-        signals: List[str] = None,
+        signals: list[str] = None,
         session_id: str = None,
         context: str = None,
         intent: str = None,
@@ -373,7 +373,7 @@ class SessionDB:
                 decay_weight = 0.5 ** (age_days / half_life)
             else:
                 decay_weight = 1.0  # 新记录不衰减
-        except:
+        except Exception:
             decay_weight = 1.0
 
         # 近期成功加成
@@ -381,7 +381,7 @@ class SessionDB:
 
         return p * decay_weight + recent_boost
 
-    def list_banned_skills(self) -> List[Dict]:
+    def list_banned_skills(self) -> list[Dict]:
         """
         列出被禁用的 Skill（低于 ban_threshold）
 
@@ -431,7 +431,7 @@ class SessionDB:
         except Exception as e:
             return []
 
-    def get_top_skills(self, limit: int = 10) -> List[Dict]:
+    def get_top_skills(self, limit: int = 10) -> list[Dict]:
         """
         获取成功率最高的 Skill
 
@@ -460,7 +460,7 @@ class SessionDB:
         except Exception as e:
             return []
 
-    def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> List[Dict]:
+    def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> list[Dict]:
         """
         根据信号模式搜索历史执行结果
 
@@ -530,8 +530,8 @@ class SessionDB:
     # ==================== 原有 Session 方法 ====================
 
     def _build_message_batches(
-        self, messages: List[Dict], session_id: str, now: str
-    ) -> Tuple[List[Tuple], List[Tuple]]:
+        self, messages: list[Dict], session_id: str, now: str
+    ) -> Tuple[list[Tuple], list[Tuple]]:
         """构建消息批次 (session_messages + FTS)"""
         batch = []
         fts_batch = []
@@ -547,7 +547,7 @@ class SessionDB:
             fts_batch.append((session_id, tokenized, role))
         return batch, fts_batch
 
-    def _insert_fts_index(self, cursor, fts_batch: List[Tuple], start_id: int):
+    def _insert_fts_index(self, cursor, fts_batch: list[Tuple], start_id: int):
         """插入 FTS 索引"""
         for i, (sid, tokenized, role) in enumerate(fts_batch):
             rowid = start_id + i
@@ -575,7 +575,7 @@ class SessionDB:
 
     def save_session_history(
         self,
-        messages: List[Dict],
+        messages: list[Dict],
         summary: str = None,
         session_id: str = None
     ) -> str:
@@ -648,7 +648,7 @@ class SessionDB:
         except Exception as e:
             return f"Error loading session: {str(e)}"
 
-    def _find_session(self, session_id: str) -> Optional[sqlite3.Row]:
+    def _find_session(self, session_id: str) -> sqlite3.Row | None:
         """查找会话（精确匹配后尝试模糊匹配）"""
         row = self.conn.execute(
             "SELECT session_id, created_at, summary, message_count FROM sessions_meta WHERE session_id = ?",
@@ -815,17 +815,17 @@ class SessionDB:
             """, (session_id, msg_id - context_size, msg_id + context_size)).fetchall()
 
             return [f"{m['role']}: {(m['content'] or '')[:100]}" for m in context_msgs]
-        except:
+        except Exception:
             return []
 
     def _apply_filters(
         self,
         base_sql: str,
         params: list,
-        session_id: Optional[str],
-        role: Optional[str],
-        start_time: Optional[str],
-        end_time: Optional[str],
+        session_id: str | None,
+        role: str | None,
+        start_time: str | None,
+        end_time: str | None,
         order_by: str,
         limit: int
     ) -> Tuple[str, list]:
@@ -850,12 +850,12 @@ class SessionDB:
     def search_with_filters(
         self,
         keyword: str,
-        session_id: Optional[str] = None,
-        role: Optional[str] = None,
-        start_time: Optional[str] = None,
-        end_time: Optional[str] = None,
+        session_id: str | None = None,
+        role: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
         limit: int = 20
-    ) -> List[Dict]:
+    ) -> list[Dict]:
         """增强搜索：支持多条件组合"""
         try:
             # 基础查询模板
@@ -955,7 +955,7 @@ class SessionDB:
     def __del__(self):
         try:
             self.close()
-        except:
+        except Exception:
             pass
 
 
@@ -997,7 +997,7 @@ def record_skill_outcome(
     skill_name: str,
     outcome: str,
     score: float = 1.0,
-    signals: List[str] = None,
+    signals: list[str] = None,
     session_id: str = None,
     context: str = None
 ) -> str:
@@ -1010,16 +1010,16 @@ def get_skill_stats(skill_name: str) -> Dict:
     return _get_db().get_skill_stats(skill_name)
 
 
-def list_banned_skills() -> List[Dict]:
+def list_banned_skills() -> list[Dict]:
     """列出被禁用的 Skill"""
     return _get_db().list_banned_skills()
 
 
-def get_top_skills(limit: int = 10) -> List[Dict]:
+def get_top_skills(limit: int = 10) -> list[Dict]:
     """获取成功率最高的 Skill"""
     return _get_db().get_top_skills(limit)
 
 
-def search_outcomes_by_signal(signal: str, limit: int = 20) -> List[Dict]:
+def search_outcomes_by_signal(signal: str, limit: int = 20) -> list[Dict]:
     """根据信号搜索执行结果"""
     return _get_db().search_outcomes_by_signal(signal, limit)

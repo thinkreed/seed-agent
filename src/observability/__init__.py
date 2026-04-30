@@ -18,7 +18,7 @@ Seed-Agent OpenTelemetry 可观测性模块
 """
 
 # Setup
-from observability.setup import (
+from .setup import (
     setup_observability,
     get_tracer,
     get_meter,
@@ -27,13 +27,13 @@ from observability.setup import (
 )
 
 # Metrics (NoOp 实现，因为 Jaeger OTLP Metrics 有兼容性问题)
-from observability.metrics import (
+from .metrics import (
     record_llm_success,
     record_llm_error,
 )
 
 # Tracing
-from observability.tracing import (
+from .tracing import (
     classify_error,
     record_llm_span_error,
     create_task_with_context,

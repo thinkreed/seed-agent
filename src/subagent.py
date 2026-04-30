@@ -16,17 +16,17 @@ import asyncio
 import uuid
 import time
 from enum import Enum
-from typing import Dict, List, Optional, Set, Any, Callable
+from typing import Any, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging
 
-from client import LLMGateway
-from tools import ToolRegistry
+from src.client import LLMGateway
+from src.tools import ToolRegistry
 
 # OpenTelemetry 可观测性
 try:
-    from observability import (
+    from src.observability import (
         get_tracer,
         SPAN_SUBAGENT_EXECUTE,
         set_subagent_span_attributes,
@@ -55,7 +55,7 @@ class SubagentType(Enum):
 # REVIEW: 审查+测试 (10m)
 # IMPLEMENT: 实现+调试 (15m)
 # PLAN: 规划分析 (5m)
-DEFAULT_TIMEOUTS: Dict[SubagentType, int] = {
+DEFAULT_TIMEOUTS: dict[SubagentType, int] = {
     SubagentType.EXPLORE: 180,
     SubagentType.REVIEW: 600,
     SubagentType.IMPLEMENT: 900,
@@ -64,7 +64,7 @@ DEFAULT_TIMEOUTS: Dict[SubagentType, int] = {
 
 
 # 权限集定义
-PERMISSION_SETS: Dict[str, Set[str]] = {
+PERMISSION_SETS: dict[str, set[str]] = {
     "read_only": {
         "file_read",
         "search_history",
@@ -99,7 +99,7 @@ PERMISSION_SETS: Dict[str, Set[str]] = {
 }
 
 # Subagent 类型对应的默认权限集
-SUBAGENT_TYPE_PERMISSIONS: Dict[SubagentType, str] = {
+SUBAGENT_TYPE_PERMISSIONS: dict[SubagentType, str] = {
     SubagentType.EXPLORE: "read_only",
     SubagentType.REVIEW: "review",
     SubagentType.IMPLEMENT: "implement",
@@ -107,7 +107,7 @@ SUBAGENT_TYPE_PERMISSIONS: Dict[SubagentType, str] = {
 }
 
 # Subagent 类型对应的 system prompt 模板
-SUBAGENT_SYSTEM_PROMPTS: Dict[SubagentType, str] = {
+SUBAGENT_SYSTEM_PROMPTS: dict[SubagentType, str] = {
     SubagentType.EXPLORE: """你是一个探索型子代理 (Explore Subagent)。
 
 你的职责是：
@@ -167,13 +167,13 @@ class SubagentState:
     subagent_type: SubagentType
     status: str  # "pending", "running", "completed", "failed", "timeout"
     prompt: str
-    result: Optional[str] = None
-    error: Optional[str] = None
+    result: str | None = None
+    error: str | None = None
     created_at: datetime = field(default_factory=datetime.now)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     iterations: int = 0
-    parent_session_id: Optional[str] = None
+    parent_session_id: str | None = None
 
 
 class SubagentInstance:
@@ -192,11 +192,11 @@ class SubagentInstance:
         self,
         gateway: LLMGateway,
         subagent_type: SubagentType,
-        model_id: Optional[str] = None,
+        model_id: str | None = None,
         max_iterations: int = MAX_SUBAGENT_ITERATIONS,
-        timeout: Optional[int] = None,
-        custom_system_prompt: Optional[str] = None,
-        custom_tools: Optional[Set[str]] = None,
+        timeout: int | None = None,
+        custom_system_prompt: str | None = None,
+        custom_tools: set[str] | None = None,
     ):
         """
         初始化 Subagent 实例
@@ -217,7 +217,7 @@ class SubagentInstance:
         self.timeout = timeout or DEFAULT_TIMEOUTS.get(subagent_type, 300)
 
         # 独立的对话历史
-        self.history: List[Dict] = []
+        self.history: list[dict] = []
 
         # 工具注册
         self.tools = ToolRegistry()
@@ -228,13 +228,13 @@ class SubagentInstance:
         self.system_prompt = custom_system_prompt or base_prompt
 
         # 状态
-        self.state: Optional[SubagentState] = None
+        self.state: SubagentState | None = None
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         return self.gateway.config.agents['defaults'].defaults.primary
 
-    def _setup_tools(self, custom_tools: Optional[Set[str]] = None):
+    def _setup_tools(self, custom_tools: set[str] | None = None):
         """设置工具集"""
         # 确定权限集
         if custom_tools:
@@ -254,7 +254,7 @@ class SubagentInstance:
         # 过滤工具
         self._filter_tools(allowed_tools)
 
-    def _filter_tools(self, allowed: Set[str]):
+    def _filter_tools(self, allowed: set[str]):
         """只保留允许的工具"""
         tools_to_remove = [
             name for name in list(self.tools._tools.keys())
@@ -265,13 +265,13 @@ class SubagentInstance:
             if name in self.tools._tool_schemas:
                 del self.tools._tool_schemas[name]
 
-    def _build_messages(self) -> List[Dict]:
+    def _build_messages(self) -> list[dict]:
         """构建消息列表"""
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(self.history)
         return messages
 
-    async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
+    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict]:
         """执行工具调用"""
         results = []
         for tool_call in tool_calls:
@@ -307,7 +307,7 @@ class SubagentInstance:
 
         return results
 
-    async def run(self, prompt: str, task_id: Optional[str] = None) -> SubagentState:
+    async def run(self, prompt: str, task_id: str | None = None) -> SubagentState:
         """
         执行 Subagent 任务
 
@@ -434,11 +434,11 @@ class SubagentResult:
         return self.state.status == "completed"
 
     @property
-    def result(self) -> Optional[str]:
+    def result(self) -> str | None:
         return self.state.result
 
     @property
-    def error(self) -> Optional[str]:
+    def error(self) -> str | None:
         return self.state.error
 
     @property
@@ -452,7 +452,7 @@ class SubagentResult:
             return r
         return f"[{self.state.status.upper()}] {self.error}"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.state.id,
             "type": self.state.subagent_type.value,

@@ -16,7 +16,7 @@
 """
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationError
-from typing import List, Dict, Optional
+# 类型注解使用内置类型，不再需要从 typing 导入
 import json
 import os
 import sys
@@ -34,11 +34,11 @@ class RateLimitConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     # 滚动窗口模式
-    rollingWindowRequests: Optional[int] = None  # 窗口内最大请求
-    rollingWindowDuration: Optional[int] = None  # 窗口时长（秒）
+    rollingWindowRequests: int | None = None  # 窗口内最大请求
+    rollingWindowDuration: int | None = None  # 窗口时长（秒）
 
     # 固定 RPM 模式
-    rpm: Optional[int] = None  # 每分钟请求限制
+    rpm: int | None = None  # 每分钟请求限制
 
     # 突发容量
     burstCapacity: int = 100
@@ -83,7 +83,7 @@ class ModelConfig(BaseModel):
     name: str
     contextWindow: int = 100000
     maxTokens: int = 4096
-    compat: Optional[Dict] = None
+    compat: dict | None = None
 
 
 class ProviderConfig(BaseModel):
@@ -91,8 +91,8 @@ class ProviderConfig(BaseModel):
     baseUrl: str
     apiKey: str
     api: str = "openai-completions"
-    models: List[ModelConfig]
-    rateLimit: Optional[RateLimitConfig] = None
+    models: list[ModelConfig]
+    rateLimit: RateLimitConfig | None = None
 
     @field_validator('apiKey', 'baseUrl')
     @classmethod
@@ -148,10 +148,10 @@ class TimeoutConfigModel(BaseModel):
 
 class FullConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
-    models: Dict[str, ProviderConfig]
-    agents: Dict[str, AgentConfig]
-    queue: Optional[QueueConfigModel] = None
-    timeout: Optional[TimeoutConfigModel] = None
+    models: dict[str, ProviderConfig]
+    agents: dict[str, AgentConfig]
+    queue: QueueConfigModel | None = None
+    timeout: TimeoutConfigModel | None = None
 
 def load_config(config_path: str = None) -> FullConfig:
     """加载并解析配置文件，支持旧版 JSON 结构自动迁移

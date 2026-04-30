@@ -8,7 +8,7 @@
 import time
 import asyncio
 import logging
-from typing import List, Tuple, Optional
+from typing import Tuple
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("seed_agent")
@@ -33,7 +33,7 @@ class TokenBucket:
     线程安全：使用 asyncio.Lock 保证并发安全
     """
 
-    def __init__(self, rate: float, capacity: float, initial_tokens: Optional[float] = None):
+    def __init__(self, rate: float, capacity: float, initial_tokens: float | None = None):
         """
         Args:
             rate: 每秒补充的 token 数
@@ -113,7 +113,7 @@ class TokenBucket:
 @dataclass
 class RollingWindowState:
     """滚动窗口状态（用于持久化）"""
-    requests: List[float]  # 时间戳列表
+    requests: list[float]  # 时间戳列表
     total_requests_lifetime: int = 0
 
 
@@ -138,7 +138,7 @@ class RollingWindowTracker:
         """
         self.window_limit = window_limit
         self.window_duration = window_duration
-        self.requests: List[float] = []
+        self.requests: list[float] = []
         self.total_requests_lifetime = 0
         self._lock = asyncio.Lock()
 
@@ -329,8 +329,8 @@ class RateLimiter:
 
     def restore_state(
         self,
-        bucket_state: Optional[TokenBucketState] = None,
-        window_state: Optional[RollingWindowState] = None
+        bucket_state: TokenBucketState | None = None,
+        window_state: RollingWindowState | None = None
     ) -> None:
         """恢复状态（从持久化）"""
         if bucket_state:

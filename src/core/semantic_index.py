@@ -21,7 +21,7 @@ import pickle
 import numpy as np
 from collections import Counter
 from pathlib import Path
-from typing import Optional
+# 类型注解使用内置类型
 
 
 class TFIDFEncoder:
@@ -92,7 +92,7 @@ class SemanticIndex:
         index_path: Path to persist index (None = in-memory only)
     """
 
-    def __init__(self, dim: int = 128, index_path: Optional[str] = None):
+    def __init__(self, dim: int = 128, index_path: str | None = None):
         self.dim = dim
         self.index_path = index_path
         self.encoder = TFIDFEncoder()
@@ -201,7 +201,7 @@ class SemanticIndex:
                 })
         return results
 
-    def save(self, path: Optional[str] = None) -> str:
+    def save(self, path: str | None = None) -> str:
         """Persist index to disk."""
         save_path = path or self.index_path
         if not save_path:

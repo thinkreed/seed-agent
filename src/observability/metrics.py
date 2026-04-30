@@ -12,21 +12,21 @@ Metrics 类型:
     from observability.metrics import record_llm_success, record_llm_error
 """
 
-from typing import Dict, Optional
+# 类型注解使用内置类型
 from opentelemetry import metrics
 from opentelemetry.util.types import Attributes
 
-from observability.setup import get_meter
+from .setup import get_meter
 
 # Histogram buckets (延迟分布)
 DURATION_BUCKETS = [100, 500, 1000, 2000, 5000, 10000]  # ms
 
 # 全局 instruments (延迟初始化)
-_tokens_input_counter: Optional[metrics.Counter] = None
-_tokens_output_counter: Optional[metrics.Counter] = None
-_request_counter: Optional[metrics.Counter] = None
-_error_counter: Optional[metrics.Counter] = None
-_duration_histogram: Optional[metrics.Histogram] = None
+_tokens_input_counter: metrics.Counter | None = None
+_tokens_output_counter: metrics.Counter | None = None
+_request_counter: metrics.Counter | None = None
+_error_counter: metrics.Counter | None = None
+_duration_histogram: metrics.Histogram | None = None
 
 
 def _init_instruments():

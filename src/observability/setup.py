@@ -14,7 +14,7 @@ OpenTelemetry SDK 初始化模块
 
 import os
 import logging
-from typing import Optional
+# 类型注解使用内置类型
 
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
@@ -27,14 +27,14 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 logger = logging.getLogger(__name__)
 
 # 全局状态
-_tracer: Optional[trace.Tracer] = None
-_meter: Optional[metrics.Meter] = None
+_tracer: trace.Tracer | None = None
+_meter: metrics.Meter | None = None
 _initialized: bool = False
 
 
 def setup_observability(
     service_name: str = "seed-agent",
-    otlp_endpoint: Optional[str] = None,
+    otlp_endpoint: str | None = None,
     enabled: bool = True,
 ) -> tuple[trace.Tracer, metrics.Meter]:
     """

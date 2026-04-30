@@ -13,7 +13,7 @@ import asyncio
 import time
 import json
 from pathlib import Path
-from typing import Optional, Callable, Dict, List
+from typing import Callable
 from enum import Enum
 import logging
 
@@ -62,8 +62,8 @@ class AutonomousExplorer:
         self.on_explore_complete = on_explore_complete
         self._last_activity: float = time.time()
         self._running: bool = False
-        self._task: Optional[asyncio.Task] = None
-        self._sop_content: Optional[str] = None
+        self._task: asyncio.Task | None = None
+        self._sop_content: str | None = None
         self._iteration_count: int = 0  # Ralph Loop 迭代计数
         self._ralph_start_time: float = 0  # 当前会话开始时间
         self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
@@ -160,7 +160,7 @@ class AutonomousExplorer:
 
         return False
 
-    async def _reset_context_if_needed(self) -> Optional[str]:
+    async def _reset_context_if_needed(self) -> str | None:
         """条件性重置上下文（防止上下文漂移）"""
         if not CONTEXT_RESET_ENABLED:
             return None
@@ -184,7 +184,7 @@ class AutonomousExplorer:
         logger.info(f"Context reset at iteration {self._iteration_count}")
         return preserved
 
-    def _extract_critical_context(self) -> Optional[str]:
+    def _extract_critical_context(self) -> str | None:
         """提取关键上下文（可选保留）"""
         # 从 agent.history 提取关键决策/发现
         if not self.agent.history:
@@ -288,7 +288,7 @@ class AutonomousExplorer:
                 return f.read()
         return ""
 
-    async def _run_ralph_loop(self) -> Optional[str]:
+    async def _run_ralph_loop(self) -> str | None:
         """执行Ralph Loop主循环"""
         while True:
             self._iteration_count += 1
@@ -325,7 +325,7 @@ class AutonomousExplorer:
             else:
                 self.on_explore_complete(result)
 
-    async def _handle_response(self, response: Optional[str]):
+    async def _handle_response(self, response: str | None):
         """处理agent响应"""
         if not response:
             self._empty_response_count += 1
@@ -396,7 +396,7 @@ class AutonomousExplorer:
 
         return "\n\n".join(parts)
 
-    def _extract_task_signals(self, todo_content: str, has_todo: bool) -> List[str]:
+    def _extract_task_signals(self, todo_content: str, has_todo: bool) -> list[str]:
         """从任务内容提取触发信号"""
         signals = []
 

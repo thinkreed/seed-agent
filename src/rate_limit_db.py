@@ -10,10 +10,10 @@ import asyncio
 import threading
 import logging
 from pathlib import Path
-from typing import Optional, List
+from typing import Any
 from dataclasses import dataclass
 
-from rate_limiter import TokenBucketState, RollingWindowState
+from src.rate_limiter import TokenBucketState, RollingWindowState
 
 logger = logging.getLogger("seed_agent")
 
@@ -24,7 +24,7 @@ class RateLimitState:
     timestamp: float
     tokens_available: float
     last_refill_time: float
-    requests_in_window: List[float]
+    requests_in_window: list[float]
     total_requests_lifetime: int
 
 
@@ -40,7 +40,7 @@ class RateLimitSQLite:
 
     DB_PATH = Path.home() / ".seed" / "rate_limit.db"
 
-    def __init__(self, db_path: Optional[Path] = None):
+    def __init__(self, db_path: Path | None = None):
         """
         Args:
             db_path: 数据库路径，默认 ~/.seed/rate_limit.db
@@ -199,9 +199,9 @@ class RateLimitSQLite:
         self,
         request_id: str,
         priority: str,
-        duration: Optional[float] = None,
+        duration: float | None = None,
         success: bool = True,
-        error_message: Optional[str] = None
+        error_message: str | None = None
     ) -> None:
         """记录请求历史"""
         async with self._lock:
@@ -239,7 +239,7 @@ class RateLimitSQLite:
             conn.commit()
             return deleted
 
-    async def get_recent_requests(self, limit: int = 100) -> List[dict]:
+    async def get_recent_requests(self, limit: int = 100) -> list[dict]:
         """获取最近的请求历史"""
         async with self._lock:
             conn = self._get_conn()

@@ -17,14 +17,14 @@
 
 import asyncio
 import inspect
-from typing import Dict, List, Callable, Any
+from typing import Callable, Any
 
 class ToolRegistry:
     """工具注册表"""
     
     def __init__(self):
-        self._tools: Dict[str, Callable] = {}
-        self._tool_schemas: Dict[str, Dict] = {}
+        self._tools: dict[str, Callable] = {}
+        self._tool_schemas: dict[str, Dict] = {}
     
     def register(self, name: str, func: Callable, schema: Dict = None):
         """注册工具
@@ -43,7 +43,7 @@ class ToolRegistry:
             raise KeyError(f"Tool not found: {name}")
         return self._tools[name]
     
-    def get_schemas(self) -> List[Dict]:
+    def get_schemas(self) -> list[Dict]:
         """获取所有工具的 JSON Schema(用于 LLM 调用)"""
         return list(self._tool_schemas.values())
     
@@ -55,7 +55,7 @@ class ToolRegistry:
         return func(**kwargs)
     
     @staticmethod
-    def _parse_docstring(doc: str) -> Dict[str, str]:
+    def _parse_docstring(doc: str) -> dict[str, str]:
         """解析 docstring 获取参数描述"""
         import re
         param_descriptions = {}
@@ -82,7 +82,7 @@ class ToolRegistry:
         origin = typing.get_origin(ann)
         args = typing.get_args(ann)
 
-        # 处理 List[T]
+        # 处理 list[T]
         if ann is list or origin is list:
             item_schema = {"type": "string"}  # Default
             if args:

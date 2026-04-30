@@ -16,7 +16,7 @@ import asyncio
 import subprocess
 import logging
 from pathlib import Path
-from typing import Optional, Callable, Dict, List
+from typing import Callable
 from enum import Enum
 
 logger = logging.getLogger("seed_agent.ralph")
@@ -194,14 +194,20 @@ class RalphLoop:
 
     def _check_test_pass(self) -> bool:
         """检查测试通过率"""
+        import shlex
+
         required_rate = self.completion_criteria.get("pass_rate", 100)
         test_command = self.completion_criteria.get("test_command", "pytest tests/ -v")
         cwd = self.completion_criteria.get("cwd", str(SEED_DIR))
 
         try:
+            # 安全处理：使用 shlex.split 避免 shell=True
+            # 注意：这不支持复杂的 shell 管道/重定向，但对于测试命令足够
+            cmd_args = shlex.split(test_command)
+
             result = subprocess.run(
-                test_command,
-                shell=True,
+                cmd_args,
+                shell=False,  # 安全：不使用 shell 解释
                 capture_output=True,
                 cwd=cwd,
                 timeout=300  # 5分钟超时
@@ -330,7 +336,7 @@ class RalphLoop:
         # 默认 prompt
         return f"继续执行任务。当前迭代: {self._iteration_count}"
 
-    def _extract_critical_context(self) -> Optional[str]:
+    def _extract_critical_context(self) -> str | None:
         """提取关键上下文（可选保留）"""
         if not self.agent.history:
             return None

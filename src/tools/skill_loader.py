@@ -30,7 +30,7 @@ import hashlib
 import difflib
 import threading
 from collections import OrderedDict
-from typing import List, Dict, Optional, Set, Tuple
+from typing import Set, Tuple
 from pathlib import Path
 from datetime import datetime
 
@@ -89,7 +89,7 @@ def _build_manifest(skills_dir: Path) -> str:
                 }
     return hashlib.md5(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
 
-def load_snapshot(skills_dir: Path) -> Optional[Dict]:
+def load_snapshot(skills_dir: Path) -> dict | None:
     """从磁盘加载缓存快照"""
     try:
         if not SNAPSHOT_PATH.exists():
@@ -132,7 +132,7 @@ def clear_snapshot() -> None:
 
 # ==================== 安全扫描 ====================
 
-def _scan_for_injections(content: str) -> Optional[str]:
+def _scan_for_injections(content: str) -> str | None:
     """检测 Skill 内容中的 Prompt Injection 攻击"""
     content_lower = content.lower()
     for pattern in INJECTION_PATTERNS:
@@ -140,7 +140,7 @@ def _scan_for_injections(content: str) -> Optional[str]:
             return f"Potential prompt injection detected: '{pattern}'"
     return None
 
-def _validate_skill_structure(skill_dir: Path) -> Optional[str]:
+def _validate_skill_structure(skill_dir: Path) -> str | None:
     """验证 Skill 目录结构安全"""
     try:
         # 检查符号链接逃逸
@@ -173,7 +173,7 @@ class SkillLoader:
 
     def __init__(self, skills_dir: Path = None):
         self.skills_dir = skills_dir or SKILLS_DIR
-        self._skills_meta: Dict[str, Dict] = {}
+        self._skills_meta: dict[str, Dict] = {}
         self._manifest_hash: str = ""
         self._lock = threading.Lock()
         
@@ -186,7 +186,7 @@ class SkillLoader:
         self._load_metadata()
 
     @staticmethod
-    def _normalize_str_list(value) -> List[str]:
+    def _normalize_str_list(value) -> list[str]:
         """规范化字符串或列表为字符串列表 (逗号分隔自动拆分)"""
         if isinstance(value, str):
             return [t.strip() for t in value.split(',') if t.strip()]
@@ -248,7 +248,7 @@ class SkillLoader:
         save_snapshot(self.skills_dir, self._skills_meta)
         self._manifest_hash = _build_manifest(self.skills_dir)
 
-    def _parse_frontmatter(self, skill_file: Path) -> Optional[Dict]:
+    def _parse_frontmatter(self, skill_file: Path) -> dict | None:
         """解析 SKILL.md 的 YAML frontmatter"""
         try:
             with open(skill_file, 'r', encoding='utf-8') as f:
@@ -262,7 +262,7 @@ class SkillLoader:
         except (yaml.YAMLError, OSError, UnicodeDecodeError):
             return None
 
-    def _flatten_triggers(self, triggers: List) -> List[str]:
+    def _flatten_triggers(self, triggers: List) -> list[str]:
         """扁平化嵌套的 triggers 列表
 
         YAML 中 `- [xxx]` 格式会产生嵌套列表，此方法将其展开为单层字符串列表。
@@ -324,7 +324,7 @@ class SkillLoader:
         return True
 
     @staticmethod
-    def _render_category(cat: str, skills: List[Dict], indent: bool = False) -> List[str]:
+    def _render_category(cat: str, skills: list[Dict], indent: bool = False) -> list[str]:
         """渲染单个分类的 XML 围栏区块"""
         prefix = "  - " if indent else "- "
         lines = [f"<category name='{cat}'>"]
@@ -343,7 +343,7 @@ class SkillLoader:
         if not visible_skills:
             return ""
 
-        categories: Dict[str, List[Dict]] = {}
+        categories: dict[str, list[Dict]] = {}
         for meta in visible_skills.values():
             cat = meta.get('category', 'general')
             categories.setdefault(cat, []).append(meta)
@@ -367,7 +367,7 @@ class SkillLoader:
         lines.append("</skills_index>")
         return "\n".join(lines)
 
-    def _tokenize_query(self, query: str) -> Tuple[List[str], List[str], List[str]]:
+    def _tokenize_query(self, query: str) -> Tuple[list[str], list[str], list[str]]:
         """分词: 英文单词 + 中文字符串"""
         query_lower = query.lower()
         en_words = re.findall(r'[a-zA-Z0-9_-]+', query_lower)
@@ -383,7 +383,7 @@ class SkillLoader:
             return 3.0
         return 0.0
 
-    def _score_trigger_match(self, triggers: List[str], query_words: List[str]) -> Tuple[float, bool]:
+    def _score_trigger_match(self, triggers: list[str], query_words: list[str]) -> Tuple[float, bool]:
         """
         Trigger 匹配 - 精确匹配优先于部分匹配
         返回 (score, matched)
@@ -403,7 +403,7 @@ class SkillLoader:
                     return 1.5, True
         return 0.0, False
 
-    def _score_description_match(self, description: str, query_words: List[str]) -> Tuple[float, Set[str]]:
+    def _score_description_match(self, description: str, query_words: list[str]) -> Tuple[float, Set[str]]:
         """
         Description 关键词匹配 (仅在没有 trigger 匹配时生效)
         返回 (score, desc_words)
@@ -418,8 +418,8 @@ class SkillLoader:
                     break
         return score, desc_words
 
-    def _score_fuzzy_match(self, name: str, triggers: List[str], desc_words: Set[str],
-                           en_words: List[str], current_score: float) -> float:
+    def _score_fuzzy_match(self, name: str, triggers: list[str], desc_words: Set[str],
+                           en_words: list[str], current_score: float) -> float:
         """模糊匹配 (仅英文，仅在当前得分 < 1.0 时生效)"""
         if current_score >= 1.0 or not en_words:
             return 0.0
@@ -436,7 +436,7 @@ class SkillLoader:
                     score += 0.5
         return score
 
-    def match_skill(self, query: str, available_tools: Set[str] = None) -> Optional[str]:
+    def match_skill(self, query: str, available_tools: Set[str] = None) -> str | None:
         """
         根据查询匹配最相关的 skill
 
@@ -483,7 +483,7 @@ class SkillLoader:
 
         return best_match if best_score >= 1.0 else None
 
-    def load_skill_content(self, name: str) -> Optional[str]:
+    def load_skill_content(self, name: str) -> str | None:
         """
         Tier 2: 加载完整 skill 内容
         
@@ -531,7 +531,7 @@ class SkillLoader:
         
         return fenced_content
 
-    def load_skill_ref(self, name: str, ref_path: str) -> Optional[str]:
+    def load_skill_ref(self, name: str, ref_path: str) -> str | None:
         """
         Tier 3: 加载 skill 的参考文件
         
@@ -558,7 +558,7 @@ class SkillLoader:
         except (OSError, UnicodeDecodeError) as e:
             return f"Error reading reference: {e}"
 
-    def get_skill_info(self, name: str) -> Optional[Dict]:
+    def get_skill_info(self, name: str) -> dict | None:
         """获取 skill 元数据 (不含完整内容)"""
         return self._skills_meta.get(name)
 
@@ -569,7 +569,7 @@ class SkillLoader:
         self._skills_meta.clear()
         self._load_metadata()
 
-    def get_skill_names(self) -> List[str]:
+    def get_skill_names(self) -> list[str]:
         """获取所有 skill 名称列表"""
         return list(self._skills_meta.keys())
 
@@ -577,9 +577,9 @@ class SkillLoader:
 
     def select_best_skill(
         self,
-        signals: List[str],
+        signals: list[str],
         available_tools: Set[str] = None
-    ) -> Optional[str]:
+    ) -> str | None:
         """Memory Graph 增强的 Skill 选择算法"""
         if not MEMORY_GRAPH_CONFIG.get('enabled', True):
             query = ' '.join(signals) if signals else ''
@@ -599,7 +599,7 @@ class SkillLoader:
         # Step 3: 应用禁用阈值
         return self._select_from_ranked(ranked)
 
-    def _rank_candidates_by_score(self, candidates: List[str], signals: List[str]) -> List[tuple]:
+    def _rank_candidates_by_score(self, candidates: list[str], signals: list[str]) -> list[tuple]:
         """计算候选分数并排序"""
         skill_scores = {}
         for skill_name in candidates:
@@ -607,7 +607,7 @@ class SkillLoader:
         
         return sorted(skill_scores.items(), key=lambda x: x[1]['score'], reverse=True)
 
-    def _select_from_ranked(self, ranked: List[tuple]) -> Optional[str]:
+    def _select_from_ranked(self, ranked: list[tuple]) -> str | None:
         """从排序列表中返回第一个非禁用的候选"""
         ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
         min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
@@ -623,7 +623,7 @@ class SkillLoader:
     def _compute_skill_selection_score(
         self,
         skill_name: str,
-        signals: List[str]
+        signals: list[str]
     ) -> Dict:
         """
         计算单个 Skill 的选择分数
@@ -698,7 +698,7 @@ class SkillLoader:
     def _compute_trigger_match_score(
         self,
         skill_name: str,
-        signals: List[str]
+        signals: list[str]
     ) -> float:
         """
         计算触发器匹配分数
@@ -788,7 +788,7 @@ class SkillLoader:
             return "".join(f"- {c}\n" for c in constraints)
         return ""
 
-    def get_gene_slice(self, name: str) -> Optional[str]:
+    def get_gene_slice(self, name: str) -> str | None:
         """提取 Gene slice (Tier 2a): ~230 tokens 的核心控制信号"""
         if name not in self._skills_meta:
             return None
@@ -824,15 +824,15 @@ class SkillLoader:
 
         return output
 
-    def _extract_gene_fields(self, content: str) -> Optional[Dict]:
+    def _extract_gene_fields(self, content: str) -> dict | None:
         """
         从 SKILL.md 内容提取 Gene 控制字段
 
         Gene 字段位于 YAML frontmatter 中:
-        - strategy: List[str]
-        - avoid: List[str]
-        - constraints: Dict | List[str]
-        - validation: List[str]
+        - strategy: list[str]
+        - avoid: list[str]
+        - constraints: Dict | list[str]
+        - validation: list[str]
         """
         if not content.startswith("---"):
             return None
@@ -905,7 +905,7 @@ class SkillLoader:
 # ==================== 工具函数 (供 Agent 调用) ====================
 
 # 全局 loader 实例 (避免重复扫描)
-_global_loader: Optional[SkillLoader] = None
+_global_loader: SkillLoader | None = None
 _loader_lock = threading.Lock()
 
 def _get_loader() -> SkillLoader:
@@ -954,7 +954,7 @@ def list_skills() -> str:
         return "No skills available."
 
     # 按 category 分组
-    categories: Dict[str, List[Dict]] = {}
+    categories: dict[str, list[Dict]] = {}
     for s in skills:
         cat = s.get('category', 'general')
         if cat not in categories:

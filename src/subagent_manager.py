@@ -11,13 +11,13 @@ SubagentManager - 子代理生命周期管理和调度
 
 import asyncio
 import uuid
-from typing import Dict, List, Optional, Any, Callable
+from typing import Callable
 from datetime import datetime
 from dataclasses import dataclass
 import logging
 
-from client import LLMGateway
-from subagent import (
+from src.client import LLMGateway
+from src.subagent import (
     SubagentType,
     SubagentInstance,
     SubagentState,
@@ -35,10 +35,10 @@ class SubagentTask:
     id: str
     subagent_type: SubagentType
     prompt: str
-    custom_tools: Optional[set] = None
-    custom_system_prompt: Optional[str] = None
-    max_iterations: Optional[int] = None
-    timeout: Optional[int] = None
+    custom_tools: set | None = None
+    custom_system_prompt: str | None = None
+    max_iterations: int | None = None
+    timeout: int | None = None
     priority: int = 0  # 优先级，数值越高越先执行
 
 
@@ -61,7 +61,7 @@ class SubagentManager:
     def __init__(
         self,
         gateway: LLMGateway,
-        model_id: Optional[str] = None,
+        model_id: str | None = None,
         max_concurrent: int = DEFAULT_MAX_CONCURRENT,
     ):
         """
@@ -77,19 +77,19 @@ class SubagentManager:
         self.max_concurrent = max_concurrent
 
         # 活跃的 subagent 实例
-        self._instances: Dict[str, SubagentInstance] = {}
+        self._instances: dict[str, SubagentInstance] = {}
 
         # 任务状态跟踪
-        self._tasks: Dict[str, SubagentTask] = {}
+        self._tasks: dict[str, SubagentTask] = {}
 
         # 执行结果
-        self._results: Dict[str, SubagentResult] = {}
+        self._results: dict[str, SubagentResult] = {}
 
         # 并发控制信号量
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
         # 状态变更回调
-        self._status_callbacks: List[Callable[[str, str], None]] = []
+        self._status_callbacks: list[Callable[[str, str], None]] = []
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
@@ -111,10 +111,10 @@ class SubagentManager:
         self,
         subagent_type: SubagentType,
         prompt: str,
-        custom_tools: Optional[set] = None,
-        custom_system_prompt: Optional[str] = None,
-        max_iterations: Optional[int] = None,
-        timeout: Optional[int] = None,
+        custom_tools: set | None = None,
+        custom_system_prompt: str | None = None,
+        max_iterations: int | None = None,
+        timeout: int | None = None,
         priority: int = 0,
     ) -> str:
         """
@@ -206,9 +206,9 @@ class SubagentManager:
 
     async def run_parallel(
         self,
-        task_ids: List[str],
+        task_ids: list[str],
         fail_fast: bool = False,
-    ) -> Dict[str, SubagentResult]:
+    ) -> dict[str, SubagentResult]:
         """
         并行执行多个 Subagent 任务
 
@@ -217,7 +217,7 @@ class SubagentManager:
             fail_fast: 是否在第一个失败时立即停止
 
         Returns:
-            Dict[str, SubagentResult]: 任务 ID -> 结果
+            dict[str, SubagentResult]: 任务 ID -> 结果
         """
         if fail_fast:
             # 顺序执行，失败即停
@@ -250,7 +250,7 @@ class SubagentManager:
 
             return results
 
-    def get_status(self, task_id: str) -> Optional[str]:
+    def get_status(self, task_id: str) -> str | None:
         """获取任务状态"""
         if task_id in self._results:
             return self._results[task_id].state.status
@@ -260,19 +260,19 @@ class SubagentManager:
             return "pending"
         return None
 
-    def get_result(self, task_id: str) -> Optional[SubagentResult]:
+    def get_result(self, task_id: str) -> SubagentResult | None:
         """获取任务结果"""
         return self._results.get(task_id)
 
-    def get_all_results(self) -> Dict[str, SubagentResult]:
+    def get_all_results(self) -> dict[str, SubagentResult]:
         """获取所有结果"""
         return self._results.copy()
 
     def wait_for_result(
         self,
         task_id: str,
-        timeout: Optional[float] = None,
-    ) -> Optional[SubagentResult]:
+        timeout: float | None = None,
+    ) -> SubagentResult | None:
         """
         等待任务完成（同步版本，用于在已运行的异步上下文中）
 
@@ -290,7 +290,7 @@ class SubagentManager:
 
     def aggregate_results(
         self,
-        task_ids: List[str],
+        task_ids: list[str],
         include_errors: bool = True,
         max_length: int = 2000,
     ) -> str:
@@ -322,7 +322,7 @@ class SubagentManager:
 
         return "\n\n---\n\n".join(summaries)
 
-    def cleanup(self, task_id: Optional[str] = None):
+    def cleanup(self, task_id: str | None = None):
         """
         清理任务资源
 
@@ -338,7 +338,7 @@ class SubagentManager:
             self._instances.clear()
             self._results.clear()
 
-    def list_tasks(self, status: Optional[str] = None) -> List[Dict]:
+    def list_tasks(self, status: str | None = None) -> list[dict]:
         """
         列出所有任务
 
@@ -346,7 +346,7 @@ class SubagentManager:
             status: 过滤状态（可选）
 
         Returns:
-            List[Dict]: 任务列表
+            list[dict]: 任务列表
         """
         tasks = []
         for task_id, task in self._tasks.items():
@@ -396,9 +396,9 @@ class RalphSubagentOrchestrator:
 
     def __init__(self, manager: SubagentManager):
         self.manager = manager
-        self._plan_task_id: Optional[str] = None
-        self._implement_task_ids: List[str] = []
-        self._review_task_id: Optional[str] = None
+        self._plan_task_id: str | None = None
+        self._implement_task_ids: list[str] = []
+        self._review_task_id: str | None = None
 
     async def plan_phase(self, task_prompt: str) -> str:
         """规划阶段"""
@@ -410,8 +410,8 @@ class RalphSubagentOrchestrator:
 
     async def implement_phase(
         self,
-        implement_prompts: List[str],
-    ) -> Dict[str, SubagentResult]:
+        implement_prompts: list[str],
+    ) -> dict[str, SubagentResult]:
         """实现阶段（并行执行多个任务）"""
         self._implement_task_ids = []
         for prompt in implement_prompts:
@@ -426,7 +426,7 @@ class RalphSubagentOrchestrator:
         result = await self.manager.run_subagent(self._review_task_id)
         return result.summary
 
-    def get_execution_report(self) -> Dict:
+    def get_execution_report(self) -> dict:
         """获取执行报告"""
         return {
             "plan": {

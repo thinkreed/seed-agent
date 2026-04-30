@@ -10,13 +10,13 @@ Subagent 工具集 - 为 AgentLoop 提供 Subagent 操作接口
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Any
 import logging
 
 logger = logging.getLogger(__name__)
 
 # 全局 SubagentManager 实例（由 AgentLoop 初始化时注入）
-_subagent_manager: Optional[Any] = None
+_subagent_manager: Any | None = None
 
 
 def init_subagent_manager(manager):
@@ -28,7 +28,7 @@ def init_subagent_manager(manager):
 def spawn_subagent(
     type: str,
     prompt: str,
-    custom_tools: List[str] = None,
+    custom_tools: list[str] = None,
     timeout: int = None,
 ) -> str:
     """
@@ -46,7 +46,7 @@ def spawn_subagent(
     if _subagent_manager is None:
         return "Error: SubagentManager not initialized"
 
-    from subagent import SubagentType
+    from src.subagent import SubagentType
 
     # 转换类型
     type_map = {
@@ -174,7 +174,7 @@ def wait_for_subagent(
 
 
 def aggregate_subagent_results(
-    task_ids: List[str],
+    task_ids: list[str],
     include_errors: bool = True,
     max_length: int = 2000,
 ) -> str:
@@ -279,7 +279,7 @@ def get_subagent_status(task_id: str) -> str:
 
 
 def spawn_parallel_subagents(
-    tasks: List[Dict],
+    tasks: list[Dict],
 ) -> str:
     """
     创建并并行启动多个子代理任务。
@@ -296,7 +296,7 @@ def spawn_parallel_subagents(
     if _subagent_manager is None:
         return "Error: SubagentManager not initialized"
 
-    from subagent import SubagentType
+    from src.subagent import SubagentType
 
     type_map = {
         "explore": SubagentType.EXPLORE,
@@ -330,7 +330,7 @@ def spawn_parallel_subagents(
     return f"Created {len(task_ids)} subagent tasks:\n" + "\n".join(task_ids)
 
 
-async def _run_parallel_async(task_ids: List[str]):
+async def _run_parallel_async(task_ids: list[str]):
     """异步并行执行多个 subagent"""
     try:
         await _subagent_manager.run_parallel(task_ids)

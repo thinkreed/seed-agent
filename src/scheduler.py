@@ -10,9 +10,9 @@ import time
 import logging
 import asyncio
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+from typing import Callable
 from datetime import datetime
-from request_queue import RequestPriority
+from src.request_queue import RequestPriority
 
 logger = logging.getLogger("seed_agent")
 
@@ -85,10 +85,10 @@ class TaskScheduler:
 
     def __init__(self, agent_loop=None):
         self.agent = agent_loop
-        self._tasks: Dict[str, ScheduledTask] = {}
+        self._tasks: dict[str, ScheduledTask] = {}
         self._running: bool = False
         self._check_interval: int = 60  # 每60秒检查一次
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._load_tasks()
         self._init_builtin_tasks()
 

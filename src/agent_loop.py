@@ -23,19 +23,20 @@ import json
 import os
 import logging
 import time
-from typing import List, Dict, Optional, AsyncGenerator, Set, Any
+from typing import Any
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from tools import ToolRegistry
-from tools.memory_tools import _save_session_history, _generate_session_filename, _record_skill_outcome
-from tools.skill_loader import SkillLoader
-from scheduler import TaskScheduler
-from client import LLMGateway
-from request_queue import RequestPriority
-from subagent_manager import SubagentManager
+from src.tools import ToolRegistry
+from src.tools.memory_tools import _save_session_history, _generate_session_filename, _record_skill_outcome
+from src.tools.skill_loader import SkillLoader
+from src.scheduler import TaskScheduler
+from src.client import LLMGateway
+from src.request_queue import RequestPriority
+from src.subagent_manager import SubagentManager
 
 # OpenTelemetry 可观测性
 try:
-    from observability import (
+    from src.observability import (
         get_tracer,
         SPAN_SESSION,
         SPAN_TOOL_PREFIX,
@@ -96,9 +97,9 @@ class AgentLoop:
         self.max_iterations = max_iterations
         self.summary_interval = summary_interval
 
-        self.history: List[Dict] = []
+        self.history: list[dict] = []
         self._conversation_rounds: int = 0  # 用户消息计数
-        self._last_summary: Optional[str] = None  # 最近一次摘要
+        self._last_summary: str | None = None  # 最近一次摘要
         self.session_id: str = session_id or _generate_session_filename()  # 当前会话ID
 
         self._setup_internal_state()
@@ -110,16 +111,16 @@ class AgentLoop:
     def _setup_internal_state(self):
         """初始化内部状态与上下文管理"""
         # Memory Graph: Skill 执行跟踪
-        self._pending_skill_outcomes: List[Dict] = []
+        self._pending_skill_outcomes: list[dict] = []
         
         # Context Window Management
         self.context_window = self._get_model_context_window()
         self.context_usage_threshold = 0.75  # Trigger summary at 75% usage
 
         # Context Token Cache
-        self._message_token_cache: List[int] = []
+        self._message_token_cache: list[int] = []
         self._system_prompt_tokens: int = 0
-        self._pending_user_input: Optional[str] = None
+        self._pending_user_input: str | None = None
 
     def _setup_tools_and_skills(self):
         """注册工具并加载技能"""
@@ -140,7 +141,7 @@ class AgentLoop:
 
         # 加载 skills (渐进式披露: 仅注入索引)
         self.skill_loader = SkillLoader()
-        self._available_tools: Optional[Set[str]] = None
+        self._available_tools: set[str] | None = None
 
     def _setup_subsystems(self, system_prompt: str = None):
         """初始化子系统（Subagent、调度器、Prompt）"""
@@ -200,7 +201,7 @@ class AgentLoop:
             return len(self._encoding.encode(text))
         return int(len(text) * 0.7)
 
-    def _cache_message_tokens(self, msg: Dict) -> int:
+    def _cache_message_tokens(self, msg: dict) -> int:
         """计算并缓存单条消息的 token 数"""
         content = msg.get('content', '')
         tokens = 0
@@ -247,7 +248,7 @@ class AgentLoop:
         self._update_message_token_cache()
         return self._system_prompt_tokens + sum(self._message_token_cache)
 
-    def _build_messages(self) -> List[Dict]:
+    def _build_messages(self) -> list[dict]:
         """构建完整的消息列表"""
         messages = []
         if self.system_prompt:
@@ -268,7 +269,7 @@ class AgentLoop:
                 history_text += f"{role}: {content}\n"
         return history_text.strip()
 
-    async def _summarize_history(self) -> Optional[str]:
+    async def _summarize_history(self) -> str | None:
         """使用 LLM 总结对话历史"""
         if not self.history:
             return None
@@ -286,7 +287,8 @@ class AgentLoop:
             )
             summary = response['choices'][0]['message']['content']
             return summary.strip()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}")
             return None
 
 
@@ -344,7 +346,7 @@ class AgentLoop:
         # Apply summary and truncate history
         await self._apply_summary(summary, is_context_full)
 
-    async def _process_run_response(self, response: Dict, iteration: int) -> tuple[str, int, bool]:
+    async def _process_run_response(self, response: dict, iteration: int) -> tuple[str, int, bool]:
         """处理 LLM 响应并执行相应动作
         
         Returns:
@@ -409,7 +411,7 @@ class AgentLoop:
             f"Agent exceeded maximum iterations ({self.max_iterations})"
         )
 
-    def _process_tool_delta(self, tc_list: List[Dict], accumulator: Dict[int, Dict]):
+    def _process_tool_delta(self, tc_list: list[dict], accumulator: dict[int, dict]):
         """处理流式响应中的 Tool Call 增量块"""
         for tc in tc_list:
             idx = tc.get('index', 0)
@@ -436,7 +438,7 @@ class AgentLoop:
         self._evaluate_and_record_skill_outcomes(final_success=True)
         yield {"type": "final", "content": full_content}
 
-    async def stream_run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> AsyncGenerator[Dict, None]:
+    async def stream_run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> AsyncGenerator[dict, None]:
         """流式处理用户输入"""
         self.history.append({"role": "user", "content": user_input})
         self._conversation_rounds += 1
@@ -454,7 +456,7 @@ class AgentLoop:
 
             # 流式调用 LLM 并 yield 内容
             full_content = ""
-            tool_calls_accumulator: Dict[int, Dict] = {}
+            tool_calls_accumulator: dict[int, dict] = {}
 
             async for chunk in self.gateway.stream_chat_completion(
                 self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
@@ -504,10 +506,10 @@ class AgentLoop:
         full_content, tool_calls = await self._consume_stream_response(messages, priority)
         return await self._handle_iteration_result(full_content, tool_calls)
 
-    async def _consume_stream_response(self, messages: List[Dict], priority: int) -> tuple[str, List[Dict]]:
+    async def _consume_stream_response(self, messages: list[dict], priority: int) -> tuple[str, list[dict]]:
         """流式消费 LLM 响应并累积内容/工具调用"""
         full_content = ""
-        tool_calls_accumulator: Dict[int, Dict] = {}
+        tool_calls_accumulator: dict[int, dict] = {}
 
         async for chunk in self.gateway.stream_chat_completion(
             self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
@@ -524,7 +526,7 @@ class AgentLoop:
         tool_calls = [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
         return full_content, tool_calls
 
-    async def _handle_iteration_result(self, full_content: str, tool_calls: List[Dict]) -> bool:
+    async def _handle_iteration_result(self, full_content: str, tool_calls: list[dict]) -> bool:
         """处理迭代结果（记录历史、执行工具或完成对话）"""
         self.history.append({
             "role": "assistant",
@@ -539,10 +541,10 @@ class AgentLoop:
         else:
             return True  # Stop loop
 
-    async def _stream_and_accumulate_response(self, messages: List[Dict], priority: int):
+    async def _stream_and_accumulate_response(self, messages: list[dict], priority: int):
         """流式调用 LLM 并累积内容/工具调用"""
         full_content = ""
-        tool_calls_accumulator: Dict[int, Dict] = {}
+        tool_calls_accumulator: dict[int, dict] = {}
 
         async for chunk in self.gateway.stream_chat_completion(
             self.model_id,
@@ -567,7 +569,7 @@ class AgentLoop:
         )
         yield {"type": "final_result", "content": full_content, "tool_calls": tool_calls}
 
-    def _check_write_conflicts(self, tool_calls: List[Dict]) -> Optional[List[Dict]]:
+    def _check_write_conflicts(self, tool_calls: list[dict]) -> list[dict] | None:
         """检查写工具调用的路径重叠，防止并发冲突。
         
         Returns:
@@ -585,11 +587,12 @@ class AgentLoop:
                             logger.warning(f"Concurrent write conflict detected: {path}")
                             return [{"role": "tool", "tool_call_id": tc['id'], "content": f"Error: Concurrent write conflict on '{path}'. Please execute sequentially."} for tc in tool_calls]
                         seen_paths[path] = tc['id']
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Failed to parse tool args for conflict check: {e}")
                     pass
         return None
 
-    def _parse_tool_args(self, raw_args: Any, tool_name: str) -> Dict:
+    def _parse_tool_args(self, raw_args: Any, tool_name: str) -> dict:
         """鲁棒地解析工具参数"""
         try:
             if isinstance(raw_args, str):
@@ -602,7 +605,7 @@ class AgentLoop:
             logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
             return {}
 
-    def _record_load_skill_outcome(self, tool_args: Dict, tool_id: str, result: str, failed: bool = False):
+    def _record_load_skill_outcome(self, tool_args: dict, tool_id: str, result: str, failed: bool = False):
         """记录 load_skill 的执行结果到 Memory Graph"""
         self._pending_skill_outcomes.append({
             'skill_name': tool_args.get('name', ''),
@@ -612,7 +615,7 @@ class AgentLoop:
             **({'failed': True} if failed else {})
         })
 
-    async def _run_single_tool_call(self, tool_call: Dict) -> Dict:
+    async def _run_single_tool_call(self, tool_call: dict) -> dict:
         """执行单个工具调用，包含追踪和记录逻辑"""
         tool_id = tool_call['id']
         tool_name = tool_call['function']['name']
@@ -637,12 +640,12 @@ class AgentLoop:
             self._record_load_skill_if_needed(tool_name, tool_args, tool_id, f"Error: {str(e)}", failed=True)
             return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {str(e)}"}
 
-    def _record_load_skill_if_needed(self, tool_name: str, tool_args: Dict, tool_id: str, content: str, failed: bool):
+    def _record_load_skill_if_needed(self, tool_name: str, tool_args: dict, tool_id: str, content: str, failed: bool):
         """如果是 load_skill 调用，记录其结果到 Memory Graph"""
         if tool_name == 'load_skill':
             self._record_load_skill_outcome(tool_args, tool_id, content, failed)
 
-    def _start_tool_span(self, tool_name: str, tool_args: Dict):
+    def _start_tool_span(self, tool_name: str, tool_args: dict):
         """创建 OpenTelemetry Span"""
         tracer = get_tracer()
         if not (tracer and _OBSERVABILITY_ENABLED):
@@ -667,16 +670,34 @@ class AgentLoop:
             span.set_status(StatusCode.ERROR, str(error)[:200])
         span.end()
 
-    async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
+    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict]:
         """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
         conflict_result = self._check_write_conflicts(tool_calls)
         if conflict_result:
             return conflict_result
 
-        results = await asyncio.gather(*[self._run_single_tool_call(tc) for tc in tool_calls])
-        return results
+        # 使用 return_exceptions=True 确保单个工具失败不会影响整个批次
+        results = await asyncio.gather(
+            *[self._run_single_tool_call(tc) for tc in tool_calls],
+            return_exceptions=True
+        )
 
-    def _extract_signals_from_context(self) -> List[str]:
+        # 处理可能的异常结果，转换为错误响应
+        processed_results = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Tool call {tool_calls[i].get('function', {}).get('name', 'unknown')} failed: {result}")
+                processed_results.append({
+                    "tool_call_id": tool_calls[i].get("id", "unknown"),
+                    "role": "tool",
+                    "content": f"Error: Tool execution failed - {type(result).__name__}: {str(result)}"
+                })
+            else:
+                processed_results.append(result)
+
+        return processed_results
+
+    def _extract_signals_from_context(self) -> list[str]:
         """从当前上下文提取触发信号"""
         signals = []
         # 从最近几条消息中提取关键词

@@ -8,7 +8,7 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Dict, Deque, Optional, Any, List
+from typing import Any
 from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -64,9 +64,9 @@ class TurnTicket:
 
     # 轮次信号
     _turn_event: asyncio.Event = field(default_factory=asyncio.Event)
-    _turn_time: Optional[float] = None
+    _turn_time: float | None = None
     _cancelled: bool = False
-    _cancel_reason: Optional[str] = None
+    _cancel_reason: str | None = None
 
     async def wait_for_turn(self, timeout: float) -> None:
         """等待轮次到达
@@ -134,21 +134,21 @@ class QueueStats:
     """队列统计（用于智能调整和监控）"""
 
     # 等待时间记录（每个优先级最近100条）
-    wait_times: Dict[RequestPriority, List[float]] = field(
+    wait_times: dict[RequestPriority, list[float]] = field(
         default_factory=lambda: {p: [] for p in RequestPriority}
     )
 
     # 计数
-    submitted: Dict[RequestPriority, int] = field(
+    submitted: dict[RequestPriority, int] = field(
         default_factory=lambda: {p: 0 for p in RequestPriority}
     )
-    signaled: Dict[RequestPriority, int] = field(
+    signaled: dict[RequestPriority, int] = field(
         default_factory=lambda: {p: 0 for p in RequestPriority}
     )
-    rejected: Dict[RequestPriority, int] = field(
+    rejected: dict[RequestPriority, int] = field(
         default_factory=lambda: {p: 0 for p in RequestPriority}
     )
-    cancelled: Dict[RequestPriority, int] = field(
+    cancelled: dict[RequestPriority, int] = field(
         default_factory=lambda: {p: 0 for p in RequestPriority}
     )
 
@@ -198,7 +198,7 @@ class QueueStats:
             return 0.0
         return self.rejected[priority] / submitted
 
-    def get_stats_dict(self) -> Dict[str, Any]:
+    def get_stats_dict(self) -> dict[str, Any]:
         """获取统计字典"""
         return {
             "submitted": {p.name: self.submitted[p] for p in RequestPriority},
@@ -233,17 +233,17 @@ class RequestQueue:
         self._critical_queue: Deque[TurnTicket] = deque()
 
         # 普通队列（HIGH/NORMAL/LOW 共享）
-        self._normal_queues: Dict[RequestPriority, Deque[TurnTicket]] = {
+        self._normal_queues: dict[RequestPriority, Deque[TurnTicket]] = {
             RequestPriority.HIGH: deque(),
             RequestPriority.NORMAL: deque(),
             RequestPriority.LOW: deque(),
         }
 
         # 所有活跃 ticket 的索引（用于取消）
-        self._active_tickets: Dict[str, TurnTicket] = {}
+        self._active_tickets: dict[str, TurnTicket] = {}
 
         # 调度控制
-        self._dispatcher_task: Optional[asyncio.Task] = None
+        self._dispatcher_task: asyncio.Task | None = None
         self._new_request_event = asyncio.Event()
         self._running = False
         self._lock = asyncio.Lock()
@@ -252,7 +252,7 @@ class RequestQueue:
         self._stats = QueueStats()
 
         # 智能调整
-        self._adjust_task: Optional[asyncio.Task] = None
+        self._adjust_task: asyncio.Task | None = None
 
     def get_critical_fill_ratio(self) -> float:
         """获取 CRITICAL 队列填充率"""
@@ -270,7 +270,7 @@ class RequestQueue:
         # 综合填充率，CRITICAL 权重较低
         return critical_fill * 0.2 + normal_fill * 0.8
 
-    def get_queue_size(self) -> Dict[str, int]:
+    def get_queue_size(self) -> dict[str, int]:
         """获取各队列大小"""
         return {
             "critical": len(self._critical_queue),
@@ -404,7 +404,7 @@ class RequestQueue:
                 logger.error(f"Dispatch loop error: {e}")
                 await asyncio.sleep(1.0)
 
-    async def _pop_ticket(self, priority: RequestPriority) -> Optional[TurnTicket]:
+    async def _pop_ticket(self, priority: RequestPriority) -> TurnTicket | None:
         """从指定优先级队列弹出 ticket"""
         async with self._lock:
             if priority == RequestPriority.CRITICAL:
@@ -585,7 +585,7 @@ class RequestQueue:
                     f"{self.config.normal_dispatch_rate:.2f}"
                 )
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取队列统计信息"""
         return {
             "queue_lengths": self.get_queue_size(),

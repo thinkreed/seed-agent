@@ -4,28 +4,112 @@ import subprocess
 import os
 from pathlib import Path
 import re
+import logging
+
+logger = logging.getLogger("seed_agent.path")
 
 # 默认工作目录为 ~/.seed 目录
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DEFAULT_WORK_DIR = Path(os.path.expanduser("~")) / ".seed"
 
+# 允许的目录列表（用于路径验证）
+ALLOWED_DIRS = [
+    DEFAULT_WORK_DIR,
+    PROJECT_ROOT,
+    Path(os.path.expanduser("~")) / "Documents",
+]
+
+
+def _validate_path_safety(path: str) -> tuple[bool, str]:
+    """
+    验证路径安全性，防止路径遍历攻击。
+
+    Args:
+        path: 原始路径字符串
+
+    Returns:
+        (is_safe, error_message): 安全返回 (True, ""), 不安全返回 (False, 错误信息)
+    """
+    # 检查危险路径模式
+    dangerous_patterns = [
+        "..",           # 路径遍历
+        "~",            # 可能指向不允许的位置（单独处理）
+        "\\",           # Windows 路径分隔符（需要规范化）
+        "//",           # 双斜杠可能被解释为网络路径
+    ]
+
+    # 检查 .. 序列
+    normalized = path.replace("\\", "/")
+    if ".." in normalized:
+        # 计算遍历深度
+        parts = normalized.split("/")
+        depth = 0
+        for part in parts:
+            if part == "..":
+                depth -= 1
+            elif part and part != ".":
+                depth += 1
+        if depth < 0:
+            logger.warning(f"Path traversal attempt blocked: {path}")
+            return False, f"Path traversal blocked: '{path}' contains '..' sequences that escape allowed directories"
+
+    # 检查绝对路径是否在允许范围内
+    if os.path.isabs(path):
+        resolved = str(Path(path).resolve())
+        for allowed in ALLOWED_DIRS:
+            try:
+                # 检查是否是允许目录的子路径
+                resolved_path = Path(resolved)
+                allowed_path = Path(str(allowed.resolve()))
+                if str(resolved_path).startswith(str(allowed_path)):
+                    return True, ""
+            except Exception:
+                continue
+        logger.warning(f"Absolute path outside allowed dirs: {path}")
+        return False, f"Absolute path '{path}' is outside allowed directories"
+
+    return True, ""
+
 
 def _resolve_path(path: str) -> str:
-    """解析路径，相对路径默认从 .seed 目录解析"""
+    """解析路径，相对路径默认从 .seed 目录解析（含路径遍历防护）"""
+    import logging
+
+    # 安全验证
+    is_safe, error = _validate_path_safety(path)
+    if not is_safe:
+        raise ValueError(error)
+
     if os.path.isabs(path):
+        # 绝对路径已经在验证中检查过是否允许
         return path
 
     # 相对路径：优先从 .seed 目录解析，如果不存在再从项目根目录解析
     seed_path = DEFAULT_WORK_DIR / path
-    if seed_path.exists():
-        return str(seed_path.resolve())
+    try:
+        resolved_seed = seed_path.resolve()
+        # 再次验证解析后的路径
+        if str(resolved_seed).startswith(str(DEFAULT_WORK_DIR.resolve())) or str(resolved_seed).startswith(str(PROJECT_ROOT.resolve())):
+            if seed_path.exists():
+                return str(resolved_seed)
+    except Exception:
+        pass
 
     project_path = PROJECT_ROOT / path
-    if project_path.exists():
-        return str(project_path.resolve())
+    try:
+        resolved_project = project_path.resolve()
+        if str(resolved_project).startswith(str(PROJECT_ROOT.resolve())):
+            if project_path.exists():
+                return str(resolved_project)
+    except Exception:
+        pass
 
-    # 如果都不存在，使用 .seed 目录作为默认目标
-    return str(seed_path.resolve())
+    # 如果都不存在，使用 .seed 目录作为默认目标（仍然验证）
+    final_path = str(DEFAULT_WORK_DIR / path)
+    if not str(Path(final_path).resolve()).startswith(str(DEFAULT_WORK_DIR.resolve())):
+        raise ValueError(f"Resolved path escapes allowed directories: {final_path}")
+
+    return final_path
 
 
 def file_read(path: str, start: int = 1, count: int = 100) -> str:
@@ -159,7 +243,41 @@ def code_as_policy(code: str, language: str = "python", cwd: str = None, timeout
     Returns:
         Execution output (stdout + stderr), or error message.
     """
+    import logging
+    logger = logging.getLogger("seed_agent.code_exec")
+
+    # 安全检查：危险命令黑名单
+    SHELL_BLACKLIST = [
+        # 系统破坏命令
+        "rm -rf", "rm -r", "rmdir", "del ", "format",
+        # 权限提升
+        "sudo", "su", "chmod 777", "chown",
+        # 网络危险操作
+        "wget", "curl -o", "nc ", "netcat",
+        # 进程控制
+        "kill -9", "pkill", "killall",
+        # Shell 元字符组合攻击
+        "; rm", "| rm", "& rm", "`rm", "$(rm",
+        # 系统信息窃取
+        "cat /etc/passwd", "cat /etc/shadow",
+    ]
+
+    POWERSHELL_BLACKLIST = [
+        # 系统破坏
+        "Remove-Item", "Delete-Item", "Format-Volume",
+        # 权限操作
+        "Set-ExecutionPolicy", "Start-Process -Verb RunAs",
+        # 网络操作
+        "Download-File", "Invoke-WebRequest -OutFile",
+        # 进程控制
+        "Stop-Process -Force", "Kill-Process",
+    ]
+
     try:
+        # 代码长度限制
+        if len(code) > 10000:
+            return "Error: Code exceeds maximum length (10000 chars) for security"
+
         # 默认工作目录为 .seed
         if cwd is None:
             cwd = str(DEFAULT_WORK_DIR)
@@ -171,6 +289,25 @@ def code_as_policy(code: str, language: str = "python", cwd: str = None, timeout
                 cwd = str(PROJECT_ROOT / cwd)
 
         language = language.lower()
+
+        # Shell 安全检查
+        if language in ("shell", "bash", "sh"):
+            code_lower = code.lower()
+            for danger in SHELL_BLACKLIST:
+                if danger.lower() in code_lower:
+                    logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
+                    return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+
+        # PowerShell 安全检查
+        if language in ("powershell", "ps", "pwsh"):
+            code_lower = code.lower()
+            for danger in POWERSHELL_BLACKLIST:
+                if danger.lower() in code_lower:
+                    logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
+                    return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+
+        # 审计日志：记录所有执行请求
+        logger.info(f"Code execution requested: language={language}, cwd={cwd}, timeout={timeout}s, code_preview={code[:100]}...")
 
         # 根据语言选择执行方式
         if language in ("python", "py"):
@@ -201,13 +338,19 @@ def code_as_policy(code: str, language: str = "python", cwd: str = None, timeout
         if result.returncode != 0:
             output += f"\n[Exit Code: {result.returncode}]"
 
+        # 审计日志：记录执行结果
+        logger.info(f"Code execution completed: returncode={result.returncode}, output_length={len(output)}")
+
         return output if output.strip() else f"Code executed successfully ({language})"
 
     except subprocess.TimeoutExpired:
+        logger.warning(f"Code execution timed out: language={language}, timeout={timeout}s")
         return f"Error: Execution timed out ({timeout}s)"
     except FileNotFoundError:
+        logger.error(f"Interpreter not found for '{language}'")
         return f"Error: Interpreter not found for '{language}'. Please ensure it's installed."
     except Exception as e:
+        logger.exception(f"Code execution error: {str(e)}")
         return f"Error executing code: {str(e)}"
 
 

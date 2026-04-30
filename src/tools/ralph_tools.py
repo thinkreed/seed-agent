@@ -10,7 +10,7 @@
 import os
 import json
 from pathlib import Path
-from typing import Dict, Optional
+# 类型注解使用内置类型
 
 SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
 COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
@@ -21,7 +21,7 @@ def start_ralph_loop(
     task_prompt_file: str,
     completion_type: str = "marker_file",
     max_iterations: int = 1000,
-    completion_criteria: Dict = None
+    completion_criteria: dict | None = None
 ) -> str:
     """启动 Ralph Loop（长周期确定性任务执行器）
 

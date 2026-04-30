@@ -20,12 +20,13 @@ import time
 import asyncio
 import random
 import logging
-from typing import List, Dict, AsyncGenerator, Any, Optional, Tuple
+from typing import Any
+from collections.abc import AsyncGenerator
 from openai import AsyncOpenAI, APIConnectionError, RateLimitError, APIStatusError
 
 # OpenTelemetry 可观测性
 try:
-    from observability import (
+    from src.observability import (
         get_tracer,
         SPAN_LLM_REQUEST,
         record_llm_success,
@@ -51,13 +52,13 @@ except ImportError:
     SPAN_LLM_REQUEST = "seed.llm.request"
     StatusCode = None
     trace = None
-from models import load_config, FullConfig, ProviderConfig, ModelConfig, RateLimitConfig
-from rate_limiter import RateLimiter, RateLimitStatus, TokenBucketState, RollingWindowState
-from request_queue import (
+from src.models import load_config, FullConfig, ProviderConfig, ModelConfig, RateLimitConfig
+from src.rate_limiter import RateLimiter, RateLimitStatus, TokenBucketState, RollingWindowState
+from src.request_queue import (
     RequestQueue, RequestPriority, QueueFullError, TurnWaitTimeout,
     TurnTicket, QueueConfig
 )
-from rate_limit_db import RateLimitSQLite, RateLimitState
+from src.rate_limit_db import RateLimitSQLite, RateLimitState
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("seed_agent")
@@ -68,7 +69,7 @@ class TimeoutConfig:
     """等待超时配置（可动态调整）"""
 
     # 基础超时（秒）
-    base_timeouts: Dict[RequestPriority, float] = field(
+    base_timeouts: dict[RequestPriority, float] = field(
         default_factory=lambda: {
             RequestPriority.CRITICAL: 30.0,
             RequestPriority.HIGH: 60.0,
@@ -115,10 +116,10 @@ class FallbackChain:
     借鉴 CodeBrain 架构设计的优雅降级机制。
     """
 
-    def __init__(self, providers: List[str], clients: Dict[str, AsyncOpenAI]):
+    def __init__(self, providers: list[str], clients: dict[str, AsyncOpenAI]):
         self._providers = providers  # 优先级列表：[primary, fallback1, fallback2, ...]
         self._clients = clients
-        self._active_provider: Optional[str] = None  # 当前活跃的 provider
+        self._active_provider: str | None = None  # 当前活跃的 provider
         self._status: str = "healthy"  # healthy, degraded, unavailable
 
     def get_active_client(self) -> tuple[str, AsyncOpenAI]:
@@ -177,17 +178,17 @@ class LLMGateway:
 
     def __init__(self, config_path: str):
         self.config: FullConfig = load_config(config_path)
-        self.clients: Dict[str, AsyncOpenAI] = {}
-        self._fallback_chain: Optional[FallbackChain] = None
+        self.clients: dict[str, AsyncOpenAI] = {}
+        self._fallback_chain: FallbackChain | None = None
 
         # 限流组件
-        self._rate_limiter: Optional[RateLimiter] = None
-        self._rate_config: Optional[RateLimitConfig] = None
-        self._request_semaphore: Optional[asyncio.Semaphore] = None
+        self._rate_limiter: RateLimiter | None = None
+        self._rate_config: RateLimitConfig | None = None
+        self._request_semaphore: asyncio.Semaphore | None = None
 
         # 请求队列（TurnTicket 模式）
-        self._request_queue: Optional[RequestQueue] = None
-        self._queue_config: Optional[QueueConfig] = None
+        self._request_queue: RequestQueue | None = None
+        self._queue_config: QueueConfig | None = None
         self._timeout_config: TimeoutConfig = TimeoutConfig()
         self._queue_started = False
 
@@ -196,8 +197,8 @@ class LLMGateway:
         self._active_count_lock = asyncio.Lock()
 
         # 状态持久化
-        self._state_db: Optional[RateLimitSQLite] = None
-        self._persistence_task: Optional[asyncio.Task] = None
+        self._state_db: RateLimitSQLite | None = None
+        self._persistence_task: asyncio.Task | None = None
         self._persistence_interval = 60.0  # 每分钟持久化一次
 
         self._init_clients()
@@ -379,7 +380,7 @@ class LLMGateway:
                 logger.error(f"Persistence loop error: {e}")
                 await asyncio.sleep(5.0)
 
-    async def get_persistence_stats(self) -> Optional[Dict[str, Any]]:
+    async def get_persistence_stats(self) -> dict[str, Any] | None:
         """获取持久化统计信息"""
         if self._state_db:
             return await self._state_db.get_stats()
@@ -432,11 +433,11 @@ class LLMGateway:
                 return model
         raise ValueError(f"Unknown model: {model_id}")
 
-    def get_rate_limit_config(self) -> Optional[RateLimitConfig]:
+    def get_rate_limit_config(self) -> RateLimitConfig | None:
         """获取当前限流配置"""
         return self._rate_config
 
-    def _get_fallback_model_id(self, original_model_id: str, fallback_provider: str) -> Optional[str]:
+    def _get_fallback_model_id(self, original_model_id: str, fallback_provider: str) -> str | None:
         """获取 fallback provider 的等效模型"""
         _, model_name = original_model_id.split('/', 1)
 
@@ -453,7 +454,7 @@ class LLMGateway:
 
         return None
 
-    def get_rate_limit_status(self) -> Optional[RateLimitStatus]:
+    def get_rate_limit_status(self) -> RateLimitStatus | None:
         """获取限流状态（供外部查询）"""
         if self._rate_limiter:
             return self._rate_limiter.get_status()
@@ -517,7 +518,7 @@ class LLMGateway:
             await self._request_queue.stop_dispatcher()
             self._queue_started = False
 
-    def get_queue_status(self) -> Optional[Dict[str, Any]]:
+    def get_queue_status(self) -> dict[str, Any] | None:
         """获取队列状态"""
         if self._request_queue:
             return self._request_queue.get_stats()
@@ -618,7 +619,7 @@ class LLMGateway:
         ticket: 'Ticket',
         priority: RequestPriority,
         stream_func: callable
-    ) -> AsyncGenerator[Dict, None]:
+    ) -> AsyncGenerator[dict, None]:
         """阶段 2-4: 获取信号量、限流并执行（流式）
         
         注意：此方法现在是异步生成器，直接 yield 数据
@@ -654,10 +655,10 @@ class LLMGateway:
     async def _execute_three_phase(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         priority: RequestPriority,
         **kwargs
-    ) -> Dict:
+    ) -> dict:
         """三阶段等待执行（非流式）"""
         ticket = await self._wait_for_turn_and_acquire(priority)
 
@@ -669,10 +670,10 @@ class LLMGateway:
     async def _stream_three_phase(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         priority: RequestPriority,
         **kwargs
-    ) -> AsyncGenerator[Dict, None]:
+    ) -> AsyncGenerator[dict, None]:
         """三阶段等待执行（流式）
 
         直接 yield 数据，是真正的异步生成器
@@ -692,10 +693,10 @@ class LLMGateway:
     async def chat_completion(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         priority: int = RequestPriority.NORMAL,
         **kwargs
-    ) -> Dict:
+    ) -> dict:
         """非流式聊天补全（TurnTicket 模式）
 
         Args:
@@ -724,10 +725,10 @@ class LLMGateway:
     async def stream_chat_completion(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         priority: int = RequestPriority.NORMAL,
         **kwargs
-    ) -> AsyncGenerator[Dict, None]:
+    ) -> AsyncGenerator[dict, None]:
         """流式聊天补全（TurnTicket 模式）
 
         Args:
@@ -756,9 +757,9 @@ class LLMGateway:
     async def _chat_completion_with_fallback_internal(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         **kwargs
-    ) -> Dict:
+    ) -> dict:
         """内部方法：带跨 Provider 降级的非流式聊天补全"""
         provider_id = model_id.split('/')[0]
         active_provider = self.get_active_provider()
@@ -806,7 +807,7 @@ class LLMGateway:
             return span
         return None
 
-    def _record_success_metrics(self, span, provider: str, model_id: str, usage: Dict, duration_ms: float):
+    def _record_success_metrics(self, span, provider: str, model_id: str, usage: dict, duration_ms: float):
         """记录成功调用的 Metrics 和 Span 属性"""
         if usage:
             input_tokens = usage.get('prompt_tokens', 0)
@@ -838,7 +839,7 @@ class LLMGateway:
         if span:
             record_llm_span_error(span, e)
 
-    async def _try_provider_with_retry(self, model_id: str, messages: List[Dict], **kwargs) -> Tuple[bool, Dict]:
+    async def _try_provider_with_retry(self, model_id: str, messages: list[dict], **kwargs) -> tuple[bool, dict]:
         """尝试单个 provider 调用（带重试）
         
         Returns:
@@ -858,7 +859,7 @@ class LLMGateway:
                     break
         return False, None
 
-    async def _try_fallback_providers(self, span, model_id: str, messages: List[Dict], start_time: float, **kwargs) -> Tuple[bool, Dict]:
+    async def _try_fallback_providers(self, span, model_id: str, messages: list[dict], start_time: float, **kwargs) -> tuple[bool, dict]:
         """尝试所有 fallback providers
         
         Returns:
@@ -898,9 +899,9 @@ class LLMGateway:
     async def _chat_completion_single(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         **kwargs
-    ) -> Dict:
+    ) -> dict:
         """单 provider 调用"""
         client = self.get_client(model_id)
         model_config = self.get_model_config(model_id)
@@ -943,7 +944,7 @@ class LLMGateway:
         jitter = random.uniform(-0.2, 0.2) * base_wait
         return base_wait + jitter
 
-    def _iterate_fallback_models(self, model_id: str, exclude_provider: str) -> List[Tuple[str, str]]:
+    def _iterate_fallback_models(self, model_id: str, exclude_provider: str) -> list[tuple[str, str]]:
         """生成fallback provider和model_id列表
         
         Returns:
@@ -968,9 +969,9 @@ class LLMGateway:
     async def _stream_chat_completion_with_fallback_internal(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         **kwargs
-    ) -> AsyncGenerator[Dict, None]:
+    ) -> AsyncGenerator[dict, None]:
         """内部方法：带跨 Provider 降级的流式聊天补全"""
         provider_id = model_id.split('/')[0]
         active_provider = self.get_active_provider()
@@ -1007,7 +1008,7 @@ class LLMGateway:
             if span:
                 span.end()
 
-    async def _stream_with_retry(self, model_id: str, messages: List[Dict], span, active_provider: str, start_time: float, **kwargs) -> AsyncGenerator[Dict, None]:
+    async def _stream_with_retry(self, model_id: str, messages: list[dict], span, active_provider: str, start_time: float, **kwargs) -> AsyncGenerator[dict, None]:
         """流式响应重试逻辑"""
         for attempt in range(3):
             try:
@@ -1053,7 +1054,7 @@ class LLMGateway:
                     logger.warning(f"Provider {model_id.split('/')[0]} exhausted retries")
                     raise
 
-    async def _stream_fallback_providers(self, model_id: str, messages: List[Dict], span, active_provider: str, start_time: float, exclude_provider: str, **kwargs) -> AsyncGenerator[Dict, None]:
+    async def _stream_fallback_providers(self, model_id: str, messages: list[dict], span, active_provider: str, start_time: float, exclude_provider: str, **kwargs) -> AsyncGenerator[dict, None]:
         """流式 fallback providers 尝试"""
         for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, exclude_provider):
             if span:
@@ -1100,9 +1101,9 @@ class LLMGateway:
     async def _stream_chat_completion_single(
         self,
         model_id: str,
-        messages: List[Dict],
+        messages: list[dict],
         **kwargs
-    ) -> AsyncGenerator[Dict, None]:
+    ) -> AsyncGenerator[dict, None]:
         """单 provider 流式调用"""
         client = self.get_client(model_id)
         model_config = self.get_model_config(model_id)
@@ -1138,5 +1139,6 @@ class LLMGateway:
                 chunk_dict = chunk.model_dump()
                 if chunk_dict.get('choices'):
                     yield chunk_dict
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to serialize stream chunk: {type(e).__name__}")
                 continue

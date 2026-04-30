@@ -18,12 +18,12 @@ Span 层级:
 import asyncio
 import time
 import functools
-from typing import Callable, Dict, Optional, Any
+from typing import Callable, Any
 from opentelemetry import trace, context
 from opentelemetry.trace import StatusCode, Span, Status
 from opentelemetry.util.types import Attributes
 
-from observability.setup import get_tracer
+from .setup import get_tracer
 
 # Span 名称常量
 SPAN_SESSION = "seed.session"
@@ -90,7 +90,7 @@ def record_llm_span_error(span: Span, error: Exception) -> str:
     return error_type
 
 
-def create_task_with_context(coro: Callable, ctx: Optional[context.Context] = None) -> asyncio.Task:
+def create_task_with_context(coro: Callable, ctx: context.Context | None = None) -> asyncio.Task:
     """
     创建继承 OTel context 的 asyncio task
 
@@ -110,7 +110,7 @@ def create_task_with_context(coro: Callable, ctx: Optional[context.Context] = No
 
 def start_span(
     name: str,
-    attributes: Optional[Dict[str, Any]] = None,
+    attributes: dict[str, Any] | None = None,
 ) -> Span:
     """
     启动一个新 Span
@@ -134,7 +134,7 @@ def start_span(
 
 def start_as_current_span(
     name: str,
-    attributes: Optional[Dict[str, Any]] = None,
+    attributes: dict[str, Any] | None = None,
 ) -> Span:
     """
     启动一个作为当前 Span 的新 Span
@@ -155,8 +155,8 @@ def start_as_current_span(
 
 
 def traced(
-    name: Optional[str] = None,
-    attributes: Optional[Dict[str, Any]] = None,
+    name: str | None = None,
+    attributes: dict[str, Any] | None = None,
 ):
     """
     装饰器：自动创建 Span 包装函数
@@ -247,8 +247,8 @@ def set_llm_span_attributes(
     model: str,
     provider: str,
     streaming: bool = False,
-    input_tokens: Optional[int] = None,
-    output_tokens: Optional[int] = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
 ):
     """
     设置 LLM Span 的标准属性
@@ -278,8 +278,8 @@ def set_llm_span_attributes(
 def set_tool_span_attributes(
     span: Span,
     tool_name: str,
-    file_path: Optional[str] = None,
-    duration_ms: Optional[float] = None,
+    file_path: str | None = None,
+    duration_ms: float | None = None,
 ):
     """
     设置工具调用 Span 的属性
@@ -306,7 +306,7 @@ def set_subagent_span_attributes(
     span: Span,
     subagent_type: str,
     task_id: str,
-    status: Optional[str] = None,
+    status: str | None = None,
 ):
     """
     设置 Subagent Span 的属性

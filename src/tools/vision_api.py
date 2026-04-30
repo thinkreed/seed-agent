@@ -7,7 +7,7 @@ import io
 import os
 import sys
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 from pathlib import Path
 
 try:
@@ -24,7 +24,7 @@ MAX_PIXELS = 1_440_000  # 限制图像像素以节省 Token
 DEFAULT_CONFIG_PATH = os.path.join(Path.home(), ".seed", "config.json")
 
 
-def capture_window(hwnd=None) -> Optional["Image.Image"]:
+def capture_window(hwnd=None) -> "Image.Image | None":
     """
     截取指定窗口或全屏图像
     Args:
@@ -110,7 +110,7 @@ async def analyze_image_async(
 
     try:
         # 通过 LLMGateway 调用
-        from client import LLMGateway, RequestPriority
+        from src.client import LLMGateway, RequestPriority
 
         gateway = LLMGateway(cfg_path)
         
@@ -202,7 +202,7 @@ def ask_vision(
 
     try:
         import asyncio
-        from client import LLMGateway, RequestPriority
+        from src.client import LLMGateway, RequestPriority
 
         if not os.path.exists(DEFAULT_CONFIG_PATH):
             return f"Error: Config not found at {DEFAULT_CONFIG_PATH}"

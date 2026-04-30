@@ -197,7 +197,7 @@ def search_memory(keyword: str, levels: list = ["L1", "L2", "L3"]) -> str:
                         with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
                             if keyword.lower() in f.read().lower():
                                 results.append(f"[{lvl}] {file}")
-                    except: pass
+                    except Exception: pass
     return "\n".join(results) if results else "No matching memory found."
 
 
