@@ -625,7 +625,7 @@ class SessionDB:
 
             actual_id = row['session_id']
             msg_count = row['message_count']
-            summary = row.get('summary')
+            summary = row['summary'] if 'summary' in row.keys() else None
 
             messages = self.conn.execute("""
                 SELECT role, content, tool_calls_json, tool_call_id

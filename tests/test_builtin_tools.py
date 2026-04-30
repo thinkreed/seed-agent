@@ -51,9 +51,11 @@ class TestResolvePath(unittest.TestCase):
         """相对路径 - .seed 中存在文件"""
         with tempfile.NamedTemporaryFile(dir=DEFAULT_WORK_DIR, delete=False, suffix='.txt') as f:
             name = Path(f.name).name
+            f.close()  # Windows 上需要先关闭文件句柄
             try:
                 result = _resolve_path(name)
-                self.assertEqual(result, f.name)
+                # resolve() 会规范化路径，需要比较规范化后的路径
+                self.assertEqual(result, str(Path(f.name).resolve()))
             finally:
                 os.unlink(f.name)
 
@@ -61,9 +63,11 @@ class TestResolvePath(unittest.TestCase):
         """相对路径 - .seed 不存在，项目根目录存在"""
         with tempfile.NamedTemporaryFile(dir=PROJECT_ROOT, delete=False, suffix='.txt') as f:
             name = Path(f.name).name
+            f.close()  # Windows 上需要先关闭文件句柄
             try:
                 result = _resolve_path(name)
-                self.assertEqual(result, f.name)
+                # resolve() 会规范化路径，需要比较规范化后的路径
+                self.assertEqual(result, str(Path(f.name).resolve()))
             finally:
                 os.unlink(f.name)
 
@@ -306,10 +310,10 @@ class TestRunDiagnosis(unittest.TestCase):
         result = run_diagnosis()
         self.assertIn("PASS", result)
         
-        # 验证调用参数
+        # 验证调用参数（默认不带 --fix）
         mock_run.assert_called_once()
         call_args = mock_run.call_args
-        self.assertIn("--fix", str(call_args) if call_args else "")
+        self.assertNotIn("--fix", str(call_args) if call_args else "")
 
     @patch('tools.builtin_tools.subprocess.run')
     def test_diagnosis_with_fix(self, mock_run):

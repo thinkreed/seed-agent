@@ -290,17 +290,17 @@ class AgentLoop:
             return None
 
 
-    def _should_summarize(self) -> tuple[bool, int]:
+    def _should_summarize(self) -> tuple[bool, int, bool]:
         """检查是否需要总结
         
         Returns:
-            (should_summarize, estimated_tokens)
+            (should_summarize, estimated_tokens, is_context_full)
         """
         estimated_tokens = self._estimate_context_size()
         token_threshold = self.context_window * self.context_usage_threshold
         is_context_full = estimated_tokens > token_threshold
         is_round_limit_reached = self._conversation_rounds >= self.summary_interval
-        return (is_context_full or is_round_limit_reached), estimated_tokens
+        return (is_context_full or is_round_limit_reached), estimated_tokens, is_context_full
 
 
     async def _apply_summary(self, summary: str, is_context_full: bool):

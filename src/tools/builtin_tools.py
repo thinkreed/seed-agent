@@ -18,14 +18,14 @@ def _resolve_path(path: str) -> str:
     # 相对路径：优先从 .seed 目录解析，如果不存在再从项目根目录解析
     seed_path = DEFAULT_WORK_DIR / path
     if seed_path.exists():
-        return str(seed_path)
+        return str(seed_path.resolve())
 
     project_path = PROJECT_ROOT / path
     if project_path.exists():
-        return str(project_path)
+        return str(project_path.resolve())
 
     # 如果都不存在，使用 .seed 目录作为默认目标
-    return str(seed_path)
+    return str(seed_path.resolve())
 
 
 def file_read(path: str, start: int = 1, count: int = 100) -> str:

@@ -619,37 +619,37 @@ class LLMGateway:
         priority: RequestPriority,
         stream_func: callable
     ) -> AsyncGenerator[Dict, None]:
-        """阶段 2-4: 获取信号量、限流并执行（流式）"""
-        async def actual_stream():
-            async with self._request_semaphore:
-                logger.debug(f"Ticket {ticket.id}: concurrent acquired (stream)")
-
-                async with self._active_count_lock:
-                    self._active_count += 1
-
-                try:
-                    if self._rate_limiter:
-                        max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
-                        acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
-                        if not acquired:
-                            raise RateLimitError(
-                                "Rate limit wait timeout, please retry later",
-                                response=None,
-                                body=None
-                            )
-
-                    logger.debug(f"Ticket {ticket.id}: rate limit acquired (stream)")
-
-                    async for chunk in stream_func():
-                        yield chunk
-
-                    logger.debug(f"Ticket {ticket.id}: stream completed")
-
-                finally:
-                    async with self._active_count_lock:
-                        self._active_count -= 1
+        """阶段 2-4: 获取信号量、限流并执行（流式）
         
-        return actual_stream()
+        注意：此方法现在是异步生成器，直接 yield 数据
+        """
+        async with self._request_semaphore:
+            logger.debug(f"Ticket {ticket.id}: concurrent acquired (stream)")
+
+            async with self._active_count_lock:
+                self._active_count += 1
+
+            try:
+                if self._rate_limiter:
+                    max_wait = 0.0 if priority == RequestPriority.CRITICAL else 60.0
+                    acquired = await self._rate_limiter.wait_and_acquire(max_wait=max_wait)
+                    if not acquired:
+                        raise RateLimitError(
+                            "Rate limit wait timeout, please retry later",
+                            response=None,
+                            body=None
+                        )
+
+                logger.debug(f"Ticket {ticket.id}: rate limit acquired (stream)")
+
+                async for chunk in stream_func():
+                    yield chunk
+
+                logger.debug(f"Ticket {ticket.id}: stream completed")
+
+            finally:
+                async with self._active_count_lock:
+                    self._active_count -= 1
 
     async def _execute_three_phase(
         self,
@@ -675,7 +675,7 @@ class LLMGateway:
     ) -> AsyncGenerator[Dict, None]:
         """三阶段等待执行（流式）
 
-        返回 generator，由调用者迭代
+        直接 yield 数据，是真正的异步生成器
         """
         ticket = await self._wait_for_turn_and_acquire(priority)
 
@@ -683,7 +683,9 @@ class LLMGateway:
             async for chunk in self._stream_chat_completion_with_fallback_internal(model_id, messages, **kwargs):
                 yield chunk
 
-        return self._stream_with_concurrency_and_rate_limit(ticket, priority, _stream)
+        # 委托给 _stream_with_concurrency_and_rate_limit，直接 yield 数据
+        async for chunk in self._stream_with_concurrency_and_rate_limit(ticket, priority, _stream):
+            yield chunk
 
     # ==================== 核心聊天接口（TurnTicket 模式） ====================
 
@@ -745,9 +747,8 @@ class LLMGateway:
         if isinstance(priority, int):
             priority = RequestPriority(priority)
 
-        # _stream_three_phase 返回异步生成器，需要先 await 获取
-        stream_gen = await self._stream_three_phase(model_id, messages, priority, **kwargs)
-        async for chunk in stream_gen:
+        # _stream_three_phase 现在是真正的异步生成器，直接委托
+        async for chunk in self._stream_three_phase(model_id, messages, priority, **kwargs):
             yield chunk
 
     # ==================== 执行层（带降级） ====================

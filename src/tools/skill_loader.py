@@ -793,8 +793,14 @@ class SkillLoader:
         if name not in self._skills_meta:
             return None
 
-        content = self.load_skill_content(name)
-        if not content:
+        # 直接读取原始文件内容（不使用包装后的内容）
+        skill_file = Path(self._skills_meta[name]['path'])
+        if not skill_file.exists():
+            return None
+
+        try:
+            content = skill_file.read_text(encoding='utf-8')
+        except (OSError, UnicodeDecodeError):
             return None
 
         gene_fields = self._extract_gene_fields(content)
