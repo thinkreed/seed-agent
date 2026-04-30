@@ -35,13 +35,17 @@ try:
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    from typing import Any, Optional
-    def get_tracer() -> Any:
-        return None
-    def set_subagent_span_attributes(span: Any, subagent_type: str, task_id: str, status: Optional[str] = None) -> None:
+    from opentelemetry.trace import Tracer as _Tracer, Span as _Span, StatusCode as _StatusCode
+
+    def get_tracer() -> _Tracer:  # type: ignore[misc]
+        from opentelemetry.trace import NoOpTracer
+        return NoOpTracer()
+
+    def set_subagent_span_attributes(span: _Span, subagent_type: str, task_id: str, status: str | None = None) -> None:  # type: ignore[misc]
         pass
+
     SPAN_SUBAGENT_EXECUTE = "seed.subagent.execute"
-    StatusCode = None  # type: ignore[misc,assignment]
+    StatusCode = _StatusCode  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +407,9 @@ class SubagentInstance:
 
     async def _run_loop(self) -> str:
         """主执行循环"""
+        # 确保 state 已初始化（由 run() 方法设置）
+        assert self.state is not None, "SubagentState must be initialized before _run_loop"
+
         iteration = 0
 
         while iteration < self.max_iterations:

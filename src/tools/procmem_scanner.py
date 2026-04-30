@@ -104,10 +104,8 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
     通过 VirtualQueryEx 遍历整个进程地址空间，
     返回所有已提交 (MEM_COMMIT) 的内存区域。
     """
-    regions = []
+    regions: list[MemoryRegion] = []
     address = 0
-    mbi = ctypes.c_ulonglong(0)
-    ctypes.sizeof(ctypes.c_ulonglong) * 7  # MEMORY_BASIC_INFORMATION64 size
     
     # MEMORY_BASIC_INFORMATION64 structure
     class MEMORY_BASIC_INFORMATION(ctypes.Structure):
@@ -233,7 +231,7 @@ def scan_memory(
         regions = enumerate_memory_regions(handle)
         logger.info(f"Scanning {len(regions)} regions in PID {pid}")
         
-        results = []
+        results: list[dict] = []
         for region in regions:
             if not is_readable_region(region.protect) or region.region_size > 100 * 1024 * 1024:
                 continue

@@ -56,25 +56,34 @@ try:
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    # Fallback: 创建 dummy 函数 (签名匹配，避免 mypy 错误)
+    # Fallback: 创建 dummy 函数（使用 type: ignore 避免签名不一致警告）
+    from opentelemetry.trace import Tracer as _Tracer, Span as _Span, StatusCode as _StatusCode
+    from opentelemetry import trace as _trace
 
-    def get_tracer() -> Any:
-        return None
-    def record_llm_success(provider: str, model: str, input_tokens: int, output_tokens: int, duration_ms: float) -> None:
+    def get_tracer() -> _Tracer:  # type: ignore[misc]
+        return _trace.NoOpTracer()
+
+    def record_llm_success(provider: str, model: str, input_tokens: int, output_tokens: int, duration_ms: float) -> None:  # type: ignore[misc]
         pass
-    def record_llm_error(provider: str, model: str, duration_ms: float, error_type: str) -> None:
+
+    def record_llm_error(provider: str, model: str, duration_ms: float, error_type: str) -> None:  # type: ignore[misc]
         pass
+
     def classify_error(error: Exception) -> str:
         return "api_error"
-    def record_llm_span_error(span: Any, error: Exception) -> str:
+
+    def record_llm_span_error(span: _Span, error: Exception) -> str:  # type: ignore[misc]
         return "api_error"
-    def set_llm_span_attributes(span: Any, model: str, provider: str, streaming: bool = False, input_tokens: Optional[int] = None, output_tokens: Optional[int] = None) -> None:
+
+    def set_llm_span_attributes(span: _Span, model: str, provider: str, streaming: bool = False, input_tokens: Optional[int] = None, output_tokens: Optional[int] = None) -> None:  # type: ignore[misc]
         pass
-    def add_fallback_event(span: Any, from_provider: str, to_provider: str, reason: str, attempt: int) -> None:
+
+    def add_fallback_event(span: _Span, from_provider: str, to_provider: str, reason: str, attempt: int) -> None:  # type: ignore[misc]
         pass
+
     SPAN_LLM_REQUEST = "seed.llm.request"
-    StatusCode = None  # type: ignore[misc,assignment]
-    trace = None  # type: ignore[misc,assignment]
+    StatusCode = _StatusCode  # type: ignore[misc,assignment]
+    trace = _trace  # type: ignore[misc,assignment]
 
 logger = logging.getLogger("seed_agent")
 
@@ -648,9 +657,12 @@ class LLMGateway:
         stream_func: Callable[[], AsyncGenerator[dict, None]]
     ) -> AsyncGenerator[dict, None]:
         """阶段 2-4: 获取信号量、限流并执行（流式）
-        
+
         注意：此方法现在是异步生成器，直接 yield 数据
         """
+        # 确保 semaphore 已初始化（mypy 类型窄化）
+        assert self._request_semaphore is not None
+
         async with self._request_semaphore:
             logger.debug(f"Ticket {ticket.id}: concurrent acquired (stream)")
 
@@ -940,7 +952,7 @@ class LLMGateway:
 
         response = await client.chat.completions.create(
             model=model_config.id,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
             max_tokens=model_config.maxTokens,
             **kwargs
         )
@@ -950,7 +962,7 @@ class LLMGateway:
         """判断是否应该继续重试"""
         return attempt < max_retries - 1
 
-    def _get_retry_wait_time(self, attempt: int, error: Exception = None) -> float:
+    def _get_retry_wait_time(self, attempt: int, error: Exception | None = None) -> float:
         """计算重试等待时间 (支持 Retry-After 头解析 + Jitter)"""
         
         # 1. Check for Retry-After header (common in 429 Rate Limit errors)
@@ -976,7 +988,7 @@ class LLMGateway:
         Returns:
             List of (fallback_provider, fallback_model_id) tuples
         """
-        fallbacks = []
+        fallbacks: list[tuple[str, str]] = []
         if not self._fallback_chain:
             return fallbacks
             
@@ -1082,6 +1094,9 @@ class LLMGateway:
 
     async def _stream_fallback_providers(self, model_id: str, messages: list[dict], span, active_provider: str, start_time: float, exclude_provider: str, **kwargs) -> AsyncGenerator[dict, None]:
         """流式 fallback providers 尝试"""
+        # 确保 fallback_chain 已初始化（mypy 类型窄化）
+        assert self._fallback_chain is not None
+
         for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, exclude_provider):
             if span:
                 add_fallback_event(
@@ -1141,7 +1156,7 @@ class LLMGateway:
 
         response = await client.chat.completions.create(
             model=model_config.id,
-            messages=messages,
+            messages=messages,  # type: ignore[arg-type]
             stream=True,
             max_tokens=model_config.maxTokens,
             **kwargs
@@ -1157,7 +1172,7 @@ class LLMGateway:
             try:
                 yield response.model_dump()
             except Exception:
-                yield str(response)
+                yield {"error": str(response)}  # type: ignore[misc]
             return
 
         async for chunk in stream:

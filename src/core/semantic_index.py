@@ -33,7 +33,7 @@ class TFIDFEncoder:
 
     def fit(self, texts: list[str]) -> "TFIDFEncoder":
         """Build vocabulary and compute IDF from documents."""
-        doc_freq = Counter()
+        doc_freq: Counter[str] = Counter()
         self._doc_count = len(texts)
 
         for text in texts:
@@ -138,8 +138,9 @@ class SemanticIndex:
         # Create FAISS index (Inner Product = cosine sim after L2 norm)
         if raw_dim <= self.dim:
             # Direct: use raw vectors (no dimension reduction needed)
-            self.index = faiss.IndexFlatIP(raw_dim)
-            self.index.add(all_vectors)
+            faiss_index = faiss.IndexFlatIP(raw_dim)
+            faiss_index.add(all_vectors)
+            self.index = faiss_index
             self._effective_dim = raw_dim
         else:
             # Project to target dimension using SVD
@@ -149,15 +150,17 @@ class SemanticIndex:
             n_components = min(self.dim, raw_dim - 1, n_samples - 1)
             n_components = max(1, n_components)
 
-            self.svd = TruncatedSVD(n_components=n_components, random_state=42)
-            reduced = self.svd.fit_transform(all_vectors).astype(np.float32)
+            svd_model = TruncatedSVD(n_components=n_components, random_state=42)
+            reduced = svd_model.fit_transform(all_vectors).astype(np.float32)
             # L2 normalize again after projection
             norms = np.linalg.norm(reduced, axis=1, keepdims=True)
             norms[norms == 0] = 1
             reduced = reduced / norms
 
-            self.index = faiss.IndexFlatIP(n_components)
-            self.index.add(reduced)
+            faiss_index = faiss.IndexFlatIP(n_components)
+            faiss_index.add(reduced)
+            self.index = faiss_index
+            self.svd = svd_model
             self._effective_dim = n_components
 
         self._built = True

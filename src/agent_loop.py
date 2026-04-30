@@ -44,16 +44,23 @@ try:
     _OBSERVABILITY_ENABLED = True
 except ImportError:
     _OBSERVABILITY_ENABLED = False
-    from typing import Any, Optional
-    def get_tracer() -> Any:
-        return None
-    def set_tool_span_attributes(span: Any, tool_name: str, file_path: Optional[str] = None, duration_ms: Optional[float] = None) -> None:
+    from typing import Any as _Any
+    from opentelemetry.trace import Tracer as _Tracer, Span as _Span, StatusCode as _StatusCode
+    from collections.abc import Callable as _Callable
+
+    def get_tracer() -> _Tracer:  # type: ignore[misc]
+        from opentelemetry.trace import NoOpTracer
+        return NoOpTracer()
+
+    def set_tool_span_attributes(span: _Span, tool_name: str, file_path: str | None = None, duration_ms: float | None = None) -> None:  # type: ignore[misc]
         pass
-    def traced(name: Optional[str] = None, attributes: Optional[dict] = None) -> Any:
+
+    def traced(name: str | None = None, attributes: dict[str, _Any] | None = None) -> _Callable[[_Any], _Any]:  # type: ignore[misc]
         return lambda f: f
+
     SPAN_SESSION = "seed.session"
     SPAN_TOOL_PREFIX = "seed.tool."
-    StatusCode = None  # type: ignore[misc,assignment]
+    StatusCode = _StatusCode  # type: ignore[misc,assignment]
 
 logger = logging.getLogger(__name__)
 
