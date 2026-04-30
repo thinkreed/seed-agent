@@ -557,20 +557,8 @@ class LLMGateway:
 
     # ==================== 三阶段等待执行 ====================
 
-    async def _execute_three_phase(
-        self,
-        model_id: str,
-        messages: List[Dict],
-        priority: RequestPriority,
-        **kwargs
-    ) -> Dict:
-        """三阶段等待执行（非流式）
-
-        阶段1：排队入场（request_turn + wait_for_turn）
-        阶段2：抢执行位置（semaphore）
-        阶段3：限流检查（rate_limiter）
-        阶段4：执行（execute with fallback）
-        """
+    async def _wait_for_turn_and_acquire(self, priority: RequestPriority) -> 'Ticket':
+        """阶段 1 & 2 & 3: 排队、等待、获取并发槽位和限流许可"""
         # 获取动态超时
         turn_timeout = self.get_dynamic_timeout(priority)
 
@@ -588,12 +576,19 @@ class LLMGateway:
             raise
 
         logger.debug(f"Ticket {ticket.id}: turn assigned (wait={ticket.get_wait_duration():.2f}s)")
+        return ticket
 
-        # 阶段2-4：执行（带 semaphore 和限流）
+    async def _execute_with_concurrency_and_rate_limit(
+        self,
+        ticket: 'Ticket',
+        priority: RequestPriority,
+        execution_func: callable,
+        is_stream: bool = False
+    ):
+        """阶段 2-4: 获取信号量、限流并执行"""
         async with self._request_semaphore:
-            logger.debug(f"Ticket {ticket.id}: concurrent acquired")
+            logger.debug(f"Ticket {ticket.id}: concurrent acquired{' (stream)' if is_stream else ''}")
 
-            # 活跃计数
             async with self._active_count_lock:
                 self._active_count += 1
 
@@ -609,47 +604,22 @@ class LLMGateway:
                             body=None
                         )
 
-                logger.debug(f"Ticket {ticket.id}: rate limit acquired")
+                logger.debug(f"Ticket {ticket.id}: rate limit acquired{' (stream)' if is_stream else ''}")
 
                 # 阶段4：执行
-                result = await self._chat_completion_with_fallback_internal(model_id, messages, **kwargs)
-                logger.debug(f"Ticket {ticket.id}: execution completed")
-                return result
+                return await execution_func()
 
             finally:
                 async with self._active_count_lock:
                     self._active_count -= 1
 
-    async def _stream_three_phase(
+    async def _stream_with_concurrency_and_rate_limit(
         self,
-        model_id: str,
-        messages: List[Dict],
+        ticket: 'Ticket',
         priority: RequestPriority,
-        **kwargs
+        stream_func: callable
     ) -> AsyncGenerator[Dict, None]:
-        """三阶段等待执行（流式）
-
-        返回 generator，由调用者迭代
-        """
-        # 获取动态超时
-        turn_timeout = self.get_dynamic_timeout(priority)
-
-        # 阶段1：排队入场
-        ticket = await self.request_turn(priority)
-        logger.debug(f"Ticket {ticket.id}: submitted (priority={priority.name}, stream=True)")
-
-        try:
-            await ticket.wait_for_turn(timeout=turn_timeout)
-        except TurnWaitTimeout as e:
-            logger.warning(f"Ticket {ticket.id}: turn wait timeout ({turn_timeout:.1f}s)")
-            raise
-        except asyncio.CancelledError:
-            logger.info(f"Ticket {ticket.id}: cancelled during turn wait")
-            raise
-
-        logger.debug(f"Ticket {ticket.id}: turn assigned (wait={ticket.get_wait_duration():.2f}s)")
-
-        # 阶段2-4：返回 generator（调度器不介入）
+        """阶段 2-4: 获取信号量、限流并执行（流式）"""
         async def actual_stream():
             async with self._request_semaphore:
                 logger.debug(f"Ticket {ticket.id}: concurrent acquired (stream)")
@@ -670,8 +640,7 @@ class LLMGateway:
 
                     logger.debug(f"Ticket {ticket.id}: rate limit acquired (stream)")
 
-                    async for chunk in self._stream_chat_completion_with_fallback_internal(
-                            model_id, messages, **kwargs):
+                    async for chunk in stream_func():
                         yield chunk
 
                     logger.debug(f"Ticket {ticket.id}: stream completed")
@@ -679,8 +648,42 @@ class LLMGateway:
                 finally:
                     async with self._active_count_lock:
                         self._active_count -= 1
-
+        
         return actual_stream()
+
+    async def _execute_three_phase(
+        self,
+        model_id: str,
+        messages: List[Dict],
+        priority: RequestPriority,
+        **kwargs
+    ) -> Dict:
+        """三阶段等待执行（非流式）"""
+        ticket = await self._wait_for_turn_and_acquire(priority)
+
+        async def _run():
+            return await self._chat_completion_with_fallback_internal(model_id, messages, **kwargs)
+
+        return await self._execute_with_concurrency_and_rate_limit(ticket, priority, _run)
+
+    async def _stream_three_phase(
+        self,
+        model_id: str,
+        messages: List[Dict],
+        priority: RequestPriority,
+        **kwargs
+    ) -> AsyncGenerator[Dict, None]:
+        """三阶段等待执行（流式）
+
+        返回 generator，由调用者迭代
+        """
+        ticket = await self._wait_for_turn_and_acquire(priority)
+
+        async def _stream():
+            async for chunk in self._stream_chat_completion_with_fallback_internal(model_id, messages, **kwargs):
+                yield chunk
+
+        return self._stream_with_concurrency_and_rate_limit(ticket, priority, _stream)
 
     # ==================== 核心聊天接口（TurnTicket 模式） ====================
 

@@ -164,6 +164,44 @@ def is_readable_region(protect: int) -> bool:
     return (protect & 0xFF) in readable_flags and not (protect & PAGE_GUARD)
 
 
+def _prepare_search_pattern(pattern: str, mode: str) -> Optional[bytes]:
+    """Convert pattern string to bytes based on mode."""
+    if mode == 'string':
+        return pattern.encode('utf-8', errors='ignore')
+    elif mode == 'hex':
+        try:
+            return bytes.fromhex(pattern.replace(' ', ''))
+        except ValueError:
+            logger.error(f"Invalid hex pattern: {pattern}")
+            return None
+    logger.error(f"Unknown mode: {mode}")
+    return None
+
+
+def _search_region(data: bytes, pattern: bytes, base_addr: int, max_results: int, results: List[Dict], type_name: str, size: int) -> bool:
+    """Search for pattern in data. Returns True if max_results reached."""
+    offset = 0
+    while len(results) < max_results:
+        idx = data.find(pattern, offset)
+        if idx == -1:
+            return False
+        
+        addr = base_addr + idx
+        ctx_start = max(0, idx - 16)
+        ctx_end = min(len(data), idx + len(pattern) + 16)
+        
+        results.append({
+            "address": addr,
+            "address_hex": f"0x{addr:016X}",
+            "matched": pattern.hex(),
+            "context_hex": data[ctx_start:ctx_end].hex(),
+            "region_size": size,
+            "region_type": type_name
+        })
+        offset = idx + 1
+    return True
+
+
 def scan_memory(
     pid: int,
     pattern: str,
@@ -171,33 +209,20 @@ def scan_memory(
     max_results: int = 10
 ) -> List[Dict]:
     """
-    扫描进程内存 - 真实实现
-    
-    遍历目标进程所有可读写内存区域，
-    搜索指定的字符串或十六进制模式。
+    扫描进程内存
     
     Args:
         pid: 目标进程 ID
         pattern: 搜索模式 (字符串或十六进制)
         mode: 'hex' 或 'string'
         max_results: 最大返回结果数
-    
-    Returns:
-        匹配结果列表 [{'address': int, 'context': bytes, 'matched': bytes}]
     """
     if sys.platform != 'win32':
-        logger.error("Memory scanning is currently Windows-only.")
+        logger.error("Memory scanning is Windows-only.")
         return []
     
-    # 准备搜索模式
-    if mode == 'string':
-        search_pattern = pattern.encode('utf-8', errors='ignore')
-    elif mode == 'hex':
-        # 十六进制字符串转 bytes (支持 "DE AD BE EF" 或 "DEADBEEF")
-        hex_str = pattern.replace(' ', '')
-        search_pattern = bytes.fromhex(hex_str)
-    else:
-        logger.error(f"Unknown mode: {mode}. Use 'hex' or 'string'.")
+    search_pattern = _prepare_search_pattern(pattern, mode)
+    if not search_pattern:
         return []
     
     handle = open_process(pid)
@@ -206,51 +231,25 @@ def scan_memory(
     
     try:
         regions = enumerate_memory_regions(handle)
-        logger.info(f"Scanning {len(regions)} memory regions in PID {pid}")
+        logger.info(f"Scanning {len(regions)} regions in PID {pid}")
         
         results = []
         for region in regions:
-            if not is_readable_region(region.protect):
+            if not is_readable_region(region.protect) or region.region_size > 100 * 1024 * 1024:
                 continue
-            
-            # 跳过过大区域 (防止超时)
-            if region.region_size > 100 * 1024 * 1024:  # 100MB
-                continue
-            
-            # 读取内存块
+                
             data = read_process_memory(handle, region.base_address, region.region_size)
             if not data:
                 continue
-            
-            # 搜索模式
-            offset = 0
-            while len(results) < max_results:
-                idx = data.find(search_pattern, offset)
-                if idx == -1:
-                    break
                 
-                # 记录匹配
-                start_addr = region.base_address + idx
-                context_start = max(0, idx - 16)
-                context_end = min(len(data), idx + len(search_pattern) + 16)
-                context = data[context_start:context_end]
-                
-                results.append({
-                    "address": start_addr,
-                    "address_hex": f"0x{start_addr:016X}",
-                    "matched": search_pattern.hex(),
-                    "context_hex": context.hex(),
-                    "region_size": region.region_size,
-                    "region_type": _region_type_name(region.type_)
-                })
-                
-                offset = idx + 1
+            if _search_region(data, search_pattern, region.base_address, max_results, results, 
+                             _region_type_name(region.type_), region.region_size):
+                break
         
-        logger.info(f"Scan complete: {len(results)} matches found")
+        logger.info(f"Found {len(results)} matches")
         return results
-
     except Exception as e:
-        logger.error(f"Memory scan error: {e}")
+        logger.error(f"Scan error: {e}")
         return []
     finally:
         close_process(handle)

@@ -23,7 +23,7 @@ import json
 import os
 import logging
 import time
-from typing import List, Dict, Optional, AsyncGenerator, Set
+from typing import List, Dict, Optional, AsyncGenerator, Set, Any
 from pathlib import Path
 from tools import ToolRegistry
 from tools.memory_tools import _save_session_history, _generate_session_filename, _record_skill_outcome
@@ -101,17 +101,28 @@ class AgentLoop:
         self._last_summary: Optional[str] = None  # 最近一次摘要
         self.session_id: str = session_id or _generate_session_filename()  # 当前会话ID
 
+        self._setup_internal_state()
+        self._setup_tools_and_skills()
+        self._setup_subsystems(system_prompt)
+        
+        self._encoding = self._get_tokenizer()
+
+    def _setup_internal_state(self):
+        """初始化内部状态与上下文管理"""
         # Memory Graph: Skill 执行跟踪
-        self._pending_skill_outcomes: List[Dict] = []  # 待评估的 skill 执行
+        self._pending_skill_outcomes: List[Dict] = []
         
         # Context Window Management
         self.context_window = self._get_model_context_window()
         self.context_usage_threshold = 0.75  # Trigger summary at 75% usage
 
-        # Context Token Cache: 缓存每条消息的 token 计数，避免重复编码
-        self._message_token_cache: List[int] = []  # 与 self.history 一一对应
+        # Context Token Cache
+        self._message_token_cache: List[int] = []
         self._system_prompt_tokens: int = 0
+        self._pending_user_input: Optional[str] = None
 
+    def _setup_tools_and_skills(self):
+        """注册工具并加载技能"""
         self.tools = ToolRegistry()
         from tools.builtin_tools import register_builtin_tools
         from tools.memory_tools import register_memory_tools
@@ -119,6 +130,7 @@ class AgentLoop:
         from scheduler import register_scheduler_tools
         from tools.ralph_tools import register_ralph_tools
         from tools.subagent_tools import register_subagent_tools, init_subagent_manager
+
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
         register_skill_tools(self.tools)
@@ -126,7 +138,14 @@ class AgentLoop:
         register_ralph_tools(self.tools)
         register_subagent_tools(self.tools)
 
+        # 加载 skills (渐进式披露: 仅注入索引)
+        self.skill_loader = SkillLoader()
+        self._available_tools: Optional[Set[str]] = None
+
+    def _setup_subsystems(self, system_prompt: str = None):
+        """初始化子系统（Subagent、调度器、Prompt）"""
         # 初始化 SubagentManager
+        from tools.subagent_tools import init_subagent_manager
         self.subagent_manager = SubagentManager(
             gateway=self.gateway,
             model_id=self.model_id,
@@ -134,20 +153,15 @@ class AgentLoop:
         init_subagent_manager(self.subagent_manager)
 
         # 初始化定时任务调度器
+        from scheduler import TaskScheduler
         self.scheduler = TaskScheduler(self)
 
-        # 加载 skills 并注入到 system prompt (渐进式披露: 仅注入索引)
-        self.skill_loader = SkillLoader()
-        self._available_tools: Optional[Set[str]] = None
+        # 构建 System Prompt
         skills_prompt = self.skill_loader.get_skills_prompt()
         if system_prompt:
             self.system_prompt = system_prompt + "\n\n" + skills_prompt
         else:
             self.system_prompt = skills_prompt
-
-        self._pending_user_input: Optional[str] = None
-
-        self._encoding = self._get_tokenizer()
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
@@ -202,32 +216,35 @@ class AgentLoop:
             tokens += self._encode_text(tc_text)
         return tokens
 
-    def _estimate_context_size(self) -> int:
-        """估算当前上下文的 Token 数量
-        
-        使用增量缓存：仅对新消息编码，已缓存的消息直接求和。
-        """
-        # 缓存 system prompt（仅首次或变化时）
-        if self._system_prompt_tokens == 0 and self.system_prompt:
+    def _rebuild_token_cache(self):
+        """重建 Token 缓存（用于历史截断后）"""
+        self._message_token_cache = []
+        self._system_prompt_tokens = 0
+        for msg in self.history:
+            self._message_token_cache.append(self._cache_message_tokens(msg))
+        if self.system_prompt:
             self._system_prompt_tokens = self._encode_text(self.system_prompt)
 
-        # 增量更新 token 缓存
+    def _update_message_token_cache(self):
+        """更新消息 Token 缓存（增量或全量重建）"""
         cache_len = len(self._message_token_cache)
         history_len = len(self.history)
         
         if cache_len < history_len:
-            # 有新消息，仅编码新增部分
+            # 增量：仅编码新增部分
             for msg in self.history[cache_len:]:
                 self._message_token_cache.append(self._cache_message_tokens(msg))
         elif cache_len > history_len:
-            # 历史被截断（如 summarize 后），重建缓存
-            self._message_token_cache = []
-            self._system_prompt_tokens = 0
-            for msg in self.history:
-                self._message_token_cache.append(self._cache_message_tokens(msg))
-            if self.system_prompt:
-                self._system_prompt_tokens = self._encode_text(self.system_prompt)
+            # 历史被截断：全量重建
+            self._rebuild_token_cache()
 
+    def _estimate_context_size(self) -> int:
+        """估算当前上下文的 Token 数量"""
+        # 缓存 system prompt（仅首次或变化时）
+        if self._system_prompt_tokens == 0 and self.system_prompt:
+            self._system_prompt_tokens = self._encode_text(self.system_prompt)
+
+        self._update_message_token_cache()
         return self._system_prompt_tokens + sum(self._message_token_cache)
 
     def _build_messages(self) -> List[Dict]:
@@ -238,12 +255,8 @@ class AgentLoop:
         messages.extend(self.history)
         return messages
 
-    async def _summarize_history(self) -> Optional[str]:
-        """使用 LLM 总结对话历史"""
-        if not self.history:
-            return None
-
-        # 格式化历史为文本
+    def _format_history_for_summary(self) -> str:
+        """将历史记录格式化为文本"""
         history_text = ""
         for msg in self.history:
             role = msg.get('role', 'unknown')
@@ -253,76 +266,121 @@ class AgentLoop:
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
             if content:
                 history_text += f"{role}: {content}\n"
+        return history_text.strip()
 
-        if not history_text.strip():
+    async def _summarize_history(self) -> Optional[str]:
+        """使用 LLM 总结对话历史"""
+        if not self.history:
             return None
 
-        # 调用 LLM 生成摘要
+        history_text = self._format_history_for_summary()
+        if not history_text:
+            return None
+
         prompt = self.SUMMARY_PROMPT.format(history=history_text)
         try:
             response = await self.gateway.chat_completion(
                 self.model_id,
                 [{"role": "user", "content": prompt}],
-                tools=None  # 摘要不需要工具
+                tools=None
             )
             summary = response['choices'][0]['message']['content']
             return summary.strip()
         except Exception:
             return None
 
-    async def _maybe_summarize(self):
-        """检查是否需要总结历史，并执行总结"""
-        # 无论是否达到总结间隔，都先保存会话历史到 L4
-        if self.history:
-            _save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
 
-        # Check if context window is getting full (Token-based)
+    def _should_summarize(self) -> tuple[bool, int]:
+        """检查是否需要总结
+        
+        Returns:
+            (should_summarize, estimated_tokens)
+        """
         estimated_tokens = self._estimate_context_size()
         token_threshold = self.context_window * self.context_usage_threshold
         is_context_full = estimated_tokens > token_threshold
-
-        # Or if conversation rounds exceed limit (Count-based)
         is_round_limit_reached = self._conversation_rounds >= self.summary_interval
+        return (is_context_full or is_round_limit_reached), estimated_tokens
 
-        if not is_context_full and not is_round_limit_reached:
+
+    async def _apply_summary(self, summary: str, is_context_full: bool):
+        """应用摘要并截断历史"""
+        # Save summary to metadata
+        _save_session_history([], summary=summary, session_id=self.session_id)
+
+        # Keep fewer messages if context is very full
+        keep_count = 2 if is_context_full else 4
+        preserved = self.history[-keep_count:] if len(self.history) > keep_count else self.history
+
+        # Replace history with summary + preserved messages
+        self.history = [
+            {"role": "user", "content": f"[System Note: 之前对话的摘要，作为当前上下文的参考]\n{summary}"}
+        ] + preserved
+
+        self._last_summary = summary
+        self._conversation_rounds = 0
+    async def _maybe_summarize(self):
+        """检查是否需要总结历史并执行总结"""
+        # Save current history to L4 session archive
+        if self.history:
+            _save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
+
+        # Check if summary is needed
+        needs_summary, estimated_tokens, is_context_full = self._should_summarize()
+        if not needs_summary:
             return
 
         logger.info(
             f"Summary triggered: context_tokens={estimated_tokens}/{self.context_window} "
-            f"(threshold={token_threshold}), rounds={self._conversation_rounds}/{self.summary_interval}"
+            f"(threshold={self.context_window * self.context_usage_threshold}), "
+            f"rounds={self._conversation_rounds}/{self.summary_interval}"
         )
 
-        # 生成摘要
+        # Generate summary
         summary = await self._summarize_history()
         if not summary:
             return
 
-        # 更新元数据中的摘要
-        _save_session_history([], summary=summary, session_id=self.session_id)
+        # Apply summary and truncate history
+        await self._apply_summary(summary, is_context_full)
 
-        # 保留最近 2 轮对话 + 摘要 (or fewer if context is critical)
-        # If context is very full, keep less history
-        keep_count = 4 if not is_context_full else 2 
+    async def _process_run_response(self, response: Dict, iteration: int) -> tuple[str, int, bool]:
+        """处理 LLM 响应并执行相应动作
         
-        # 确保保留的部分是完整的 (user + assistant + tool_calls/results)
-        # 简单切片，保留最后 keep_count 条
-        preserved = self.history[-keep_count:] if len(self.history) > keep_count else self.history
+        Returns:
+            (next_input, new_iteration, should_return)
+        """
+        choice = response['choices'][0]
+        message = choice['message']
+        self.history.append(message)
 
-        # 用摘要替换旧历史 (使用 user role 避免双重 system message 问题)
-        self.history = [
-            {"role": "user", "content": f"[System Note: 以下是之前对话的摘要，请作为当前任务的背景参考]\n{summary}"}
-        ] + preserved
+        if message.get('tool_calls'):
+            tool_results = await self._execute_tool_calls(message['tool_calls'])
+            self.history.extend(tool_results)
+            return None, iteration, False  # Continue loop
+        else:
+            # 对话完成，检查是否需要总结
+            await self._maybe_summarize()
+            # Memory Graph: 评估并记录 Skill 执行结果
+            self._evaluate_and_record_skill_outcomes(final_success=True)
+            return message.get('content', ''), iteration, True  # Return response
 
-        self._last_summary = summary
-        self._conversation_rounds = 0  # 重置计数
+    async def _handle_pending_input(self) -> bool:
+        """处理中断/新输入
+        
+        Returns:
+            True if a new input was handled (reset iteration), False otherwise.
+        """
+        if self._pending_user_input:
+            new_input = self._pending_user_input
+            self._pending_user_input = None
+            self.history.append({"role": "user", "content": new_input})
+            self._conversation_rounds += 1
+            return True
+        return False
 
     async def run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> str:
-        """处理用户输入,返回最终响应
-        
-        Args:
-            user_input: 用户输入文本
-            priority: 请求优先级，默认 CRITICAL（用户请求最高优先级）
-        """
+        """处理用户输入,返回最终响应"""
         self.history.append({"role": "user", "content": user_input})
         self._conversation_rounds += 1
 
@@ -330,34 +388,22 @@ class AgentLoop:
         while iteration < self.max_iterations:
             iteration += 1
 
-            if self._pending_user_input:
-                new_input = self._pending_user_input
-                self._pending_user_input = None
-                self.history.append({"role": "user", "content": new_input})
-                self._conversation_rounds += 1
+            # 处理中断/新输入
+            if await self._handle_pending_input():
                 iteration = 0
+                continue
 
             messages = self._build_messages()
             response = await self.gateway.chat_completion(
                 self.model_id,
                 messages,
-                priority=priority,  # 使用传入的优先级
+                priority=priority,
                 tools=self.tools.get_schemas()
             )
 
-            choice = response['choices'][0]
-            message = choice['message']
-            self.history.append(message)
-
-            if message.get('tool_calls'):
-                tool_results = await self._execute_tool_calls(message['tool_calls'])
-                self.history.extend(tool_results)
-            else:
-                # 对话完成，检查是否需要总结
-                await self._maybe_summarize()
-                # Memory Graph: 评估并记录 Skill 执行结果
-                self._evaluate_and_record_skill_outcomes(final_success=True)
-                return message.get('content', '')
+            final_response, iteration, should_return = await self._process_run_response(response, iteration)
+            if should_return:
+                return final_response
 
         raise MaxIterationsExceeded(
             f"Agent exceeded maximum iterations ({self.max_iterations})"
@@ -398,15 +444,20 @@ class AgentLoop:
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
+
+            # 处理中断/新输入
+            if await self._handle_pending_input():
+                iteration = 0
+                continue
+
             messages = self._build_messages()
+
+            # 流式调用 LLM 并 yield 内容
             full_content = ""
             tool_calls_accumulator: Dict[int, Dict] = {}
 
             async for chunk in self.gateway.stream_chat_completion(
-                self.model_id,
-                messages,
-                priority=priority,
-                tools=self.tools.get_schemas()
+                self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
             ):
                 delta = chunk['choices'][0].get('delta', {})
                 content = delta.get('content')
@@ -418,11 +469,13 @@ class AgentLoop:
                 if tc_list:
                     self._process_tool_delta(tc_list, tool_calls_accumulator)
 
+            # 累积工具调用
             tool_calls = (
                 [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
                 if tool_calls_accumulator else []
             )
 
+            # 记录历史
             self.history.append({
                 "role": "assistant",
                 "content": full_content or None,
@@ -430,13 +483,89 @@ class AgentLoop:
             })
 
             if tool_calls:
-                yield {"type": "tool_call", "calls": tool_calls}
+                # 执行工具调用并继续循环
                 tool_results = await self._execute_tool_calls(tool_calls)
                 self.history.extend(tool_results)
+                # 继续下一轮迭代
             else:
-                async for final_chunk in self._process_final_completion(full_content):
-                    yield final_chunk
+                # 对话完成
+                await self._maybe_summarize()
+                self._evaluate_and_record_skill_outcomes(final_success=True)
+                yield {"type": "final", "content": full_content}
                 return
+
+        raise MaxIterationsExceeded(
+            f"Agent exceeded maximum iterations ({self.max_iterations})"
+        )
+
+    async def _process_stream_iteration(self, priority: int) -> bool:
+        """执行流式循环的单次迭代"""
+        messages = self._build_messages()
+        full_content, tool_calls = await self._consume_stream_response(messages, priority)
+        return await self._handle_iteration_result(full_content, tool_calls)
+
+    async def _consume_stream_response(self, messages: List[Dict], priority: int) -> tuple[str, List[Dict]]:
+        """流式消费 LLM 响应并累积内容/工具调用"""
+        full_content = ""
+        tool_calls_accumulator: Dict[int, Dict] = {}
+
+        async for chunk in self.gateway.stream_chat_completion(
+            self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
+        ):
+            delta = chunk['choices'][0].get('delta', {})
+            content = delta.get('content')
+            if content:
+                full_content += content
+
+            tc_list = delta.get('tool_calls')
+            if tc_list:
+                self._process_tool_delta(tc_list, tool_calls_accumulator)
+        
+        tool_calls = [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
+        return full_content, tool_calls
+
+    async def _handle_iteration_result(self, full_content: str, tool_calls: List[Dict]) -> bool:
+        """处理迭代结果（记录历史、执行工具或完成对话）"""
+        self.history.append({
+            "role": "assistant",
+            "content": full_content or None,
+            "tool_calls": tool_calls if tool_calls else None
+        })
+
+        if tool_calls:
+            tool_results = await self._execute_tool_calls(tool_calls)
+            self.history.extend(tool_results)
+            return False  # Continue loop
+        else:
+            return True  # Stop loop
+
+    async def _stream_and_accumulate_response(self, messages: List[Dict], priority: int):
+        """流式调用 LLM 并累积内容/工具调用"""
+        full_content = ""
+        tool_calls_accumulator: Dict[int, Dict] = {}
+
+        async for chunk in self.gateway.stream_chat_completion(
+            self.model_id,
+            messages,
+            priority=priority,
+            tools=self.tools.get_schemas()
+        ):
+            delta = chunk['choices'][0].get('delta', {})
+            content = delta.get('content')
+            if content:
+                full_content += content
+                yield {"type": "chunk", "content": content}
+
+            tc_list = delta.get('tool_calls')
+            if tc_list:
+                self._process_tool_delta(tc_list, tool_calls_accumulator)
+        
+        # Yield the accumulated result at the end
+        tool_calls = (
+            [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
+            if tool_calls_accumulator else []
+        )
+        yield {"type": "final_result", "content": full_content, "tool_calls": tool_calls}
 
     def _check_write_conflicts(self, tool_calls: List[Dict]) -> Optional[List[Dict]]:
         """检查写工具调用的路径重叠，防止并发冲突。
@@ -460,69 +589,83 @@ class AgentLoop:
                     pass
         return None
 
+    def _parse_tool_args(self, raw_args: Any, tool_name: str) -> Dict:
+        """鲁棒地解析工具参数"""
+        try:
+            if isinstance(raw_args, str):
+                raw_args = raw_args.strip()
+                args = json.loads(raw_args) if raw_args else {}
+            else:
+                args = raw_args if raw_args else {}
+            return args if isinstance(args, dict) else {}
+        except (json.JSONDecodeError, TypeError, ValueError):
+            logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
+            return {}
+
+    def _record_load_skill_outcome(self, tool_args: Dict, tool_id: str, result: str, failed: bool = False):
+        """记录 load_skill 的执行结果到 Memory Graph"""
+        self._pending_skill_outcomes.append({
+            'skill_name': tool_args.get('name', ''),
+            'tool_call_id': tool_id,
+            'result': result,
+            'signals': self._extract_signals_from_context(),
+            **({'failed': True} if failed else {})
+        })
+
     async def _run_single_tool_call(self, tool_call: Dict) -> Dict:
         """执行单个工具调用，包含追踪和记录逻辑"""
         tool_id = tool_call['id']
         tool_name = tool_call['function']['name']
-        raw_args = tool_call['function']['arguments']
+        tool_args = self._parse_tool_args(tool_call['function']['arguments'], tool_name)
 
-        # 鲁棒的 JSON 解析
-        try:
-            if isinstance(raw_args, str):
-                raw_args = raw_args.strip()
-                tool_args = json.loads(raw_args) if raw_args else {}
-            else:
-                tool_args = raw_args if raw_args else {}
-            if not isinstance(tool_args, dict):
-                tool_args = {}
-        except (json.JSONDecodeError, TypeError, ValueError):
-            logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
-            tool_args = {}
-
-        # OpenTelemetry Span 创建
-        tracer = get_tracer()
-        span = None
+        span = self._start_tool_span(tool_name, tool_args)
         start_time = time.time()
-        if tracer and _OBSERVABILITY_ENABLED:
-            span = tracer.start_span(f"{SPAN_TOOL_PREFIX}{tool_name}")
-            set_tool_span_attributes(span, tool_name, file_path=tool_args.get('path', ''))
-
+        
         try:
             result = await self.tools.execute(tool_name, **tool_args)
-            duration_ms = (time.time() - start_time) * 1000
-            if span:
-                span.set_attribute("seed.tool.duration_ms", duration_ms)
-                span.set_status(StatusCode.OK)
-
+            self._finish_tool_span(span, start_time, success=True)
+            
             # Memory Graph 跟踪
-            if tool_name == 'load_skill':
-                self._pending_skill_outcomes.append({
-                    'skill_name': tool_args.get('name', ''),
-                    'tool_call_id': tool_id,
-                    'result': result,
-                    'signals': self._extract_signals_from_context()
-                })
+            self._record_load_skill_if_needed(tool_name, tool_args, tool_id, str(result), failed=False)
 
             return {"role": "tool", "tool_call_id": tool_id, "content": str(result)}
 
         except Exception as e:
-            if span:
-                span.record_exception(e)
-                span.set_attribute("seed.error.message", str(e)[:500])
-                span.set_status(StatusCode.ERROR, str(e)[:200])
-
-            if tool_name == 'load_skill':
-                self._pending_skill_outcomes.append({
-                    'skill_name': tool_args.get('name', ''),
-                    'tool_call_id': tool_id,
-                    'result': f"Error: {str(e)}",
-                    'signals': self._extract_signals_from_context(),
-                    'failed': True
-                })
+            self._finish_tool_span(span, start_time, success=False, error=e)
+            
+            # Memory Graph 跟踪 (失败情况)
+            self._record_load_skill_if_needed(tool_name, tool_args, tool_id, f"Error: {str(e)}", failed=True)
             return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {str(e)}"}
-        finally:
-            if span:
-                span.end()
+
+    def _record_load_skill_if_needed(self, tool_name: str, tool_args: Dict, tool_id: str, content: str, failed: bool):
+        """如果是 load_skill 调用，记录其结果到 Memory Graph"""
+        if tool_name == 'load_skill':
+            self._record_load_skill_outcome(tool_args, tool_id, content, failed)
+
+    def _start_tool_span(self, tool_name: str, tool_args: Dict):
+        """创建 OpenTelemetry Span"""
+        tracer = get_tracer()
+        if not (tracer and _OBSERVABILITY_ENABLED):
+            return None
+        
+        span = tracer.start_span(f"{SPAN_TOOL_PREFIX}{tool_name}")
+        set_tool_span_attributes(span, tool_name, file_path=tool_args.get('path', ''))
+        return span
+
+    def _finish_tool_span(self, span, start_time: float, success: bool, error: Exception = None):
+        """完成 Span 并记录指标"""
+        if not span:
+            return
+            
+        duration_ms = (time.time() - start_time) * 1000
+        if success:
+            span.set_attribute("seed.tool.duration_ms", duration_ms)
+            span.set_status(StatusCode.OK)
+        else:
+            span.record_exception(error)
+            span.set_attribute("seed.error.message", str(error)[:500])
+            span.set_status(StatusCode.ERROR, str(error)[:200])
+        span.end()
 
     async def _execute_tool_calls(self, tool_calls: List[Dict]) -> List[Dict]:
         """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
@@ -545,39 +688,43 @@ class AgentLoop:
                 signals.extend(words)
         return signals[:10]  # 最大 10 个信号
 
+    def _evaluate_skill_outcome(self, result: str, failed: bool, final_success: bool) -> tuple[str, float]:
+        """评估单个 Skill 的执行结果
+        
+        Returns:
+            (outcome, score): e.g., ('success', 1.0), ('failed', 0.0)
+        """
+        result_str = str(result)
+        if failed or 'Error' in result_str or 'not found' in result_str.lower():
+            return 'failed', 0.0
+        elif 'Security Warning' in result_str:
+            return 'partial', 0.5
+        else:
+            return 'success', 1.0 if final_success else 0.8
+
     def _evaluate_and_record_skill_outcomes(self, final_success: bool = True):
         """评估并记录待处理的 Skill 执行结果"""
         for pending in self._pending_skill_outcomes:
             skill_name = pending.get('skill_name')
-            result = pending.get('result', '')
-            signals = pending.get('signals', [])
-            failed = pending.get('failed', False)
+            if not skill_name:
+                continue
 
-            # 简化评估：根据是否有错误判断成功/失败
-            if failed or 'Error' in str(result) or 'not found' in str(result).lower():
-                outcome = 'failed'
-                score = 0.0
-            elif 'Security Warning' in str(result):
-                outcome = 'partial'
-                score = 0.5
-            else:
-                outcome = 'success'
-                score = 1.0 if final_success else 0.8
+            try:
+                outcome, score = self._evaluate_skill_outcome(
+                    pending.get('result', ''), 
+                    pending.get('failed', False), 
+                    final_success
+                )
+                _record_skill_outcome(
+                    skill_name=skill_name,
+                    outcome=outcome,
+                    score=score,
+                    signals=pending.get('signals', []),
+                    session_id=self.session_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record skill outcome: {e}")
 
-            # 记录结果
-            if skill_name:
-                try:
-                    _record_skill_outcome(
-                        skill_name=skill_name,
-                        outcome=outcome,
-                        score=score,
-                        signals=signals,
-                        session_id=self.session_id
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to record skill outcome: {e}")
-
-        # 清空待处理列表
         self._pending_skill_outcomes.clear()
 
     def clear_history(self, save_current: bool = True):

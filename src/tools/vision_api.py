@@ -131,6 +131,46 @@ async def analyze_image_async(
         return f"Error: {error_msg}"
 
 
+# ================= 模型配置 =================
+VISION_MODEL = os.getenv("VISION_MODEL", "bailian/qwen3.6-plus")
+MAX_PIXELS = 1_440_000
+DEFAULT_CONFIG_PATH = os.path.join(Path.home(), ".seed", "config.json")
+
+MODEL_MAP = {
+    "claude": "anthropic/claude-3-5-sonnet-20241022",
+    "openai": "openai/gpt-4o",
+    "dashscope": "bailian/qwen3.6-plus",
+}
+
+
+def _load_image(image) -> tuple:
+    """Load image from path or return as-is. Returns (image, error)."""
+    if isinstance(image, str):
+        if not HAS_PIL:
+            return None, "Error: Pillow not installed"
+        try:
+            return Image.open(image), None
+        except Exception as e:
+            return None, f"Error loading image: {e}"
+    return image, None
+
+
+def _resolve_vision_model(backend: str) -> str:
+    """Map backend name to model ID."""
+    return MODEL_MAP.get(backend.lower(), VISION_MODEL)
+
+
+def _build_vision_messages(b64_img: str, prompt: str) -> list:
+    """Build OpenAI-compatible multimodal messages."""
+    return [{
+        "role": "user",
+        "content": [
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}", "detail": "auto"}},
+            {"type": "text", "text": prompt}
+        ]
+    }]
+
+
 def ask_vision(
     image,
     prompt: str = "Describe this image",
@@ -151,69 +191,29 @@ def ask_vision(
     Returns:
         分析结果文本
     """
-    # 加载图像
-    if isinstance(image, str):
-        if not HAS_PIL:
-            return "Error: Pillow not installed"
-        try:
-            image = Image.open(image)
-        except Exception as e:
-            return f"Error loading image: {e}"
+    img, err = _load_image(image)
+    if err:
+        return err
 
-    # 缩放处理
-    w, h = image.size
-    if w * h > max_pixels:
-        ratio = (max_pixels / (w * h)) ** 0.5
-        new_w = int(w * ratio)
-        new_h = int(h * ratio)
-        image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-    # 在同步上下文中运行异步调用
-    b64_img = image_to_base64(image)
-    
-    # 映射后端到模型 ID
-    model_map = {
-        "claude": "anthropic/claude-3-5-sonnet-20241022",
-        "openai": "openai/gpt-4o",
-        "dashscope": "bailian/qwen3.6-plus",
-    }
-    model_id = model_map.get(backend.lower(), VISION_MODEL)
-
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{b64_img}",
-                        "detail": "auto"
-                    }
-                },
-                {"type": "text", "text": prompt}
-            ]
-        }
-    ]
+    img = _resize_if_needed(img, max_pixels)
+    b64_img = image_to_base64(img)
+    model_id = _resolve_vision_model(backend)
+    messages = _build_vision_messages(b64_img, prompt)
 
     try:
         import asyncio
         from client import LLMGateway, RequestPriority
 
-        cfg_path = DEFAULT_CONFIG_PATH
-        if not os.path.exists(cfg_path):
-            return f"Error: Config not found at {cfg_path}"
+        if not os.path.exists(DEFAULT_CONFIG_PATH):
+            return f"Error: Config not found at {DEFAULT_CONFIG_PATH}"
 
-        gateway = LLMGateway(cfg_path)
-        
+        gateway = LLMGateway(DEFAULT_CONFIG_PATH)
         loop = asyncio.new_event_loop()
         try:
             result = loop.run_until_complete(
                 gateway.chat_completion(
-                    model_id=model_id,
-                    messages=messages,
-                    priority=RequestPriority.HIGH,
-                    max_tokens=2048,
-                    timeout=timeout
+                    model_id=model_id, messages=messages,
+                    priority=RequestPriority.HIGH, max_tokens=2048, timeout=timeout
                 )
             )
             return result.get("content", "No content returned")

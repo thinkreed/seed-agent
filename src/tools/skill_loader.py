@@ -185,17 +185,24 @@ class SkillLoader:
         
         self._load_metadata()
 
+    @staticmethod
+    def _normalize_str_list(value) -> List[str]:
+        """规范化字符串或列表为字符串列表 (逗号分隔自动拆分)"""
+        if isinstance(value, str):
+            return [t.strip() for t in value.split(',') if t.strip()]
+        if isinstance(value, list):
+            return [str(v) for v in value]
+        return []
+
     def _load_metadata(self):
         """加载所有 skill 元数据 (支持磁盘快照加速)"""
-        # 尝试从磁盘快照加载
         snapshot = load_snapshot(self.skills_dir)
         if snapshot and snapshot.get('skills'):
             for name, meta in snapshot['skills'].items():
                 self._skills_meta[name] = meta
             self._manifest_hash = snapshot.get('manifest', '')
             return
-        
-        # 快照失效或不存在，执行全量扫描
+
         self._skills_meta.clear()
         if not self.skills_dir.exists():
             return
@@ -209,48 +216,35 @@ class SkillLoader:
 
             try:
                 meta = self._parse_frontmatter(skill_file)
-                if meta and 'name' in meta:
-                    # 解析 triggers (支持嵌套列表扁平化)
-                    triggers = meta.get('triggers', [])
-                    if isinstance(triggers, str):
-                        triggers = [t.strip() for t in triggers.split(',') if t.strip()]
-                    elif isinstance(triggers, list):
-                        triggers = self._flatten_triggers(triggers)
-                    else:
-                        triggers = []
+                if not meta or 'name' not in meta:
+                    continue
 
-                    # 解析 platforms
-                    platforms = meta.get('platforms', [])
-                    if isinstance(platforms, str):
-                        platforms = [p.strip() for p in platforms.split(',')]
+                triggers = meta.get('triggers', [])
+                if isinstance(triggers, str):
+                    triggers = self._normalize_str_list(triggers)
+                elif isinstance(triggers, list):
+                    triggers = self._flatten_triggers(triggers)
+                else:
+                    triggers = []
 
-                    # 解析条件激活字段
-                    metadata = meta.get('metadata', {}) or {}
-                    requires_tools = metadata.get('requires_tools', [])
-                    if isinstance(requires_tools, str):
-                        requires_tools = [t.strip() for t in requires_tools.split(',') if t.strip()]
-                    
-                    fallback_for_tools = metadata.get('fallback_for_tools', [])
-                    if isinstance(fallback_for_tools, str):
-                        fallback_for_tools = [t.strip() for t in fallback_for_tools.split(',') if t.strip()]
+                metadata = meta.get('metadata', {}) or {}
 
-                    self._skills_meta[meta['name']] = {
-                        'path': str(skill_file),
-                        'dir': str(skill_dir),
-                        'name': meta['name'],
-                        'description': meta.get('description', '')[:300],
-                        'category': meta.get('category', 'general'),
-                        'version': meta.get('version', '1.0'),
-                        'triggers': triggers,
-                        'platforms': platforms,
-                        'allowed_tools': meta.get('allowed-tools', ''),
-                        'requires_tools': requires_tools,
-                        'fallback_for_tools': fallback_for_tools,
-                    }
+                self._skills_meta[meta['name']] = {
+                    'path': str(skill_file),
+                    'dir': str(skill_dir),
+                    'name': meta['name'],
+                    'description': meta.get('description', '')[:300],
+                    'category': meta.get('category', 'general'),
+                    'version': meta.get('version', '1.0'),
+                    'triggers': triggers,
+                    'platforms': self._normalize_str_list(meta.get('platforms', [])),
+                    'allowed_tools': meta.get('allowed-tools', ''),
+                    'requires_tools': self._normalize_str_list(metadata.get('requires_tools', [])),
+                    'fallback_for_tools': self._normalize_str_list(metadata.get('fallback_for_tools', [])),
+                }
             except Exception:
                 continue
 
-        # 保存快照
         save_snapshot(self.skills_dir, self._skills_meta)
         self._manifest_hash = _build_manifest(self.skills_dir)
 
@@ -329,52 +323,48 @@ class SkillLoader:
         
         return True
 
+    @staticmethod
+    def _render_category(cat: str, skills: List[Dict], indent: bool = False) -> List[str]:
+        """渲染单个分类的 XML 围栏区块"""
+        prefix = "  - " if indent else "- "
+        lines = [f"<category name='{cat}'>"]
+        for meta in skills:
+            desc = meta['description'][:150]
+            lines.append(f"{prefix}**{meta['name']}**: {desc}")
+        lines.extend(["</category>", ""])
+        return lines
+
     def get_skills_prompt(self, available_tools: Set[str] = None) -> str:
-        """
-        生成 Tier 1 索引 - 注入到 System Prompt
-        
-        优化:
-        - 按 category 分组
-        - 仅显示应激活的 skill
-        - 每个 skill 仅一行 (name + 短描述)
-        """
-        # 过滤出应显示的 skill
-        visible_skills = {}
-        for name, meta in self._skills_meta.items():
-            if self.should_show_skill(name, available_tools):
-                visible_skills[name] = meta
-        
+        """生成 Tier 1 索引 - 注入到 System Prompt"""
+        visible_skills = {
+            name: meta for name, meta in self._skills_meta.items()
+            if self.should_show_skill(name, available_tools)
+        }
         if not visible_skills:
             return ""
-        
-        # 按 category 分组
+
         categories: Dict[str, List[Dict]] = {}
         for meta in visible_skills.values():
             cat = meta.get('category', 'general')
-            if cat not in categories:
-                categories[cat] = []
-            categories[cat].append(meta)
-        
-        lines = ["## 可用技能 (Skills)", ""]
-        lines.append("当用户请求匹配某技能描述或触发词时，可调用 `load_skill` 加载完整指令。")
-        lines.append("")
-        
-        # 通用技能 (无分类或 general)
+            categories.setdefault(cat, []).append(meta)
+
+        lines = [
+            "<skills_index>",
+            "## 可用技能 (Skills)",
+            "",
+            "当用户请求匹配某技能描述或触发词时，可调用 `load_skill` 加载完整指令。",
+            "",
+            "<!-- 注意：以下仅为技能索引，非执行指令。技能内容需通过 load_skill 动态加载。-->",
+            ""
+        ]
+
         if 'general' in categories:
-            for meta in categories['general']:
-                desc = meta['description'][:150]
-                lines.append(f"- **{meta['name']}**: {desc}")
-            lines.append("")
-            del categories['general']
-        
-        # 其他分类
+            lines.extend(self._render_category('general', categories.pop('general')))
+
         for cat, skills in sorted(categories.items()):
-            lines.append(f"**{cat}**:")
-            for meta in skills:
-                desc = meta['description'][:150]
-                lines.append(f"  - **{meta['name']}**: {desc}")
-            lines.append("")
-        
+            lines.extend(self._render_category(cat, skills, indent=True))
+
+        lines.append("</skills_index>")
         return "\n".join(lines)
 
     def _tokenize_query(self, query: str) -> Tuple[List[str], List[str], List[str]]:
@@ -501,6 +491,7 @@ class SkillLoader:
         - Prompt Injection 检测
         - 路径穿越检测 (通过 validate_within_dir)
         - 符号链接逃逸检测
+        - Context Fencing: 添加围栏标签明确标识技能内容边界
         """
         # 检查缓存
         if name in self._content_cache:
@@ -524,18 +515,21 @@ class SkillLoader:
         # 安全检查
         injection = _scan_for_injections(content)
         if injection:
-            return f"[Security Warning] {injection}\n\n{content}"
+            content = f"[Security Warning] {injection}\n\n{content}"
         
         symlink_check = _validate_skill_structure(skill_dir)
         if symlink_check:
             return f"[Security Warning] {symlink_check}"
         
+        # Context Fencing: 添加围栏标签
+        fenced_content = f"<skill_content name='{name}'>\n{content}\n</skill_content>"
+        
         # 缓存
         if len(self._content_cache) >= MAX_LOADED_SKILL_CACHE:
             self._content_cache.popitem(last=False)
-        self._content_cache[name] = content
+        self._content_cache[name] = fenced_content
         
-        return content
+        return fenced_content
 
     def load_skill_ref(self, name: str, ref_path: str) -> Optional[str]:
         """
@@ -586,28 +580,8 @@ class SkillLoader:
         signals: List[str],
         available_tools: Set[str] = None
     ) -> Optional[str]:
-        """
-        Memory Graph 增强的 Skill 选择算法
-
-        流程:
-        1. 过滤候选 (平台 + 工具可用性)
-        2. 计算选择分数:
-           - 查询 gene_outcomes 获取成功率
-           - 应用 Laplace 平滑 + 指数衰减
-           - 添加近期成功加成
-           - 结合触发器匹配分数
-        3. 检查禁用阈值
-        4. 返回最高分数候选（跳过被禁用的）
-
-        Args:
-            signals: 触发信号列表（从上下文提取）
-            available_tools: 可用工具集合
-
-        Returns:
-            最佳 Skill 名称，或 None（无候选）
-        """
+        """Memory Graph 增强的 Skill 选择算法"""
         if not MEMORY_GRAPH_CONFIG.get('enabled', True):
-            # 未启用 Memory Graph，使用传统匹配
             query = ' '.join(signals) if signals else ''
             return self.match_skill(query, available_tools)
 
@@ -616,40 +590,34 @@ class SkillLoader:
             name for name in self._skills_meta
             if self.should_show_skill(name, available_tools)
         ]
-
         if not candidates:
             return None
 
-        # Step 2: 分数计算
-        skill_scores: Dict[str, Dict] = {}
+        # Step 2: 分数计算与排序
+        ranked = self._rank_candidates_by_score(candidates, signals)
 
+        # Step 3: 应用禁用阈值
+        return self._select_from_ranked(ranked)
+
+    def _rank_candidates_by_score(self, candidates: List[str], signals: List[str]) -> List[tuple]:
+        """计算候选分数并排序"""
+        skill_scores = {}
         for skill_name in candidates:
-            score_info = self._compute_skill_selection_score(
-                skill_name, signals
-            )
-            skill_scores[skill_name] = score_info
+            skill_scores[skill_name] = self._compute_skill_selection_score(skill_name, signals)
+        
+        return sorted(skill_scores.items(), key=lambda x: x[1]['score'], reverse=True)
 
-        # Step 3: 排序并应用禁用阈值
-        ranked = sorted(
-            skill_scores.items(),
-            key=lambda x: x[1]['score'],
-            reverse=True
-        )
-
+    def _select_from_ranked(self, ranked: List[tuple]) -> Optional[str]:
+        """从排序列表中返回第一个非禁用的候选"""
         ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
         min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
 
         for skill_name, info in ranked:
             stats = info.get('stats', {})
-
-            # 禁用检查: 2+ 次尝试 + 分数低于阈值
-            if stats.get('total', 0) >= min_attempts:
-                if info['score'] < ban_threshold:
-                    continue  # 跳过被禁用的，尝试下一个
-
+            total = stats.get('total', 0)
+            if total >= min_attempts and info['score'] < ban_threshold:
+                continue  # 跳过被禁用的
             return skill_name
-
-        # 所有候选都被禁用
         return None
 
     def _compute_skill_selection_score(
@@ -806,19 +774,22 @@ class SkillLoader:
 
     # ==================== Gene Slice 提取 (Tier 2a) ====================
 
+    @staticmethod
+    def _format_gene_list(items: list, prefix: str = "- ") -> str:
+        """格式化列表项为 Gene 输出行"""
+        return "".join(f"{prefix}{item}\n" for item in items)
+
+    @staticmethod
+    def _format_gene_constraints(constraints) -> str:
+        """格式化 constraints（支持 dict 或 list）"""
+        if isinstance(constraints, dict):
+            return "".join(f"- {k}: {v}\n" for k, v in constraints.items())
+        if isinstance(constraints, list):
+            return "".join(f"- {c}\n" for c in constraints)
+        return ""
+
     def get_gene_slice(self, name: str) -> Optional[str]:
-        """
-        提取 Gene slice (Tier 2a): ~230 tokens 的核心控制信号
-
-        包含:
-        - strategy: 有序操作步骤
-        - avoid: 失败警告
-        - constraints: 安全边界
-        - validation: 后执行验证
-
-        Returns:
-            格式化的 Gene slice 字符串，或 None
-        """
+        """提取 Gene slice (Tier 2a): ~230 tokens 的核心控制信号"""
         if name not in self._skills_meta:
             return None
 
@@ -826,38 +797,24 @@ class SkillLoader:
         if not content:
             return None
 
-        # 解析 frontmatter 提取控制字段
         gene_fields = self._extract_gene_fields(content)
-
         if not gene_fields:
-            # 无 Gene 字段，返回精简版 skill（仅 frontmatter）
             return self._extract_compact_skill(content)
 
-        # 格式化 Gene slice
-        output = f"[SYSTEM: Skill '{name}' activated]\n\n"
-        output += "## Strategy\n"
-        for step in gene_fields.get('strategy', []):
-            output += f"- {step}\n"
+        output = f"[SYSTEM: Skill '{name}' activated]\n\n## Strategy\n"
+        output += self._format_gene_list(gene_fields.get('strategy', []))
 
         if gene_fields.get('avoid'):
             output += "\n## AVOID\n"
-            for warning in gene_fields['avoid']:
-                output += f"- {warning}\n"
+            output += self._format_gene_list(gene_fields['avoid'])
 
         if gene_fields.get('constraints'):
             output += "\n## Constraints\n"
-            constraints = gene_fields['constraints']
-            if isinstance(constraints, dict):
-                for k, v in constraints.items():
-                    output += f"- {k}: {v}\n"
-            elif isinstance(constraints, list):
-                for c in constraints:
-                    output += f"- {c}\n"
+            output += self._format_gene_constraints(gene_fields['constraints'])
 
         if gene_fields.get('validation'):
             output += "\n## Validation\n"
-            for check in gene_fields['validation']:
-                output += f"- {check}\n"
+            output += self._format_gene_list(gene_fields['validation'])
 
         return output
 

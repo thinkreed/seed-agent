@@ -215,25 +215,9 @@ class SessionDB:
         intent: str = None,
         blast_radius: Dict = None
     ) -> str:
-        """
-        记录 Skill 执行结果到 gene_outcomes 表
-
-        Args:
-            skill_name: Skill 名称
-            outcome: 执行结果 ('success' | 'failed' | 'partial')
-            score: 成功分数 (0.0 - 1.0)
-            signals: 触发信号列表
-            session_id: 会话 ID
-            context: 执行上下文摘要
-            intent: 执行意图 ('repair' | 'optimize' | 'innovate')
-            blast_radius: 影响范围 {"files": N, "lines": N}
-
-        Returns:
-            状态消息，包含更新后的统计信息
-        """
+        """记录 Skill 执行结果到 gene_outcomes 表"""
         if outcome not in ('success', 'failed', 'partial'):
             return f"Invalid outcome status: {outcome}"
-
         if not (0.0 <= score <= 1.0):
             return f"Invalid score: {score} (must be 0.0-1.0)"
 
@@ -242,25 +226,30 @@ class SessionDB:
         blast_radius_json = json.dumps(blast_radius) if blast_radius else None
 
         try:
-            self.conn.execute("""
-                INSERT INTO gene_outcomes
-                    (skill_name, signal_pattern, outcome_status, outcome_score,
-                     session_id, timestamp, iteration_context, intent, blast_radius)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (skill_name, signal_pattern, outcome, score, session_id,
-                  timestamp, context, intent, blast_radius_json))
-            self.conn.commit()
-
-            # 返回更新后的统计
+            self._execute_skill_outcome_insert(
+                skill_name, signal_pattern, outcome, score,
+                session_id, timestamp, context, intent, blast_radius_json
+            )
             stats = self.get_skill_stats(skill_name)
-            msg = (f"Outcome recorded: {skill_name} -> {outcome} "
-                   f"(score: {score}). Stats: {stats['total']} total, "
-                   f"{stats['success_rate']:.1%} success")
-            return msg
+            return (f"Outcome recorded: {skill_name} -> {outcome} "
+                    f"(score: {score}). Stats: {stats['total']} total, "
+                    f"{stats['success_rate']:.1%} success")
         except sqlite3.IntegrityError:
             return f"Duplicate outcome ignored: {skill_name} at {timestamp}"
         except Exception as e:
             return f"Error recording outcome: {str(e)}"
+
+    def _execute_skill_outcome_insert(self, skill_name, signal_pattern, outcome, score,
+                                      session_id, timestamp, context, intent, blast_radius_json):
+        """执行 Skill 结果插入"""
+        self.conn.execute("""
+            INSERT INTO gene_outcomes
+                (skill_name, signal_pattern, outcome_status, outcome_score,
+                 session_id, timestamp, iteration_context, intent, blast_radius)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (skill_name, signal_pattern, outcome, score, session_id,
+              timestamp, context, intent, blast_radius_json))
+        self.conn.commit()
 
     def _get_skill_basic_stats(self, skill_name: str) -> Dict:
         """获取 Skill 基础统计信息"""
@@ -295,72 +284,62 @@ class SessionDB:
         return total >= min_attempts and selection_value < ban_threshold
 
     def get_skill_stats(self, skill_name: str) -> Dict:
-        """
-        获取 Skill 的聚合统计信息
-
-        Returns:
-            {
-                'total': N,
-                'successes': N,
-                'failures': N,
-                'success_rate': 0.XX,
-                'last_success': 'ISO timestamp',
-                'last_failure': 'ISO timestamp',
-                'recent_success_rate': 0.XX,
-                'is_banned': bool,
-                'selection_value': 0.XX,
-                'laplace_rate': 0.XX
-            }
-        """
+        """获取 Skill 的聚合统计信息"""
         try:
             row = self._get_skill_basic_stats(skill_name)
-
             if not row or row.get('total', 0) == 0:
-                return {
-                    'total': 0, 'successes': 0, 'failures': 0,
-                    'success_rate': 0.0, 'recent_success_rate': 0.0,
-                    'last_success': None, 'last_failure': None,
-                    'is_banned': False, 'selection_value': 0.0,
-                    'laplace_rate': 0.5  # 冷启动默认值
-                }
+                return self._get_default_stats()
 
             total = row['total']
             successes = row['successes']
             failures = row['failures']
-            success_rate = successes / total if total > 0 else 0.0
-
-            # Laplace 平滑
-            laplace_rate = (successes + 1) / (total + 2)
-
-            # 近期成功率 (最近 30 天)
-            recent_days = MEMORY_GRAPH_CONFIG['recent_days']
-            recent_row = self._get_skill_recent_stats(skill_name, recent_days)
-
-            recent_success_rate = 0.0
-            if recent_row and recent_row.get('recent_total', 0) > 0:
-                recent_success_rate = recent_row['recent_successes'] / recent_row['recent_total']
-
-            # 计算选择分数 (带衰减)
-            selection_value = self._compute_selection_value(skill_name, successes, total, recent_success_rate)
-
-            # 禁用检查
-            is_banned = self._compute_ban_status(skill_name, total, selection_value)
-
+            
+            rates = self._calculate_rates(skill_name, successes, total)
             return {
-                'total': total,
-                'successes': successes,
-                'failures': failures,
-                'success_rate': success_rate,
-                'laplace_rate': laplace_rate,
-                'recent_success_rate': recent_success_rate,
+                'total': total, 'successes': successes, 'failures': failures,
+                'success_rate': rates['success_rate'],
+                'laplace_rate': rates['laplace_rate'],
+                'recent_success_rate': rates['recent_success_rate'],
                 'last_success': row['last_success'],
                 'last_failure': row['last_failure'],
                 'avg_score': row['avg_score'],
-                'is_banned': is_banned,
-                'selection_value': selection_value
+                'is_banned': rates['is_banned'],
+                'selection_value': rates['selection_value']
             }
         except Exception as e:
             return {'error': str(e)}
+
+    def _get_default_stats(self) -> Dict:
+        """返回冷启动默认统计"""
+        return {
+            'total': 0, 'successes': 0, 'failures': 0,
+            'success_rate': 0.0, 'recent_success_rate': 0.0,
+            'last_success': None, 'last_failure': None,
+            'is_banned': False, 'selection_value': 0.0,
+            'laplace_rate': 0.5
+        }
+
+    def _calculate_rates(self, skill_name: str, successes: int, total: int) -> Dict:
+        """计算各种分数和状态"""
+        success_rate = successes / total if total > 0 else 0.0
+        laplace_rate = (successes + 1) / (total + 2)
+
+        recent_days = MEMORY_GRAPH_CONFIG['recent_days']
+        recent_row = self._get_skill_recent_stats(skill_name, recent_days)
+        recent_success_rate = 0.0
+        if recent_row and recent_row.get('recent_total', 0) > 0:
+            recent_success_rate = recent_row['recent_successes'] / recent_row['recent_total']
+
+        selection_value = self._compute_selection_value(skill_name, successes, total, recent_success_rate)
+        is_banned = self._compute_ban_status(skill_name, total, selection_value)
+
+        return {
+            'success_rate': success_rate,
+            'laplace_rate': laplace_rate,
+            'recent_success_rate': recent_success_rate,
+            'selection_value': selection_value,
+            'is_banned': is_banned
+        }
 
     def _compute_selection_value(
         self,
@@ -640,60 +619,69 @@ class SessionDB:
     def load_session_history(self, session_id: str) -> str:
         """从 SQLite 加载指定会话"""
         try:
-            row = self.conn.execute(
-                "SELECT session_id, created_at, summary, message_count FROM sessions_meta WHERE session_id = ?",
-                (session_id,)
-            ).fetchone()
-
-            if not row:
-                row = self.conn.execute(
-                    "SELECT session_id, created_at, summary, message_count FROM sessions_meta WHERE session_id LIKE ?",
-                    (f"%{session_id}%",)
-                ).fetchone()
-
+            row = self._find_session(session_id)
             if not row:
                 return f"Session not found: {session_id}"
 
             actual_id = row['session_id']
-            created_at = row['created_at']
-            summary = row['summary']
             msg_count = row['message_count']
+            summary = row.get('summary')
 
             messages = self.conn.execute("""
-                SELECT id, timestamp, role, content, tool_calls_json, tool_call_id
+                SELECT role, content, tool_calls_json, tool_call_id
                 FROM session_messages
                 WHERE session_id = ? AND message_type = 'message'
                 ORDER BY id ASC
             """, (actual_id,)).fetchall()
 
             output = f"Session: {actual_id}\n"
-            output += f"Created: {created_at}\n"
+            output += f"Created: {row['created_at']}\n"
             output += f"Messages: {msg_count}\n"
             if summary:
                 output += f"Summary: {summary}\n"
             output += "---\n"
 
             for msg in messages:
-                role = msg['role']
-                content = msg['content'] or ''
-                if msg['tool_calls_json']:
-                    try:
-                        tc_list = json.loads(msg['tool_calls_json'])
-                        tc_names = [tc.get('function', {}).get('name', 'unknown') for tc in tc_list]
-                        content = f"[Tool Calls: {', '.join(tc_names)}]"
-                    except:
-                        pass
-                if msg['tool_call_id']:
-                    content = (msg['content'] or '')[:200]
-
-                if len(content) > 500:
-                    content = content[:500] + "..."
-
-                output += f"{role}: {content}\n"
+                output += self._format_session_message(msg) + "\n"
 
             return output
         except Exception as e:
             return f"Error loading session: {str(e)}"
+
+    def _find_session(self, session_id: str) -> Optional[sqlite3.Row]:
+        """查找会话（精确匹配后尝试模糊匹配）"""
+        row = self.conn.execute(
+            "SELECT session_id, created_at, summary, message_count FROM sessions_meta WHERE session_id = ?",
+            (session_id,)
+        ).fetchone()
+
+        if not row:
+            row = self.conn.execute(
+                "SELECT session_id, created_at, summary, message_count FROM sessions_meta WHERE session_id LIKE ?",
+                (f"%{session_id}%",)
+            ).fetchone()
+        return row
+
+    def _format_session_message(self, msg: sqlite3.Row) -> str:
+        """格式化单条会话消息"""
+        role = msg['role']
+        content = msg['content'] or ''
+
+        if msg['tool_calls_json']:
+            try:
+                tc_list = json.loads(msg['tool_calls_json'])
+                tc_names = [tc.get('function', {}).get('name', 'unknown') for tc in tc_list]
+                content = f"[Tool Calls: {', '.join(tc_names)}]"
+            except Exception:
+                pass
+
+        if msg['tool_call_id']:
+            content = (msg['content'] or '')[:200]
+
+        if len(content) > 500:
+            content = content[:500] + "..."
+
+        return f"{role}: {content}"
 
     def list_sessions(self, limit: int = 10) -> str:
         """列出最近会话"""
