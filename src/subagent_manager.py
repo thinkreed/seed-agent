@@ -232,19 +232,21 @@ class SubagentManager:
             results_list = await asyncio.gather(*tasks, return_exceptions=True)
 
             parallel_results: dict[str, SubagentResult] = {}
-            for task_id, result in zip(task_ids, results_list):
-                if isinstance(result, BaseException):
+            for task_id, raw_result in zip(task_ids, results_list):
+                # asyncio.gather(return_exceptions=True) 返回 Union[SubagentResult, BaseException]
+                if isinstance(raw_result, BaseException):
                     # 创建失败状态
                     state = SubagentState(
                         id=task_id,
                         subagent_type=self._tasks[task_id].subagent_type,
                         status="failed",
                         prompt=self._tasks[task_id].prompt,
-                        error=str(result),
+                        error=str(raw_result),
                     )
                     parallel_results[task_id] = SubagentResult(state)
                 else:
-                    parallel_results[task_id] = result  # type: ignore[assignment]  # result is SubagentResult here
+                    # 类型窄化：raw_result 不是 BaseException，所以是 SubagentResult
+                    parallel_results[task_id] = raw_result
 
             return parallel_results
 
@@ -269,17 +271,41 @@ class SubagentManager:
         """获取所有结果"""
         return self._results.copy()
 
+    async def wait_for_result_async(
+        self,
+        task_id: str,
+        timeout: float | None = None,
+    ) -> SubagentResult | None:
+        """
+        等待任务完成（异步版本，不阻塞事件循环）
+
+        Args:
+            task_id: 任务 ID
+            timeout: 最大等待时间（秒）
+
+        Returns:
+            SubagentResult | None: 任务结果或超时返回 None
+        """
+        import asyncio
+        start = asyncio.get_event_loop().time()
+        while True:
+            if task_id in self._results:
+                return self._results[task_id]
+            if timeout and (asyncio.get_event_loop().time() - start) > timeout:
+                return None
+            await asyncio.sleep(0.1)  # 异步等待，不阻塞事件循环
+
     def wait_for_result(
         self,
         task_id: str,
         timeout: float | None = None,
     ) -> SubagentResult | None:
         """
-        等待任务完成（同步版本，用于在已运行的异步上下文中）
+        等待任务完成（同步版本，仅用于非异步上下文）
 
-        注意：这个方法需要在外部异步上下文中使用
+        警告：此方法使用同步 sleep，在异步上下文中会阻塞事件循环。
+        在异步代码中请使用 wait_for_result_async()。
         """
-        # 简单轮询检查
         import time
         start = time.time()
         while True:
@@ -439,13 +465,13 @@ class RalphSubagentOrchestrator:
             "implement": [
                 {
                     "task_id": task_id,
-                    "result": self.manager.get_result(task_id).summary if self.manager.get_result(task_id) else None,
+                    "result": (r.summary if (r := self.manager.get_result(task_id)) else None),
                 }
                 for task_id in self._implement_task_ids
             ],
             "review": {
                 "task_id": self._review_task_id,
-                "result": self.manager.get_result(self._review_task_id).summary if self.manager.get_result(self._review_task_id) else None,
+                "result": (r.summary if (r := self.manager.get_result(self._review_task_id) if self._review_task_id else None) else None),
             },
         }
 

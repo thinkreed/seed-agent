@@ -23,7 +23,7 @@ Token 节约估算:
 import os
 import re
 import sys
-import yaml
+import yaml  # type: ignore[import-untyped]
 import difflib
 import threading
 from collections import OrderedDict
