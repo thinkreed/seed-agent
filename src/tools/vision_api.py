@@ -4,12 +4,12 @@ Vision API Helper - 视觉识别基础模块
 """
 import base64
 import io
-import os
 import logging
+import os
 from pathlib import Path
 
 try:
-    from PIL import ImageGrab, Image
+    from PIL import Image, ImageGrab
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -20,6 +20,13 @@ logger = logging.getLogger("seed_agent")
 VISION_MODEL = os.getenv("VISION_MODEL", "bailian/qwen3.6-plus")
 MAX_PIXELS = 1_440_000  # 限制图像像素以节省 Token
 DEFAULT_CONFIG_PATH = os.path.join(Path.home(), ".seed", "config.json")
+
+# 模型映射
+MODEL_MAP = {
+    "claude": "anthropic/claude-3-5-sonnet-20241022",
+    "openai": "openai/gpt-4o",
+    "dashscope": "bailian/qwen3.6-plus",
+}
 
 
 def capture_window(hwnd=None) -> "Image.Image | None":
@@ -111,14 +118,14 @@ async def analyze_image_async(
         from src.client import LLMGateway, RequestPriority
 
         gateway = LLMGateway(cfg_path)
-        
+
         result = await gateway.chat_completion(
             model_id=target_model,
             messages=messages,
             priority=RequestPriority.HIGH,
             max_tokens=2048
         )
-        
+
         content = result.get("content", "")
         logger.info(f"Vision analysis completed, content length: {len(content)}")
         return content
@@ -127,18 +134,6 @@ async def analyze_image_async(
         error_msg = f"Vision API call failed: {type(e).__name__}: {e}"
         logger.error(error_msg)
         return f"Error: {error_msg}"
-
-
-# ================= 模型配置 =================
-VISION_MODEL = os.getenv("VISION_MODEL", "bailian/qwen3.6-plus")
-MAX_PIXELS = 1_440_000
-DEFAULT_CONFIG_PATH = os.path.join(Path.home(), ".seed", "config.json")
-
-MODEL_MAP = {
-    "claude": "anthropic/claude-3-5-sonnet-20241022",
-    "openai": "openai/gpt-4o",
-    "dashscope": "bailian/qwen3.6-plus",
-}
 
 
 def _load_image(image) -> tuple:
@@ -200,6 +195,7 @@ def ask_vision(
 
     try:
         import asyncio
+
         from src.client import LLMGateway, RequestPriority
 
         if not os.path.exists(DEFAULT_CONFIG_PATH):
@@ -226,17 +222,17 @@ def ask_vision(
 
 if __name__ == "__main__":
     import asyncio
-    
+
     logging.basicConfig(level=logging.INFO)
-    
+
     img = capture_window()
     if img:
         print(f"Captured image: {img.size}")
-        
+
         async def test():
             result = await analyze_image_async(img, "Describe this screen in detail")
             print(f"Result: {result}")
-        
+
         asyncio.run(test())
     else:
         print("Failed to capture screen")

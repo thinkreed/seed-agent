@@ -28,9 +28,10 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
+# CompletionType 现在从 ralph_loop 导入，避免重复定义
+from ralph_loop import CompletionType
 from autonomous import (
     AutonomousExplorer,
-    CompletionType,
     COMPLETION_PROMISE_TOKENS,
     COMPLETION_MARKERS,
     RALPH_MAX_ITERATIONS,

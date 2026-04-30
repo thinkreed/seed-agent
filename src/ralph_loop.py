@@ -9,14 +9,14 @@
 参考设计: docs/long_cycle_loop_enhancement_design.md
 """
 
+import asyncio
+import json
+import logging
 import os
 import time
-import json
-import asyncio
-import logging
+from enum import Enum
 from pathlib import Path
 from typing import Callable
-from enum import Enum
 
 logger = logging.getLogger("seed_agent.ralph")
 
@@ -199,7 +199,7 @@ class RalphLoop:
         """检查测试通过率"""
         if not self.completion_criteria:
             return False
-            
+
         import shlex
 
         required_rate = self.completion_criteria.get("pass_rate", 100)
@@ -230,8 +230,10 @@ class RalphLoop:
         except asyncio.TimeoutError:
             logger.warning("Test execution timed out")
             # 尝试终止超时的进程
-            if 'proc' in dir() and proc:
+            try:
                 proc.kill()
+            except (AttributeError, ProcessLookupError):
+                pass  # proc 未定义或进程已结束
             return False
         except Exception as e:
             logger.warning(f"Test execution failed: {e}")
@@ -242,7 +244,7 @@ class RalphLoop:
         # 处理 bytes 类型
         if isinstance(output, bytes):
             output = output.decode('utf-8', errors='replace')
-        
+
         # pytest 输出格式: "X passed, Y failed" 或 "X passed"
         import re
 
@@ -322,14 +324,18 @@ class RalphLoop:
             logger.warning(f"Git check failed: {e}")
             return False
 
-    def _check_custom(self) -> bool:
-        """自定义验证函数"""
+    async def _check_custom(self) -> bool:
+        """自定义验证函数（支持异步）"""
         if not self.completion_criteria:
             return False
         checker = self.completion_criteria.get("checker")
         if checker and callable(checker):
             try:
-                result = checker()
+                # 支持异步验证函数
+                if asyncio.iscoroutinefunction(checker):
+                    result = await checker()
+                else:
+                    result = checker()
                 logger.info(f"Custom check result: {result}")
                 return bool(result)
             except Exception as e:

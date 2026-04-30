@@ -5,10 +5,9 @@
 - RollingWindowTracker: 滚动窗口追踪器，精确控制窗口内请求数
 """
 
-import time
 import asyncio
 import logging
-from typing import Tuple
+import time
 from dataclasses import dataclass
 
 logger = logging.getLogger("seed_agent")
@@ -46,7 +45,7 @@ class TokenBucket:
         self.last_refill = time.time()
         self._lock = asyncio.Lock()
 
-    async def acquire(self, tokens: int = 1) -> Tuple[bool, float]:
+    async def acquire(self, tokens: int = 1) -> tuple[bool, float]:
         """尝试获取 token
 
         Args:
@@ -142,7 +141,7 @@ class RollingWindowTracker:
         self.total_requests_lifetime = 0
         self._lock = asyncio.Lock()
 
-    async def check_available(self) -> Tuple[bool, float]:
+    async def check_available(self) -> tuple[bool, float]:
         """检查是否可以发起请求
 
         Returns:
@@ -253,7 +252,7 @@ class RateLimiter:
         self.token_bucket = TokenBucket(rate, capacity)
         self.window_tracker = RollingWindowTracker(window_limit, window_duration)
 
-    async def acquire(self) -> Tuple[bool, float]:
+    async def acquire(self) -> tuple[bool, float]:
         """尝试获取请求许可
 
         Returns:
@@ -320,7 +319,7 @@ class RateLimiter:
             total_requests_lifetime=window_state.total_requests_lifetime,
         )
 
-    def get_state(self) -> Tuple[TokenBucketState, RollingWindowState]:
+    def get_state(self) -> tuple[TokenBucketState, RollingWindowState]:
         """获取完整状态（用于持久化）"""
         return (
             self.token_bucket.get_state(),

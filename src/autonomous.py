@@ -8,14 +8,15 @@
 - 自动结果记录：执行完成后自动记录 outcome
 """
 
-import os
 import asyncio
-import time
 import json
+import logging
+import os
+import time
 from pathlib import Path
 from typing import Callable
-from enum import Enum
-import logging
+
+# 导入 CompletionType，避免重复定义
 
 logger = logging.getLogger("seed_agent")
 
@@ -35,15 +36,6 @@ RALPH_MAX_DURATION = 8 * 60 * 60  # 8小时最大执行时间
 
 # 任务完成检测标记（支持多语言）
 COMPLETION_MARKERS = ["任务完成", "已完成", "DONE", "COMPLETE", "FINISHED", "done", "complete", "finished"]
-
-
-class CompletionType(Enum):
-    """完成验证类型"""
-    TEST_PASS = "test_pass"         # 测试通过
-    FILE_EXISTS = "file_exists"     # 目标文件存在
-    MARKER_FILE = "marker_file"     # 完成标志文件
-    GIT_CLEAN = "git_clean"         # Git 工作区干净
-    CUSTOM_CHECK = "custom_check"   # 自定义验证函数
 
 
 class AutonomousExplorer:
