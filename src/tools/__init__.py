@@ -21,12 +21,12 @@ from typing import Callable, Any
 
 class ToolRegistry:
     """工具注册表"""
-    
+
     def __init__(self):
         self._tools: dict[str, Callable] = {}
-        self._tool_schemas: dict[str, Dict] = {}
-    
-    def register(self, name: str, func: Callable, schema: Dict = None):
+        self._tool_schemas: dict[str, dict] = {}
+
+    def register(self, name: str, func: Callable, schema: dict | None = None):
         """注册工具
         
         Args:
@@ -43,7 +43,7 @@ class ToolRegistry:
             raise KeyError(f"Tool not found: {name}")
         return self._tools[name]
     
-    def get_schemas(self) -> list[Dict]:
+    def get_schemas(self) -> list[dict]:
         """获取所有工具的 JSON Schema(用于 LLM 调用)"""
         return list(self._tool_schemas.values())
     
@@ -75,7 +75,7 @@ class ToolRegistry:
         return param_descriptions
 
     @staticmethod
-    def _resolve_type_to_schema(ann) -> Dict:
+    def _resolve_type_to_schema(ann) -> dict:
         """将 Python 类型转换为 JSON Schema 结构"""
         import typing
         
@@ -110,7 +110,7 @@ class ToolRegistry:
         }
         return type_map.get(ann, {"type": "string"})
 
-    def _infer_schema(self, func: Callable) -> Dict:
+    def _infer_schema(self, func: Callable) -> dict:
         """从函数签名推断 JSON Schema"""
         import inspect
 

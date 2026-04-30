@@ -279,7 +279,7 @@ def get_subagent_status(task_id: str) -> str:
 
 
 def spawn_parallel_subagents(
-    tasks: list[Dict],
+    tasks: list[dict],
 ) -> str:
     """
     创建并并行启动多个子代理任务。

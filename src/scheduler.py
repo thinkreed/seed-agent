@@ -50,7 +50,7 @@ class ScheduledTask:
         """标记已执行"""
         self.last_run = time.time()
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """序列化"""
         return {
             "task_id": self.task_id,
@@ -62,7 +62,7 @@ class ScheduledTask:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'ScheduledTask':
+    def from_dict(cls, data: dict) -> 'ScheduledTask':
         """反序列化"""
         return cls(
             task_id=data["task_id"],
@@ -340,7 +340,7 @@ class TaskScheduler:
 
         return '\n'.join(lines)
 
-    def get_task_status(self, task_id: str) -> Dict:
+    def get_task_status(self, task_id: str) -> dict:
         """获取任务状态"""
         if task_id not in self._tasks:
             return {"error": "Task not found"}

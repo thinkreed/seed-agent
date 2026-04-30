@@ -213,7 +213,7 @@ class SessionDB:
         session_id: str = None,
         context: str = None,
         intent: str = None,
-        blast_radius: Dict = None
+        blast_radius: dict | None = None
     ) -> str:
         """记录 Skill 执行结果到 gene_outcomes 表"""
         if outcome not in ('success', 'failed', 'partial'):
@@ -251,7 +251,7 @@ class SessionDB:
               timestamp, context, intent, blast_radius_json))
         self.conn.commit()
 
-    def _get_skill_basic_stats(self, skill_name: str) -> Dict:
+    def _get_skill_basic_stats(self, skill_name: str) -> dict:
         """获取 Skill 基础统计信息"""
         row = self.conn.execute("""
             SELECT
@@ -266,7 +266,7 @@ class SessionDB:
         """, (skill_name,)).fetchone()
         return dict(row) if row else {}
 
-    def _get_skill_recent_stats(self, skill_name: str, recent_days: int = 30) -> Dict:
+    def _get_skill_recent_stats(self, skill_name: str, recent_days: int = 30) -> dict:
         """获取 Skill 近期统计信息 (最近 N 天)"""
         recent_row = self.conn.execute("""
             SELECT
@@ -283,7 +283,7 @@ class SessionDB:
         ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
         return total >= min_attempts and selection_value < ban_threshold
 
-    def get_skill_stats(self, skill_name: str) -> Dict:
+    def get_skill_stats(self, skill_name: str) -> dict:
         """获取 Skill 的聚合统计信息"""
         try:
             row = self._get_skill_basic_stats(skill_name)
@@ -309,7 +309,7 @@ class SessionDB:
         except Exception as e:
             return {'error': str(e)}
 
-    def _get_default_stats(self) -> Dict:
+    def _get_default_stats(self) -> dict:
         """返回冷启动默认统计"""
         return {
             'total': 0, 'successes': 0, 'failures': 0,
@@ -319,7 +319,7 @@ class SessionDB:
             'laplace_rate': 0.5
         }
 
-    def _calculate_rates(self, skill_name: str, successes: int, total: int) -> Dict:
+    def _calculate_rates(self, skill_name: str, successes: int, total: int) -> dict:
         """计算各种分数和状态"""
         success_rate = successes / total if total > 0 else 0.0
         laplace_rate = (successes + 1) / (total + 2)
@@ -381,7 +381,7 @@ class SessionDB:
 
         return p * decay_weight + recent_boost
 
-    def list_banned_skills(self) -> list[Dict]:
+    def list_banned_skills(self) -> list[dict]:
         """
         列出被禁用的 Skill（低于 ban_threshold）
 
@@ -431,7 +431,7 @@ class SessionDB:
         except Exception as e:
             return []
 
-    def get_top_skills(self, limit: int = 10) -> list[Dict]:
+    def get_top_skills(self, limit: int = 10) -> list[dict]:
         """
         获取成功率最高的 Skill
 
@@ -460,7 +460,7 @@ class SessionDB:
         except Exception as e:
             return []
 
-    def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> list[Dict]:
+    def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> list[dict]:
         """
         根据信号模式搜索历史执行结果
 
@@ -530,8 +530,8 @@ class SessionDB:
     # ==================== 原有 Session 方法 ====================
 
     def _build_message_batches(
-        self, messages: list[Dict], session_id: str, now: str
-    ) -> Tuple[list[Tuple], list[Tuple]]:
+        self, messages: list[dict], session_id: str, now: str
+    ) -> tuple[list[tuple], list[tuple]]:
         """构建消息批次 (session_messages + FTS)"""
         batch = []
         fts_batch = []
@@ -547,7 +547,7 @@ class SessionDB:
             fts_batch.append((session_id, tokenized, role))
         return batch, fts_batch
 
-    def _insert_fts_index(self, cursor, fts_batch: list[Tuple], start_id: int):
+    def _insert_fts_index(self, cursor, fts_batch: list[tuple], start_id: int):
         """插入 FTS 索引"""
         for i, (sid, tokenized, role) in enumerate(fts_batch):
             rowid = start_id + i
@@ -575,9 +575,9 @@ class SessionDB:
 
     def save_session_history(
         self,
-        messages: list[Dict],
-        summary: str = None,
-        session_id: str = None
+        messages: list[dict],
+        summary: str | None = None,
+        session_id: str | None = None
     ) -> str:
         """保存会话历史到 SQLite"""
         try:
@@ -828,7 +828,7 @@ class SessionDB:
         end_time: str | None,
         order_by: str,
         limit: int
-    ) -> Tuple[str, list]:
+    ) -> tuple[str, list]:
         """添加通用过滤条件到 SQL 查询"""
         if session_id:
             base_sql += " AND m.session_id = ?"
@@ -855,7 +855,7 @@ class SessionDB:
         start_time: str | None = None,
         end_time: str | None = None,
         limit: int = 20
-    ) -> list[Dict]:
+    ) -> list[dict]:
         """增强搜索：支持多条件组合"""
         try:
             # 基础查询模板
@@ -891,7 +891,7 @@ class SessionDB:
         except Exception:
             return []
 
-    def get_session_stats(self, session_id: str) -> Dict:
+    def get_session_stats(self, session_id: str) -> dict:
         """获取会话统计信息"""
         try:
             meta = self.conn.execute(
@@ -1005,21 +1005,21 @@ def record_skill_outcome(
     return _get_db().record_skill_outcome(skill_name, outcome, score, signals, session_id, context)
 
 
-def get_skill_stats(skill_name: str) -> Dict:
+def get_skill_stats(skill_name: str) -> dict:
     """获取 Skill 统计信息"""
     return _get_db().get_skill_stats(skill_name)
 
 
-def list_banned_skills() -> list[Dict]:
+def list_banned_skills() -> list[dict]:
     """列出被禁用的 Skill"""
     return _get_db().list_banned_skills()
 
 
-def get_top_skills(limit: int = 10) -> list[Dict]:
+def get_top_skills(limit: int = 10) -> list[dict]:
     """获取成功率最高的 Skill"""
     return _get_db().get_top_skills(limit)
 
 
-def search_outcomes_by_signal(signal: str, limit: int = 20) -> list[Dict]:
+def search_outcomes_by_signal(signal: str, limit: int = 20) -> list[dict]:
     """根据信号搜索执行结果"""
     return _get_db().search_outcomes_by_signal(signal, limit)

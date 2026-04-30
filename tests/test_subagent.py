@@ -11,10 +11,9 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
 
-# 导入测试模块
-from subagent import (
+# 导入测试模块（使用 src 前缀确保一致性）
+from src.subagent import (
     SubagentType,
     SubagentInstance,
     SubagentState,
@@ -22,8 +21,9 @@ from subagent import (
     PERMISSION_SETS,
     SUBAGENT_TYPE_PERMISSIONS,
     SUBAGENT_SYSTEM_PROMPTS,
+    DEFAULT_TIMEOUTS,
 )
-from subagent_manager import (
+from src.subagent_manager import (
     SubagentManager,
     SubagentTask,
     RalphSubagentOrchestrator,
@@ -58,16 +58,16 @@ class TestSubagentType(unittest.TestCase):
 
     def test_type_permission_mapping(self):
         """验证类型与权限集映射"""
-        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS[SubagentType.EXPLORE], "read_only")
-        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS[SubagentType.REVIEW], "review")
-        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS[SubagentType.IMPLEMENT], "implement")
-        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS[SubagentType.PLAN], "plan")
+        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS["explore"], "read_only")
+        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS["review"], "review")
+        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS["implement"], "implement")
+        self.assertEqual(SUBAGENT_TYPE_PERMISSIONS["plan"], "plan")
 
     def test_system_prompts_defined(self):
         """验证 System Prompt 定义"""
         for subagent_type in SubagentType:
-            self.assertIn(subagent_type, SUBAGENT_SYSTEM_PROMPTS)
-            prompt = SUBAGENT_SYSTEM_PROMPTS[subagent_type]
+            self.assertIn(subagent_type.value, SUBAGENT_SYSTEM_PROMPTS)
+            prompt = SUBAGENT_SYSTEM_PROMPTS[subagent_type.value]
             self.assertGreater(len(prompt), 50)
 
 

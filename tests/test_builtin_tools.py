@@ -35,17 +35,38 @@ from tools.builtin_tools import (
     register_builtin_tools,
     DEFAULT_WORK_DIR,
     PROJECT_ROOT,
+    ALLOWED_DIRS,
+    _validate_path_safety,
 )
+
+
+def _add_test_dir_to_allowed(test_dir: str):
+    """临时添加测试目录到允许列表"""
+    import tools.builtin_tools as builtin
+    test_path = Path(test_dir).resolve()
+    if test_path not in builtin.ALLOWED_DIRS:
+        builtin.ALLOWED_DIRS.append(test_path)
+    return test_path
+
+
+def _remove_test_dir_from_allowed(test_dir: str):
+    """从允许列表移除测试目录"""
+    import tools.builtin_tools as builtin
+    test_path = Path(test_dir).resolve()
+    if test_path in builtin.ALLOWED_DIRS:
+        builtin.ALLOWED_DIRS.remove(test_path)
 
 
 class TestResolvePath(unittest.TestCase):
     """测试 _resolve_path 路径解析逻辑"""
 
     def test_absolute_path_unchanged(self):
-        """绝对路径应保持不变"""
-        abs_path = r"C:\test\file.txt"
+        """绝对路径应保持不变（在允许目录内）"""
+        # 使用允许目录内的绝对路径
+        abs_path = str(DEFAULT_WORK_DIR / "test_file.txt")
         result = _resolve_path(abs_path)
-        self.assertEqual(result, abs_path)
+        # resolve() 可能改变路径格式，比较规范化后的路径
+        self.assertEqual(Path(result).resolve(), Path(abs_path).resolve())
 
     def test_relative_path_seed_exists(self):
         """相对路径 - .seed 中存在文件"""
@@ -84,6 +105,24 @@ class TestFileRead(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
         self.test_file = os.path.join(self.test_dir, "test.txt")
+        _add_test_dir_to_allowed(self.test_dir)
+
+    def tearDown(self):
+        _remove_test_dir_from_allowed(self.test_dir)
+        if os.path.exists(self.test_file):
+            os.unlink(self.test_file)
+        # 清理所有测试文件（包括 gbk_test.txt 等）
+        gbk_file = os.path.join(self.test_dir, "gbk_test.txt")
+        if os.path.exists(gbk_file):
+            os.unlink(gbk_file)
+        if os.path.exists(self.test_dir):
+            try:
+                os.rmdir(self.test_dir)
+            except OSError:
+                # 如果目录不为空，尝试清理所有文件
+                for f in os.listdir(self.test_dir):
+                    os.unlink(os.path.join(self.test_dir, f))
+                os.rmdir(self.test_dir)
 
     def test_read_full_file(self):
         """读取完整文件"""
@@ -109,8 +148,9 @@ class TestFileRead(unittest.TestCase):
         self.assertNotIn("line6", result)
 
     def test_file_not_found(self):
-        """文件不存在"""
-        result = file_read("/nonexistent/path/file.txt")
+        """文件不存在（在允许目录内）"""
+        nonexistent_file = os.path.join(self.test_dir, "nonexistent_file.txt")
+        result = file_read(nonexistent_file)
         self.assertTrue(result.startswith("Error: File not found"))
 
     def test_read_empty_range(self):
@@ -147,6 +187,20 @@ class TestFileWrite(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
         self.test_file = os.path.join(self.test_dir, "test.txt")
+        _add_test_dir_to_allowed(self.test_dir)
+
+    def tearDown(self):
+        _remove_test_dir_from_allowed(self.test_dir)
+        if os.path.exists(self.test_file):
+            os.unlink(self.test_file)
+        # 清理可能创建的嵌套目录
+        for root, dirs, files in os.walk(self.test_dir, topdown=False):
+            for f in files:
+                os.unlink(os.path.join(root, f))
+            for d in dirs:
+                os.rmdir(os.path.join(root, d))
+        if os.path.exists(self.test_dir):
+            os.rmdir(self.test_dir)
 
     def test_write_overwrite(self):
         """覆盖写入"""
@@ -190,6 +244,24 @@ class TestFileEdit(unittest.TestCase):
     def setUp(self):
         self.test_dir = tempfile.mkdtemp()
         self.test_file = os.path.join(self.test_dir, "test.txt")
+        _add_test_dir_to_allowed(self.test_dir)
+
+    def tearDown(self):
+        _remove_test_dir_from_allowed(self.test_dir)
+        if os.path.exists(self.test_file):
+            os.unlink(self.test_file)
+        # 清理所有测试文件（包括 gbk_test.txt 等）
+        gbk_file = os.path.join(self.test_dir, "gbk_test.txt")
+        if os.path.exists(gbk_file):
+            os.unlink(gbk_file)
+        if os.path.exists(self.test_dir):
+            try:
+                os.rmdir(self.test_dir)
+            except OSError:
+                # 如果目录不为空，尝试清理所有文件
+                for f in os.listdir(self.test_dir):
+                    os.unlink(os.path.join(self.test_dir, f))
+                os.rmdir(self.test_dir)
 
     def test_replace_first_occurrence(self):
         """替换首次出现"""
@@ -223,8 +295,9 @@ class TestFileEdit(unittest.TestCase):
         self.assertTrue(result.startswith("Error: Text not found"))
 
     def test_file_not_found(self):
-        """文件不存在"""
-        result = file_edit("/nonexistent/file.txt", "old", "new")
+        """文件不存在（在允许目录内）"""
+        nonexistent_file = os.path.join(self.test_dir, "nonexistent_file.txt")
+        result = file_edit(nonexistent_file, "old", "new")
         self.assertTrue(result.startswith("Error: File not found"))
 
 

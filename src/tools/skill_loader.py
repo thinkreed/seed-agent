@@ -104,7 +104,7 @@ def load_snapshot(skills_dir: Path) -> dict | None:
     except (json.JSONDecodeError, OSError):
         return None
 
-def save_snapshot(skills_dir: Path, skills_meta: Dict) -> None:
+def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
     """保存缓存快照到磁盘"""
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -173,7 +173,7 @@ class SkillLoader:
 
     def __init__(self, skills_dir: Path = None):
         self.skills_dir = skills_dir or SKILLS_DIR
-        self._skills_meta: dict[str, Dict] = {}
+        self._skills_meta: dict[str, dict] = {}
         self._manifest_hash: str = ""
         self._lock = threading.Lock()
         
@@ -262,7 +262,7 @@ class SkillLoader:
         except (yaml.YAMLError, OSError, UnicodeDecodeError):
             return None
 
-    def _flatten_triggers(self, triggers: List) -> list[str]:
+    def _flatten_triggers(self, triggers: list) -> list[str]:
         """扁平化嵌套的 triggers 列表
 
         YAML 中 `- [xxx]` 格式会产生嵌套列表，此方法将其展开为单层字符串列表。
@@ -324,7 +324,7 @@ class SkillLoader:
         return True
 
     @staticmethod
-    def _render_category(cat: str, skills: list[Dict], indent: bool = False) -> list[str]:
+    def _render_category(cat: str, skills: list[dict], indent: bool = False) -> list[str]:
         """渲染单个分类的 XML 围栏区块"""
         prefix = "  - " if indent else "- "
         lines = [f"<category name='{cat}'>"]
@@ -343,7 +343,7 @@ class SkillLoader:
         if not visible_skills:
             return ""
 
-        categories: dict[str, list[Dict]] = {}
+        categories: dict[str, list[dict]] = {}
         for meta in visible_skills.values():
             cat = meta.get('category', 'general')
             categories.setdefault(cat, []).append(meta)
@@ -624,7 +624,7 @@ class SkillLoader:
         self,
         skill_name: str,
         signals: list[str]
-    ) -> Dict:
+    ) -> dict:
         """
         计算单个 Skill 的选择分数
 
@@ -666,7 +666,7 @@ class SkillLoader:
             'memory_score': memory_score
         }
 
-    def _get_skill_outcome_stats(self, skill_name: str) -> Dict:
+    def _get_skill_outcome_stats(self, skill_name: str) -> dict:
         """
         从 gene_outcomes 获取 Skill 统计信息
 
@@ -734,7 +734,7 @@ class SkillLoader:
 
         return min(score, max_score)
 
-    def _compute_memory_score(self, stats: Dict) -> float:
+    def _compute_memory_score(self, stats: dict) -> float:
         """
         计算记忆分数 (GEP-style)
 
@@ -954,7 +954,7 @@ def list_skills() -> str:
         return "No skills available."
 
     # 按 category 分组
-    categories: dict[str, list[Dict]] = {}
+    categories: dict[str, list[dict]] = {}
     for s in skills:
         cat = s.get('category', 'general')
         if cat not in categories:

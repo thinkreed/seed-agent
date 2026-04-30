@@ -25,16 +25,16 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / "src"))
 
-from subagent import (
+# 导入测试模块（使用 src 前缀确保一致性）
+from src.subagent import (
     SubagentType,
     SubagentInstance,
     SubagentState,
     SubagentResult,
     DEFAULT_TIMEOUTS,
 )
-from subagent_manager import (
+from src.subagent_manager import (
     SubagentManager,
     SubagentTask,
     RalphSubagentOrchestrator,

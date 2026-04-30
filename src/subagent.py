@@ -55,11 +55,12 @@ class SubagentType(Enum):
 # REVIEW: 审查+测试 (10m)
 # IMPLEMENT: 实现+调试 (15m)
 # PLAN: 规划分析 (5m)
-DEFAULT_TIMEOUTS: dict[SubagentType, int] = {
-    SubagentType.EXPLORE: 180,
-    SubagentType.REVIEW: 600,
-    SubagentType.IMPLEMENT: 900,
-    SubagentType.PLAN: 300,
+# 使用 .value 作为键以支持跨模块导入的枚举比较
+DEFAULT_TIMEOUTS: dict[str, int] = {
+    "explore": 180,
+    "review": 600,
+    "implement": 900,
+    "plan": 300,
 }
 
 
@@ -99,16 +100,18 @@ PERMISSION_SETS: dict[str, set[str]] = {
 }
 
 # Subagent 类型对应的默认权限集
-SUBAGENT_TYPE_PERMISSIONS: dict[SubagentType, str] = {
-    SubagentType.EXPLORE: "read_only",
-    SubagentType.REVIEW: "review",
-    SubagentType.IMPLEMENT: "implement",
-    SubagentType.PLAN: "plan",
+# 使用 .value 作为键以支持跨模块导入的枚举比较
+SUBAGENT_TYPE_PERMISSIONS: dict[str, str] = {
+    "explore": "read_only",
+    "review": "review",
+    "implement": "implement",
+    "plan": "plan",
 }
 
 # Subagent 类型对应的 system prompt 模板
-SUBAGENT_SYSTEM_PROMPTS: dict[SubagentType, str] = {
-    SubagentType.EXPLORE: """你是一个探索型子代理 (Explore Subagent)。
+# 使用 .value 作为键以支持跨模块导入的枚举比较
+SUBAGENT_SYSTEM_PROMPTS: dict[str, str] = {
+    "explore": """你是一个探索型子代理 (Explore Subagent)。
 
 你的职责是：
 - 搜索和分析代码文件
@@ -120,7 +123,7 @@ SUBAGENT_SYSTEM_PROMPTS: dict[SubagentType, str] = {
 - 完成后提供简洁的发现摘要
 - 不要输出冗长的原始文件内容，只输出关键发现""",
 
-    SubagentType.REVIEW: """你是一个审查型子代理 (Review Subagent)。
+    "review": """你是一个审查型子代理 (Review Subagent)。
 
 你的职责是：
 - 审查代码质量和安全性
@@ -132,7 +135,7 @@ SUBAGENT_SYSTEM_PROMPTS: dict[SubagentType, str] = {
 - 不能修改任何文件
 - 完成后提供结构化的审查报告""",
 
-    SubagentType.IMPLEMENT: """你是一个实现型子代理 (Implement Subagent)。
+    "implement": """你是一个实现型子代理 (Implement Subagent)。
 
 你的职责是：
 - 实现功能代码
@@ -146,7 +149,7 @@ SUBAGENT_SYSTEM_PROMPTS: dict[SubagentType, str] = {
 
 完成后提供简洁的实现总结。""",
 
-    SubagentType.PLAN: """你是一个规划型子代理 (Plan Subagent)。
+    "plan": """你是一个规划型子代理 (Plan Subagent)。
 
 你的职责是：
 - 分析任务需求
@@ -214,7 +217,7 @@ class SubagentInstance:
         self.subagent_type = subagent_type
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
-        self.timeout = timeout or DEFAULT_TIMEOUTS.get(subagent_type, 300)
+        self.timeout = timeout or DEFAULT_TIMEOUTS.get(subagent_type.value if hasattr(subagent_type, 'value') else subagent_type, 300)
 
         # 独立的对话历史
         self.history: list[dict] = []
@@ -224,7 +227,7 @@ class SubagentInstance:
         self._setup_tools(custom_tools)
 
         # System prompt
-        base_prompt = SUBAGENT_SYSTEM_PROMPTS[subagent_type]
+        base_prompt = SUBAGENT_SYSTEM_PROMPTS[subagent_type.value if hasattr(subagent_type, 'value') else subagent_type]
         self.system_prompt = custom_system_prompt or base_prompt
 
         # 状态
@@ -240,7 +243,7 @@ class SubagentInstance:
         if custom_tools:
             allowed_tools = custom_tools
         else:
-            permission_set_name = SUBAGENT_TYPE_PERMISSIONS[self.subagent_type]
+            permission_set_name = SUBAGENT_TYPE_PERMISSIONS[self.subagent_type.value if hasattr(self.subagent_type, 'value') else self.subagent_type]
             allowed_tools = PERMISSION_SETS[permission_set_name]
 
         self._allowed_tools = allowed_tools
