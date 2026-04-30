@@ -13,6 +13,19 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
 
+# Auto-adjust thresholds
+_MAX_CRITICAL_DISPATCH_RATE = 50.0
+_MAX_CRITICAL_QUEUE_SIZE = 30
+_CRITICAL_SIZE_INCREMENT = 5
+_REJECT_RATE_THRESHOLD = 0.1
+_BACKPRESSURE_INCREMENT = 0.05
+_MAX_BACKPRESSURE_THRESHOLD = 0.95
+_MAX_NORMAL_DISPATCH_RATE = 5.0
+_DISPATCH_RATE_MULTIPLIER = 1.2
+_STATS_WINDOW_SIZE = 100
+_DISPATCH_LOOP_INTERVAL = 30.0
+
+
 logger = logging.getLogger("seed_agent")
 
 
@@ -172,8 +185,8 @@ class QueueStats:
         """记录指定优先级的等待时间，保留最近100条。"""
         self.wait_times[priority].append(duration)
         # 只保留最近100条
-        if len(self.wait_times[priority]) > 100:
-            self.wait_times[priority] = self.wait_times[priority][-100:]
+        if len(self.wait_times[priority]) > _STATS_WINDOW_SIZE:
+            self.wait_times[priority] = self.wait_times[priority][-_STATS_WINDOW_SIZE:]
 
     def get_avg_wait_time(self, priority: RequestPriority) -> float:
         """计算指定优先级的平均等待时间。"""
@@ -188,7 +201,7 @@ class QueueStats:
         if not times:
             return 0.0
         sorted_times = sorted(times)
-        idx = int(len(sorted_times) * 0.95)
+        idx = int(len(sorted_times) * _MAX_BACKPRESSURE_THRESHOLD)
         return sorted_times[min(idx, len(sorted_times) - 1)]
 
     def get_reject_rate(self, priority: RequestPriority) -> float:
@@ -524,7 +537,7 @@ class RequestQueue:
                 break
             except Exception as e:
                 logger.error(f"Adjust loop error: {e}")
-                await asyncio.sleep(30.0)
+                await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
 
     async def _adjust_config(self):
         """根据统计数据智能调整配置"""
@@ -535,8 +548,8 @@ class RequestQueue:
         # 如果 CRITICAL 平均等待超过目标，增加调度速率
         if critical_avg_wait > self.config.critical_target_wait_time:
             old_rate = self.config.critical_dispatch_rate
-            self.config.critical_dispatch_rate *= 1.2
-            self.config.critical_dispatch_rate = min(self.config.critical_dispatch_rate, 50.0)
+            self.config.critical_dispatch_rate *= _DISPATCH_RATE_MULTIPLIER
+            self.config.critical_dispatch_rate = min(self.config.critical_dispatch_rate, _MAX_CRITICAL_DISPATCH_RATE)
 
             if self.config.critical_dispatch_rate != old_rate:
                 logger.info(
@@ -548,8 +561,8 @@ class RequestQueue:
             if critical_p95_wait > self.config.critical_target_wait_time * 2:
                 old_size = self.config.critical_max_size
                 self.config.critical_max_size = min(
-                    self.config.critical_max_size + 5,
-                    30  # 最大不超过 30
+                    self.config.critical_max_size + _CRITICAL_SIZE_INCREMENT,
+                    _MAX_CRITICAL_QUEUE_SIZE
                 )
                 if self.config.critical_max_size != old_size:
                     logger.info(
@@ -560,11 +573,11 @@ class RequestQueue:
         # 2. 反压阈值调整（根据拒绝率）
         critical_reject_rate = self._stats.get_reject_rate(RequestPriority.CRITICAL)
 
-        if critical_reject_rate > 0.1:  # 拒绝率超过 10%
+        if critical_reject_rate > _REJECT_RATE_THRESHOLD:
             old_threshold = self.config.critical_backpressure_threshold
             self.config.critical_backpressure_threshold = min(
                 self.config.critical_backpressure_threshold + 0.05,
-                0.95
+                _MAX_BACKPRESSURE_THRESHOLD
             )
             if self.config.critical_backpressure_threshold != old_threshold:
                 logger.info(
@@ -576,8 +589,8 @@ class RequestQueue:
         normal_avg_wait = self._stats.get_avg_wait_time(RequestPriority.NORMAL)
         if normal_avg_wait > self.config.normal_target_wait_time:
             old_rate = self.config.normal_dispatch_rate
-            self.config.normal_dispatch_rate *= 1.2
-            self.config.normal_dispatch_rate = min(self.config.normal_dispatch_rate, 5.0)
+            self.config.normal_dispatch_rate *= _DISPATCH_RATE_MULTIPLIER
+            self.config.normal_dispatch_rate = min(self.config.normal_dispatch_rate, _MAX_NORMAL_DISPATCH_RATE)
 
             if self.config.normal_dispatch_rate != old_rate:
                 logger.info(

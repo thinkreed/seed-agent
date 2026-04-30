@@ -346,23 +346,20 @@ class AutonomousExplorer:
         # 获取 skills prompt（从 skill_loader）
         skills_prompt = ""
         best_skill_suggestion = ""
-        if hasattr(self.agent, 'skill_loader') and self.agent.skill_loader:
-            skills_prompt = self.agent.skill_loader.get_skills_prompt()
+        skill_loader = getattr(self.agent, 'skill_loader', None)
+        if skill_loader:
+            skills_prompt = skill_loader.get_skills_prompt()
 
             # Memory Graph 增强：根据任务类型选择最佳 skill
             signals = self._extract_task_signals(todo_content, has_todo)
-            best_skill = self.agent.skill_loader.select_best_skill(
+            best_skill = skill_loader.select_best_skill(
                 signals=signals,
-                available_tools=(
-                    self.agent.tools.get_tool_names()
-                    if hasattr(self.agent.tools, 'get_tool_names')
-                    else None
-                )
+                available_tools=getattr(self.agent.tools, 'get_tool_names', lambda: None)()
             )
 
             if best_skill:
                 # 使用 Gene slice（Tier 2a）注入，而非完整 skill
-                gene_slice = self.agent.skill_loader.get_gene_slice(best_skill)
+                gene_slice = skill_loader.get_gene_slice(best_skill)
                 if gene_slice:
                     best_skill_suggestion = f"""## 推荐技能 (Memory Graph 选择)
 

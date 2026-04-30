@@ -7,13 +7,12 @@
 3. Prompt Injection 安全扫描
 4. 分类分组索引 (按 category/platforms 分组)
 5. 三级渐进式披露: 索引(Tier1) → 内容(Tier2) → 参考文件(Tier3)
-6. mtime+size manifest 缓存失效机制
 
 Memory Graph 增强:
-7. 基于历史结果的选择算法 (Laplace平滑 + 指数衰减)
-8. 低价值策略禁用机制 (ban threshold)
-9. 冷启动处理 + 近期成功加成
-10. Gene slice 提取 (Tier 2a: strategy + avoid + constraints)
+6. 基于历史结果的选择算法 (Laplace平滑 + 指数衰减)
+7. 低价值策略禁用机制 (ban threshold)
+8. 冷启动处理 + 近期成功加成
+9. Gene slice 提取 (Tier 2a: strategy + avoid + constraints)
 
 Token 节约估算:
 - 全量加载: ~8700 tokens (12 skills)
@@ -26,28 +25,38 @@ import re
 import sys
 import json
 import yaml
-import hashlib
 import difflib
 import threading
 from collections import OrderedDict
-from typing import Set, Tuple
+from typing import Set
 from pathlib import Path
 from datetime import datetime
+
+from .skill_cache import load_snapshot, save_snapshot, clear_snapshot, build_manifest, SNAPSHOT_PATH
+from .skill_security import scan_for_injections, validate_skill_structure, validate_path_within_dir, INJECTION_PATTERNS
+
+# 兼容性导出：保持原有私有函数名可用
+_build_manifest = build_manifest
+_scan_for_injections = scan_for_injections
+_validate_skill_structure = validate_skill_structure
 
 # ==================== 常量配置 ====================
 
 SKILLS_DIR = Path(os.path.expanduser("~")) / ".seed" / "memory" / "skills"
-CACHE_DIR = Path(os.path.expanduser("~")) / ".seed" / "cache"
-SNAPSHOT_PATH = CACHE_DIR / "skills_snapshot.json"
 
 # LRU 缓存配置
-MAX_CACHE_ENTRIES = 8  # 最多缓存 8 个不同的技能视图配置
 MAX_LOADED_SKILL_CACHE = 5  # 最多缓存 5 个已加载的完整 skill 内容
+
+# 内容截取限制
+MAX_COMPACT_CONTENT = 500  # 精简版 skill 内容最大字符数
 
 # 平台映射
 PLATFORM_MAP = {
-    'win32': 'windows', 'linux': 'linux', 'darwin': 'macos',
-    'windows': 'windows', 'macos': 'macos',
+    'win32': 'windows',
+    'linux': 'linux',
+    'darwin': 'macos',
+    'windows': 'windows',
+    'macos': 'macos',
 }
 
 # Memory Graph 配置参数
@@ -63,126 +72,30 @@ MEMORY_GRAPH_CONFIG = {
     'enabled': True,                # 是否启用 Memory Graph 选择
 }
 
-# Prompt Injection 检测模式 (参考 Hermes skills_guard.py)
-INJECTION_PATTERNS = [
-    "ignore previous instructions", "ignore all previous",
-    "you are now", "disregard your", "forget your instructions",
-    "new instructions:", "system prompt:", "<system>", "]]>",
-    "ignore all the instructions", "you must forget",
-]
-
-# ==================== 磁盘快照缓存 (Layer 2) ====================
-
-def _build_manifest(skills_dir: Path) -> str:
-    """构建技能目录的 manifest (mtime + size) 用于缓存失效检测"""
-    if not skills_dir.exists():
-        return ""
-    manifest = {}
-    for skill_dir in sorted(skills_dir.iterdir()):
-        if skill_dir.is_dir():
-            skill_file = skill_dir / "SKILL.md"
-            if skill_file.exists():
-                stat = skill_file.stat()
-                manifest[str(skill_dir.name)] = {
-                    'mtime': stat.st_mtime,
-                    'size': stat.st_size,
-                }
-    return hashlib.md5(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
-
-def load_snapshot(skills_dir: Path) -> dict | None:
-    """从磁盘加载缓存快照"""
-    try:
-        if not SNAPSHOT_PATH.exists():
-            return None
-        with open(SNAPSHOT_PATH, 'r', encoding='utf-8') as f:
-            snapshot = json.load(f)
-        # 检查 manifest 是否匹配
-        current_manifest = _build_manifest(skills_dir)
-        if snapshot.get('manifest') != current_manifest:
-            return None  # 文件已变更，快照失效
-        return snapshot
-    except (json.JSONDecodeError, OSError):
-        return None
-
-def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
-    """保存缓存快照到磁盘"""
-    try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        snapshot = {
-            'manifest': _build_manifest(skills_dir),
-            'timestamp': datetime.now().isoformat(),
-            'skills': skills_meta,
-        }
-        # 原子写入
-        tmp_path = SNAPSHOT_PATH.with_suffix('.tmp')
-        with open(tmp_path, 'w', encoding='utf-8') as f:
-            json.dump(snapshot, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, SNAPSHOT_PATH)
-    except OSError:
-        pass
-
-def clear_snapshot() -> None:
-    """清除磁盘快照 (在 skill 被 patch 后调用)"""
-    try:
-        if SNAPSHOT_PATH.exists():
-            SNAPSHOT_PATH.unlink()
-    except OSError:
-        pass
-
-
-# ==================== 安全扫描 ====================
-
-def _scan_for_injections(content: str) -> str | None:
-    """检测 Skill 内容中的 Prompt Injection 攻击"""
-    content_lower = content.lower()
-    for pattern in INJECTION_PATTERNS:
-        if pattern in content_lower:
-            return f"Potential prompt injection detected: '{pattern}'"
-    return None
-
-def _validate_skill_structure(skill_dir: Path) -> str | None:
-    """验证 Skill 目录结构安全"""
-    try:
-        # 检查符号链接逃逸
-        for item in skill_dir.rglob('*'):
-            if item.is_symlink():
-                resolved = item.resolve()
-                if not str(resolved).startswith(str(skill_dir.resolve())):
-                    return f"Symlink escape detected: {item} -> {resolved}"
-        # 检查二进制文件
-        suspicious_ext = {'.exe', '.dll', '.so', '.dylib', '.bin', '.dat', '.com'}
-        for item in skill_dir.rglob('*'):
-            if item.is_file() and item.suffix.lower() in suspicious_ext:
-                return f"Suspicious binary file: {item}"
-    except (OSError, PermissionError):
-        pass
-    return None
-
 
 # ==================== SkillLoader 核心类 ====================
 
 class SkillLoader:
     """
     渐进式 Skill 加载器
-    
+
     三级披露:
     - Tier 1: 索引 (name + description + triggers) - 注入 System Prompt
-    - Tier 2: 完整内容 - 通过 load_skill 按需加载
+    - Tier 2: 完整内容 - 通过 load_skill_content 按需加载
     - Tier 3: 参考文件 - 通过 load_skill_ref 加载支撑文件
     """
 
     def __init__(self, skills_dir: Path = None):
         self.skills_dir = skills_dir or SKILLS_DIR
         self._skills_meta: dict[str, dict] = {}
-        self._manifest_hash: str = ""
         self._lock = threading.Lock()
-        
+
         # LRU 缓存: 完整 skill 内容缓存
         self._content_cache: OrderedDict[str, str] = OrderedDict()
-        
+
         # 平台信息
         self._platform = PLATFORM_MAP.get(sys.platform, sys.platform)
-        
+
         self._load_metadata()
 
     @staticmethod
@@ -200,7 +113,6 @@ class SkillLoader:
         if snapshot and snapshot.get('skills'):
             for name, meta in snapshot['skills'].items():
                 self._skills_meta[name] = meta
-            self._manifest_hash = snapshot.get('manifest', '')
             return
 
         self._skills_meta.clear()
@@ -219,14 +131,7 @@ class SkillLoader:
                 if not meta or 'name' not in meta:
                     continue
 
-                triggers = meta.get('triggers', [])
-                if isinstance(triggers, str):
-                    triggers = self._normalize_str_list(triggers)
-                elif isinstance(triggers, list):
-                    triggers = self._flatten_triggers(triggers)
-                else:
-                    triggers = []
-
+                triggers = self._normalize_triggers(meta.get('triggers', []))
                 metadata = meta.get('metadata', {}) or {}
 
                 self._skills_meta[meta['name']] = {
@@ -246,7 +151,14 @@ class SkillLoader:
                 continue
 
         save_snapshot(self.skills_dir, self._skills_meta)
-        self._manifest_hash = _build_manifest(self.skills_dir)
+
+    def _normalize_triggers(self, triggers) -> list[str]:
+        """规范化 triggers (字符串、列表或嵌套列表)"""
+        if isinstance(triggers, str):
+            return self._normalize_str_list(triggers)
+        if isinstance(triggers, list):
+            return self._flatten_triggers(triggers)
+        return []
 
     def _parse_frontmatter(self, skill_file: Path) -> dict | None:
         """解析 SKILL.md 的 YAML frontmatter"""
@@ -263,29 +175,19 @@ class SkillLoader:
             return None
 
     def _flatten_triggers(self, triggers: list) -> list[str]:
-        """扁平化嵌套的 triggers 列表
-
-        YAML 中 `- [xxx]` 格式会产生嵌套列表，此方法将其展开为单层字符串列表。
-
-        Args:
-            triggers: 可能包含嵌套列表的 triggers
-
-        Returns:
-            扁平化后的字符串列表
-        """
+        """扁平化嵌套的 triggers 列表"""
         result = []
         for item in triggers:
             if isinstance(item, str):
                 result.append(item.strip())
             elif isinstance(item, list):
-                # 递归处理嵌套列表
                 result.extend(self._flatten_triggers(item))
         return result
 
     def should_show_skill(self, name: str, available_tools: Set[str] = None) -> bool:
         """
         条件激活: 判断 skill 是否应该在当前环境下显示
-        
+
         规则:
         - fallback_for_tools: 当主工具可用时隐藏
         - requires_tools: 缺少依赖工具时隐藏
@@ -293,34 +195,30 @@ class SkillLoader:
         """
         if name not in self._skills_meta:
             return False
-        
+
         meta = self._skills_meta[name]
-        
+
         # 平台检查
         platforms = meta.get('platforms', [])
         if platforms:
-            platform_matched = any(
-                p.lower() in self._platform.lower() or 
-                self._platform.lower() in p.lower() 
+            if not any(
+                p.lower() in self._platform.lower() or self._platform.lower() in p.lower()
                 for p in platforms
-            )
-            if not platform_matched:
+            ):
                 return False
-        
+
         # requires_tools 检查
         requires = meta.get('requires_tools', [])
         if requires and available_tools is not None:
-            for tool in requires:
-                if tool not in available_tools:
-                    return False  # 缺少必需工具
-        
+            if not all(tool in available_tools for tool in requires):
+                return False
+
         # fallback_for_tools 检查
         fallback = meta.get('fallback_for_tools', [])
         if fallback and available_tools is not None:
-            for tool in fallback:
-                if tool in available_tools:
-                    return False  # 主工具已存在，不需要 fallback
-        
+            if any(tool in available_tools for tool in fallback):
+                return False
+
         return True
 
     @staticmethod
@@ -367,73 +265,60 @@ class SkillLoader:
         lines.append("</skills_index>")
         return "\n".join(lines)
 
-    def _tokenize_query(self, query: str) -> Tuple[list[str], list[str], list[str]]:
+    # ==================== 匹配算法 ====================
+
+    def _tokenize_query(self, query: str) -> list[str]:
         """分词: 英文单词 + 中文字符串"""
         query_lower = query.lower()
         en_words = re.findall(r'[a-zA-Z0-9_-]+', query_lower)
         cn_words = re.findall(r'[\u4e00-\u9fa5]+', query_lower)
-        query_words = en_words + cn_words
-        if not query_words and query.strip():
-            query_words = [query_lower]
-        return en_words, cn_words, query_words
+        words = en_words + cn_words
+        return words if words else [query_lower]
 
-    def _score_name_match(self, name: str, query_lower: str) -> float:
-        """Name 精确匹配: +3.0"""
-        if name.lower() == query_lower or name.lower() in query_lower or query_lower in name.lower():
-            return 3.0
-        return 0.0
+    def _compute_match_score(self, name: str, meta: dict, query_words: list[str], query_lower: str) -> float:
+        """计算单个 skill 的匹配分数"""
+        score = 0.0
 
-    def _score_trigger_match(self, triggers: list[str], query_words: list[str]) -> Tuple[float, bool]:
-        """
-        Trigger 匹配 - 精确匹配优先于部分匹配
-        返回 (score, matched)
-        """
+        # 1. Name 匹配 (最高优先级)
+        name_lower = name.lower()
+        if name_lower == query_lower:
+            score += 3.0
+        elif name_lower in query_lower or query_lower in name_lower:
+            score += 2.0
+
+        # 2. Trigger 匹配
+        triggers = meta.get('triggers', [])
+        trigger_matched = False
         for trigger in triggers:
             trigger_lower = trigger.lower()
             for qw in query_words:
                 if trigger_lower == qw:
-                    # 精确匹配 - 最高优先级
-                    return 3.0, True
+                    score += 3.0
+                    trigger_matched = True
                 elif qw in trigger_lower:
-                    # 查询词是触发词的子串 (e.g. "诊断" in "诊断趋势")
-                    ratio = len(qw) / max(len(trigger_lower), 1)
-                    return 1.0 + ratio, True  # 1.0~2.0
+                    score += 1.0 + len(qw) / max(len(trigger_lower), 1)
+                    trigger_matched = True
                 elif trigger_lower in qw:
-                    # 触发词是查询词的子串
-                    return 1.5, True
-        return 0.0, False
+                    score += 1.5
+                    trigger_matched = True
 
-    def _score_description_match(self, description: str, query_words: list[str]) -> Tuple[float, Set[str]]:
-        """
-        Description 关键词匹配 (仅在没有 trigger 匹配时生效)
-        返回 (score, desc_words)
-        """
-        desc_words = set(re.findall(r'[a-zA-Z0-9_]+', description.lower()))
-        desc_words.update(re.findall(r'[\u4e00-\u9fa5]+', description.lower()))
-        score = 0.0
-        for qw in query_words:
-            for dw in desc_words:
-                if qw in dw or dw in qw:
+        # 3. Description 关键词匹配 (仅在没有 trigger 匹配时)
+        if not trigger_matched:
+            desc_words = set(re.findall(r'[a-zA-Z0-9_]+', meta['description'].lower()))
+            desc_words.update(re.findall(r'[\u4e00-\u9fa5]+', meta['description'].lower()))
+            for qw in query_words:
+                if any(qw in dw or dw in qw for dw in desc_words):
                     score += 0.5
-                    break
-        return score, desc_words
 
-    def _score_fuzzy_match(self, name: str, triggers: list[str], desc_words: Set[str],
-                           en_words: list[str], current_score: float) -> float:
-        """模糊匹配 (仅英文，仅在当前得分 < 1.0 时生效)"""
-        if current_score >= 1.0 or not en_words:
-            return 0.0
-        all_keywords = set()
-        all_keywords.add(name.lower())
-        all_keywords.update(desc_words)
-        all_keywords.update(t.lower() for t in triggers)
-        keyword_list = list(all_keywords)
-        score = 0.0
-        for qw in en_words:
-            if len(qw) >= 3:
-                matches = difflib.get_close_matches(qw, keyword_list, n=1, cutoff=0.75)
-                if matches:
-                    score += 0.5
+        # 4. 模糊匹配 (仅英文，仅低分时)
+        if score < 1.0 and query_words:
+            en_words = [w for w in query_words if re.match(r'[a-zA-Z0-9_-]+', w)]
+            if en_words:
+                all_keywords = {name_lower} | desc_words | set(t.lower() for t in triggers)
+                for qw in en_words:
+                    if len(qw) >= 3 and difflib.get_close_matches(qw, list(all_keywords), n=1, cutoff=0.75):
+                        score += 0.5
+
         return score
 
     def match_skill(self, query: str, available_tools: Set[str] = None) -> str | None:
@@ -442,117 +327,100 @@ class SkillLoader:
 
         评分策略:
         - name 精确匹配: +3.0
-        - trigger 精确匹配: +2.0
-        - description 关键词匹配: +1.0
+        - trigger 精确匹配: +3.0
+        - description 关键词匹配: +0.5
         - 模糊匹配: +0.5
         """
         query_lower = query.lower()
-        en_words, cn_words, query_words = self._tokenize_query(query)
+        query_words = self._tokenize_query(query)
 
         best_match = None
         best_score = 0.0
 
         for name, meta in self._skills_meta.items():
-            # 条件激活过滤
             if not self.should_show_skill(name, available_tools):
                 continue
 
-            score = 0.0
-
-            # 1. Name 精确匹配
-            score += self._score_name_match(name, query_lower)
-
-            # 2. Trigger 匹配
-            triggers = meta.get('triggers', [])
-            trigger_score, trigger_matched = self._score_trigger_match(triggers, query_words)
-            score += trigger_score
-
-            # 3. Description 关键词匹配 (仅在没有 trigger 匹配时生效)
-            if not trigger_matched:
-                desc_score, desc_words = self._score_description_match(meta['description'], query_words)
-                score += desc_score
-            else:
-                desc_words = set()
-
-            # 4. 模糊匹配 (仅英文)
-            score += self._score_fuzzy_match(name, triggers, desc_words, en_words, score)
-
+            score = self._compute_match_score(name, meta, query_words, query_lower)
             if score > best_score:
                 best_score = score
                 best_match = name
 
         return best_match if best_score >= 1.0 else None
 
+    # ==================== 内容加载 ====================
+
     def load_skill_content(self, name: str) -> str | None:
         """
         Tier 2: 加载完整 skill 内容
-        
+
         安全检查:
         - Prompt Injection 检测
-        - 路径穿越检测 (通过 validate_within_dir)
         - 符号链接逃逸检测
         - Context Fencing: 添加围栏标签明确标识技能内容边界
         """
-        # 检查缓存
-        if name in self._content_cache:
-            self._content_cache.move_to_end(name)
-            return self._content_cache[name]
-        
+        # 检查缓存 (线程安全)
+        with self._lock:
+            if name in self._content_cache:
+                self._content_cache.move_to_end(name)
+                return self._content_cache[name]
+
         if name not in self._skills_meta:
             return None
-        
+
         skill_dir = Path(self._skills_meta[name]['dir'])
         skill_file = Path(self._skills_meta[name]['path'])
-        
+
         if not skill_file.exists():
             return None
-        
+
         try:
             content = skill_file.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError):
             return None
-        
+
         # 安全检查
-        injection = _scan_for_injections(content)
+        injection = scan_for_injections(content)
         if injection:
             content = f"[Security Warning] {injection}\n\n{content}"
-        
-        symlink_check = _validate_skill_structure(skill_dir)
+
+        symlink_check = validate_skill_structure(skill_dir)
         if symlink_check:
             return f"[Security Warning] {symlink_check}"
-        
-        # Context Fencing: 添加围栏标签
+
+        # Context Fencing
         fenced_content = f"<skill_content name='{name}'>\n{content}\n</skill_content>"
-        
-        # 缓存
-        if len(self._content_cache) >= MAX_LOADED_SKILL_CACHE:
-            self._content_cache.popitem(last=False)
-        self._content_cache[name] = fenced_content
-        
+
+        # 缓存 (线程安全)
+        with self._lock:
+            if len(self._content_cache) >= MAX_LOADED_SKILL_CACHE:
+                self._content_cache.popitem(last=False)
+            self._content_cache[name] = fenced_content
+
         return fenced_content
 
     def load_skill_ref(self, name: str, ref_path: str) -> str | None:
         """
         Tier 3: 加载 skill 的参考文件
-        
+
         安全: 严格限制在 skill 目录内，禁止路径穿越
         """
         if name not in self._skills_meta:
             return None
-        
+
         skill_dir = Path(self._skills_meta[name]['dir'])
-        
+
         # 路径穿越检测
         if '..' in ref_path:
             return "Error: Path traversal ('..') is not allowed."
-        
+
         target = (skill_dir / ref_path).resolve()
-        if not str(target).startswith(str(skill_dir.resolve())):
+        if not validate_path_within_dir(target, skill_dir):
             return "Error: Path escapes skill directory."
-        
+
         if not target.exists() or not target.is_file():
             return f"Reference file not found: {ref_path}"
-        
+
         try:
             return target.read_text(encoding='utf-8')
         except (OSError, UnicodeDecodeError) as e:
@@ -564,7 +432,8 @@ class SkillLoader:
 
     def refresh(self):
         """强制刷新元数据 (清除缓存并重新扫描)"""
-        self._content_cache.clear()
+        with self._lock:
+            self._content_cache.clear()
         clear_snapshot()
         self._skills_meta.clear()
         self._load_metadata()
@@ -585,7 +454,7 @@ class SkillLoader:
             query = ' '.join(signals) if signals else ''
             return self.match_skill(query, available_tools)
 
-        # Step 1: 基础过滤
+        # 基础过滤
         candidates = [
             name for name in self._skills_meta
             if self.should_show_skill(name, available_tools)
@@ -593,21 +462,20 @@ class SkillLoader:
         if not candidates:
             return None
 
-        # Step 2: 分数计算与排序
-        ranked = self._rank_candidates_by_score(candidates, signals)
+        # 计算分数并排序
+        ranked = self._rank_candidates(candidates, signals)
 
-        # Step 3: 应用禁用阈值
-        return self._select_from_ranked(ranked)
+        # 应用禁用阈值
+        return self._select_best_candidate(ranked)
 
-    def _rank_candidates_by_score(self, candidates: list[str], signals: list[str]) -> list[tuple]:
+    def _rank_candidates(self, candidates: list[str], signals: list[str]) -> list[tuple]:
         """计算候选分数并排序"""
-        skill_scores = {}
+        scores = {}
         for skill_name in candidates:
-            skill_scores[skill_name] = self._compute_skill_selection_score(skill_name, signals)
-        
-        return sorted(skill_scores.items(), key=lambda x: x[1]['score'], reverse=True)
+            scores[skill_name] = self._compute_selection_score(skill_name, signals)
+        return sorted(scores.items(), key=lambda x: x[1]['score'], reverse=True)
 
-    def _select_from_ranked(self, ranked: list[tuple]) -> str | None:
+    def _select_best_candidate(self, ranked: list[tuple]) -> str | None:
         """从排序列表中返回第一个非禁用的候选"""
         ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
         min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
@@ -615,45 +483,27 @@ class SkillLoader:
         for skill_name, info in ranked:
             stats = info.get('stats', {})
             total = stats.get('total', 0)
+            # 跳过被禁用的（尝试次数足够且分数过低）
             if total >= min_attempts and info['score'] < ban_threshold:
-                continue  # 跳过被禁用的
+                continue
             return skill_name
         return None
 
-    def _compute_skill_selection_score(
-        self,
-        skill_name: str,
-        signals: list[str]
-    ) -> dict:
-        """
-        计算单个 Skill 的选择分数
-
-        Returns:
-            {
-                'score': float,
-                'mode': 'cold' | 'warm',
-                'stats': {...},
-                'trigger_score': float,
-                'memory_score': float
-            }
-        """
-        # 获取历史统计
+    def _compute_selection_score(self, skill_name: str, signals: list[str]) -> dict:
+        """计算单个 Skill 的选择分数"""
         stats = self._get_skill_outcome_stats(skill_name)
-
-        # 计算触发器匹配分数
-        trigger_score = self._compute_trigger_match_score(skill_name, signals)
+        trigger_score = self._compute_trigger_score(skill_name, signals)
 
         memory_weight = MEMORY_GRAPH_CONFIG['memory_weight']
         trigger_weight = MEMORY_GRAPH_CONFIG['trigger_weight']
         cold_penalty = MEMORY_GRAPH_CONFIG['cold_start_penalty']
 
         if stats['total'] == 0:
-            # 冷启动：无历史
+            # 冷启动
             score = trigger_score * cold_penalty
-            mode = 'cold'
             memory_score = 0.0
+            mode = 'cold'
         else:
-            # 有历史：计算记忆分数
             memory_score = self._compute_memory_score(stats)
             score = memory_score * memory_weight + trigger_score * trigger_weight
             mode = 'warm'
@@ -667,25 +517,11 @@ class SkillLoader:
         }
 
     def _get_skill_outcome_stats(self, skill_name: str) -> dict:
-        """
-        从 gene_outcomes 获取 Skill 统计信息
-
-        Returns:
-            {
-                'total': N,
-                'successes': N,
-                'failures': N,
-                'laplace_rate': 0.XX,
-                'last_timestamp': ISO,
-                'recent_success_rate': 0.XX
-            }
-        """
+        """从 session_db 获取 Skill 统计信息"""
         try:
-            from src.tools.session_db import get_skill_stats
-            stats = get_skill_stats(skill_name)
-            return stats
+            from .session_db import get_skill_stats
+            return get_skill_stats(skill_name)
         except ImportError:
-            # 模块不可用，返回空统计
             return {
                 'total': 0,
                 'successes': 0,
@@ -695,19 +531,8 @@ class SkillLoader:
                 'recent_success_rate': 0.0
             }
 
-    def _compute_trigger_match_score(
-        self,
-        skill_name: str,
-        signals: list[str]
-    ) -> float:
-        """
-        计算触发器匹配分数
-
-        评分规则:
-        - 每个精确匹配: 1.0
-        - 每个部分匹配: 0.5
-        - 最大分数上限: 3.0
-        """
+    def _compute_trigger_score(self, skill_name: str, signals: list[str]) -> float:
+        """计算触发器匹配分数 (最大 3.0)"""
         if not signals:
             return 0.0
 
@@ -720,32 +545,19 @@ class SkillLoader:
             return 0.0
 
         score = 0.0
-        max_score = 3.0
-
         for signal in signals:
             signal_lower = signal.lower()
             for trigger in triggers:
                 trigger_lower = trigger.lower()
-
                 if trigger_lower == signal_lower:
                     score += 1.0  # 精确匹配
                 elif signal_lower in trigger_lower or trigger_lower in signal_lower:
                     score += 0.5  # 部分匹配
 
-        return min(score, max_score)
+        return min(score, 3.0)
 
     def _compute_memory_score(self, stats: dict) -> float:
-        """
-        计算记忆分数 (GEP-style)
-
-        公式: value = laplace_rate * decay_weight + recent_boost
-
-        Args:
-            stats: 从 gene_outcomes 获取的统计信息
-
-        Returns:
-            记忆分数 (0.0 - 1.0)
-        """
+        """计算记忆分数 (Laplace平滑 + 指数衰减 + 近期加成)"""
         half_life = MEMORY_GRAPH_CONFIG['half_life_days']
         recent_boost_factor = MEMORY_GRAPH_CONFIG['recent_boost_factor']
 
@@ -754,7 +566,7 @@ class SkillLoader:
         total = stats.get('total', 1)
         p = (successes + 1) / (total + 2)
 
-        # 指数衰减（基于最近执行时间）
+        # 指数衰减
         last_ts = stats.get('last_timestamp')
         if last_ts:
             try:
@@ -774,26 +586,11 @@ class SkillLoader:
 
     # ==================== Gene Slice 提取 (Tier 2a) ====================
 
-    @staticmethod
-    def _format_gene_list(items: list, prefix: str = "- ") -> str:
-        """格式化列表项为 Gene 输出行"""
-        return "".join(f"{prefix}{item}\n" for item in items)
-
-    @staticmethod
-    def _format_gene_constraints(constraints) -> str:
-        """格式化 constraints（支持 dict 或 list）"""
-        if isinstance(constraints, dict):
-            return "".join(f"- {k}: {v}\n" for k, v in constraints.items())
-        if isinstance(constraints, list):
-            return "".join(f"- {c}\n" for c in constraints)
-        return ""
-
     def get_gene_slice(self, name: str) -> str | None:
         """提取 Gene slice (Tier 2a): ~230 tokens 的核心控制信号"""
         if name not in self._skills_meta:
             return None
 
-        # 直接读取原始文件内容（不使用包装后的内容）
         skill_file = Path(self._skills_meta[name]['path'])
         if not skill_file.exists():
             return None
@@ -808,32 +605,28 @@ class SkillLoader:
             return self._extract_compact_skill(content)
 
         output = f"[SYSTEM: Skill '{name}' activated]\n\n## Strategy\n"
-        output += self._format_gene_list(gene_fields.get('strategy', []))
+        output += "".join(f"- {item}\n" for item in gene_fields.get('strategy', []))
 
         if gene_fields.get('avoid'):
             output += "\n## AVOID\n"
-            output += self._format_gene_list(gene_fields['avoid'])
+            output += "".join(f"- {item}\n" for item in gene_fields['avoid'])
 
         if gene_fields.get('constraints'):
             output += "\n## Constraints\n"
-            output += self._format_gene_constraints(gene_fields['constraints'])
+            constraints = gene_fields['constraints']
+            if isinstance(constraints, dict):
+                output += "".join(f"- {k}: {v}\n" for k, v in constraints.items())
+            elif isinstance(constraints, list):
+                output += "".join(f"- {c}\n" for c in constraints)
 
         if gene_fields.get('validation'):
             output += "\n## Validation\n"
-            output += self._format_gene_list(gene_fields['validation'])
+            output += "".join(f"- {item}\n" for item in gene_fields['validation'])
 
         return output
 
     def _extract_gene_fields(self, content: str) -> dict | None:
-        """
-        从 SKILL.md 内容提取 Gene 控制字段
-
-        Gene 字段位于 YAML frontmatter 中:
-        - strategy: list[str]
-        - avoid: list[str]
-        - constraints: Dict | list[str]
-        - validation: list[str]
-        """
+        """从 YAML frontmatter 提取 Gene 控制字段"""
         if not content.startswith("---"):
             return None
 
@@ -843,28 +636,22 @@ class SkillLoader:
 
         try:
             frontmatter = yaml.safe_load(parts[1].strip())
-
             gene_fields = {}
             for field in ['strategy', 'avoid', 'constraints', 'validation']:
                 if field in frontmatter:
                     gene_fields[field] = frontmatter[field]
-
             return gene_fields if gene_fields else None
         except yaml.YAMLError:
             return None
 
     def _extract_compact_skill(self, content: str) -> str:
-        """
-        无 Gene 字段时，提取精简版 Skill
-
-        仅包含: name, description, triggers
-        """
+        """无 Gene 字段时，提取精简版 Skill"""
         if not content.startswith("---"):
-            return content[:500]  # 无 frontmatter，截取前 500 字符
+            return content[:MAX_COMPACT_CONTENT]
 
         parts = content.split("---", 2)
         if len(parts) < 3:
-            return content[:500]
+            return content[:MAX_COMPACT_CONTENT]
 
         try:
             frontmatter = yaml.safe_load(parts[1].strip())
@@ -872,8 +659,7 @@ class SkillLoader:
             desc = frontmatter.get('description', '')[:200]
             triggers = frontmatter.get('triggers', [])
 
-            output = f"[SYSTEM: Skill '{name}' activated]\n\n"
-            output += f"Description: {desc}\n"
+            output = f"[SYSTEM: Skill '{name}' activated]\n\nDescription: {desc}\n"
             if triggers:
                 output += f"Triggers: {', '.join(triggers[:5])}\n"
 
@@ -883,9 +669,9 @@ class SkillLoader:
             if first_block:
                 output += f"\n{first_block}"
 
-            return output[:500]  # Token 限制
+            return output[:MAX_COMPACT_CONTENT]
         except yaml.YAMLError:
-            return content[:500]
+            return content[:MAX_COMPACT_CONTENT]
 
     def _extract_first_instruction_block(self, body: str) -> str:
         """提取第一个指令块或关键段落"""
@@ -908,7 +694,8 @@ class SkillLoader:
 _global_loader: SkillLoader | None = None
 _loader_lock = threading.Lock()
 
-def _get_loader() -> SkillLoader:
+
+def get_loader() -> SkillLoader:
     """获取全局单例 loader"""
     global _global_loader
     if _global_loader is None:
@@ -928,38 +715,28 @@ def load_skill(name: str) -> str:
     Returns:
         Complete SKILL.md content or error message.
     """
-    loader = _get_loader()
+    loader = get_loader()
     content = loader.load_skill_content(name)
     if content:
-        # 以 SYSTEM 标记注入，提升指令跟随权重 (参考 Hermes)
         return (
             f"[SYSTEM: The user has invoked the \"{name}\" skill. "
-            f"Follow its instructions carefully.]\n\n"
-            f"{content}"
+            f"Follow its instructions carefully.]\n\n{content}"
         )
     return f"Skill not found: {name}. Available: {', '.join(loader.get_skill_names())}"
 
 
 def list_skills() -> str:
-    """
-    List all available skills with descriptions (Tier 1).
-
-    Returns:
-        Formatted list of skills grouped by category.
-    """
-    loader = _get_loader()
+    """List all available skills with descriptions (Tier 1)."""
+    loader = get_loader()
     skills = list(loader._skills_meta.values())
 
     if not skills:
         return "No skills available."
 
-    # 按 category 分组
     categories: dict[str, list[dict]] = {}
     for s in skills:
         cat = s.get('category', 'general')
-        if cat not in categories:
-            categories[cat] = []
-        categories[cat].append(s)
+        categories.setdefault(cat, []).append(s)
 
     output = "Available Skills:\n"
     for cat, items in sorted(categories.items()):
@@ -975,33 +752,24 @@ def list_skills() -> str:
 
 
 def search_skill(query: str) -> str:
-    """
-    Search for a skill by query string.
-
-    Args:
-        query: Search query
-
-    Returns:
-        Matched skill content or list of candidates.
-    """
-    loader = _get_loader()
+    """Search for a skill by query string."""
+    loader = get_loader()
     match = loader.match_skill(query)
-    
+
     if match:
         content = loader.load_skill_content(match)
         if content:
             return f"[Matched] {match}\n\n{content}"
-    
-    # 返回候选列表
+
     candidates = []
     query_lower = query.lower()
     for name, meta in loader._skills_meta.items():
         if query_lower in name.lower() or query_lower in meta['description'].lower():
             candidates.append(f"- {name}: {meta['description'][:100]}")
-    
+
     if candidates:
-        return f"No exact match. Candidates:\n" + "\n".join(candidates)
-    
+        return "No exact match. Candidates:\n" + "\n".join(candidates)
+
     return f"No skill matches: {query}. Available: {', '.join(loader.get_skill_names())}"
 
 
@@ -1010,3 +778,7 @@ def register_skill_tools(registry):
     registry.register("load_skill", load_skill)
     registry.register("list_skills", list_skills)
     registry.register("search_skill", search_skill)
+
+
+# 兼容性导出：保持原有私有函数名可用
+_get_loader = get_loader

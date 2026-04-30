@@ -386,6 +386,16 @@ class LLMGateway:
             return await self._state_db.get_stats()
         return None
 
+    @staticmethod
+    def _calc_duration_ms(start_time: float) -> float:
+        """计算耗时（毫秒）"""
+        return (time.time() - start_time) * 1000
+
+    @staticmethod
+    def _estimate_stream_tokens(chunk_count: int) -> int:
+        """估算流式响应 token 数（每chunk约10 tokens）"""
+        return chunk_count * 10
+
     def _resolve_api_key(self, api_key: str) -> str:
         """解析 API Key,支持环境变量引用"""
         if api_key.startswith("${") and api_key.endswith("}"):
@@ -775,7 +785,7 @@ class LLMGateway:
                 if self._fallback_chain:
                     self._fallback_chain.mark_healthy(provider_id)
                 
-                duration_ms = (time.time() - start_time) * 1000
+                duration_ms = self._calc_duration_ms(start_time)
                 usage = result.get('usage')
                 self._record_success_metrics(span, active_provider, model_id, usage, duration_ms)
                 return result
@@ -831,7 +841,7 @@ class LLMGateway:
 
     def _handle_llm_error(self, span, provider: str, model_id: str, start_time: float, e: Exception):
         """记录失败调用的 Metrics 和 Span 错误"""
-        duration_ms = (time.time() - start_time) * 1000
+        duration_ms = self._calc_duration_ms(start_time)
         error_type = classify_error(e)
         
         record_llm_error(provider=provider, model=model_id, duration_ms=duration_ms, error_type=error_type)
@@ -885,7 +895,7 @@ class LLMGateway:
                 result = await self._chat_completion_single(fallback_model_id, messages, **kwargs)
                 self._fallback_chain.mark_healthy(fallback_provider)
                 
-                duration_ms = (time.time() - start_time) * 1000
+                duration_ms = self._calc_duration_ms(start_time)
                 usage = result.get('usage')
                 self._record_success_metrics(span, fallback_provider, fallback_model_id, usage, duration_ms)
                 
@@ -1021,8 +1031,8 @@ class LLMGateway:
                     self._fallback_chain.mark_healthy(model_id.split('/')[0])
 
                 # 流式 token 估算
-                duration_ms = (time.time() - start_time) * 1000
-                estimated_tokens = chunk_count * 10
+                duration_ms = self._calc_duration_ms(start_time)
+                estimated_tokens = self._estimate_stream_tokens(chunk_count)
 
                 record_llm_success(
                     provider=active_provider,
@@ -1076,8 +1086,8 @@ class LLMGateway:
                 self._fallback_chain.mark_healthy(fallback_provider)
 
                 # 流式成功 Metrics
-                duration_ms = (time.time() - start_time) * 1000
-                estimated_tokens = chunk_count * 10
+                duration_ms = self._calc_duration_ms(start_time)
+                estimated_tokens = self._estimate_stream_tokens(chunk_count)
 
                 record_llm_success(
                     provider=fallback_provider,
