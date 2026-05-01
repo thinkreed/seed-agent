@@ -310,10 +310,12 @@ class SubagentInstance:
                     "content": str(result)
                 })
             except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e)[:200]  # 截断长错误信息
                 results.append({
                     "role": "tool",
                     "tool_call_id": tool_id,
-                    "content": f"Error: {str(e)}"
+                    "content": f"Error in {tool_name}: {error_type} - {error_msg}"
                 })
 
         return results

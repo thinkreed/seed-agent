@@ -269,7 +269,9 @@ def file_write(path: str, content: str, mode: str = "overwrite") -> str:
         return f"Successfully {action} to {resolved_path} ({len(content)} chars)"
 
     except Exception as e:
-        return f"Error writing file: {str(e)}"
+        error_type = type(e).__name__
+        error_msg = str(e)[:200]
+        return f"Error writing to '{resolved_path}': {error_type} - {error_msg}. Check permissions and disk space."
 
 
 def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) -> str:
