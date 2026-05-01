@@ -273,6 +273,13 @@ class RalphLoop:
                     pass  # 进程已结束
                 except OSError as e:
                     logger.warning(f"Error killing timed-out process: {type(e).__name__}: {e}")
+                except asyncio.CancelledError:
+                    # 如果在等待进程终止时被取消，强制终止进程
+                    try:
+                        proc.kill()
+                    except (ProcessLookupError, OSError):
+                        pass
+                    raise  # 传播取消信号
             return False
         except (ValueError, FileNotFoundError, PermissionError) as e:
             logger.warning(f"Test command setup failed: {type(e).__name__}: {e}")

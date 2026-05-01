@@ -980,8 +980,15 @@ class LLMGateway:
         return attempt < max_retries - 1
 
     def _get_retry_wait_time(self, attempt: int, error: Exception | None = None) -> float:
-        """计算重试等待时间 (支持 Retry-After 头解析 + Jitter)"""
+        """计算重试等待时间 (支持 Retry-After 头解析 + Jitter)
 
+        Args:
+            attempt: 当前重试次数 (0-based)
+            error: 触发重试的异常（可选）
+
+        Returns:
+            等待时间（秒），上限 60 秒防止过度阻塞
+        """
         # 1. Check for Retry-After header (common in 429 Rate Limit errors)
         if error and hasattr(error, 'response') and error.response is not None:
             retry_after = error.response.headers.get('retry-after')
@@ -991,13 +998,14 @@ class LLMGateway:
                     # Cap at 60s to prevent excessive blocking if server requests long wait
                     return min(float(wait_time), 60.0)
                 except (ValueError, TypeError):
-                    pass # Fall back to exponential backoff if header is invalid
+                    pass  # Fall back to exponential backoff if header is invalid
 
         # 2. Default exponential backoff with Jitter: 1s, 2s, 4s (+/- 20%)
         # Jitter prevents "thundering herd" problem
         base_wait = 2 ** attempt
         jitter = random.uniform(-0.2, 0.2) * base_wait
-        return base_wait + jitter
+        # 确保等待时间非负且有最小值
+        return max(0.5, base_wait + jitter)
 
     def _iterate_fallback_models(self, model_id: str, exclude_provider: str) -> list[tuple[str, str]]:
         """生成fallback provider和model_id列表

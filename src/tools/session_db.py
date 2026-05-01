@@ -604,14 +604,18 @@ class SessionDB:
             logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
             return []
 
-    def cleanup_old_outcomes(self, max_entries_per_skill: int | None = None):
+    def cleanup_old_outcomes(self, max_entries_per_skill: int | None = None) -> int:
         """
         清理过旧的执行记录 (FIFO)
 
         Args:
             max_entries_per_skill: 每个 Skill 最大保留记录数
+
+        Returns:
+            清理的记录总数
         """
         max_entries = max_entries_per_skill or MEMORY_GRAPH_CONFIG['max_entries_per_skill']
+        total_deleted = 0
 
         try:
             # 找出超限的 Skill
@@ -627,7 +631,7 @@ class SessionDB:
                 excess = row['count'] - max_entries
 
                 # 删除最旧的记录
-                self._ensure_conn().execute("""
+                cursor = self._ensure_conn().execute("""
                     DELETE FROM gene_outcomes
                     WHERE skill_name = ? AND id IN (
                         SELECT id FROM gene_outcomes
@@ -636,15 +640,21 @@ class SessionDB:
                         LIMIT ?
                     )
                 """, (skill_name, skill_name, excess))
+                total_deleted += cursor.rowcount
 
             self._ensure_conn().commit()
-            logger.info(f"Cleanup completed: processed {len(rows)} skills")
+            if total_deleted > 0:
+                logger.info(f"Cleanup completed: deleted {total_deleted} records from {len(rows)} skills")
+            return total_deleted
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operational error during cleanup: {e}")
+            logger.error(f"Database operational error during cleanup: {type(e).__name__}: {e}")
+            return 0
         except sqlite3.IntegrityError as e:
-            logger.error(f"Database integrity error during cleanup: {e}")
+            logger.error(f"Database integrity error during cleanup: {type(e).__name__}: {e}")
+            return 0
         except Exception as e:
-            logger.error(f"Unexpected error during cleanup: {e}", exc_info=True)
+            logger.error(f"Unexpected error during cleanup: {type(e).__name__}: {e}", exc_info=True)
+            return 0
 
     # ==================== 原有 Session 方法 ====================
 
