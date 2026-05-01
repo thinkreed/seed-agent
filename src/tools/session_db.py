@@ -95,13 +95,26 @@ def _tokenize_cached(text: str) -> str:
     return text
 
 
+# 预编译翻译表：一次性移除所有 FTS5 特殊字符和 Unicode 特殊字符
+# 性能优化：避免循环替换 21 次（11 FTS + 10 Unicode）
+_FTS_SPECIAL_CHARS = '"():*^#&|-!~'
+_UNICODE_SPECIAL_CHARS = '\u200b\u200c\u200d\u00ad\u2060\u2061\u2062\u2063\u2064\ufeff'
+_FTS_SANITIZE_TABLE = str.maketrans('', '', _FTS_SPECIAL_CHARS + _UNICODE_SPECIAL_CHARS)
+
+# 预编译 FTS5 关键字正则表达式
+_FTS_KEYWORDS_PATTERN = re.compile(
+    r'\b(?:AND|OR|NOT|NEAR|ORDER|BY|LIMIT|OFFSET)\b',
+    flags=re.IGNORECASE
+)
+
+
 def _sanitize_fts_query(query: str) -> str:
     """
     清理 FTS5 查询字符串，防止语法错误和注入攻击。
 
     FTS5 特殊字符: " & | ( ) - : * ^ #
     防护措施:
-    1. 分词后移除所有特殊字符
+    1. 分词后移除所有特殊字符（使用 str.translate 一次性处理）
     2. 限制查询长度防止 DoS
     3. 禁止 FTS5 特殊语法（column:, NEAR, NOT, AND, OR）
     4. 仅保留安全的单词匹配
@@ -120,33 +133,11 @@ def _sanitize_fts_query(query: str) -> str:
         tokens = jieba.cut(query)
         query = ' '.join(tokens)
 
-    # 移除所有 FTS5 特殊字符（更严格的清理）
-    # 包括: 双引号、括号、冒号、星号、^、#、&、|、-
-    special_chars = ['"', '(', ')', ':', '*', '^', '#', '&', '|', '-', '!', '~']
-    for ch in special_chars:
-        query = query.replace(ch, '')
+    # 一次性移除所有特殊字符（性能优化）
+    query = query.translate(_FTS_SANITIZE_TABLE)
 
-    # 禁止 FTS5 关键字（大小写不敏感）
-    fts_keywords = ['AND', 'OR', 'NOT', 'NEAR', 'ORDER', 'BY', 'LIMIT', 'OFFSET']
-    for kw in fts_keywords:
-        query = re.sub(rf'\b{kw}\b', '', query, flags=re.IGNORECASE)
-
-    # 移除 Unicode 特殊控制字符和零宽字符
-    # 包括: 零宽空格、零宽非断空格、零宽连接符、软连字符等
-    unicode_special = [
-        '\u200b',  # 零宽空格
-        '\u200c',  # 零宽非断空格
-        '\u200d',  # 零宽连接符
-        '\u00ad',  # 软连字符
-        '\u2060',  # 字连接符
-        '\u2061',  # 函数应用
-        '\u2062',  # 不可见乘号
-        '\u2063',  # 不可见分隔符
-        '\u2064',  # 不可见加号
-        '\ufeff',  # 零宽非断空格 (BOM)
-    ]
-    for ch in unicode_special:
-        query = query.replace(ch, '')
+    # 禁止 FTS5 关键字（预编译正则）
+    query = _FTS_KEYWORDS_PATTERN.sub('', query)
 
     # 移除数字开头的 token（FTS5 可能解析为 column filter）
     tokens = query.split()
