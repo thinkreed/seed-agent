@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -45,6 +46,19 @@ except ImportError:
     MAX_CODE_LENGTH = 10000
     DEFAULT_EXECUTION_TIMEOUT = 60
 
+# 预编译正则表达式（性能优化）
+# Windows 驱动器路径正则
+_RE_WINDOWS_DRIVE = re.compile(r'^[a-zA-Z]:[/\\]')
+# 代码安全预处理正则
+_RE_ESCAPE_BACKSLASH = re.compile(r'\\([a-zA-Z])')
+_RE_IFS_VAR = re.compile(r'\$\{?IFS\}?')
+_RE_QUOTED_VAR = re.compile(r"\$'[a-zA-Z]+'")
+_RE_WHITESPACE = re.compile(r'\s+')
+_RE_QUOTES = re.compile(r'["\']')
+# Shell/PowerShell 安全检查正则
+_RE_BASE64_DECODE = re.compile(r'base64\s*(-d|--decode)')
+_RE_PWSH_ENCODED = re.compile(r'-enc|-encodedcommand')
+
 
 def _validate_path_safety(path: str) -> tuple[bool, str]:
     """
@@ -75,9 +89,8 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
 
     # Windows 特殊攻击模式：驱动器跳转 (C:\, D:\ 等)
     if os.name == 'nt':
-        # 检查驱动器字母模式 (如 C:\, D:\)
-        import re
-        if re.match(r'^[a-zA-Z]:[/\\]', path):
+        # 检查驱动器字母模式 (如 C:\, D:\) - 使用预编译正则
+        if _RE_WINDOWS_DRIVE.match(path):
             resolved = str(Path(path).resolve())
             for allowed in ALLOWED_DIRS:
                 try:
@@ -282,19 +295,14 @@ LANGUAGE_MAP = {
 
 def _check_code_security(code: str, language: str, logger) -> str | None:
     """Check code against security blacklists. Returns error message if blocked."""
-    import re
     code_lower = code.lower()
 
-    # 预处理：移除常见绕过技巧
-    # 1. 移除反斜杠转义 (r\m -> rm)
-    normalized_code = re.sub(r'\\([a-zA-Z])', r'\1', code_lower)
-    # 2. 移除 $IFS 和变量拼接 (${IFS}rm, $'rm')
-    normalized_code = re.sub(r'\$\{?IFS\}?', '', normalized_code)
-    normalized_code = re.sub(r"\$'[a-zA-Z]+'", '', normalized_code)
-    # 3. 移除空格填充 (rm  -rf -> rm -rf)
-    normalized_code = re.sub(r'\s+', ' ', normalized_code)
-    # 4. 移除引号 (rm -rf -> rm -rf)
-    normalized_code = re.sub(r'["\']', '', normalized_code)
+    # 预处理：移除常见绕过技巧（使用预编译正则）
+    normalized_code = _RE_ESCAPE_BACKSLASH.sub(r'\1', code_lower)
+    normalized_code = _RE_IFS_VAR.sub('', normalized_code)
+    normalized_code = _RE_QUOTED_VAR.sub('', normalized_code)
+    normalized_code = _RE_WHITESPACE.sub(' ', normalized_code)
+    normalized_code = _RE_QUOTES.sub('', normalized_code)
 
     if language in ("shell", "bash", "sh"):
         for danger in SHELL_BLACKLIST:
@@ -304,8 +312,8 @@ def _check_code_security(code: str, language: str, logger) -> str | None:
                 if logger:
                     logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
-        # 额外检查：base64 编码的恶意命令
-        if re.search(r'base64\s*(-d|--decode)', normalized_code):
+        # 额外检查：base64 编码的恶意命令（使用预编译正则）
+        if _RE_BASE64_DECODE.search(normalized_code):
             if logger:
                 logger.warning("Blocked base64 decode attempt")
             return "Error: Blocked base64 decode pattern. Encoded commands are not allowed."
@@ -316,8 +324,8 @@ def _check_code_security(code: str, language: str, logger) -> str | None:
                 if logger:
                     logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
-        # 额外检查：PowerShell 编码命令
-        if re.search(r'-enc|-encodedcommand', normalized_code):
+        # 额外检查：PowerShell 编码命令（使用预编译正则）
+        if _RE_PWSH_ENCODED.search(normalized_code):
             if logger:
                 logger.warning("Blocked PowerShell encoded command attempt")
             return "Error: Blocked PowerShell encoded command pattern. Encoded commands are not allowed."
