@@ -103,7 +103,7 @@ class SubagentManager:
             try:
                 callback(task_id, status)
             except Exception as e:
-                logger.warning(f"Status callback error: {e}")
+                logger.warning(f"Status callback error: {type(e).__name__}: {e}")
 
     def create_task(
         self,
@@ -295,41 +295,7 @@ class SubagentManager:
                 return None
             await asyncio.sleep(0.1)  # 异步等待，不阻塞事件循环
 
-    def wait_for_result(
-        self,
-        task_id: str,
-        timeout: float | None = None,
-    ) -> SubagentResult | None:
-        """
-        等待任务完成（同步版本，已弃用）
-
-        .. deprecated::
-            此方法使用同步 sleep，在异步上下文中会阻塞事件循环。
-            请使用 wait_for_result_async() 替代。
-
-        Args:
-            task_id: 任务 ID
-            timeout: 最大等待时间（秒）
-
-        Returns:
-            SubagentResult | None: 任务结果或超时返回 None
-        """
-        import warnings
-        warnings.warn(
-            "wait_for_result() is deprecated and blocks the event loop. "
-            "Use wait_for_result_async() instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        import time
-        start = time.time()
-        while True:
-            if task_id in self._results:
-                return self._results[task_id]
-            if timeout and (time.time() - start) > timeout:
-                return None
-            time.sleep(0.1)
-
+    
     def aggregate_results(
         self,
         task_ids: list[str],

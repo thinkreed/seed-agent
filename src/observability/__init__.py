@@ -61,9 +61,12 @@ try:
 
     _OBSERVABILITY_ENABLED = True
 
-except ImportError:
+except ImportError:  # type: ignore[misc]
     # OpenTelemetry 未安装，使用 fallback NoOp 实现
-    from .fallback import (
+    # 所有导入的类型不匹配是预期的，因为我们使用 NoOp 实现
+    from typing import Any
+
+    from .fallback import (  # type: ignore[misc,assignment]
         # Types
         NoOpSpan as Span,
         NoOpStatusCode as StatusCode,
