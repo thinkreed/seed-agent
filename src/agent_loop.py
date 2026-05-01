@@ -51,9 +51,12 @@ from src.observability import (
     set_tool_span_attributes,
 )
 
-_OBSERVABILITY_ENABLED = is_observability_enabled()
+# 模块级 encoding 缓存：避免重复创建 tiktoken encoding 实例
+_ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
 
 logger = logging.getLogger(__name__)
+
+_OBSERVABILITY_ENABLED = is_observability_enabled()
 
 
 class MaxIterationsExceeded(Exception):
@@ -159,17 +162,28 @@ class AgentLoop:
         """从配置获取主模型"""
         return self.gateway.config.agents['defaults'].defaults.primary
 
-    def _get_tokenizer(self):
-        """获取当前模型的 tokenizer"""
+    def _get_tokenizer(self) -> tiktoken.Encoding | None:
+        """获取当前模型的 tokenizer（带缓存）"""
+        # Extract model name from "provider/model" format
+        model_name = self.model_id.split('/', 1)[-1] if '/' in self.model_id else self.model_id
+
+        # 检查缓存
+        if model_name in _ENCODING_CACHE:
+            return _ENCODING_CACHE[model_name]
+
         try:
-            # Extract model name from "provider/model" format
-            model_name = self.model_id.split('/', 1)[-1] if '/' in self.model_id else self.model_id
-            return tiktoken.encoding_for_model(model_name)
+            encoding = tiktoken.encoding_for_model(model_name)
+            _ENCODING_CACHE[model_name] = encoding
+            return encoding
         except KeyError:
             # Fallback: try common encodings
             for enc_name in ["cl100k_base", "p50k_base", "r50k_base"]:
+                if enc_name in _ENCODING_CACHE:
+                    return _ENCODING_CACHE[enc_name]
                 try:
-                    return tiktoken.get_encoding(enc_name)
+                    encoding = tiktoken.get_encoding(enc_name)
+                    _ENCODING_CACHE[enc_name] = encoding
+                    return encoding
                 except KeyError:
                     continue
             return None
