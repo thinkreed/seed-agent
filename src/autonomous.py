@@ -149,6 +149,10 @@ class AutonomousExplorer:
             max_duration=RALPH_MAX_DURATION,
         )
 
+    def _extract_critical_context(self) -> str | None:
+        """提取关键上下文（包装共享模块函数，保持向后兼容）"""
+        return extract_critical_context(self.agent.history)
+
     async def _reset_context_if_needed(self) -> str | None:
         """条件性重置上下文（防止上下文漂移，使用共享模块）"""
         if not CONTEXT_RESET_ENABLED:
@@ -256,8 +260,12 @@ class AutonomousExplorer:
                 return "DONE"
 
             await self._reset_context_if_needed()
-            response = await self.agent.run("继续执行自主探索任务")
-            self._persist_state(response)
+            try:
+                response = await self.agent.run("继续执行自主探索任务")
+            except Exception as e:
+                logger.error(f"Agent execution failed at iteration {self._iteration_count}: {type(e).__name__}: {e}")
+                response = f"Error: {str(e)}"
+            self._persist_state(response or "")
 
             if response and any(marker in response for marker in COMPLETION_MARKERS):
                 logger.info(f"Autonomous exploration completed at iteration {self._iteration_count}")

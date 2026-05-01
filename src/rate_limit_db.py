@@ -53,14 +53,18 @@ class RateLimitSQLite:
     def _get_conn(self) -> sqlite3.Connection:
         """获取线程本地连接"""
         if not hasattr(self._local, 'conn') or self._local.conn is None:
-            self._local.conn = sqlite3.connect(
-                str(self._db_path),
-                check_same_thread=False,
-                timeout=10.0
-            )
-            # 启用 WAL 模式
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-            self._local.conn.execute("PRAGMA busy_timeout=5000")
+            try:
+                self._local.conn = sqlite3.connect(
+                    str(self._db_path),
+                    check_same_thread=False,
+                    timeout=10.0
+                )
+                # 启用 WAL 模式
+                self._local.conn.execute("PRAGMA journal_mode=WAL")
+                self._local.conn.execute("PRAGMA busy_timeout=5000")
+            except sqlite3.Error as e:
+                logger.error(f"Failed to connect to database: {type(e).__name__}: {e}")
+                raise
         return self._local.conn
 
     def _init_db(self):

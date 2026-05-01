@@ -244,6 +244,8 @@ class RalphLoop:
                     await proc.wait()  # 确保进程完全终止
                 except ProcessLookupError:
                     pass  # 进程已结束
+                except OSError as e:
+                    logger.warning(f"Error killing timed-out process: {type(e).__name__}: {e}")
             return False
         except (ValueError, FileNotFoundError, PermissionError) as e:
             logger.warning(f"Test command setup failed: {type(e).__name__}: {e}")

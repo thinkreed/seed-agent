@@ -404,12 +404,16 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
 
     except subprocess.TimeoutExpired:
         exec_logger.warning(f"Code execution timed out: language={language}, timeout={timeout}s")
-        # 清理超时进程资源（改进的错误处理）
-        # Note: subprocess.run 已经在超时时清理了进程
         return f"Error: Execution timed out ({timeout}s)"
     except FileNotFoundError:
         exec_logger.error(f"Interpreter not found for '{language}'")
         return f"Error: Interpreter not found for '{language}'. Please ensure it's installed."
+    except PermissionError as e:
+        exec_logger.error(f"Permission denied for '{language}': {e}")
+        return f"Error: Permission denied executing '{language}' code."
+    except OSError as e:
+        exec_logger.error(f"OS error executing '{language}': {type(e).__name__}: {e}")
+        return f"Error: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
         exec_logger.exception(f"Code execution error: {str(e)}")
         return f"Error executing code: {str(e)}"
