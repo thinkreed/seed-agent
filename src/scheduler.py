@@ -11,9 +11,12 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from src.request_queue import RequestPriority
+
+if TYPE_CHECKING:
+    from src.agent_loop import AgentLoop
 
 logger = logging.getLogger("seed_agent")
 
@@ -83,7 +86,7 @@ class TaskScheduler:
         "autodream": 12 * 60 * 60,  # 每12小时记忆整理
     }
 
-    def __init__(self, agent_loop: Any = None) -> None:
+    def __init__(self, agent_loop: "AgentLoop | None" = None) -> None:
         self.agent = agent_loop
         self._tasks: dict[str, ScheduledTask] = {}
         self._running: bool = False

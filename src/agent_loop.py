@@ -628,8 +628,8 @@ class AgentLoop:
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
                 # CancelledError 应传播，不应转换为错误响应
-                if type(result).__name__ == "CancelledError":
-                    raise result  # type: ignore[misc]  # result is CancelledError
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
 
                 tool_name = tool_calls[i].get('function', {}).get('name', 'unknown')
                 logger.error(f"Tool call {tool_name} failed: {type(result).__name__}: {result}")

@@ -159,15 +159,20 @@ class FallbackChain:
         self._status: str = "healthy"  # healthy, degraded, unavailable
 
     def get_active_client(self) -> tuple[str, AsyncOpenAI]:
-        """获取当前活跃的 provider 和 client"""
+        """获取当前活跃的 provider 和 client
+
+        优化：使用缓存避免每次遍历
+        """
+        # 快速路径：已缓存活跃 provider
         if self._active_provider and self._active_provider in self._clients:
             return self._active_provider, self._clients[self._active_provider]
 
-        # 尝试第一个可用 provider
-        for provider in self._providers:
-            if provider in self._clients:
-                self._active_provider = provider
-                return provider, self._clients[provider]
+        # 尝试第一个可用 provider（仅首次或切换后）
+        if self._providers:
+            first_provider = self._providers[0]
+            if first_provider in self._clients:
+                self._active_provider = first_provider
+                return first_provider, self._clients[first_provider]
 
         raise ValueError("No available provider")
 

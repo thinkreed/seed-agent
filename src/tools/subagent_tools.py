@@ -11,12 +11,15 @@ Subagent 工具集 - 为 AgentLoop 提供 Subagent 操作接口
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.subagent_manager import SubagentManager
 
 logger = logging.getLogger(__name__)
 
 # 全局 SubagentManager 实例（由 AgentLoop 初始化时注入）
-_subagent_manager: Any | None = None
+_subagent_manager: "SubagentManager | None" = None
 
 
 def init_subagent_manager(manager):
@@ -121,21 +124,22 @@ async def wait_for_subagent_async(
             # 使用 asyncio.wait_for 设置超时
             async def wait_loop():
                 while True:
-                    result = _subagent_manager.get_result(task_id)
-                    if result:
-                        return result
+                    res = _subagent_manager.get_result(task_id)
+                    if res:
+                        return res
                     await asyncio.sleep(0.5)
 
             result = await asyncio.wait_for(wait_loop(), timeout=timeout)
         else:
             # 无限等待
             while True:
-                result = _subagent_manager.get_result(task_id)
-                if result:
+                res = _subagent_manager.get_result(task_id)
+                if res:
+                    result = res
                     break
                 await asyncio.sleep(0.5)
 
-        return result.summary
+        return result.summary if result else f"Error: No result for task {task_id}"
 
     except asyncio.TimeoutError:
         return f"Error: Timeout waiting for subagent {task_id}"

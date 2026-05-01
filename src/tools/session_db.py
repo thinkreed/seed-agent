@@ -105,6 +105,7 @@ def _sanitize_fts_query(query: str) -> str:
     2. 限制查询长度防止 DoS
     3. 禁止 FTS5 特殊语法（column:, NEAR, NOT, AND, OR）
     4. 仅保留安全的单词匹配
+    5. 处理 Unicode 特殊字符
     """
     if not query:
         return ''
@@ -130,9 +131,26 @@ def _sanitize_fts_query(query: str) -> str:
     for kw in fts_keywords:
         query = re.sub(rf'\b{kw}\b', '', query, flags=re.IGNORECASE)
 
+    # 移除 Unicode 特殊控制字符和零宽字符
+    # 包括: 零宽空格、零宽非断空格、零宽连接符、软连字符等
+    unicode_special = [
+        '\u200b',  # 零宽空格
+        '\u200c',  # 零宽非断空格
+        '\u200d',  # 零宽连接符
+        '\u00ad',  # 软连字符
+        '\u2060',  # 字连接符
+        '\u2061',  # 函数应用
+        '\u2062',  # 不可见乘号
+        '\u2063',  # 不可见分隔符
+        '\u2064',  # 不可见加号
+        '\ufeff',  # 零宽非断空格 (BOM)
+    ]
+    for ch in unicode_special:
+        query = query.replace(ch, '')
+
     # 移除数字开头的 token（FTS5 可能解析为 column filter）
     tokens = query.split()
-    safe_tokens = [t for t in tokens if not t.isdigit() and len(t) > 0]
+    safe_tokens = [t for t in tokens if not t.isdigit() and len(t) > 0 and not t[0].isdigit()]
     query = ' '.join(safe_tokens)
 
     return query.strip()
@@ -599,8 +617,13 @@ class SessionDB:
                 """, (skill_name, skill_name, excess))
 
             self.conn.commit()
+            logger.info(f"Cleanup completed: processed {len(rows)} skills")
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database operational error during cleanup: {e}")
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Database integrity error during cleanup: {e}")
         except Exception as e:
-            logger.warning(f"Failed to cleanup old outcomes: {e}")
+            logger.error(f"Unexpected error during cleanup: {e}", exc_info=True)
 
     # ==================== 原有 Session 方法 ====================
 

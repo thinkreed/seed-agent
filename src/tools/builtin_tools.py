@@ -73,6 +73,27 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
             logger.warning(f"Path traversal attempt blocked: {path}")
             return False, f"Path traversal blocked: '{path}' contains '..' sequences that escape allowed directories"
 
+    # Windows 特殊攻击模式：驱动器跳转 (C:\, D:\ 等)
+    if os.name == 'nt':
+        # 检查驱动器字母模式 (如 C:\, D:\)
+        import re
+        if re.match(r'^[a-zA-Z]:[/\\]', path):
+            resolved = str(Path(path).resolve())
+            for allowed in ALLOWED_DIRS:
+                try:
+                    allowed_resolved = str(Path(str(allowed.resolve())).resolve())
+                    if resolved.startswith(allowed_resolved):
+                        return True, ""
+                except Exception:
+                    continue
+            logger.warning(f"Windows drive path outside allowed dirs: {path}")
+            return False, f"Windows drive path '{path}' is outside allowed directories"
+
+        # 检查 UNC 路径 (\\server\share)
+        if path.startswith("\\\\") or path.startswith("//"):
+            logger.warning(f"UNC path blocked: {path}")
+            return False, f"UNC path '{path}' is not allowed for security reasons"
+
     # 检查绝对路径是否在允许范围内
     if os.path.isabs(path):
         resolved = str(Path(path).resolve())
@@ -261,19 +282,45 @@ LANGUAGE_MAP = {
 
 def _check_code_security(code: str, language: str, logger) -> str | None:
     """Check code against security blacklists. Returns error message if blocked."""
+    import re
     code_lower = code.lower()
+
+    # 预处理：移除常见绕过技巧
+    # 1. 移除反斜杠转义 (r\m -> rm)
+    normalized_code = re.sub(r'\\([a-zA-Z])', r'\1', code_lower)
+    # 2. 移除 $IFS 和变量拼接 (${IFS}rm, $'rm')
+    normalized_code = re.sub(r'\$\{?IFS\}?', '', normalized_code)
+    normalized_code = re.sub(r"\$'[a-zA-Z]+'", '', normalized_code)
+    # 3. 移除空格填充 (rm  -rf -> rm -rf)
+    normalized_code = re.sub(r'\s+', ' ', normalized_code)
+    # 4. 移除引号 (rm -rf -> rm -rf)
+    normalized_code = re.sub(r'["\']', '', normalized_code)
+
     if language in ("shell", "bash", "sh"):
         for danger in SHELL_BLACKLIST:
-            if danger.lower() in code_lower:
+            danger_lower = danger.lower()
+            # 检查原始代码和预处理后的代码
+            if danger_lower in code_lower or danger_lower in normalized_code:
                 if logger:
                     logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+        # 额外检查：base64 编码的恶意命令
+        if re.search(r'base64\s*(-d|--decode)', normalized_code):
+            if logger:
+                logger.warning("Blocked base64 decode attempt")
+            return "Error: Blocked base64 decode pattern. Encoded commands are not allowed."
     elif language in ("powershell", "ps", "pwsh"):
         for danger in POWERSHELL_BLACKLIST:
-            if danger.lower() in code_lower:
+            danger_lower = danger.lower()
+            if danger_lower in code_lower or danger_lower in normalized_code:
                 if logger:
                     logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
+        # 额外检查：PowerShell 编码命令
+        if re.search(r'-enc|-encodedcommand', normalized_code):
+            if logger:
+                logger.warning("Blocked PowerShell encoded command attempt")
+            return "Error: Blocked PowerShell encoded command pattern. Encoded commands are not allowed."
     return None
 
 

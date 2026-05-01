@@ -310,3 +310,12 @@ class RateLimitSQLite:
         if hasattr(self._local, 'conn') and self._local.conn:
             self._local.conn.close()
             self._local.conn = None
+
+    def __del__(self):
+        """析构时确保连接关闭"""
+        self.close()
+
+    async def aclose(self):
+        """异步关闭（用于异步上下文）"""
+        async with self._lock:
+            self.close()
