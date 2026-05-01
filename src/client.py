@@ -167,12 +167,11 @@ class FallbackChain:
         if self._active_provider and self._active_provider in self._clients:
             return self._active_provider, self._clients[self._active_provider]
 
-        # 尝试第一个可用 provider（仅首次或切换后）
-        if self._providers:
-            first_provider = self._providers[0]
-            if first_provider in self._clients:
-                self._active_provider = first_provider
-                return first_provider, self._clients[first_provider]
+        # 遍历 providers 找到第一个可用的（跳过不在 clients 中的）
+        for provider in self._providers:
+            if provider in self._clients:
+                self._active_provider = provider
+                return provider, self._clients[provider]
 
         raise ValueError("No available provider")
 
