@@ -1,5 +1,12 @@
-"""5个核心内置工具：file_read, file_write, file_edit, code_as_policy, ask_user"""
+"""5个核心内置工具：file_read, file_write, file_edit, code_as_policy, ask_user
 
+性能优化:
+- 缓存 ALLOWED_DIRS 解析结果
+- 使用 lru_cache 缓存路径验证结果
+- 预编译正则表达式
+"""
+
+import functools
 import logging
 import os
 import re
@@ -15,7 +22,7 @@ try:
     _security_config = get_code_execution_security_config()
     PROJECT_ROOT = _path_config.project_root
     DEFAULT_WORK_DIR = _path_config.default_work_dir
-    ALLOWED_DIRS = _path_config.allowed_dirs
+    ALLOWED_DIRS_RAW = _path_config.allowed_dirs
     SHELL_BLACKLIST = _security_config.shell_blacklist
     POWERSHELL_BLACKLIST = _security_config.powershell_blacklist
     MAX_CODE_LENGTH = _security_config.max_code_length
@@ -24,7 +31,7 @@ except ImportError:
     # Fallback: 使用默认值
     PROJECT_ROOT = Path(__file__).parent.parent.parent
     DEFAULT_WORK_DIR = Path(os.path.expanduser("~")) / ".seed"
-    ALLOWED_DIRS = [
+    ALLOWED_DIRS_RAW = [
         DEFAULT_WORK_DIR,
         PROJECT_ROOT,
         Path(os.path.expanduser("~")) / "Documents",
@@ -46,18 +53,47 @@ except ImportError:
     MAX_CODE_LENGTH = 10000
     DEFAULT_EXECUTION_TIMEOUT = 60
 
+
+# 缓存已解析的 ALLOWED_DIRS（避免每次调用 resolve()）
+def _resolve_allowed_dirs() -> list[str]:
+    """解析并缓存 ALLOWED_DIRS"""
+    resolved = []
+    for allowed in ALLOWED_DIRS_RAW:
+        try:
+            resolved.append(str(Path(str(allowed)).resolve()))
+        except Exception:
+            pass
+    return resolved
+
+
+ALLOWED_DIRS: list[str] = _resolve_allowed_dirs()
+
+# 缓存 DEFAULT_WORK_DIR 和 PROJECT_ROOT 的解析结果
+DEFAULT_WORK_DIR_RESOLVED = str(DEFAULT_WORK_DIR.resolve())
+PROJECT_ROOT_RESOLVED = str(PROJECT_ROOT.resolve())
+
+
 # 预编译正则表达式（性能优化）
-# Windows 驱动器路径正则
 _RE_WINDOWS_DRIVE = re.compile(r'^[a-zA-Z]:[/\\]')
+_RE_DOUBLE_DOT = re.compile(r'\.\.')  # 快速检测 .. 序列
+
 # 代码安全预处理正则
 _RE_ESCAPE_BACKSLASH = re.compile(r'\\([a-zA-Z])')
 _RE_IFS_VAR = re.compile(r'\$\{?IFS\}?')
 _RE_QUOTED_VAR = re.compile(r"\$'[a-zA-Z]+'")
 _RE_WHITESPACE = re.compile(r'\s+')
 _RE_QUOTES = re.compile(r'["\']')
-# Shell/PowerShell 安全检查正则
 _RE_BASE64_DECODE = re.compile(r'base64\s*(-d|--decode)')
 _RE_PWSH_ENCODED = re.compile(r'-enc|-encodedcommand')
+
+
+@functools.lru_cache(maxsize=256)
+def _is_path_in_allowed_dirs(resolved_path: str) -> bool:
+    """检查路径是否在允许目录内（使用缓存）"""
+    for allowed in ALLOWED_DIRS:
+        if resolved_path.startswith(allowed):
+            return True
+    return False
 
 
 def _validate_path_safety(path: str) -> tuple[bool, str]:
@@ -70,12 +106,10 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
     Returns:
         (is_safe, error_message): 安全返回 (True, ""), 不安全返回 (False, 错误信息)
     """
-    # 检查危险路径模式
-
-    # 检查 .. 序列
-    normalized = path.replace("\\", "/")
-    if ".." in normalized:
+    # 快速检测 .. 序列（使用预编译正则）
+    if _RE_DOUBLE_DOT.search(path):
         # 计算遍历深度
+        normalized = path.replace("\\", "/")
         parts = normalized.split("/")
         depth = 0
         for part in parts:
@@ -87,38 +121,32 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
             logger.warning(f"Path traversal attempt blocked: {path}")
             return False, f"Path traversal blocked: '{path}' contains '..' sequences that escape allowed directories"
 
-    # Windows 特殊攻击模式：驱动器跳转 (C:\, D:\ 等)
+    # Windows 特殊攻击模式
     if os.name == 'nt':
-        # 检查驱动器字母模式 (如 C:\, D:\) - 使用预编译正则
+        # 检查驱动器字母模式
         if _RE_WINDOWS_DRIVE.match(path):
-            resolved = str(Path(path).resolve())
-            for allowed in ALLOWED_DIRS:
-                try:
-                    allowed_resolved = str(Path(str(allowed.resolve())).resolve())
-                    if resolved.startswith(allowed_resolved):
-                        return True, ""
-                except Exception:
-                    continue
+            try:
+                resolved = str(Path(path).resolve())
+                if _is_path_in_allowed_dirs(resolved):
+                    return True, ""
+            except Exception:
+                pass
             logger.warning(f"Windows drive path outside allowed dirs: {path}")
             return False, f"Windows drive path '{path}' is outside allowed directories"
 
-        # 检查 UNC 路径 (\\server\share)
+        # 检查 UNC 路径
         if path.startswith("\\\\") or path.startswith("//"):
             logger.warning(f"UNC path blocked: {path}")
             return False, f"UNC path '{path}' is not allowed for security reasons"
 
-    # 检查绝对路径是否在允许范围内
+    # 检查绝对路径是否在允许范围内（使用缓存）
     if os.path.isabs(path):
-        resolved = str(Path(path).resolve())
-        for allowed in ALLOWED_DIRS:
-            try:
-                # 检查是否是允许目录的子路径
-                resolved_path = Path(resolved)
-                allowed_path = Path(str(allowed.resolve()))
-                if str(resolved_path).startswith(str(allowed_path)):
-                    return True, ""
-            except Exception:
-                continue
+        try:
+            resolved = str(Path(path).resolve())
+            if _is_path_in_allowed_dirs(resolved):
+                return True, ""
+        except Exception:
+            pass
         logger.warning(f"Absolute path outside allowed dirs: {path}")
         return False, f"Absolute path '{path}' is outside allowed directories"
 
@@ -134,32 +162,33 @@ def _resolve_path(path: str) -> str:
         raise ValueError(error)
 
     if os.path.isabs(path):
-        # 绝对路径已经在验证中检查过是否允许
         return path
 
-    # 相对路径：优先从 .seed 目录解析，如果不存在再从项目根目录解析
+    # 相对路径：优先从 .seed 目录解析
     seed_path = DEFAULT_WORK_DIR / path
     try:
-        resolved_seed = seed_path.resolve()
-        # 再次验证解析后的路径
-        if str(resolved_seed).startswith(str(DEFAULT_WORK_DIR.resolve())) or str(resolved_seed).startswith(str(PROJECT_ROOT.resolve())):
+        resolved_seed = str(seed_path.resolve())
+        # 使用缓存检查
+        if resolved_seed.startswith(DEFAULT_WORK_DIR_RESOLVED) or resolved_seed.startswith(PROJECT_ROOT_RESOLVED):
             if seed_path.exists():
-                return str(resolved_seed)
+                return resolved_seed
     except Exception:
         pass
 
+    # 再从项目根目录解析
     project_path = PROJECT_ROOT / path
     try:
-        resolved_project = project_path.resolve()
-        if str(resolved_project).startswith(str(PROJECT_ROOT.resolve())):
+        resolved_project = str(project_path.resolve())
+        if resolved_project.startswith(PROJECT_ROOT_RESOLVED):
             if project_path.exists():
-                return str(resolved_project)
+                return resolved_project
     except Exception:
         pass
 
-    # 如果都不存在，使用 .seed 目录作为默认目标（仍然验证）
+    # 如果都不存在，使用 .seed 目录作为默认目标
     final_path = str(DEFAULT_WORK_DIR / path)
-    if not str(Path(final_path).resolve()).startswith(str(DEFAULT_WORK_DIR.resolve())):
+    final_resolved = str(Path(final_path).resolve())
+    if not final_resolved.startswith(DEFAULT_WORK_DIR_RESOLVED):
         raise ValueError(f"Resolved path escapes allowed directories: {final_path}")
 
     return final_path
@@ -280,7 +309,7 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
     except FileNotFoundError:
         return f"Error: File not found - {path}"
     except Exception as e:
-        logger.exception("file_edit failed")  # 添加堆栈日志
+        logger.exception("file_edit failed")
         return f"Error editing file: {str(e)}"
 
 
@@ -293,11 +322,11 @@ LANGUAGE_MAP = {
 }
 
 
-def _check_code_security(code: str, language: str, logger) -> str | None:
+def _check_code_security(code: str, language: str, exec_logger: logging.Logger) -> str | None:
     """Check code against security blacklists. Returns error message if blocked."""
     code_lower = code.lower()
 
-    # 预处理：移除常见绕过技巧（使用预编译正则）
+    # 预处理：移除常见绕过技巧
     normalized_code = _RE_ESCAPE_BACKSLASH.sub(r'\1', code_lower)
     normalized_code = _RE_IFS_VAR.sub('', normalized_code)
     normalized_code = _RE_QUOTED_VAR.sub('', normalized_code)
@@ -307,28 +336,23 @@ def _check_code_security(code: str, language: str, logger) -> str | None:
     if language in ("shell", "bash", "sh"):
         for danger in SHELL_BLACKLIST:
             danger_lower = danger.lower()
-            # 检查原始代码和预处理后的代码
             if danger_lower in code_lower or danger_lower in normalized_code:
-                if logger:
-                    logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
+                exec_logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
-        # 额外检查：base64 编码的恶意命令（使用预编译正则）
         if _RE_BASE64_DECODE.search(normalized_code):
-            if logger:
-                logger.warning("Blocked base64 decode attempt")
+            exec_logger.warning("Blocked base64 decode attempt")
             return "Error: Blocked base64 decode pattern. Encoded commands are not allowed."
+
     elif language in ("powershell", "ps", "pwsh"):
         for danger in POWERSHELL_BLACKLIST:
             danger_lower = danger.lower()
             if danger_lower in code_lower or danger_lower in normalized_code:
-                if logger:
-                    logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
+                exec_logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
-        # 额外检查：PowerShell 编码命令（使用预编译正则）
         if _RE_PWSH_ENCODED.search(normalized_code):
-            if logger:
-                logger.warning("Blocked PowerShell encoded command attempt")
+            exec_logger.warning("Blocked PowerShell encoded command attempt")
             return "Error: Blocked PowerShell encoded command pattern. Encoded commands are not allowed."
+
     return None
 
 
@@ -344,18 +368,17 @@ def _resolve_execution_cwd(cwd: str | None) -> str:
     return str(PROJECT_ROOT / cwd)
 
 
-def _build_command(code: str, language: str) -> list | None:
-    """Build subprocess command for given language. Returns None if unsupported."""
+def _build_command(code: str, language: str) -> list[str] | None:
+    """Build subprocess command for given language."""
     for lang_prefix, (cmd_prefix, alias) in LANGUAGE_MAP.items():
         if language == lang_prefix or language == alias:
             return cmd_prefix + [code]
-    # Check extended aliases
     if language in ("js", "node"):
         return ["node", "-e", code]
     return None
 
 
-def _format_execution_result(result: subprocess.CompletedProcess, language: str) -> str:
+def _format_execution_result(result: subprocess.CompletedProcess[str], language: str) -> str:
     """Format subprocess output into result string."""
     output = result.stdout
     if result.stderr:
@@ -380,10 +403,8 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
     """
     exec_logger = logging.getLogger("seed_agent.code_exec")
     try:
-        # 使用共享配置的代码长度限制
-        max_len = MAX_CODE_LENGTH if 'MAX_CODE_LENGTH' in dir() else 10000
-        if len(code) > max_len:
-            return f"Error: Code exceeds maximum length ({max_len} chars) for security"
+        if len(code) > MAX_CODE_LENGTH:
+            return f"Error: Code exceeds maximum length ({MAX_CODE_LENGTH} chars) for security"
 
         cwd = _resolve_execution_cwd(cwd)
         language = language.lower()
@@ -392,14 +413,22 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
         if error:
             return error
 
-        exec_logger.info(f"Code execution requested: language={language}, cwd={cwd}, timeout={timeout}s, code_preview={code[:100]}...")
+        exec_logger.info(f"Code execution: language={language}, cwd={cwd}, timeout={timeout}s")
 
         cmd = _build_command(code, language)
         if cmd is None:
             return f"Error: Unsupported language '{language}'. Supported: python, javascript, shell, powershell"
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, encoding='utf-8', errors='replace')
-        exec_logger.info(f"Code execution completed: returncode={result.returncode}, output_length={len(result.stdout)}")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=cwd,
+            encoding='utf-8',
+            errors='replace'
+        )
+        exec_logger.info(f"Code execution completed: returncode={result.returncode}")
         return _format_execution_result(result, language)
 
     except subprocess.TimeoutExpired:
@@ -412,7 +441,7 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
         exec_logger.error(f"Permission denied for '{language}': {e}")
         return f"Error: Permission denied executing '{language}' code."
     except OSError as e:
-        exec_logger.error(f"OS error executing '{language}': {type(e).__name__}: {e}")
+        exec_logger.error(f"OS error: {type(e).__name__}: {e}")
         return f"Error: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
         exec_logger.exception(f"Code execution error: {str(e)}")
@@ -454,9 +483,7 @@ def run_diagnosis(fix: bool = False) -> str:
         if not script_path.exists():
             return f"Error: Diagnosis script not found at {script_path}"
 
-        cmd = [
-            "python", str(script_path),
-        ]
+        cmd = ["python", str(script_path)]
         if fix:
             cmd.append("--fix")
 
@@ -473,7 +500,7 @@ def run_diagnosis(fix: bool = False) -> str:
         if result.stderr:
             output += f"\nSTDERR: {result.stderr}"
 
-        return output[:3000]  # Limit output size
+        return output[:3000]
     except subprocess.TimeoutExpired:
         return "Error: Diagnosis timed out (>120s)"
     except Exception as e:
@@ -481,7 +508,7 @@ def run_diagnosis(fix: bool = False) -> str:
 
 
 def register_builtin_tools(registry):
-    """Register the 5 core builtin tools."""
+    """Register the 6 core builtin tools."""
     registry.register("file_read", file_read)
     registry.register("file_write", file_write)
     registry.register("file_edit", file_edit)
