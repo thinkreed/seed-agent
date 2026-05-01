@@ -60,8 +60,9 @@ except ImportError:
 DB_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "raw" / "sessions.db"
 
 
-# LRU 缓存最大文本长度（避免长文本占用过多内存）
-_MAX_CACHE_TEXT_LENGTH = 500
+# LRU 缓存配置
+_MAX_CACHE_TEXT_LENGTH = 1000  # 提高缓存阈值，覆盖更多常见查询
+_CACHE_MAXSIZE = 2000  # 增加缓存容量，减少重复分词
 
 
 def tokenize_for_fts5(text: str) -> str:
@@ -71,6 +72,7 @@ def tokenize_for_fts5(text: str) -> str:
     - 否则 fallback 到 unicode61（单字符）
     - 使用 LRU 缓存避免重复分词开销
     - 长文本不缓存，避免内存占用过多
+    - 空字符串直接返回，避免无意义处理
     """
     if not text:
         return ''
@@ -86,7 +88,7 @@ def tokenize_for_fts5(text: str) -> str:
     return _tokenize_cached(text)
 
 
-@lru_cache(maxsize=1000)
+@lru_cache(maxsize=_CACHE_MAXSIZE)
 def _tokenize_cached(text: str) -> str:
     """缓存版本的分词函数，仅用于短文本"""
     if _HAS_JIEBA:

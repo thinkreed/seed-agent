@@ -511,7 +511,7 @@ class AgentLoop:
                         seen_paths[path] = tc['id']
                 except Exception as e:
                     logger.debug(f"Failed to parse tool args for conflict check: {e}")
-                    pass
+                    # 继续处理其他 tool calls，不中断检查流程
         return None
 
     def _parse_tool_args(self, raw_args: Any, tool_name: str) -> dict:

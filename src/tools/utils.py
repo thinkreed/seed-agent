@@ -31,10 +31,9 @@ def parse_tool_arguments(raw_args: str | dict | None) -> dict:
         if isinstance(raw_args, str):
             raw_args = raw_args.strip()
             return json.loads(raw_args) if raw_args else {}
-        elif isinstance(raw_args, dict):
+        if isinstance(raw_args, dict):
             return raw_args
-        else:
-            return {}
+        return {}
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         logger.warning(f"Invalid tool args: {raw_args!r}, using empty dict. Error: {e}")
         return {}

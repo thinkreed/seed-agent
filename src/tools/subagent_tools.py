@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 # 全局 SubagentManager 实例（由 AgentLoop 初始化时注入）
 _subagent_manager: "SubagentManager | None" = None
 
+# 后台任务集合（防止 asyncio.create_task 返回值被垃圾回收）
+_background_tasks: set[asyncio.Task] = set()
+
 
 def init_subagent_manager(manager):
     """初始化全局 SubagentManager"""
@@ -75,7 +78,9 @@ def spawn_subagent(
     # 尝试启动异步执行（仅在事件循环存在时）
     try:
         asyncio.get_running_loop()
-        asyncio.create_task(_run_subagent_async(task_id))
+        task = asyncio.create_task(_run_subagent_async(task_id))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         # 没有运行的事件循环，任务只创建不启动
         # 在 AgentLoop 异步环境中会正常启动
@@ -329,7 +334,9 @@ def spawn_parallel_subagents(
     # 尝试并行启动所有任务（仅在事件循环存在时）
     try:
         asyncio.get_running_loop()
-        asyncio.create_task(_run_parallel_async(task_ids))
+        task = asyncio.create_task(_run_parallel_async(task_ids))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
     except RuntimeError:
         # 没有运行的事件循环，任务只创建不启动
         logger.debug(f"No event loop, {len(task_ids)} tasks created but not started")
