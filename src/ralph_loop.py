@@ -17,6 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable
 
+from src.errors import ConfigurationError, ErrorSeverity, SeedAgentError, classify_error
 from src.ralph_state import (
     SEED_DIR,
     check_safety_limits,
@@ -147,8 +148,28 @@ class RalphLoop:
             # 4. 执行一轮 Agent Loop
             try:
                 response = await self.agent.run(prompt)
+            except ConfigurationError as e:
+                # 配置错误：不可恢复，终止循环
+                logger.critical(f"Configuration error at iteration {self._iteration_count}: {e}")
+                self._cleanup()
+                raise
+            except SeedAgentError as e:
+                # 已知错误类型：根据严重程度决定是否继续
+                error_type, severity = e.error_type, e.severity
+                if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
+                    logger.error(f"Critical error at iteration {self._iteration_count}: {e}")
+                    self._cleanup()
+                    raise
+                logger.warning(f"Recoverable error at iteration {self._iteration_count}: {e}")
+                response = f"Error: {str(e)}"
             except Exception as e:
-                logger.error(f"Agent execution failed at iteration {self._iteration_count}: {e}")
+                # 未知错误：分类后决定处理方式
+                error_type, severity = classify_error(e)
+                if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
+                    logger.error(f"Severe unclassified error at iteration {self._iteration_count}: {error_type.value}: {e}")
+                    self._cleanup()
+                    raise
+                logger.warning(f"Agent execution failed at iteration {self._iteration_count}: {e}")
                 response = f"Error: {str(e)}"
 
             # 5. 持久化状态
