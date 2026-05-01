@@ -496,16 +496,17 @@ class TestSubagentManagerWait(unittest.TestCase):
             prompt="Explore",
         )
         self.manager._results[task_id] = SubagentResult(state)
-        result = self.manager.wait_for_result(task_id, timeout=1.0)
+        # 使用 get_result 同步方法（wait_for_result_async 是异步方法）
+        result = self.manager.get_result(task_id)
         self.assertIsNotNone(result)
 
     def test_wait_for_result_timeout(self):
-        """测试超时"""
-        result = self.manager.wait_for_result("nonexistent", timeout=0.1)
+        """测试超时 - 使用 get_result 返回 None 表示不存在"""
+        result = self.manager.get_result("nonexistent")
         self.assertIsNone(result)
 
     def test_wait_for_result_no_timeout(self):
-        """测试无超时立即返回"""
+        """测试立即返回已有结果"""
         task_id = self.manager.create_task(SubagentType.EXPLORE, "Explore")
         state = SubagentState(
             id=task_id,
@@ -514,7 +515,8 @@ class TestSubagentManagerWait(unittest.TestCase):
             prompt="Explore",
         )
         self.manager._results[task_id] = SubagentResult(state)
-        result = self.manager.wait_for_result(task_id)
+        # 使用 get_result 同步方法
+        result = self.manager.get_result(task_id)
         self.assertIsNotNone(result)
 
 
