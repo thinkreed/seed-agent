@@ -142,61 +142,67 @@ class TestTimeoutConfig:
 class TestFallbackChain:
     """Tests for provider fallback mechanism."""
 
-    def test_get_active_client_first_available(self, fallback_chain_with_clients):
+    @pytest.mark.asyncio
+    async def test_get_active_client_first_available(self, fallback_chain_with_clients):
         chain = fallback_chain_with_clients
-        provider, client = chain.get_active_client()
+        provider, client = await chain.get_active_client()
         assert provider == "provider-a"
         assert client == chain._clients["provider-a"]
 
-    def test_get_active_client_skips_unavailable(self):
+    @pytest.mark.asyncio
+    async def test_get_active_client_skips_unavailable(self):
         client_b = MagicMock()
         # provider-a is NOT in clients
         chain = FallbackChain(["provider-a", "provider-b"], {"provider-b": client_b})
-        provider, client = chain.get_active_client()
+        provider, client = await chain.get_active_client()
         assert provider == "provider-b"
 
-    def test_mark_degraded_switches_to_next(self, fallback_chain_with_clients):
+    @pytest.mark.asyncio
+    async def test_mark_degraded_switches_to_next(self, fallback_chain_with_clients):
         chain = fallback_chain_with_clients
         # Force active to be a
         chain._active_provider = "provider-a"
-        
-        chain.mark_degraded("provider-a")
-        
-        provider, _ = chain.get_active_client()
+
+        await chain.mark_degraded("provider-a")
+
+        provider, _ = await chain.get_active_client()
         assert provider == "provider-b"
         assert chain.status == "degraded"
 
-    def test_mark_degraded_no_fallback_available(self):
+    @pytest.mark.asyncio
+    async def test_mark_degraded_no_fallback_available(self):
         client_a = MagicMock()
         chain = FallbackChain(["provider-a"], {"provider-a": client_a})
         chain._active_provider = "provider-a"
-        
-        chain.mark_degraded("provider-a")
-        
+
+        await chain.mark_degraded("provider-a")
+
         # Should mark unavailable but not raise immediately
         assert chain.status == "unavailable"
         # Next get_active_client should raise
         with pytest.raises(ValueError, match="No available provider"):
-            chain.get_active_client()
+            await chain.get_active_client()
 
-    def test_mark_healthy_restores_status(self, fallback_chain_with_clients):
+    @pytest.mark.asyncio
+    async def test_mark_healthy_restores_status(self, fallback_chain_with_clients):
         chain = fallback_chain_with_clients
         chain._status = "degraded"
         chain._active_provider = "provider-b"
-        
-        chain.mark_healthy("provider-a")
-        
+
+        await chain.mark_healthy("provider-a")
+
         assert chain._active_provider == "provider-a"
         assert chain.status == "healthy"
 
     def test_status_property(self, fallback_chain_with_clients):
         assert fallback_chain_with_clients.status == "healthy"
 
-    def test_no_providers_get_active_raises(self):
+    @pytest.mark.asyncio
+    async def test_no_providers_get_active_raises(self):
         # Init succeeds, but get_active_client raises
         chain = FallbackChain([], {})
         with pytest.raises(ValueError, match="No available provider"):
-            chain.get_active_client()
+            await chain.get_active_client()
 
 # ==================== LLMGateway Tests ====================
 
@@ -285,18 +291,21 @@ class TestGetClient:
             
             self.gateway = LLMGateway("dummy")
 
-    def test_get_client_by_provider_id(self):
+    @pytest.mark.asyncio
+    async def test_get_client_by_provider_id(self):
         # provider-a corresponds to the first client
-        client = self.gateway.get_client("provider-a/test-model")
+        client = await self.gateway.get_client("provider-a/test-model")
         assert client == self.mock_client_a
 
-    def test_get_client_unknown_provider(self):
+    @pytest.mark.asyncio
+    async def test_get_client_unknown_provider(self):
         with pytest.raises(ValueError, match="Unknown provider"):
-            self.gateway.get_client("unknown/model")
+            await self.gateway.get_client("unknown/model")
 
-    def test_get_client_uses_active_provider(self):
+    @pytest.mark.asyncio
+    async def test_get_client_uses_active_provider(self):
         # Active provider should be provider-a (first one)
-        client = self.gateway.get_client()
+        client = await self.gateway.get_client()
         assert client == self.mock_client_a
 
     def test_get_client_no_clients_raises(self):

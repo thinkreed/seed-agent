@@ -148,10 +148,14 @@ def _sanitize_fts_query(query: str) -> str:
 
 
 class SessionDB:
-    """Session 数据库管理类 (SQLite + FTS5 + Memory Graph)"""
+    """Session 数据库管理类 (SQLite + FTS5 + Memory Graph)
+    
+    支持上下文管理器协议，确保资源正确释放。
+    """
 
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path or str(DB_PATH)
+        self.conn: sqlite3.Connection | None = None
         self._init_db()
 
     def _init_db(self):
@@ -160,13 +164,37 @@ class SessionDB:
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
 
-        # 性能优化 PRAGMA
+        # 性能优化 PRAGMA（初始化时直接使用 self.conn）
         self.conn.execute("PRAGMA journal_mode=WAL;")
         self.conn.execute("PRAGMA synchronous=NORMAL;")
         self.conn.execute("PRAGMA busy_timeout=5000;")
         self.conn.execute("PRAGMA cache_size=-32000;")
 
         self._create_schema()
+
+    def close(self) -> None:
+        """关闭数据库连接，释放资源"""
+        if self.conn:
+            try:
+                self.conn.close()
+            except sqlite3.Error as e:
+                logger.warning(f"Error closing database connection: {e}")
+            finally:
+                self.conn = None
+
+    def __enter__(self) -> "SessionDB":
+        """上下文管理器入口"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """上下文管理器退出，确保连接关闭"""
+        self.close()
+
+    def _ensure_conn(self) -> sqlite3.Connection:
+        """确保数据库连接可用"""
+        if self.conn is None:
+            raise RuntimeError("Database connection is closed")
+        return self.conn
 
     def _create_schema(self):
         """创建数据库 Schema"""
@@ -175,11 +203,11 @@ class SessionDB:
         self._create_gene_outcomes_schema()
         self._create_gene_outcomes_triggers()
         self._create_gene_outcomes_indexes()
-        self.conn.commit()
+        self._ensure_conn().commit()
 
     def _create_session_messages_schema(self):
         """创建 session_messages 表和索引"""
-        cursor = self.conn.cursor()
+        cursor = self._ensure_conn().cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS session_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,7 +231,7 @@ class SessionDB:
 
     def _create_sessions_meta_schema(self):
         """创建 sessions_meta 表和索引"""
-        cursor = self.conn.cursor()
+        cursor = self._ensure_conn().cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS sessions_meta (
                 session_id TEXT PRIMARY KEY,
@@ -217,7 +245,7 @@ class SessionDB:
 
     def _create_gene_outcomes_schema(self):
         """创建 gene_outcomes 表和 FTS5 虚拟表"""
-        cursor = self.conn.cursor()
+        cursor = self._ensure_conn().cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS gene_outcomes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -242,7 +270,7 @@ class SessionDB:
 
     def _create_gene_outcomes_triggers(self):
         """创建 gene_outcomes FTS5 同步触发器"""
-        cursor = self.conn.cursor()
+        cursor = self._ensure_conn().cursor()
         cursor.execute("""
             CREATE TRIGGER IF NOT EXISTS gene_outcomes_ai AFTER INSERT ON gene_outcomes BEGIN
                 INSERT INTO gene_outcomes_fts(rowid, signal_pattern, skill_name, outcome_status)
@@ -266,7 +294,7 @@ class SessionDB:
 
     def _create_gene_outcomes_indexes(self):
         """创建 gene_outcomes 索引"""
-        cursor = self.conn.cursor()
+        cursor = self._ensure_conn().cursor()
         for col in ['skill_name', 'timestamp', 'outcome_status', 'session_id']:
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_gene_{col} ON gene_outcomes({col})")
 
@@ -275,7 +303,7 @@ class SessionDB:
             "CREATE INDEX IF NOT EXISTS idx_gene_skill_time ON gene_outcomes(skill_name, timestamp)"
         )
 
-        self.conn.commit()
+        self._ensure_conn().commit()
 
     def _parse_tool_calls(self, tool_calls) -> str | None:
         """序列化 tool_calls 为 JSON"""
@@ -323,18 +351,18 @@ class SessionDB:
     def _execute_skill_outcome_insert(self, skill_name, signal_pattern, outcome, score,
                                       session_id, timestamp, context, intent, blast_radius_json):
         """执行 Skill 结果插入"""
-        self.conn.execute("""
+        self._ensure_conn().execute("""
             INSERT INTO gene_outcomes
                 (skill_name, signal_pattern, outcome_status, outcome_score,
                  session_id, timestamp, iteration_context, intent, blast_radius)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (skill_name, signal_pattern, outcome, score, session_id,
               timestamp, context, intent, blast_radius_json))
-        self.conn.commit()
+        self._ensure_conn().commit()
 
     def _get_skill_basic_stats(self, skill_name: str) -> dict:
         """获取 Skill 基础统计信息"""
-        row = self.conn.execute("""
+        row = self._ensure_conn().execute("""
             SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as successes,
@@ -349,7 +377,7 @@ class SessionDB:
 
     def _get_skill_recent_stats(self, skill_name: str, recent_days: int = 30) -> dict:
         """获取 Skill 近期统计信息 (最近 N 天)"""
-        recent_row = self.conn.execute("""
+        recent_row = self._ensure_conn().execute("""
             SELECT
                 COUNT(*) as recent_total,
                 SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as recent_successes
@@ -442,7 +470,7 @@ class SessionDB:
 
         # 计算最近一次执行距今的天数（用于衰减）
         try:
-            last_row = self.conn.execute("""
+            last_row = self._ensure_conn().execute("""
                 SELECT MAX(timestamp) as last_time
                 FROM gene_outcomes
                 WHERE skill_name = ?
@@ -482,7 +510,7 @@ class SessionDB:
         ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
 
         try:
-            rows = self.conn.execute("""
+            rows = self._ensure_conn().execute("""
                 SELECT
                     skill_name,
                     COUNT(*) as total,
@@ -521,7 +549,7 @@ class SessionDB:
             按 selection_value 排序的 Skill 列表
         """
         try:
-            rows = self.conn.execute("""
+            rows = self._ensure_conn().execute("""
                 SELECT DISTINCT skill_name FROM gene_outcomes
             """).fetchall()
 
@@ -559,7 +587,7 @@ class SessionDB:
             if not fts_query:
                 return []
 
-            rows = self.conn.execute("""
+            rows = self._ensure_conn().execute("""
                 SELECT
                     g.id, g.skill_name, g.signal_pattern, g.outcome_status, g.outcome_score, g.timestamp
                 FROM gene_outcomes g
@@ -585,7 +613,7 @@ class SessionDB:
 
         try:
             # 找出超限的 Skill
-            rows = self.conn.execute("""
+            rows = self._ensure_conn().execute("""
                 SELECT skill_name, COUNT(*) as count
                 FROM gene_outcomes
                 GROUP BY skill_name
@@ -597,7 +625,7 @@ class SessionDB:
                 excess = row['count'] - max_entries
 
                 # 删除最旧的记录
-                self.conn.execute("""
+                self._ensure_conn().execute("""
                     DELETE FROM gene_outcomes
                     WHERE skill_name = ? AND id IN (
                         SELECT id FROM gene_outcomes
@@ -607,7 +635,7 @@ class SessionDB:
                     )
                 """, (skill_name, skill_name, excess))
 
-            self.conn.commit()
+            self._ensure_conn().commit()
             logger.info(f"Cleanup completed: processed {len(rows)} skills")
         except sqlite3.OperationalError as e:
             logger.error(f"Database operational error during cleanup: {e}")
@@ -675,12 +703,12 @@ class SessionDB:
 
             now = datetime.now().isoformat()
 
-            existing = self.conn.execute(
+            existing = self._ensure_conn().execute(
                 "SELECT session_id FROM sessions_meta WHERE session_id = ?", (session_id,)
             ).fetchone()
             is_new = existing is None
 
-            cursor = self.conn.cursor()
+            cursor = self._ensure_conn().cursor()
             batch, fts_batch = self._build_message_batches(messages, session_id, now)
 
             cursor.executemany(
@@ -699,10 +727,10 @@ class SessionDB:
             msg_count = len(messages)
             self._upsert_session_meta(cursor, session_id, now, msg_count, summary, is_new)
 
-            self.conn.commit()
+            self._ensure_conn().commit()
             return f"Session saved: {session_id} ({msg_count} messages)"
         except Exception as e:
-            self.conn.rollback()
+            self._ensure_conn().rollback()
             return f"Error saving session: {str(e)}"
 
     def load_session_history(self, session_id: str) -> str:
@@ -716,7 +744,7 @@ class SessionDB:
             msg_count = row['message_count']
             summary = row['summary'] if 'summary' in row.keys() else None
 
-            messages = self.conn.execute("""
+            messages = self._ensure_conn().execute("""
                 SELECT role, content, tool_calls_json, tool_call_id
                 FROM session_messages
                 WHERE session_id = ? AND message_type = 'message'
@@ -739,13 +767,13 @@ class SessionDB:
 
     def _find_session(self, session_id: str) -> sqlite3.Row | None:
         """查找会话（精确匹配后尝试模糊匹配）"""
-        row = self.conn.execute(
+        row = self._ensure_conn().execute(
             "SELECT session_id, created_at, summary, message_count FROM sessions_meta WHERE session_id = ?",
             (session_id,)
         ).fetchone()
 
         if not row:
-            row = self.conn.execute(
+            row = self._ensure_conn().execute(
                 "SELECT session_id, created_at, summary, message_count FROM sessions_meta WHERE session_id LIKE ?",
                 (f"%{session_id}%",)
             ).fetchone()
@@ -775,7 +803,7 @@ class SessionDB:
     def list_sessions(self, limit: int = 10) -> str:
         """列出最近会话"""
         try:
-            sessions = self.conn.execute("""
+            sessions = self._ensure_conn().execute("""
                 SELECT session_id, created_at, last_updated, message_count, summary
                 FROM sessions_meta
                 ORDER BY created_at DESC
@@ -816,7 +844,7 @@ class SessionDB:
                 if len(tokens) > 1:
                     query_expr = ' OR '.join(tokens)
 
-            results = self.conn.execute("""
+            results = self._ensure_conn().execute("""
                 SELECT
                     m.session_id, m.timestamp, m.role, m.content, m.tool_call_id,
                     m.id as msg_id
@@ -850,7 +878,7 @@ class SessionDB:
     def _fallback_search(self, keyword: str, limit: int = 20) -> str:
         """简单的字符串匹配搜索"""
         try:
-            results = self.conn.execute("""
+            results = self._ensure_conn().execute("""
                 SELECT session_id, timestamp, role, content, id as msg_id
                 FROM session_messages
                 WHERE content LIKE ? AND message_type = 'message'
@@ -895,7 +923,7 @@ class SessionDB:
     def _get_context(self, session_id: str, msg_id: int, context_size: int = 1) -> list[str]:
         """获取消息的上下文"""
         try:
-            context_msgs = self.conn.execute("""
+            context_msgs = self._ensure_conn().execute("""
                 SELECT role, content
                 FROM session_messages
                 WHERE session_id = ? AND message_type = 'message'
@@ -976,7 +1004,7 @@ class SessionDB:
                 base_sql, params, session_id, role, start_time, end_time, order_by, limit
             )
 
-            rows = self.conn.execute(base_sql, params).fetchall()
+            rows = self._ensure_conn().execute(base_sql, params).fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
             logger.warning(f"Failed to get context messages: {e}")
@@ -985,7 +1013,7 @@ class SessionDB:
     def get_session_stats(self, session_id: str) -> dict:
         """获取会话统计信息"""
         try:
-            meta = self.conn.execute(
+            meta = self._ensure_conn().execute(
                 "SELECT * FROM sessions_meta WHERE session_id = ?",
                 (session_id,)
             ).fetchone()
@@ -993,7 +1021,7 @@ class SessionDB:
             if not meta:
                 return {"error": "Session not found"}
 
-            fts_size = self.conn.execute("""
+            fts_size = self._ensure_conn().execute("""
                 SELECT COUNT(*) as fts_count
                 FROM session_messages_fts
                 WHERE session_id = ?
@@ -1013,10 +1041,10 @@ class SessionDB:
     def optimize_index(self):
         """优化 FTS5 索引"""
         try:
-            self.conn.execute(
+            self._ensure_conn().execute(
                 "INSERT INTO session_messages_fts(session_messages_fts) VALUES('optimize')"
             )
-            self.conn.commit()
+            self._ensure_conn().commit()
             return "FTS5 index optimized."
         except Exception as e:
             return f"Error optimizing index: {str(e)}"
@@ -1024,10 +1052,10 @@ class SessionDB:
     def rebuild_index(self):
         """重建 FTS5 索引"""
         try:
-            self.conn.execute(
+            self._ensure_conn().execute(
                 "INSERT INTO session_messages_fts(session_messages_fts) VALUES('rebuild')"
             )
-            self.conn.commit()
+            self._ensure_conn().commit()
             return "FTS5 index rebuilt."
         except Exception as e:
             return f"Error rebuilding index: {str(e)}"
@@ -1036,12 +1064,6 @@ class SessionDB:
         """生成会话文件名"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"session_{timestamp}.jsonl"
-
-    def close(self):
-        """关闭数据库连接"""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
 
     def __del__(self):
         try:

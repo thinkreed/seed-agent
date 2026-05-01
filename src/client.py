@@ -150,6 +150,8 @@ class FallbackChain:
     """跨 Provider 降级链：primary 失败时自动切换到 fallback
 
     借鉴 CodeBrain 架构设计的优雅降级机制。
+    
+    并发安全：使用 asyncio.Lock 保护状态变更
     """
 
     def __init__(self, providers: list[str], clients: dict[str, AsyncOpenAI]):
@@ -157,49 +159,53 @@ class FallbackChain:
         self._clients = clients
         self._active_provider: str | None = None  # 当前活跃的 provider
         self._status: str = "healthy"  # healthy, degraded, unavailable
+        self._lock = asyncio.Lock()  # 并发安全保护
 
-    def get_active_client(self) -> tuple[str, AsyncOpenAI]:
-        """获取当前活跃的 provider 和 client
+    async def get_active_client(self) -> tuple[str, AsyncOpenAI]:
+        """获取当前活跃的 provider 和 client（异步版本，线程安全）
 
         优化：使用缓存避免每次遍历
         """
-        # 快速路径：已缓存活跃 provider
-        if self._active_provider and self._active_provider in self._clients:
-            return self._active_provider, self._clients[self._active_provider]
+        async with self._lock:
+            # 快速路径：已缓存活跃 provider
+            if self._active_provider and self._active_provider in self._clients:
+                return self._active_provider, self._clients[self._active_provider]
 
-        # 遍历 providers 找到第一个可用的（跳过不在 clients 中的）
-        for provider in self._providers:
-            if provider in self._clients:
-                self._active_provider = provider
-                return provider, self._clients[provider]
+            # 遍历 providers 找到第一个可用的（跳过不在 clients 中的）
+            for provider in self._providers:
+                if provider in self._clients:
+                    self._active_provider = provider
+                    return provider, self._clients[provider]
 
-        raise ValueError("No available provider")
+            raise ValueError("No available provider")
 
-    def mark_degraded(self, failed_provider: str):
-        """标记 provider 失败，切换到下一个"""
-        logger.warning(f"Provider {failed_provider} failed, attempting fallback")
+    async def mark_degraded(self, failed_provider: str):
+        """标记 provider 失败，切换到下一个（异步版本，线程安全）"""
+        async with self._lock:
+            logger.warning(f"Provider {failed_provider} failed, attempting fallback")
 
-        # 找到下一个可用 provider
-        failed_idx = self._providers.index(failed_provider) if failed_provider in self._providers else -1
-        for i, provider in enumerate(self._providers):
-            if i > failed_idx and provider in self._clients:
-                self._active_provider = provider
-                self._status = "degraded"
-                logger.info(f"Switched to fallback provider: {provider}")
-                return
+            # 找到下一个可用 provider
+            failed_idx = self._providers.index(failed_provider) if failed_provider in self._providers else -1
+            for i, provider in enumerate(self._providers):
+                if i > failed_idx and provider in self._clients:
+                    self._active_provider = provider
+                    self._status = "degraded"
+                    logger.info(f"Switched to fallback provider: {provider}")
+                    return
 
-        # 无可用 fallback
-        self._active_provider = None
-        self._status = "unavailable"
-        # 移除失败的 provider 防止 get_active_client 重新选中
-        if failed_provider in self._providers:
-            self._providers.remove(failed_provider)
-        logger.error("All providers failed, no fallback available")
+            # 无可用 fallback
+            self._active_provider = None
+            self._status = "unavailable"
+            # 移除失败的 provider 防止 get_active_client 重新选中
+            if failed_provider in self._providers:
+                self._providers.remove(failed_provider)
+            logger.error("All providers failed, no fallback available")
 
-    def mark_healthy(self, provider: str):
-        """标记 provider 健康"""
-        self._active_provider = provider
-        self._status = "healthy"
+    async def mark_healthy(self, provider: str):
+        """标记 provider 健康（异步版本，线程安全）"""
+        async with self._lock:
+            self._active_provider = provider
+            self._status = "healthy"
 
     @property
     def status(self) -> str:
@@ -449,8 +455,8 @@ class LLMGateway:
             return os.environ.get(env_var, "").strip()
         return api_key.strip()
 
-    def get_client(self, model_id: str | None = None) -> AsyncOpenAI:
-        """获取客户端，支持降级链
+    async def get_client(self, model_id: str | None = None) -> AsyncOpenAI:
+        """获取客户端，支持降级链（异步版本）
 
         Args:
             model_id: 可选的 model_id，如不指定则使用活跃 provider
@@ -465,7 +471,7 @@ class LLMGateway:
 
         # 使用降级链获取活跃 client
         if self._fallback_chain:
-            _, client = self._fallback_chain.get_active_client()
+            _, client = await self._fallback_chain.get_active_client()
             return client
 
         # 无降级链时使用第一个可用 client
@@ -473,10 +479,10 @@ class LLMGateway:
             return next(iter(self.clients.values()))
         raise ValueError("No clients initialized")
 
-    def get_active_provider(self) -> str:
-        """获取当前活跃的 provider"""
+    async def get_active_provider(self) -> str:
+        """获取当前活跃的 provider（异步版本）"""
         if self._fallback_chain:
-            provider, _ = self._fallback_chain.get_active_client()
+            provider, _ = await self._fallback_chain.get_active_client()
             return provider
         return next(iter(self.clients.keys())) if self.clients else ""
 
@@ -820,7 +826,7 @@ class LLMGateway:
     ) -> dict:
         """内部方法：带跨 Provider 降级的非流式聊天补全"""
         provider_id = model_id.split('/')[0]
-        active_provider = self.get_active_provider()
+        active_provider = await self.get_active_provider()
         start_time = time.time()
 
         span = self._create_llm_span(model_id, active_provider, streaming=False)
@@ -831,7 +837,7 @@ class LLMGateway:
 
             if success:
                 if self._fallback_chain:
-                    self._fallback_chain.mark_healthy(provider_id)
+                    await self._fallback_chain.mark_healthy(provider_id)
 
                 duration_ms = self._calc_duration_ms(start_time)
                 usage = result.get('usage') if result else None
@@ -840,7 +846,7 @@ class LLMGateway:
 
             # 触发降级
             if self._fallback_chain:
-                self._fallback_chain.mark_degraded(provider_id)
+                await self._fallback_chain.mark_degraded(provider_id)
                 fallback_success, fallback_result = await self._try_fallback_providers(
                     span, model_id, messages, start_time, **kwargs
                 )
@@ -928,7 +934,7 @@ class LLMGateway:
         if not self._fallback_chain:
             return False, None
 
-        active_provider = self.get_active_provider()
+        active_provider = await self.get_active_provider()
 
         for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, model_id.split('/')[0]):
             if span:
@@ -943,7 +949,7 @@ class LLMGateway:
             try:
                 logger.info(f"Trying fallback: {fallback_model_id}")
                 result = await self._chat_completion_single(fallback_model_id, messages, **kwargs)
-                self._fallback_chain.mark_healthy(fallback_provider)
+                await self._fallback_chain.mark_healthy(fallback_provider)
 
                 duration_ms = self._calc_duration_ms(start_time)
                 usage = result.get('usage')
@@ -952,7 +958,7 @@ class LLMGateway:
                 return True, result
             except Exception as fallback_e:
                 logger.warning(f"Fallback {fallback_provider} failed: {fallback_e}")
-                self._fallback_chain.mark_degraded(fallback_provider)
+                await self._fallback_chain.mark_degraded(fallback_provider)
 
         return False, None
 
@@ -963,7 +969,7 @@ class LLMGateway:
         **kwargs
     ) -> dict:
         """单 provider 调用"""
-        client = self.get_client(model_id)
+        client = await self.get_client(model_id)
         model_config = self.get_model_config(model_id)
 
         # 清理空 tools 数组（部分 API 不允许空数组）
@@ -1033,7 +1039,7 @@ class LLMGateway:
     ) -> AsyncGenerator[dict, None]:
         """内部方法：带跨 Provider 降级的流式聊天补全"""
         provider_id = model_id.split('/')[0]
-        active_provider = self.get_active_provider()
+        active_provider = await self.get_active_provider()
         last_error = None
         start_time = time.time()
 
@@ -1049,7 +1055,7 @@ class LLMGateway:
             last_error = e
             # 触发降级
             if self._fallback_chain:
-                self._fallback_chain.mark_degraded(provider_id)
+                await self._fallback_chain.mark_degraded(provider_id)
                 async for chunk in self._stream_fallback_providers(
                     model_id, messages, span, active_provider, start_time, provider_id, **kwargs
                 ):
@@ -1078,7 +1084,7 @@ class LLMGateway:
                     chunk_count += 1
 
                 if self._fallback_chain:
-                    self._fallback_chain.mark_healthy(model_id.split('/')[0])
+                    await self._fallback_chain.mark_healthy(model_id.split('/')[0])
 
                 # 流式 token 估算
                 duration_ms = self._calc_duration_ms(start_time)
@@ -1136,7 +1142,7 @@ class LLMGateway:
                     yield chunk
                     chunk_count += 1
 
-                self._fallback_chain.mark_healthy(fallback_provider)
+                await self._fallback_chain.mark_healthy(fallback_provider)
 
                 # 流式成功 Metrics
                 duration_ms = self._calc_duration_ms(start_time)
@@ -1159,7 +1165,7 @@ class LLMGateway:
 
             except Exception as fallback_e:
                 logger.warning(f"Fallback {fallback_provider} failed: {fallback_e}")
-                self._fallback_chain.mark_degraded(fallback_provider)
+                await self._fallback_chain.mark_degraded(fallback_provider)
 
     async def _stream_chat_completion_single(
         self,
@@ -1168,7 +1174,7 @@ class LLMGateway:
         **kwargs
     ) -> AsyncGenerator[dict, None]:
         """单 provider 流式调用"""
-        client = self.get_client(model_id)
+        client = await self.get_client(model_id)
         model_config = self.get_model_config(model_id)
 
         # 清理空 tools 数组（部分 API 不允许空数组）

@@ -108,7 +108,10 @@ class TaskScheduler:
             logger.info(f"Loaded {len(self._tasks)} scheduled tasks")
 
     def _save_tasks(self) -> None:
-        """保存任务到文件"""
+        """保存任务到文件（原子写入模式）
+        
+        使用临时文件+原子替换模式，避免写入中途崩溃导致数据损坏。
+        """
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
         data = {
@@ -116,8 +119,23 @@ class TaskScheduler:
             "tasks": [t.to_dict() for t in self._tasks.values()]
         }
 
-        with open(TASKS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # 原子写入：先写临时文件，再替换原文件
+        temp_file = TASKS_FILE.with_suffix('.tmp')
+        try:
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            
+            # 原子替换（replace 在 POSIX 上是原子操作，Windows 上尽量保证）
+            temp_file.replace(TASKS_FILE)
+        except OSError as e:
+            logger.error(f"Failed to save tasks: {e}")
+            # 清理临时文件
+            if temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except OSError:
+                    pass
+            raise
 
         logger.info(f"Saved {len(self._tasks)} scheduled tasks")
 
