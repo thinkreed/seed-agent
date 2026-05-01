@@ -169,7 +169,7 @@ def load_or_init_state(
             )
             return state
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"State file corrupted, starting fresh: {e}")
+            logger.warning(f"State file corrupted, starting fresh: {type(e).__name__}: {e}")
 
     # 初始化新状态
     return RalphState(

@@ -178,7 +178,7 @@ class SessionDB:
             try:
                 self.conn.close()
             except sqlite3.Error as e:
-                logger.warning(f"Error closing database connection: {e}")
+                logger.warning(f"Error closing database connection: {type(e).__name__}: {e}")
             finally:
                 self.conn = None
 
@@ -538,7 +538,7 @@ class SessionDB:
 
             return banned
         except Exception as e:
-            logger.warning(f"Failed to get context messages: {e}")
+            logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
             return []
 
     def get_top_skills(self, limit: int = 10) -> list[dict]:
@@ -568,7 +568,7 @@ class SessionDB:
             skill_values.sort(key=lambda x: x['selection_value'], reverse=True)
             return skill_values[:limit]
         except Exception as e:
-            logger.warning(f"Failed to get context messages: {e}")
+            logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
             return []
 
     def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> list[dict]:
@@ -599,7 +599,7 @@ class SessionDB:
 
             return [dict(row) for row in rows]
         except Exception as e:
-            logger.warning(f"Failed to get context messages: {e}")
+            logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
             return []
 
     def cleanup_old_outcomes(self, max_entries_per_skill: int | None = None):
@@ -933,7 +933,7 @@ class SessionDB:
 
             return [f"{m['role']}: {(m['content'] or '')[:100]}" for m in context_msgs]
         except Exception as e:
-            logger.warning(f"Failed to get context messages: {e}")
+            logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
             return []
 
     def _apply_filters(
@@ -1007,7 +1007,7 @@ class SessionDB:
             rows = self._ensure_conn().execute(base_sql, params).fetchall()
             return [dict(row) for row in rows]
         except Exception as e:
-            logger.warning(f"Failed to get context messages: {e}")
+            logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
             return []
 
     def get_session_stats(self, session_id: str) -> dict:

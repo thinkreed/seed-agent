@@ -162,7 +162,7 @@ class RalphLoop:
                     else:
                         self.on_iteration_complete(self._iteration_count, response)
                 except Exception as e:
-                    logger.warning(f"Callback failed: {e}")
+                    logger.warning(f"Callback failed: {type(e).__name__}: {e}")
 
             # 8. 等待下一轮
             await asyncio.sleep(1)
@@ -198,7 +198,7 @@ class RalphLoop:
                     logger.info(f"Completion verified: {self.completion_type}")
                 return result
             except Exception as e:
-                logger.warning(f"Completion check failed: {e}")
+                logger.warning(f"Completion check failed: {type(e).__name__}: {e}")
                 return False
         return False
 
@@ -251,7 +251,7 @@ class RalphLoop:
             logger.warning(f"Test command setup failed: {type(e).__name__}: {e}")
             return False
         except Exception as e:
-            logger.warning(f"Test execution failed: {e}")
+            logger.warning(f"Test execution failed: {type(e).__name__}: {e}")
             return False
 
     def _parse_test_pass_rate(self, output: str | bytes) -> float:
@@ -336,7 +336,7 @@ class RalphLoop:
             logger.warning("git command not found")
             return False
         except Exception as e:
-            logger.warning(f"Git check failed: {e}")
+            logger.warning(f"Git check failed: {type(e).__name__}: {e}")
             return False
 
     async def _check_custom(self) -> bool:
@@ -354,7 +354,7 @@ class RalphLoop:
                 logger.info(f"Custom check result: {result}")
                 return bool(result)
             except Exception as e:
-                logger.warning(f"Custom check failed: {e}")
+                logger.warning(f"Custom check failed: {type(e).__name__}: {e}")
                 return False
         return False
 
