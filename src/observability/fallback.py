@@ -9,24 +9,30 @@ OpenTelemetry Fallback 实现
     # 自动处理 ImportError，返回 NoOp 实现
 """
 
-from collections.abc import Callable
-from typing import Any
+import asyncio
+from collections.abc import Callable, Coroutine
+from typing import Any, TypeVar
+
+# 类型别名，用于 Span 属性值
+SpanAttributeValue = str | int | float | bool
+
+T = TypeVar("T")
 
 
 # NoOp Span 实现
 class NoOpSpan:
     """NoOp Span - 不记录任何数据"""
-    
-    def set_attribute(self, key: str, value: Any) -> None:
+
+    def set_attribute(self, key: str, value: SpanAttributeValue) -> None:
         pass
-    
-    def add_event(self, name: str, attributes: dict[str, Any] | None = None) -> None:
+
+    def add_event(self, name: str, attributes: dict[str, SpanAttributeValue] | None = None) -> None:
         pass
-    
+
     def record_exception(self, exception: BaseException) -> None:
         pass
-    
-    def set_status(self, status: Any, description: str | None = None) -> None:
+
+    def set_status(self, status: str, description: str | None = None) -> None:
         pass
     
     def end(self) -> None:
@@ -39,16 +45,16 @@ class NoOpSpan:
 # NoOp Tracer 实现
 class NoOpTracer:
     """NoOp Tracer - 不创建真实的 Span"""
-    
-    def start_span(self, name: str, context: Any = None) -> NoOpSpan:
+
+    def start_span(self, name: str, context: object = None) -> NoOpSpan:  # type: ignore[override]
         return NoOpSpan()
-    
+
     def start_as_current_span(
-        self, 
-        name: str, 
-        attributes: dict[str, Any] | None = None,
-        context: Any = None,
-    ) -> Any:
+        self,
+        name: str,
+        attributes: dict[str, SpanAttributeValue] | None = None,
+        context: object = None,
+    ):
         """返回一个 context manager"""
         class NoOpContextManager:
             def __enter__(self) -> NoOpSpan:
@@ -80,7 +86,7 @@ def get_tracer() -> NoOpTracer:
     return NoOpTracer()
 
 
-def get_meter() -> Any:
+def get_meter():
     """获取 NoOp Meter"""
     return None
 
@@ -164,12 +170,12 @@ def set_subagent_span_attributes(
     pass
 
 
-def start_span(name: str, attributes: dict[str, Any] | None = None) -> NoOpSpan:
+def start_span(name: str, attributes: dict[str, SpanAttributeValue] | None = None) -> NoOpSpan:
     """启动新 Span（NoOp）"""
     return NoOpSpan()
 
 
-def start_as_current_span(name: str, attributes: dict[str, Any] | None = None) -> Any:
+def start_as_current_span(name: str, attributes: dict[str, SpanAttributeValue] | None = None):
     """启动作为当前 Span（NoOp context manager）"""
     class NoOpContextManager:
         def __enter__(self) -> NoOpSpan:
@@ -179,16 +185,15 @@ def start_as_current_span(name: str, attributes: dict[str, Any] | None = None) -
     return NoOpContextManager()
 
 
-def create_task_with_context(coro: Any, ctx: Any = None) -> Any:
+def create_task_with_context(coro: Coroutine[Any, Any, T], ctx: object = None) -> asyncio.Task[T]:
     """创建带 context 的 task（fallback 直接创建）"""
-    import asyncio
     return asyncio.create_task(coro)
 
 
 def traced(
     name: str | None = None,
-    attributes: dict[str, Any] | None = None,
-) -> Callable[[Callable], Callable]:
+    attributes: dict[str, SpanAttributeValue] | None = None,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """装饰器：创建 Span 包装函数（NoOp 版本直接返回原函数）"""
     return lambda f: f
 

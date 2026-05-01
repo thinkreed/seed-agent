@@ -17,12 +17,17 @@ Span 层级:
 
 import asyncio
 import functools
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable, Coroutine, TypeVar
 
 from opentelemetry import context
 from opentelemetry.trace import Span, StatusCode
 
 from .setup import get_tracer
+
+# 类型别名，用于 Span 属性值
+SpanAttributeValue = str | int | float | bool
+
+T = TypeVar("T")
 
 # Span 名称常量
 SPAN_SESSION = "seed.session"
@@ -111,7 +116,7 @@ def create_task_with_context(coro: Coroutine[Any, Any, Any], ctx: context.Contex
 
 def start_span(
     name: str,
-    attributes: dict[str, Any] | None = None,
+    attributes: dict[str, SpanAttributeValue] | None = None,
 ) -> Span:
     """
     启动一个新 Span
@@ -135,8 +140,8 @@ def start_span(
 
 def start_as_current_span(
     name: str,
-    attributes: dict[str, Any] | None = None,
-) -> Any:  # 返回 context manager，实际使用时会返回 Span
+    attributes: dict[str, SpanAttributeValue] | None = None,
+):
     """
     启动一个作为当前 Span 的新 Span
 
@@ -157,8 +162,8 @@ def start_as_current_span(
 
 def traced(
     name: str | None = None,
-    attributes: dict[str, Any] | None = None,
-):
+    attributes: dict[str, SpanAttributeValue] | None = None,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """
     装饰器：自动创建 Span 包装函数
 
@@ -171,7 +176,7 @@ def traced(
         name: Span 名称 (默认使用函数名)
         attributes: Span 属性
     """
-    def decorator(func: Callable):
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
         span_name = name or f"{SPAN_TOOL_PREFIX}{func.__name__}"
 
         @functools.wraps(func)
