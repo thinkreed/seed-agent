@@ -42,40 +42,18 @@ from src.tools.ralph_tools import register_ralph_tools
 from src.tools.skill_loader import SkillLoader, register_skill_tools
 from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
 
-# OpenTelemetry 可观测性
-try:
-    from opentelemetry.trace import StatusCode
+# OpenTelemetry 可观测性（自动处理 ImportError）
+from src.observability import (
+    SPAN_SESSION,
+    SPAN_TOOL_PREFIX,
+    StatusCode,
+    get_tracer,
+    is_observability_enabled,
+    set_tool_span_attributes,
+    traced,
+)
 
-    from src.observability import (
-        SPAN_SESSION,
-        SPAN_TOOL_PREFIX,
-        get_tracer,
-        set_tool_span_attributes,
-        traced,
-    )
-    _OBSERVABILITY_ENABLED = True
-except ImportError:
-    _OBSERVABILITY_ENABLED = False
-    from collections.abc import Callable as _Callable
-    from typing import Any as _Any
-
-    from opentelemetry.trace import Span as _Span
-    from opentelemetry.trace import StatusCode as _StatusCode
-    from opentelemetry.trace import Tracer as _Tracer
-
-    def get_tracer() -> _Tracer:  # type: ignore[misc]
-        from opentelemetry.trace import NoOpTracer
-        return NoOpTracer()
-
-    def set_tool_span_attributes(span: _Span, tool_name: str, file_path: str | None = None, duration_ms: float | None = None) -> None:  # type: ignore[misc]
-        pass
-
-    def traced(name: str | None = None, attributes: dict[str, _Any] | None = None) -> _Callable[[_Any], _Any]:  # type: ignore[misc]
-        return lambda f: f
-
-    SPAN_SESSION = "seed.session"
-    SPAN_TOOL_PREFIX = "seed.tool."
-    StatusCode = _StatusCode  # type: ignore[misc,assignment]
+_OBSERVABILITY_ENABLED = is_observability_enabled()
 
 logger = logging.getLogger(__name__)
 
@@ -687,7 +665,7 @@ class AgentLoop:
                     session_id=self.session_id
                 )
             except Exception as e:
-                logger.warning(f"Failed to record skill outcome: {e}")
+                logger.warning(f"Failed to record skill outcome: {type(e).__name__}: {e}")
 
         self._pending_skill_outcomes.clear()
 

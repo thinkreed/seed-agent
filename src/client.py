@@ -48,54 +48,21 @@ class RateLimitTimeoutError(Exception):
     """自定义限流等待超时异常"""
     pass
 
-# OpenTelemetry 可观测性
-try:
-    from opentelemetry import trace
-    from opentelemetry.trace import StatusCode
+# OpenTelemetry 可观测性（自动处理 ImportError）
+from src.observability import (
+    SPAN_LLM_REQUEST,
+    StatusCode,
+    add_fallback_event,
+    classify_error,
+    get_tracer,
+    is_observability_enabled,
+    record_llm_error,
+    record_llm_span_error,
+    record_llm_success,
+    set_llm_span_attributes,
+)
 
-    from src.observability import (
-        SPAN_LLM_REQUEST,
-        add_fallback_event,
-        classify_error,
-        get_tracer,
-        record_llm_error,
-        record_llm_span_error,
-        record_llm_success,
-        set_llm_span_attributes,
-    )
-    _OBSERVABILITY_ENABLED = True
-except ImportError:
-    _OBSERVABILITY_ENABLED = False
-    # Fallback: 创建 dummy 函数（使用 type: ignore 避免签名不一致警告）
-    from opentelemetry import trace as _trace
-    from opentelemetry.trace import Span as _Span
-    from opentelemetry.trace import StatusCode as _StatusCode
-    from opentelemetry.trace import Tracer as _Tracer
-
-    def get_tracer() -> _Tracer:  # type: ignore[misc]
-        return _trace.NoOpTracer()
-
-    def record_llm_success(provider: str, model: str, input_tokens: int, output_tokens: int, duration_ms: float) -> None:  # type: ignore[misc]
-        pass
-
-    def record_llm_error(provider: str, model: str, duration_ms: float, error_type: str) -> None:  # type: ignore[misc]
-        pass
-
-    def classify_error(error: Exception) -> str:
-        return "api_error"
-
-    def record_llm_span_error(span: _Span, error: Exception) -> str:  # type: ignore[misc]
-        return "api_error"
-
-    def set_llm_span_attributes(span: _Span, model: str, provider: str, streaming: bool = False, input_tokens: Optional[int] = None, output_tokens: Optional[int] = None) -> None:  # type: ignore[misc]
-        pass
-
-    def add_fallback_event(span: _Span, from_provider: str, to_provider: str, reason: str, attempt: int) -> None:  # type: ignore[misc]
-        pass
-
-    SPAN_LLM_REQUEST = "seed.llm.request"
-    StatusCode = _StatusCode  # type: ignore[misc,assignment]
-    trace = _trace  # type: ignore[misc,assignment]
+_OBSERVABILITY_ENABLED = is_observability_enabled()
 
 logger = logging.getLogger("seed_agent")
 
@@ -363,7 +330,7 @@ class LLMGateway:
                 f"lifetime_requests={state.total_requests_lifetime}"
             )
         except Exception as e:
-            logger.warning(f"Failed to restore rate limit state: {e}")
+            logger.warning(f"Failed to restore rate limit state: {type(e).__name__}: {e}")
 
     async def save_state(self) -> None:
         """持久化限流状态"""
@@ -381,7 +348,7 @@ class LLMGateway:
 
             logger.debug("Rate limit state saved")
         except Exception as e:
-            logger.warning(f"Failed to save rate limit state: {e}")
+            logger.warning(f"Failed to save rate limit state: {type(e).__name__}: {e}")
 
     async def start_persistence_loop(self) -> None:
         """启动状态持久化循环"""

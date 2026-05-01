@@ -24,31 +24,16 @@ from typing import cast
 from src.client import LLMGateway
 from src.tools import ToolRegistry
 
-# OpenTelemetry 可观测性
-try:
-    from opentelemetry.trace import StatusCode
+# OpenTelemetry 可观测性（自动处理 ImportError）
+from src.observability import (
+    SPAN_SUBAGENT_EXECUTE,
+    StatusCode,
+    get_tracer,
+    is_observability_enabled,
+    set_subagent_span_attributes,
+)
 
-    from src.observability import (
-        SPAN_SUBAGENT_EXECUTE,
-        get_tracer,
-        set_subagent_span_attributes,
-    )
-    _OBSERVABILITY_ENABLED = True
-except ImportError:
-    _OBSERVABILITY_ENABLED = False
-    from opentelemetry.trace import Span as _Span
-    from opentelemetry.trace import StatusCode as _StatusCode
-    from opentelemetry.trace import Tracer as _Tracer
-
-    def get_tracer() -> _Tracer:  # type: ignore[misc]
-        from opentelemetry.trace import NoOpTracer
-        return NoOpTracer()
-
-    def set_subagent_span_attributes(span: _Span, subagent_type: str, task_id: str, status: str | None = None) -> None:  # type: ignore[misc]
-        pass
-
-    SPAN_SUBAGENT_EXECUTE = "seed.subagent.execute"
-    StatusCode = _StatusCode  # type: ignore[misc,assignment]
+_OBSERVABILITY_ENABLED = is_observability_enabled()
 
 logger = logging.getLogger(__name__)
 
