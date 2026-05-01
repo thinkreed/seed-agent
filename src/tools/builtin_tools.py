@@ -322,7 +322,7 @@ LANGUAGE_MAP = {
 }
 
 
-def _check_code_security(code: str, language: str, exec_logger: logging.Logger) -> str | None:
+def _check_code_security(code: str, language: str, exec_logger: logging.Logger | None) -> str | None:
     """Check code against security blacklists. Returns error message if blocked."""
     code_lower = code.lower()
 
@@ -337,20 +337,24 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger) 
         for danger in SHELL_BLACKLIST:
             danger_lower = danger.lower()
             if danger_lower in code_lower or danger_lower in normalized_code:
-                exec_logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
+                if exec_logger:
+                    exec_logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
         if _RE_BASE64_DECODE.search(normalized_code):
-            exec_logger.warning("Blocked base64 decode attempt")
+            if exec_logger:
+                exec_logger.warning("Blocked base64 decode attempt")
             return "Error: Blocked base64 decode pattern. Encoded commands are not allowed."
 
     elif language in ("powershell", "ps", "pwsh"):
         for danger in POWERSHELL_BLACKLIST:
             danger_lower = danger.lower()
             if danger_lower in code_lower or danger_lower in normalized_code:
-                exec_logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
+                if exec_logger:
+                    exec_logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
         if _RE_PWSH_ENCODED.search(normalized_code):
-            exec_logger.warning("Blocked PowerShell encoded command attempt")
+            if exec_logger:
+                exec_logger.warning("Blocked PowerShell encoded command attempt")
             return "Error: Blocked PowerShell encoded command pattern. Encoded commands are not allowed."
 
     return None

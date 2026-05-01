@@ -46,19 +46,23 @@ from tools.builtin_tools import (
 
 def _add_test_dir_to_allowed(test_dir: str):
     """临时添加测试目录到允许列表"""
-    import tools.builtin_tools as builtin
-    test_path = Path(test_dir).resolve()
-    if test_path not in builtin.ALLOWED_DIRS:
-        builtin.ALLOWED_DIRS.append(test_path)
+    from src.tools.builtin_tools import ALLOWED_DIRS, _is_path_in_allowed_dirs
+    test_path = str(Path(test_dir).resolve())
+    if test_path not in ALLOWED_DIRS:
+        ALLOWED_DIRS.append(test_path)
+    # 清除 lru_cache 以确保新路径被正确检查
+    _is_path_in_allowed_dirs.cache_clear()
     return test_path
 
 
 def _remove_test_dir_from_allowed(test_dir: str):
     """从允许列表移除测试目录"""
-    import tools.builtin_tools as builtin
-    test_path = Path(test_dir).resolve()
-    if test_path in builtin.ALLOWED_DIRS:
-        builtin.ALLOWED_DIRS.remove(test_path)
+    from src.tools.builtin_tools import ALLOWED_DIRS, _is_path_in_allowed_dirs
+    test_path = str(Path(test_dir).resolve())
+    if test_path in ALLOWED_DIRS:
+        ALLOWED_DIRS.remove(test_path)
+    # 清除 lru_cache
+    _is_path_in_allowed_dirs.cache_clear()
 
 
 class TestResolvePath(unittest.TestCase):
@@ -107,26 +111,17 @@ class TestFileRead(unittest.TestCase):
     """测试 file_read 文件读取功能"""
 
     def setUp(self):
-        self.test_dir = tempfile.mkdtemp()
-        self.test_file = os.path.join(self.test_dir, "test.txt")
-        _add_test_dir_to_allowed(self.test_dir)
+        # 使用 DEFAULT_WORK_DIR（已在 ALLOWED_DIRS 中）
+        self.test_dir = str(DEFAULT_WORK_DIR)
+        self.test_file = os.path.join(self.test_dir, "test_builtin_tools_test.txt")
 
     def tearDown(self):
-        _remove_test_dir_from_allowed(self.test_dir)
         if os.path.exists(self.test_file):
             os.unlink(self.test_file)
         # 清理所有测试文件（包括 gbk_test.txt 等）
         gbk_file = os.path.join(self.test_dir, "gbk_test.txt")
         if os.path.exists(gbk_file):
             os.unlink(gbk_file)
-        if os.path.exists(self.test_dir):
-            try:
-                os.rmdir(self.test_dir)
-            except OSError:
-                # 如果目录不为空，尝试清理所有文件
-                for f in os.listdir(self.test_dir):
-                    os.unlink(os.path.join(self.test_dir, f))
-                os.rmdir(self.test_dir)
 
     def test_read_full_file(self):
         """读取完整文件"""
@@ -189,22 +184,22 @@ class TestFileWrite(unittest.TestCase):
     """测试 file_write 文件写入功能"""
 
     def setUp(self):
-        self.test_dir = tempfile.mkdtemp()
-        self.test_file = os.path.join(self.test_dir, "test.txt")
-        _add_test_dir_to_allowed(self.test_dir)
+        # 使用 DEFAULT_WORK_DIR（已在 ALLOWED_DIRS 中）
+        self.test_dir = str(DEFAULT_WORK_DIR)
+        self.test_file = os.path.join(self.test_dir, "test_builtin_tools_write.txt")
 
     def tearDown(self):
-        _remove_test_dir_from_allowed(self.test_dir)
         if os.path.exists(self.test_file):
             os.unlink(self.test_file)
         # 清理可能创建的嵌套目录
-        for root, dirs, files in os.walk(self.test_dir, topdown=False):
-            for f in files:
-                os.unlink(os.path.join(root, f))
-            for d in dirs:
-                os.rmdir(os.path.join(root, d))
-        if os.path.exists(self.test_dir):
-            os.rmdir(self.test_dir)
+        nested_dir = os.path.join(self.test_dir, "a")
+        if os.path.exists(nested_dir):
+            for root, dirs, files in os.walk(nested_dir, topdown=False):
+                for f in files:
+                    os.unlink(os.path.join(root, f))
+                for d in dirs:
+                    os.rmdir(os.path.join(root, d))
+            os.rmdir(nested_dir)
 
     def test_write_overwrite(self):
         """覆盖写入"""
@@ -246,26 +241,13 @@ class TestFileEdit(unittest.TestCase):
     """测试 file_edit 文件编辑功能"""
 
     def setUp(self):
-        self.test_dir = tempfile.mkdtemp()
-        self.test_file = os.path.join(self.test_dir, "test.txt")
-        _add_test_dir_to_allowed(self.test_dir)
+        # 使用 DEFAULT_WORK_DIR（已在 ALLOWED_DIRS 中）
+        self.test_dir = str(DEFAULT_WORK_DIR)
+        self.test_file = os.path.join(self.test_dir, "test_builtin_tools_edit.txt")
 
     def tearDown(self):
-        _remove_test_dir_from_allowed(self.test_dir)
         if os.path.exists(self.test_file):
             os.unlink(self.test_file)
-        # 清理所有测试文件（包括 gbk_test.txt 等）
-        gbk_file = os.path.join(self.test_dir, "gbk_test.txt")
-        if os.path.exists(gbk_file):
-            os.unlink(gbk_file)
-        if os.path.exists(self.test_dir):
-            try:
-                os.rmdir(self.test_dir)
-            except OSError:
-                # 如果目录不为空，尝试清理所有文件
-                for f in os.listdir(self.test_dir):
-                    os.unlink(os.path.join(self.test_dir, f))
-                os.rmdir(self.test_dir)
 
     def test_replace_first_occurrence(self):
         """替换首次出现"""
