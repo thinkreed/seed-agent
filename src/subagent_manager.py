@@ -33,7 +33,7 @@ class SubagentTask:
     id: str
     subagent_type: SubagentType
     prompt: str
-    custom_tools: set | None = None
+    custom_tools: set[str] | None = None
     custom_system_prompt: str | None = None
     max_iterations: int | None = None
     timeout: int | None = None
@@ -88,6 +88,9 @@ class SubagentManager:
 
         # 状态变更回调
         self._status_callbacks: list[Callable[[str, str], None]] = []
+
+        # 事件驱动等待：Condition 变量（替代轮询）
+        self._result_condition = asyncio.Condition()
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
@@ -198,7 +201,12 @@ class SubagentManager:
             self._notify_status(task_id, "running")
             state = await instance.run(task.prompt, task_id)
             result = SubagentResult(state)
-            self._results[task_id] = result
+
+            # 存储结果并通知等待线程（事件驱动）
+            async with self._result_condition:
+                self._results[task_id] = result
+                self._result_condition.notify_all()
+
             self._notify_status(task_id, state.status)
             return result
 
@@ -277,7 +285,7 @@ class SubagentManager:
         timeout: float | None = None,
     ) -> SubagentResult | None:
         """
-        等待任务完成（异步版本，不阻塞事件循环）
+        等待任务完成（事件驱动，不阻塞事件循环）
 
         Args:
             task_id: 任务 ID
@@ -286,14 +294,16 @@ class SubagentManager:
         Returns:
             SubagentResult | None: 任务结果或超时返回 None
         """
-        import asyncio
-        start = asyncio.get_event_loop().time()
-        while True:
-            if task_id in self._results:
-                return self._results[task_id]
-            if timeout and (asyncio.get_event_loop().time() - start) > timeout:
+        async with self._result_condition:
+            # 等待结果可用或超时
+            try:
+                await asyncio.wait_for(
+                    self._result_condition.wait_for(lambda: task_id in self._results),
+                    timeout=timeout
+                )
+            except asyncio.TimeoutError:
                 return None
-            await asyncio.sleep(0.1)  # 异步等待，不阻塞事件循环
+            return self._results.get(task_id)
 
     
     def aggregate_results(

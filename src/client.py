@@ -434,7 +434,8 @@ class LLMGateway:
             provider_id = model_id.split('/')[0]
             if provider_id in self.clients:
                 return self.clients[provider_id]
-            raise ValueError(f"Unknown provider: {provider_id}")
+            available = list(self.clients.keys())
+            raise ValueError(f"Unknown provider: {provider_id}. Available providers: {available}")
 
         # 使用降级链获取活跃 client
         if self._fallback_chain:
@@ -444,7 +445,7 @@ class LLMGateway:
         # 无降级链时使用第一个可用 client
         if self.clients:
             return next(iter(self.clients.values()))
-        raise ValueError("No clients initialized")
+        raise ValueError("No clients initialized. Check configuration file for valid providers.")
 
     async def get_active_provider(self) -> str:
         """获取当前活跃的 provider（异步版本）"""
@@ -456,11 +457,15 @@ class LLMGateway:
     def get_model_config(self, model_id: str) -> ModelConfig:
         """获取模型详细配置"""
         provider_id, model_name = model_id.split('/', 1)
-        provider = self.config.models[provider_id]
+        provider = self.config.models.get(provider_id)
+        if not provider:
+            available = list(self.config.models.keys())
+            raise ValueError(f"Unknown provider: {provider_id}. Available providers: {available}")
         for model in provider.models:
             if model.id == model_name:
                 return model
-        raise ValueError(f"Unknown model: {model_id}")
+        available_models = [m.id for m in provider.models]
+        raise ValueError(f"Unknown model: {model_name} in provider {provider_id}. Available models: {available_models}")
 
     def get_rate_limit_config(self) -> RateLimitConfig | None:
         """获取当前限流配置"""

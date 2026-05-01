@@ -11,6 +11,7 @@
 
 import asyncio
 import logging
+import re
 import time
 from enum import Enum
 from pathlib import Path
@@ -26,6 +27,11 @@ from src.ralph_state import (
     persist_state,
     reset_context,
 )
+
+# 预编译正则表达式（性能优化）
+_PASSED_PATTERN = re.compile(r'(\d+)\s+passed')
+_FAILED_PATTERN = re.compile(r'(\d+)\s+failed')
+_ERROR_PATTERN = re.compile(r'(\d+)\s+error')
 
 logger = logging.getLogger("seed_agent.ralph")
 
@@ -260,13 +266,10 @@ class RalphLoop:
         if isinstance(output, bytes):
             output = output.decode('utf-8', errors='replace')
 
-        # pytest 输出格式: "X passed, Y failed" 或 "X passed"
-        import re
-
-        # 尝试匹配 pytest 的输出格式
-        passed_match = re.search(r'(\d+)\s+passed', output)
-        failed_match = re.search(r'(\d+)\s+failed', output)
-        error_match = re.search(r'(\d+)\s+error', output)
+        # 使用预编译正则匹配 pytest 输出格式
+        passed_match = _PASSED_PATTERN.search(output)
+        failed_match = _FAILED_PATTERN.search(output)
+        error_match = _ERROR_PATTERN.search(output)
 
         passed = int(passed_match.group(1)) if passed_match else 0
         failed = int(failed_match.group(1)) if failed_match else 0

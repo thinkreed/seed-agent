@@ -279,7 +279,7 @@ class AgentLoop:
             summary = response['choices'][0]['message']['content']
             return summary.strip()
         except Exception as e:
-            logger.warning(f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}")
+            logger.warning(f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}", exc_info=True)
             return None
 
 

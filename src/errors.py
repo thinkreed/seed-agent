@@ -183,14 +183,14 @@ class RateLimitError(SeedAgentError):
         super().__init__(message, ErrorType.RATELIMIT, ErrorSeverity.MEDIUM, **kwargs)
 
 
-class TimeoutError(SeedAgentError):
-    """超时错误"""
+class SeedTimeoutError(SeedAgentError):
+    """超时错误（避免与内置 TimeoutError 冲突）"""
     def __init__(self, message: str = "Operation timed out", **kwargs):
         super().__init__(message, ErrorType.TIMEOUT, ErrorSeverity.MEDIUM, **kwargs)
 
 
-class ConnectionError(SeedAgentError):
-    """连接错误"""
+class SeedConnectionError(SeedAgentError):
+    """连接错误（避免与内置 ConnectionError 冲突）"""
     def __init__(self, message: str = "Connection failed", **kwargs):
         super().__init__(message, ErrorType.CONNECTION, ErrorSeverity.MEDIUM, **kwargs)
 
@@ -201,6 +201,10 @@ class ConfigurationError(SeedAgentError):
         super().__init__(message, ErrorType.CONFIG, ErrorSeverity.HIGH, **kwargs)
 
 
+# 向后兼容别名（deprecated，将在未来版本移除）
+TimeoutError = SeedTimeoutError
+ConnectionError = SeedConnectionError
+
 __all__ = [
     "ErrorType",
     "ErrorSeverity",
@@ -210,7 +214,10 @@ __all__ = [
     "log_error",
     "SeedAgentError",
     "RateLimitError",
+    "SeedTimeoutError",
+    "SeedConnectionError",
+    "ConfigurationError",
+    # 向后兼容
     "TimeoutError",
     "ConnectionError",
-    "ConfigurationError",
 ]
