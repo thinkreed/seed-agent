@@ -22,7 +22,7 @@ import random
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
 
@@ -42,12 +42,6 @@ from src.request_queue import (
     TurnWaitTimeout,
 )
 
-
-# 使用自定义限流异常，避免 OpenAI SDK 的类型限制
-class RateLimitTimeoutError(Exception):
-    """自定义限流等待超时异常"""
-    pass
-
 # OpenTelemetry 可观测性（自动处理 ImportError）
 from src.observability import (
     SPAN_LLM_REQUEST,
@@ -65,6 +59,12 @@ from src.observability import (
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 
 logger = logging.getLogger("seed_agent")
+
+
+# 使用自定义限流异常，避免 OpenAI SDK 的类型限制
+class RateLimitTimeoutError(Exception):
+    """自定义限流等待超时异常"""
+    pass
 
 
 @dataclass

@@ -44,13 +44,11 @@ from src.tools.subagent_tools import init_subagent_manager, register_subagent_to
 
 # OpenTelemetry 可观测性（自动处理 ImportError）
 from src.observability import (
-    SPAN_SESSION,
     SPAN_TOOL_PREFIX,
     StatusCode,
     get_tracer,
     is_observability_enabled,
     set_tool_span_attributes,
-    traced,
 )
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
