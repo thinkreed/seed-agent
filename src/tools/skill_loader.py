@@ -21,6 +21,7 @@ Token 节约估算:
 """
 
 import difflib
+import logging
 import os
 import re
 import sys
@@ -45,6 +46,8 @@ from .skill_security import (
     validate_path_within_dir,
     validate_skill_structure,
 )
+
+logger = logging.getLogger(__name__)
 
 # 兼容性导出：保持原有私有函数名可用
 _build_manifest = build_manifest
@@ -95,18 +98,34 @@ PLATFORM_MAP = {
     'macos': 'macos',
 }
 
-# Memory Graph 配置参数
-MEMORY_GRAPH_CONFIG = {
-    'half_life_days': 30,           # 置信度衰减半衰期
-    'ban_threshold': 0.18,          # 禁用阈值
-    'min_attempts_for_ban': 2,      # 禁用前最小尝试次数
-    'memory_weight': 0.6,           # 记忆分数权重
-    'trigger_weight': 0.4,          # 触发匹配权重
-    'cold_start_penalty': 0.5,      # 冷启动惩罚因子
-    'recent_boost_factor': 0.2,     # 近期成功加成因子
-    'recent_days': 30,              # "近期"定义天数
-    'enabled': True,                # 是否启用 Memory Graph 选择
-}
+# 使用共享配置模块
+try:
+    from src.shared_config import get_memory_graph_config
+    _mg_config = get_memory_graph_config()
+    MEMORY_GRAPH_CONFIG = {
+        'half_life_days': _mg_config.half_life_days,
+        'ban_threshold': _mg_config.ban_threshold,
+        'min_attempts_for_ban': _mg_config.min_attempts_for_ban,
+        'memory_weight': _mg_config.memory_weight,
+        'trigger_weight': _mg_config.trigger_weight,
+        'cold_start_penalty': _mg_config.cold_start_penalty,
+        'recent_boost_factor': _mg_config.recent_boost_factor,
+        'recent_days': _mg_config.recent_days,
+        'enabled': True,  # Memory Graph 选择默认启用
+    }
+except ImportError:
+    # Fallback: 使用默认值（避免循环导入问题）
+    MEMORY_GRAPH_CONFIG = {
+        'half_life_days': 30,
+        'ban_threshold': 0.18,
+        'min_attempts_for_ban': 2,
+        'memory_weight': 0.6,
+        'trigger_weight': 0.4,
+        'cold_start_penalty': 0.5,
+        'recent_boost_factor': 0.2,
+        'recent_days': 30,
+        'enabled': True,
+    }
 
 
 # ==================== SkillLoader 核心类 ====================
@@ -558,6 +577,7 @@ class SkillLoader:
             from .session_db import get_skill_stats
             return get_skill_stats(skill_name)
         except ImportError:
+            logger.warning("session_db not available for skill stats")
             return {
                 'total': 0,
                 'successes': 0,

@@ -206,6 +206,7 @@ class RalphLoop:
         test_command = self.completion_criteria.get("test_command", "pytest tests/ -v")
         cwd = self.completion_criteria.get("cwd", str(SEED_DIR))
 
+        proc: asyncio.subprocess.Process | None = None
         try:
             # 安全处理：使用 shlex.split 避免 shell=True
             # 注意：这不支持复杂的 shell 管道/重定向，但对于测试命令足够
@@ -230,10 +231,15 @@ class RalphLoop:
         except asyncio.TimeoutError:
             logger.warning("Test execution timed out")
             # 尝试终止超时的进程
-            try:
-                proc.kill()
-            except (AttributeError, ProcessLookupError):
-                pass  # proc 未定义或进程已结束
+            if proc is not None:
+                try:
+                    proc.kill()
+                    await proc.wait()  # 确保进程完全终止
+                except ProcessLookupError:
+                    pass  # 进程已结束
+            return False
+        except (ValueError, FileNotFoundError, PermissionError) as e:
+            logger.warning(f"Test command setup failed: {type(e).__name__}: {e}")
             return False
         except Exception as e:
             logger.warning(f"Test execution failed: {e}")

@@ -27,50 +27,113 @@ try:
 except ImportError:
     _HAS_JIEBA = False
 
+# 使用共享配置模块
+try:
+    from src.shared_config import get_memory_graph_config
+    _config = get_memory_graph_config()
+    MEMORY_GRAPH_CONFIG = {
+        'half_life_days': _config.half_life_days,
+        'ban_threshold': _config.ban_threshold,
+        'min_attempts_for_ban': _config.min_attempts_for_ban,
+        'memory_weight': _config.memory_weight,
+        'trigger_weight': _config.trigger_weight,
+        'cold_start_penalty': _config.cold_start_penalty,
+        'recent_boost_factor': _config.recent_boost_factor,
+        'recent_days': _config.recent_days,
+        'max_entries_per_skill': _config.max_entries_per_skill,
+    }
+except ImportError:
+    # Fallback: 使用默认值（避免循环导入问题）
+    MEMORY_GRAPH_CONFIG = {
+        'half_life_days': 30,
+        'ban_threshold': 0.18,
+        'min_attempts_for_ban': 2,
+        'memory_weight': 0.6,
+        'trigger_weight': 0.4,
+        'cold_start_penalty': 0.5,
+        'recent_boost_factor': 0.2,
+        'recent_days': 30,
+        'max_entries_per_skill': 5000,
+    }
+
 # 数据库路径
 DB_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "raw" / "sessions.db"
 
-# Memory Graph 配置参数
-MEMORY_GRAPH_CONFIG = {
-    'half_life_days': 30,           # 置信度衰减半衰期
-    'ban_threshold': 0.18,          # 禁用阈值
-    'min_attempts_for_ban': 2,      # 禁用前最小尝试次数
-    'memory_weight': 0.6,           # 记忆分数权重
-    'trigger_weight': 0.4,          # 触发匹配权重
-    'cold_start_penalty': 0.5,      # 冷启动惩罚因子
-    'recent_boost_factor': 0.2,     # 近期成功加成因子
-    'recent_days': 30,              # "近期"定义天数
-    'max_entries_per_skill': 5000,  # 每个 skill 最大记录数
-}
+
+# LRU 缓存最大文本长度（避免长文本占用过多内存）
+_MAX_CACHE_TEXT_LENGTH = 500
 
 
-@lru_cache(maxsize=1000)
 def tokenize_for_fts5(text: str) -> str:
     """
     中文分词预处理（带缓存）
     - 如果有 jieba，使用 jieba 分词
     - 否则 fallback 到 unicode61（单字符）
     - 使用 LRU 缓存避免重复分词开销
+    - 长文本不缓存，避免内存占用过多
     """
-    if _HAS_JIEBA and text:
+    if not text:
+        return ''
+
+    # 长文本不缓存，直接分词
+    if len(text) > _MAX_CACHE_TEXT_LENGTH:
+        if _HAS_JIEBA:
+            tokens = jieba.cut(text)
+            return ' '.join(tokens)
+        return text
+
+    # 短文本使用缓存
+    return _tokenize_cached(text)
+
+
+@lru_cache(maxsize=1000)
+def _tokenize_cached(text: str) -> str:
+    """缓存版本的分词函数，仅用于短文本"""
+    if _HAS_JIEBA:
         tokens = jieba.cut(text)
         return ' '.join(tokens)
-    return text or ''
+    return text
 
 
 def _sanitize_fts_query(query: str) -> str:
     """
-    清理 FTS5 查询字符串，避免语法错误
-    FTS5 特殊字符: " & | ( ) - : *
+    清理 FTS5 查询字符串，防止语法错误和注入攻击。
+
+    FTS5 特殊字符: " & | ( ) - : * ^ #
+    防护措施:
+    1. 分词后移除所有特殊字符
+    2. 限制查询长度防止 DoS
+    3. 禁止 FTS5 特殊语法（column:, NEAR, NOT, AND, OR）
+    4. 仅保留安全的单词匹配
     """
-    if _HAS_JIEBA and query:
+    if not query:
+        return ''
+
+    # 限制查询长度防止 DoS
+    if len(query) > 200:
+        query = query[:200]
+        logger.warning("FTS query truncated to 200 chars for security")
+
+    # 分词处理
+    if _HAS_JIEBA:
         tokens = jieba.cut(query)
         query = ' '.join(tokens)
 
-    for ch in ['"', '(', ')', ':']:
+    # 移除所有 FTS5 特殊字符（更严格的清理）
+    # 包括: 双引号、括号、冒号、星号、^、#、&、|、-
+    special_chars = ['"', '(', ')', ':', '*', '^', '#', '&', '|', '-', '!', '~']
+    for ch in special_chars:
         query = query.replace(ch, '')
 
-    query = re.sub(r'\bAND\b|\bOR\b|\bNOT\b', '', query, flags=re.IGNORECASE)
+    # 禁止 FTS5 关键字（大小写不敏感）
+    fts_keywords = ['AND', 'OR', 'NOT', 'NEAR', 'ORDER', 'BY', 'LIMIT', 'OFFSET']
+    for kw in fts_keywords:
+        query = re.sub(rf'\b{kw}\b', '', query, flags=re.IGNORECASE)
+
+    # 移除数字开头的 token（FTS5 可能解析为 column filter）
+    tokens = query.split()
+    safe_tokens = [t for t in tokens if not t.isdigit() and len(t) > 0]
+    query = ' '.join(safe_tokens)
 
     return query.strip()
 

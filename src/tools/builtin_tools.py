@@ -7,16 +7,43 @@ from pathlib import Path
 
 logger = logging.getLogger("seed_agent.path")
 
-# 默认工作目录为 ~/.seed 目录
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DEFAULT_WORK_DIR = Path(os.path.expanduser("~")) / ".seed"
-
-# 允许的目录列表（用于路径验证）
-ALLOWED_DIRS = [
-    DEFAULT_WORK_DIR,
-    PROJECT_ROOT,
-    Path(os.path.expanduser("~")) / "Documents",
-]
+# 使用共享配置模块
+try:
+    from src.shared_config import get_path_validation_config, get_code_execution_security_config
+    _path_config = get_path_validation_config()
+    _security_config = get_code_execution_security_config()
+    PROJECT_ROOT = _path_config.project_root
+    DEFAULT_WORK_DIR = _path_config.default_work_dir
+    ALLOWED_DIRS = _path_config.allowed_dirs
+    SHELL_BLACKLIST = _security_config.shell_blacklist
+    POWERSHELL_BLACKLIST = _security_config.powershell_blacklist
+    MAX_CODE_LENGTH = _security_config.max_code_length
+    DEFAULT_EXECUTION_TIMEOUT = _security_config.default_timeout
+except ImportError:
+    # Fallback: 使用默认值
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+    DEFAULT_WORK_DIR = Path(os.path.expanduser("~")) / ".seed"
+    ALLOWED_DIRS = [
+        DEFAULT_WORK_DIR,
+        PROJECT_ROOT,
+        Path(os.path.expanduser("~")) / "Documents",
+    ]
+    SHELL_BLACKLIST = [
+        "rm -rf", "rm -r", "rmdir", "del ", "format",
+        "sudo", "su", "chmod 777", "chown",
+        "wget", "curl -o", "nc ", "netcat",
+        "kill -9", "pkill", "killall",
+        "; rm", "| rm", "& rm", "`rm", "$(rm",
+        "cat /etc/passwd", "cat /etc/shadow",
+    ]
+    POWERSHELL_BLACKLIST = [
+        "Remove-Item", "Delete-Item", "Format-Volume",
+        "Set-ExecutionPolicy", "Start-Process -Verb RunAs",
+        "Download-File", "Invoke-WebRequest -OutFile",
+        "Stop-Process -Force", "Kill-Process",
+    ]
+    MAX_CODE_LENGTH = 10000
+    DEFAULT_EXECUTION_TIMEOUT = 60
 
 
 def _validate_path_safety(path: str) -> tuple[bool, str]:
@@ -219,26 +246,11 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
     except FileNotFoundError:
         return f"Error: File not found - {path}"
     except Exception as e:
+        logger.exception("file_edit failed")  # 添加堆栈日志
         return f"Error editing file: {str(e)}"
 
 
-# 代码执行安全黑名单（模块级常量）
-SHELL_BLACKLIST = [
-    "rm -rf", "rm -r", "rmdir", "del ", "format",
-    "sudo", "su", "chmod 777", "chown",
-    "wget", "curl -o", "nc ", "netcat",
-    "kill -9", "pkill", "killall",
-    "; rm", "| rm", "& rm", "`rm", "$(rm",
-    "cat /etc/passwd", "cat /etc/shadow",
-]
-
-POWERSHELL_BLACKLIST = [
-    "Remove-Item", "Delete-Item", "Format-Volume",
-    "Set-ExecutionPolicy", "Start-Process -Verb RunAs",
-    "Download-File", "Invoke-WebRequest -OutFile",
-    "Stop-Process -Force", "Kill-Process",
-]
-
+# 语言映射表（用于代码执行）
 LANGUAGE_MAP = {
     "python": (["python", "-c"], "py"),
     "javascript": (["node", "-e"], "js"),
@@ -313,8 +325,10 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
     """
     exec_logger = logging.getLogger("seed_agent.code_exec")
     try:
-        if len(code) > 10000:
-            return "Error: Code exceeds maximum length (10000 chars) for security"
+        # 使用共享配置的代码长度限制
+        max_len = MAX_CODE_LENGTH if 'MAX_CODE_LENGTH' in dir() else 10000
+        if len(code) > max_len:
+            return f"Error: Code exceeds maximum length ({max_len} chars) for security"
 
         cwd = _resolve_execution_cwd(cwd)
         language = language.lower()
@@ -335,6 +349,8 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
 
     except subprocess.TimeoutExpired:
         exec_logger.warning(f"Code execution timed out: language={language}, timeout={timeout}s")
+        # 清理超时进程资源（改进的错误处理）
+        # Note: subprocess.run 已经在超时时清理了进程
         return f"Error: Execution timed out ({timeout}s)"
     except FileNotFoundError:
         exec_logger.error(f"Interpreter not found for '{language}'")

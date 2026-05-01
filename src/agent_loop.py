@@ -543,16 +543,8 @@ class AgentLoop:
 
     def _parse_tool_args(self, raw_args: Any, tool_name: str) -> dict:
         """鲁棒地解析工具参数"""
-        try:
-            if isinstance(raw_args, str):
-                raw_args = raw_args.strip()
-                args = json.loads(raw_args) if raw_args else {}
-            else:
-                args = raw_args if raw_args else {}
-            return args if isinstance(args, dict) else {}
-        except (json.JSONDecodeError, TypeError, ValueError):
-            logger.warning(f"Invalid tool args for {tool_name}: {raw_args!r}, using empty dict")
-            return {}
+        from src.tools.utils import parse_tool_arguments
+        return parse_tool_arguments(raw_args)
 
     def _record_load_skill_outcome(self, tool_args: dict, tool_id: str, result: str, failed: bool = False):
         """记录 load_skill 的执行结果到 Memory Graph"""
@@ -635,11 +627,16 @@ class AgentLoop:
         processed_results: list[dict[str, Any]] = []
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
-                logger.error(f"Tool call {tool_calls[i].get('function', {}).get('name', 'unknown')} failed: {result}")
+                # CancelledError 应传播，不应转换为错误响应
+                if type(result).__name__ == "CancelledError":
+                    raise result  # type: ignore[misc]  # result is CancelledError
+
+                tool_name = tool_calls[i].get('function', {}).get('name', 'unknown')
+                logger.error(f"Tool call {tool_name} failed: {type(result).__name__}: {result}")
                 processed_results.append({
                     "tool_call_id": tool_calls[i].get("id", "unknown"),
                     "role": "tool",
-                    "content": f"Error: Tool execution failed - {type(result).__name__}: {str(result)}"
+                    "content": f"Error: Tool execution failed - {type(result).__name__}: {str(result)[:200]}"
                 })
             else:
                 processed_results.append(result)  # type: ignore[misc]  # result is dict here

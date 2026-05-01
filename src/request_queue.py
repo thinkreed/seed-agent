@@ -534,9 +534,14 @@ class RequestQueue:
                 await asyncio.sleep(self.config.adjust_interval)
                 await self._adjust_config()
             except asyncio.CancelledError:
+                logger.info("Adjust loop cancelled")
                 break
+            except (ValueError, KeyError, AttributeError) as e:
+                # 配置错误（无效值、缺失键等）
+                logger.error(f"Adjust config error: {type(e).__name__}: {e}")
+                await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
             except Exception as e:
-                logger.error(f"Adjust loop error: {e}")
+                logger.error(f"Adjust loop unexpected error: {type(e).__name__}: {e}", exc_info=True)
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
 
     async def _adjust_config(self):

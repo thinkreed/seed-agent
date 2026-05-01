@@ -412,9 +412,14 @@ class LLMGateway:
                     await self._state_db.cleanup_old_history(max_age=86400.0)
 
             except asyncio.CancelledError:
+                logger.info("Persistence loop cancelled")
                 break
+            except (OSError, IOError) as e:
+                # 文件系统错误（磁盘满、权限问题等）
+                logger.error(f"Persistence I/O error: {type(e).__name__}: {e}")
+                await asyncio.sleep(10.0)  # 更长等待避免频繁失败
             except Exception as e:
-                logger.error(f"Persistence loop error: {e}")
+                logger.error(f"Persistence loop unexpected error: {type(e).__name__}: {e}", exc_info=True)
                 await asyncio.sleep(5.0)
 
     async def get_persistence_stats(self) -> dict[str, Any] | None:

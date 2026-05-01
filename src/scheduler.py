@@ -218,6 +218,13 @@ class TaskScheduler:
                 # 恢复原始迭代限制
                 self.agent.max_iterations = original_max_iterations
 
+        except asyncio.CancelledError:
+            logger.info(f"Task {task.task_id} cancelled")
+            self._log_task_execution(task, "Cancelled", success=False)
+            raise  # CancelledError 应传播
+        except TimeoutError as e:
+            logger.warning(f"Task {task.task_id} timed out: {e}")
+            self._log_task_execution(task, f"Timeout: {str(e)}", success=False)
         except Exception as e:
             logger.exception(f"Task {task.task_id} failed: {e}")
             self._log_task_execution(task, f"Error: {str(e)}", success=False)

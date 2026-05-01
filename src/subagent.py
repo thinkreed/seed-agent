@@ -60,18 +60,30 @@ class SubagentType(Enum):
     IMPLEMENT = "implement" # 实现执行：全权限
     PLAN = "plan"           # 规划分析：只读 + 记忆写入
 
-# 不同类型任务的默认超时时间（秒）
-# EXPLORE: 快速查询 (3m)
-# REVIEW: 审查+测试 (10m)
-# IMPLEMENT: 实现+调试 (15m)
-# PLAN: 规划分析 (5m)
-# 使用 .value 作为键以支持跨模块导入的枚举比较
-DEFAULT_TIMEOUTS: dict[str, int] = {
-    "explore": 180,
-    "review": 600,
-    "implement": 900,
-    "plan": 300,
-}
+
+# 使用共享配置模块
+try:
+    from src.shared_config import get_subagent_timeout_config
+    _timeout_config = get_subagent_timeout_config()
+    _default_timeouts = {
+        "explore": _timeout_config.explore,
+        "review": _timeout_config.review,
+        "implement": _timeout_config.implement,
+        "plan": _timeout_config.plan,
+    }
+    MAX_SUBAGENT_ITERATIONS = _timeout_config.max_iterations
+except ImportError:
+    # Fallback: 使用默认值
+    _default_timeouts = {
+        "explore": 180,
+        "review": 600,
+        "implement": 900,
+        "plan": 300,
+    }
+    MAX_SUBAGENT_ITERATIONS = 15
+
+# 导出为模块级常量
+DEFAULT_TIMEOUTS: dict[str, int] = _default_timeouts
 
 
 # 权限集定义
