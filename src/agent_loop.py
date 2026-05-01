@@ -143,12 +143,12 @@ class AgentLoop:
     def _setup_tools_and_skills(self) -> None:
         """注册工具并加载技能"""
         self.tools = ToolRegistry()
-        from scheduler import register_scheduler_tools
-        from tools.builtin_tools import register_builtin_tools
-        from tools.memory_tools import register_memory_tools
-        from tools.ralph_tools import register_ralph_tools
-        from tools.skill_loader import register_skill_tools
-        from tools.subagent_tools import register_subagent_tools
+        from src.scheduler import register_scheduler_tools
+        from src.tools.builtin_tools import register_builtin_tools
+        from src.tools.memory_tools import register_memory_tools
+        from src.tools.ralph_tools import register_ralph_tools
+        from src.tools.skill_loader import register_skill_tools
+        from src.tools.subagent_tools import register_subagent_tools
 
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
@@ -164,7 +164,7 @@ class AgentLoop:
     def _setup_subsystems(self, system_prompt: str | None = None) -> None:
         """初始化子系统（Subagent、调度器、Prompt）"""
         # 初始化 SubagentManager
-        from tools.subagent_tools import init_subagent_manager
+        from src.tools.subagent_tools import init_subagent_manager
         self.subagent_manager = SubagentManager(
             gateway=self.gateway,
             model_id=self.model_id,
@@ -172,7 +172,7 @@ class AgentLoop:
         init_subagent_manager(self.subagent_manager)
 
         # 初始化定时任务调度器
-        from scheduler import TaskScheduler
+        from src.scheduler import TaskScheduler
         self.scheduler = TaskScheduler(self)
 
         # 构建 System Prompt

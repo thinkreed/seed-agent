@@ -272,8 +272,8 @@ class SubagentInstance:
         self._allowed_tools = allowed_tools
 
         # 注册所有工具（后续会过滤）
-        from tools.builtin_tools import register_builtin_tools
-        from tools.memory_tools import register_memory_tools
+        from src.tools.builtin_tools import register_builtin_tools
+        from src.tools.memory_tools import register_memory_tools
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
 
