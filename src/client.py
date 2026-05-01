@@ -194,6 +194,9 @@ class LLMGateway:
         self.clients: dict[str, AsyncOpenAI] = {}
         self._fallback_chain: FallbackChain | None = None
 
+        # 模型配置缓存（避免重复线性搜索）
+        self._model_config_cache: dict[str, ModelConfig] = {}
+
         # 限流组件
         self._rate_limiter: RateLimiter | None = None
         self._rate_config: RateLimitConfig | None = None
@@ -215,6 +218,7 @@ class LLMGateway:
         self._persistence_interval = 60.0  # 每分钟持久化一次
 
         self._init_clients()
+        self._build_model_config_cache()
         self._init_fallback_chain()
         self._init_rate_limiting()
         self._init_state_persistence()
@@ -228,6 +232,13 @@ class LLMGateway:
                     base_url=provider_cfg.baseUrl,
                     api_key=api_key
                 )
+
+    def _build_model_config_cache(self):
+        """构建模型配置缓存（避免重复线性搜索）"""
+        for provider_id, provider_cfg in self.config.models.items():
+            for model in provider_cfg.models:
+                full_model_id = f"{provider_id}/{model.id}"
+                self._model_config_cache[full_model_id] = model
 
     def _init_fallback_chain(self):
         """初始化降级链"""
@@ -455,7 +466,12 @@ class LLMGateway:
         return next(iter(self.clients.keys())) if self.clients else ""
 
     def get_model_config(self, model_id: str) -> ModelConfig:
-        """获取模型详细配置"""
+        """获取模型详细配置（使用缓存加速）"""
+        # 优先使用缓存
+        if model_id in self._model_config_cache:
+            return self._model_config_cache[model_id]
+
+        # 缓存未命中时的 fallback（兼容动态添加的模型）
         provider_id, model_name = model_id.split('/', 1)
         provider = self.config.models.get(provider_id)
         if not provider:
@@ -463,6 +479,8 @@ class LLMGateway:
             raise ValueError(f"Unknown provider: {provider_id}. Available providers: {available}")
         for model in provider.models:
             if model.id == model_name:
+                # 更新缓存
+                self._model_config_cache[model_id] = model
                 return model
         available_models = [m.id for m in provider.models]
         raise ValueError(f"Unknown model: {model_name} in provider {provider_id}. Available models: {available_models}")

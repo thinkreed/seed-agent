@@ -61,8 +61,8 @@ def _resolve_allowed_dirs() -> list[str]:
     for allowed in ALLOWED_DIRS_RAW:
         try:
             resolved.append(str(Path(str(allowed)).resolve()))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to resolve allowed dir '{allowed}': {e}")
     return resolved
 
 
@@ -129,8 +129,8 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
                 resolved = str(Path(path).resolve())
                 if _is_path_in_allowed_dirs(resolved):
                     return True, ""
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to resolve Windows drive path '{path}': {e}")
             logger.warning(f"Windows drive path outside allowed dirs: {path}")
             return False, f"Windows drive path '{path}' is outside allowed directories"
 
@@ -145,8 +145,8 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
             resolved = str(Path(path).resolve())
             if _is_path_in_allowed_dirs(resolved):
                 return True, ""
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to resolve absolute path '{path}': {e}")
         logger.warning(f"Absolute path outside allowed dirs: {path}")
         return False, f"Absolute path '{path}' is outside allowed directories"
 
@@ -172,8 +172,8 @@ def _resolve_path(path: str) -> str:
         if resolved_seed.startswith(DEFAULT_WORK_DIR_RESOLVED) or resolved_seed.startswith(PROJECT_ROOT_RESOLVED):
             if seed_path.exists():
                 return resolved_seed
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to resolve seed path '{path}': {e}")
 
     # 再从项目根目录解析
     project_path = PROJECT_ROOT / path
@@ -182,8 +182,8 @@ def _resolve_path(path: str) -> str:
         if resolved_project.startswith(PROJECT_ROOT_RESOLVED):
             if project_path.exists():
                 return resolved_project
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to resolve project path '{path}': {e}")
 
     # 如果都不存在，使用 .seed 目录作为默认目标
     final_path = str(DEFAULT_WORK_DIR / path)
@@ -477,8 +477,7 @@ def run_diagnosis(fix: bool = False) -> str:
         Diagnosis results with PASS/FAIL/WARN status for each check.
     """
     try:
-        seed_dir = Path(os.path.expanduser("~")) / ".seed"
-        script_path = seed_dir / "scripts" / "diagnose_seed_agent.py"
+        script_path = DEFAULT_WORK_DIR / "scripts" / "diagnose_seed_agent.py"
 
         if not script_path.exists():
             return f"Error: Diagnosis script not found at {script_path}"
@@ -492,7 +491,7 @@ def run_diagnosis(fix: bool = False) -> str:
             capture_output=True,
             text=True,
             encoding='utf-8',
-            cwd=str(seed_dir),
+            cwd=str(DEFAULT_WORK_DIR),
             timeout=120
         )
 

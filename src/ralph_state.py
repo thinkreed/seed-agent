@@ -15,10 +15,11 @@ import logging
 import time
 from pathlib import Path
 
+from src.shared_config import SEED_DIR
+
 logger = logging.getLogger("seed_agent.ralph")
 
 # 默认状态目录
-SEED_DIR = Path.home() / ".seed"
 RALPH_STATE_DIR = SEED_DIR / "ralph"
 
 

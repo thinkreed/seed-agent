@@ -6,6 +6,7 @@
 - Subagent 超时配置
 - 路径验证配置
 - 代码执行安全规则
+- SEED 目录路径
 
 便于用户覆盖和维护更新。
 """
@@ -13,6 +14,9 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 import os
+
+# 统一 SEED 目录定义（避免多文件重复定义）
+SEED_DIR = Path.home() / ".seed"
 
 
 @dataclass

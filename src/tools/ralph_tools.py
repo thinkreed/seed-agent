@@ -8,12 +8,12 @@
 """
 
 import json
-import os
 from pathlib import Path
+
+from src.shared_config import SEED_DIR
 
 # 类型注解使用内置类型
 
-SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
 COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
 RALPH_STATE_DIR = SEED_DIR / "ralph"
 

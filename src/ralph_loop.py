@@ -301,14 +301,20 @@ class RalphLoop:
         marker_path = Path(self.completion_criteria.get("marker_path", SEED_DIR / "completion_marker"))
         marker_content = self.completion_criteria.get("marker_content", "DONE")
 
-        if marker_path.exists():
-            content = marker_path.read_text().strip()
-            if content == marker_content:
-                logger.info(f"Marker file verified: {marker_path}")
-                # 可选：清除标志文件
-                if self.completion_criteria.get("cleanup_marker", True):
-                    marker_path.unlink()
-                return True
+        try:
+            if marker_path.exists():
+                content = marker_path.read_text(encoding='utf-8').strip()
+                if content == marker_content:
+                    logger.info(f"Marker file verified: {marker_path}")
+                    # 可选：清除标志文件
+                    if self.completion_criteria.get("cleanup_marker", True):
+                        try:
+                            marker_path.unlink()
+                        except OSError as e:
+                            logger.warning(f"Failed to cleanup marker file: {e}")
+                    return True
+        except (PermissionError, OSError, UnicodeDecodeError) as e:
+            logger.warning(f"Failed to check marker file {marker_path}: {e}")
         return False
 
     async def _check_git_clean(self) -> bool:
@@ -379,9 +385,11 @@ class RalphLoop:
     def _load_task_prompt(self) -> str:
         """加载任务 prompt（从文件）"""
         if self.task_prompt_path and self.task_prompt_path.exists():
-            content = self.task_prompt_path.read_text()
-            return f"[Ralph Loop 迭代 {self._iteration_count}]\n\n{content}"
-
+            try:
+                content = self.task_prompt_path.read_text(encoding='utf-8')
+                return f"[Ralph Loop 迭代 {self._iteration_count}]\n\n{content}"
+            except (PermissionError, OSError, UnicodeDecodeError) as e:
+                logger.warning(f"Failed to load task prompt from {self.task_prompt_path}: {e}")
         # 默认 prompt
         return f"继续执行任务。当前迭代: {self._iteration_count}"
 

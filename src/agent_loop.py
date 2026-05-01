@@ -249,7 +249,7 @@ class AgentLoop:
 
     def _format_history_for_summary(self) -> str:
         """将历史记录格式化为文本"""
-        history_text = ""
+        lines = []
         for msg in self.history:
             role = msg.get('role', 'unknown')
             content = msg.get('content', '')
@@ -257,8 +257,8 @@ class AgentLoop:
                 tc_names = [tc['function']['name'] for tc in msg['tool_calls'] if tc.get('function')]
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
             if content:
-                history_text += f"{role}: {content}\n"
-        return history_text.strip()
+                lines.append(f"{role}: {content}")
+        return '\n'.join(lines)
 
     async def _summarize_history(self) -> str | None:
         """使用 LLM 总结对话历史"""
