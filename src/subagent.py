@@ -423,7 +423,8 @@ class SubagentInstance:
     async def _run_loop(self) -> str:
         """主执行循环"""
         # 确保 state 已初始化（由 run() 方法设置）
-        assert self.state is not None, "SubagentState must be initialized before _run_loop"
+        if self.state is None:
+            raise RuntimeError("SubagentState must be initialized before _run_loop. Call run() first.")
 
         iteration = 0
 

@@ -301,11 +301,26 @@ class SubagentManager:
         timeout: float | None = None,
     ) -> SubagentResult | None:
         """
-        等待任务完成（同步版本，仅用于非异步上下文）
+        等待任务完成（同步版本，已弃用）
 
-        警告：此方法使用同步 sleep，在异步上下文中会阻塞事件循环。
-        在异步代码中请使用 wait_for_result_async()。
+        .. deprecated::
+            此方法使用同步 sleep，在异步上下文中会阻塞事件循环。
+            请使用 wait_for_result_async() 替代。
+
+        Args:
+            task_id: 任务 ID
+            timeout: 最大等待时间（秒）
+
+        Returns:
+            SubagentResult | None: 任务结果或超时返回 None
         """
+        import warnings
+        warnings.warn(
+            "wait_for_result() is deprecated and blocks the event loop. "
+            "Use wait_for_result_async() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         import time
         start = time.time()
         while True:

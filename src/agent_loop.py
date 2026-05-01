@@ -28,14 +28,19 @@ import tiktoken
 
 from src.client import LLMGateway
 from src.request_queue import RequestPriority
+from src.scheduler import TaskScheduler, register_scheduler_tools
 from src.subagent_manager import SubagentManager
 from src.tools import ToolRegistry
+from src.tools.builtin_tools import register_builtin_tools
 from src.tools.memory_tools import (
     _generate_session_filename,
     _record_skill_outcome,
     _save_session_history,
+    register_memory_tools,
 )
-from src.tools.skill_loader import SkillLoader
+from src.tools.ralph_tools import register_ralph_tools
+from src.tools.skill_loader import SkillLoader, register_skill_tools
+from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
 
 # OpenTelemetry 可观测性
 try:
@@ -143,12 +148,6 @@ class AgentLoop:
     def _setup_tools_and_skills(self) -> None:
         """注册工具并加载技能"""
         self.tools = ToolRegistry()
-        from src.scheduler import register_scheduler_tools
-        from src.tools.builtin_tools import register_builtin_tools
-        from src.tools.memory_tools import register_memory_tools
-        from src.tools.ralph_tools import register_ralph_tools
-        from src.tools.skill_loader import register_skill_tools
-        from src.tools.subagent_tools import register_subagent_tools
 
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
@@ -164,7 +163,6 @@ class AgentLoop:
     def _setup_subsystems(self, system_prompt: str | None = None) -> None:
         """初始化子系统（Subagent、调度器、Prompt）"""
         # 初始化 SubagentManager
-        from src.tools.subagent_tools import init_subagent_manager
         self.subagent_manager = SubagentManager(
             gateway=self.gateway,
             model_id=self.model_id,
@@ -172,7 +170,6 @@ class AgentLoop:
         init_subagent_manager(self.subagent_manager)
 
         # 初始化定时任务调度器
-        from src.scheduler import TaskScheduler
         self.scheduler = TaskScheduler(self)
 
         # 构建 System Prompt
