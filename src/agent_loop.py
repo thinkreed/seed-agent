@@ -514,7 +514,7 @@ class AgentLoop:
                     # 继续处理其他 tool calls，不中断检查流程
         return None
 
-    def _parse_tool_args(self, raw_args: Any, tool_name: str) -> dict:
+    def _parse_tool_args(self, raw_args: str | dict | None, tool_name: str) -> dict:
         """鲁棒地解析工具参数"""
         from src.tools.utils import parse_tool_arguments
         return parse_tool_arguments(raw_args)
