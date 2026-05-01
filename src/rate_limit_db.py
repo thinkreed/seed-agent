@@ -9,12 +9,16 @@ import logging
 import sqlite3
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeVar
 
 from src.rate_limiter import RollingWindowState, TokenBucketState
 
 logger = logging.getLogger("seed_agent")
+
+T = TypeVar("T")
 
 
 @dataclass
@@ -66,6 +70,46 @@ class RateLimitSQLite:
                 logger.error(f"Failed to connect to database: {type(e).__name__}: {e}")
                 raise
         return self._local.conn
+
+    def _retry_db_operation(self, operation: Callable[[], T], max_retries: int = 3) -> T:
+        """
+        执行数据库操作，带重试逻辑
+
+        Args:
+            operation: 数据库操作函数
+            max_retries: 最大重试次数
+
+        Returns:
+            操作结果
+
+        Raises:
+            sqlite3.Error: 重试耗尽后抛出最后一次异常
+        """
+        last_error: sqlite3.Error | None = None
+
+        for attempt in range(max_retries):
+            try:
+                return operation()
+            except sqlite3.Error as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"DB operation failed (attempt {attempt + 1}/{max_retries}): "
+                        f"{type(e).__name__}: {e}. Retrying..."
+                    )
+                    # 重连：清除旧连接，下次调用 _get_conn 会创建新连接
+                    if hasattr(self._local, 'conn'):
+                        try:
+                            self._local.conn.close()
+                        except sqlite3.Error:
+                            pass
+                        self._local.conn = None
+                    time.sleep(0.1 * (attempt + 1))  # 递增等待时间
+
+        logger.error(f"DB operation failed after {max_retries} retries")
+        if last_error:
+            raise last_error
+        raise sqlite3.Error("Unknown database error")
 
     def _init_db(self):
         """初始化数据库"""
@@ -144,59 +188,68 @@ class RateLimitSQLite:
             return RateLimitState(timestamp=time.time())
 
     async def save_state(self, state: RateLimitState) -> None:
-        """保存状态"""
+        """保存状态（带重试）"""
         async with self._lock:
-            conn = self._get_conn()
-            conn.execute("""
-                UPDATE rate_limit_state SET
-                    window_requests = ?,
-                    tokens_available = ?,
-                    last_refill_time = ?,
-                    total_requests = ?,
-                    updated_at = ?
-                WHERE id = 1
-            """, (
-                json.dumps(state.requests_in_window),
-                state.tokens_available,
-                state.last_refill_time,
-                state.total_requests_lifetime,
-                time.time()
-            ))
-            conn.commit()
+            def _save():
+                conn = self._get_conn()
+                conn.execute("""
+                    UPDATE rate_limit_state SET
+                        window_requests = ?,
+                        tokens_available = ?,
+                        last_refill_time = ?,
+                        total_requests = ?,
+                        updated_at = ?
+                    WHERE id = 1
+                """, (
+                    json.dumps(state.requests_in_window),
+                    state.tokens_available,
+                    state.last_refill_time,
+                    state.total_requests_lifetime,
+                    time.time()
+                ))
+                conn.commit()
+
+            self._retry_db_operation(_save)
 
     async def save_bucket_state(self, bucket_state: TokenBucketState) -> None:
-        """保存 Token Bucket 状态"""
+        """保存 Token Bucket 状态（带重试）"""
         async with self._lock:
-            conn = self._get_conn()
-            conn.execute("""
-                UPDATE rate_limit_state SET
-                    tokens_available = ?,
-                    last_refill_time = ?,
-                    updated_at = ?
-                WHERE id = 1
-            """, (
-                bucket_state.tokens,
-                bucket_state.last_refill_time,
-                time.time()
-            ))
-            conn.commit()
+            def _save():
+                conn = self._get_conn()
+                conn.execute("""
+                    UPDATE rate_limit_state SET
+                        tokens_available = ?,
+                        last_refill_time = ?,
+                        updated_at = ?
+                    WHERE id = 1
+                """, (
+                    bucket_state.tokens,
+                    bucket_state.last_refill_time,
+                    time.time()
+                ))
+                conn.commit()
+
+            self._retry_db_operation(_save)
 
     async def save_window_state(self, window_state: RollingWindowState) -> None:
-        """保存滚动窗口状态"""
+        """保存滚动窗口状态（带重试）"""
         async with self._lock:
-            conn = self._get_conn()
-            conn.execute("""
-                UPDATE rate_limit_state SET
-                    window_requests = ?,
-                    total_requests = ?,
-                    updated_at = ?
-                WHERE id = 1
-            """, (
-                json.dumps(window_state.requests),
-                window_state.total_requests_lifetime,
-                time.time()
-            ))
-            conn.commit()
+            def _save():
+                conn = self._get_conn()
+                conn.execute("""
+                    UPDATE rate_limit_state SET
+                        window_requests = ?,
+                        total_requests = ?,
+                        updated_at = ?
+                    WHERE id = 1
+                """, (
+                    json.dumps(window_state.requests),
+                    window_state.total_requests_lifetime,
+                    time.time()
+                ))
+                conn.commit()
+
+            self._retry_db_operation(_save)
 
     async def record_request(
         self,
