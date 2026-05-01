@@ -10,17 +10,24 @@
 """
 
 import asyncio
-import json
 import logging
-import os
 import time
 from enum import Enum
 from pathlib import Path
 from typing import Callable
 
-logger = logging.getLogger("seed_agent.ralph")
+from src.ralph_state import (
+    SEED_DIR,
+    check_safety_limits,
+    cleanup_state_file,
+    extract_critical_context,
+    generate_status_report,
+    load_or_init_state,
+    persist_state,
+    reset_context,
+)
 
-SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
+logger = logging.getLogger("seed_agent.ralph")
 
 
 class CompletionType(Enum):
@@ -352,25 +359,17 @@ class RalphLoop:
     # === 上下文管理 ===
 
     def _reset_context(self):
-        """重置上下文（新鲜上下文）"""
-        # 每 ITERATION_INTERVAL 轮重置一次
-        if self._iteration_count % self.context_reset_interval != 0:
-            return
+        """重置上下文（新鲜上下文，使用共享模块）"""
+        # 提取关键上下文
+        preserved = extract_critical_context(self.agent.history)
 
-        # 提取关键上下文（可选）
-        preserved = self._extract_critical_context()
-
-        # 清空 history
-        self.agent.history.clear()
-
-        # 重新注入保留信息（如有）
-        if preserved:
-            self.agent.history.append({
-                "role": "system",
-                "content": f"[迭代 {self._iteration_count} 状态摘要]\n{preserved}"
-            })
-
-        logger.info(f"Context reset at iteration {self._iteration_count}")
+        # 使用共享模块执行重置
+        reset_context(
+            history=self.agent.history,
+            iteration=self._iteration_count,
+            reset_interval=self.context_reset_interval,
+            preserved_context=preserved,
+        )
 
     def _load_task_prompt(self) -> str:
         """加载任务 prompt（从文件）"""
@@ -381,98 +380,55 @@ class RalphLoop:
         # 默认 prompt
         return f"继续执行任务。当前迭代: {self._iteration_count}"
 
-    def _extract_critical_context(self) -> str | None:
-        """提取关键上下文（可选保留）"""
-        if not self.agent.history:
-            return None
-
-        # 提取最后一条 assistant 消息的摘要
-        for msg in reversed(self.agent.history):
-            if msg.get("role") == "assistant" and msg.get("content"):
-                return f"上次执行摘要: {msg['content'][:300]}"
-        return None
-
     # === 状态持久化 ===
 
     def _load_or_init_state(self):
-        """加载或初始化状态（支持进程恢复）"""
-        if self._state_file.exists():
-            try:
-                state = json.loads(self._state_file.read_text())
-                self._iteration_count = state.get("iteration", 0)
-                self._accumulated_duration = state.get("accumulated_duration", 0)
-                # FIX: 重置 start_time 为当前时间，而非使用旧时间戳
-                self._start_time = time.time()
-                logger.info(f"Resumed Ralph Loop from iteration {self._iteration_count}, "
-                           f"accumulated: {self._accumulated_duration}s")
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.warning(f"State file corrupted, starting fresh: {e}")
-                self._iteration_count = 0
-                self._start_time = time.time()
-                self._accumulated_duration = 0
-        else:
-            self._iteration_count = 0
-            self._start_time = time.time()
-            self._accumulated_duration = 0
+        """加载或初始化状态（支持进程恢复，使用共享模块）"""
+        state = load_or_init_state(self._state_file)
+        self._iteration_count = state.iteration
+        self._accumulated_duration = state.accumulated_duration
+        self._start_time = state.start_time
 
     def _persist_state(self, response: str):
-        """持久化当前状态"""
-        # 计算当前会话已执行时间，累加到总时间
-        current_elapsed = time.time() - self._start_time if self._start_time > 0 else 0
-        total_accumulated = self._accumulated_duration + current_elapsed
-        state = {
-            "iteration": self._iteration_count,
-            "accumulated_duration": total_accumulated,  # 保存累计时间
-            "last_response": response[:500] if response else "",
-            "timestamp": time.time(),
-            "task_file": str(self.task_prompt_path),
-            "completion_type": self.completion_type.value
-        }
-        self._state_file.write_text(json.dumps(state, indent=2))
+        """持久化当前状态（使用共享模块）"""
+        persist_state(
+            state_file=self._state_file,
+            iteration=self._iteration_count,
+            start_time=self._start_time,
+            accumulated_duration=self._accumulated_duration,
+            response=response,
+            task_file=str(self.task_prompt_path) if self.task_prompt_path else "",
+            completion_type=self.completion_type.value,
+        )
 
     # === 安全机制 ===
 
     def _check_safety_limits(self) -> bool:
-        """检查安全上限"""
-        # 迭代上限
-        if self._iteration_count >= self.max_iterations:
-            logger.warning(f"Ralph Loop exceeded max iterations ({self.max_iterations})")
-            return True
-
-        # 时间上限（累计 + 当前会话）
-        if self._start_time > 0:
-            current_elapsed = time.time() - self._start_time
-            total_elapsed = self._accumulated_duration + current_elapsed
-            if total_elapsed >= self.max_duration:
-                logger.warning(f"Ralph Loop exceeded max duration ({self.max_duration}s, "
-                              f"accumulated: {self._accumulated_duration}s, current: {current_elapsed}s)")
-                return True
-
-        return False
+        """检查安全上限（使用共享模块）"""
+        return check_safety_limits(
+            iteration=self._iteration_count,
+            max_iterations=self.max_iterations,
+            start_time=self._start_time,
+            accumulated_duration=self._accumulated_duration,
+            max_duration=self.max_duration,
+        )
 
     # === 辅助方法 ===
 
     def _cleanup(self):
-        """清理状态文件"""
-        if self._state_file.exists():
-            self._state_file.unlink()
-        logger.info("Ralph Loop cleanup completed")
+        """清理状态文件（使用共享模块）"""
+        cleanup_state_file(self._state_file)
 
     def _generate_status_report(self) -> str:
-        """生成状态报告"""
-        current_elapsed = time.time() - self._start_time
-        total_elapsed = self._accumulated_duration + current_elapsed
-        report = f"""
-Ralph Loop Status Report:
-- Task: {self.task_prompt_path}
-- Iterations: {self._iteration_count}
-- Total Duration: {total_elapsed/60:.1f} minutes (accumulated: {self._accumulated_duration/60:.1f} min)
-- Exit Reason: Safety limit reached
-- Completion Type: {self.completion_type.value}
-- State File: {self._state_file}
-"""
-        logger.info(report)
-        return report
+        """生成状态报告（使用共享模块）"""
+        return generate_status_report(
+            task_file=str(self.task_prompt_path) if self.task_prompt_path else "",
+            iteration=self._iteration_count,
+            start_time=self._start_time,
+            accumulated_duration=self._accumulated_duration,
+            completion_type=self.completion_type.value,
+            state_file=self._state_file,
+        )
 
     # === 工厂方法 ===
 

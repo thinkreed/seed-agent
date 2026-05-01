@@ -9,14 +9,20 @@
 """
 
 import asyncio
-import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Callable
 
-# 导入 CompletionType，避免重复定义
+from src.ralph_state import (
+    SEED_DIR,
+    check_safety_limits,
+    cleanup_state_file,
+    extract_critical_context,
+    load_or_init_state,
+    persist_state,
+    reset_context,
+)
 
 logger = logging.getLogger("seed_agent")
 
@@ -24,7 +30,6 @@ logger = logging.getLogger("seed_agent")
 PROJECT_ROOT = Path(__file__).parent.parent
 # SOP 文档路径
 SOP_PATH = PROJECT_ROOT / "auto" / "自主探索 SOP.md"
-SEED_DIR = Path(os.path.expanduser("~")) / ".seed"
 
 # Ralph Loop 增强配置
 COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
@@ -135,100 +140,54 @@ class AutonomousExplorer:
         return False
 
     def _check_safety_limits(self) -> bool:
-        """检查安全上限（防止无限循环）"""
-        # 迭代上限
-        if self._iteration_count >= RALPH_MAX_ITERATIONS:
-            logger.warning(f"Ralph Loop exceeded max iterations ({RALPH_MAX_ITERATIONS})")
-            return True
-
-        # 时间上限（累计 + 当前会话）
-        if self._ralph_start_time > 0:
-            current_elapsed = time.time() - self._ralph_start_time
-            total_elapsed = self._accumulated_duration + current_elapsed
-            if total_elapsed >= RALPH_MAX_DURATION:
-                logger.warning(f"Ralph Loop exceeded max duration ({RALPH_MAX_DURATION}s, "
-                              f"accumulated: {self._accumulated_duration}s, current: {current_elapsed}s)")
-                return True
-
-        return False
+        """检查安全上限（防止无限循环，使用共享模块）"""
+        return check_safety_limits(
+            iteration=self._iteration_count,
+            max_iterations=RALPH_MAX_ITERATIONS,
+            start_time=self._ralph_start_time,
+            accumulated_duration=self._accumulated_duration,
+            max_duration=RALPH_MAX_DURATION,
+        )
 
     async def _reset_context_if_needed(self) -> str | None:
-        """条件性重置上下文（防止上下文漂移）"""
+        """条件性重置上下文（防止上下文漂移，使用共享模块）"""
         if not CONTEXT_RESET_ENABLED:
             return None
 
-        if self._iteration_count % CONTEXT_RESET_INTERVAL != 0:
-            return None
+        # 提取关键上下文
+        preserved = extract_critical_context(self.agent.history)
 
-        # 保存关键状态
-        preserved = self._extract_critical_context()
+        # 使用共享模块执行重置
+        did_reset = reset_context(
+            history=self.agent.history,
+            iteration=self._iteration_count,
+            reset_interval=CONTEXT_RESET_INTERVAL,
+            preserved_context=preserved,
+        )
 
-        # 重置 history
-        self.agent.history.clear()
-
-        # 重新注入保留信息（如有）
-        if preserved:
-            self.agent.history.append({
-                "role": "system",
-                "content": f"[迭代 {self._iteration_count} 状态摘要]\n{preserved}"
-            })
-
-        logger.info(f"Context reset at iteration {self._iteration_count}")
-        return preserved
-
-    def _extract_critical_context(self) -> str | None:
-        """提取关键上下文（可选保留）"""
-        # 从 agent.history 提取关键决策/发现
-        if not self.agent.history:
-            return None
-
-        # 提取最后一条 assistant 消息的摘要
-        for msg in reversed(self.agent.history):
-            if msg.get("role") == "assistant" and msg.get("content"):
-                return f"上次执行摘要: {msg['content'][:300]}"
-        return None
+        return preserved if did_reset else None
 
     def _persist_state(self, response: str = ""):
-        """持久化当前状态（支持进程恢复）"""
-        SEED_DIR.mkdir(parents=True, exist_ok=True)
-        # 计算当前会话已执行时间，累加到总时间
-        current_elapsed = time.time() - self._ralph_start_time if self._ralph_start_time > 0 else 0
-        total_accumulated = self._accumulated_duration + current_elapsed
-        state = {
-            "iteration": self._iteration_count,
-            "accumulated_duration": total_accumulated,  # 保存累计时间
-            "last_response": response[:500] if response else "",
-            "timestamp": time.time()
-        }
-        self._state_file.write_text(json.dumps(state, indent=2))
+        """持久化当前状态（使用共享模块）"""
+        persist_state(
+            state_file=self._state_file,
+            iteration=self._iteration_count,
+            start_time=self._ralph_start_time,
+            accumulated_duration=self._accumulated_duration,
+            response=response,
+        )
 
     def _load_or_init_state(self):
-        """加载或初始化状态（支持进程恢复）"""
-        if self._state_file.exists():
-            try:
-                state = json.loads(self._state_file.read_text())
-                self._iteration_count = state.get("iteration", 0)
-                self._accumulated_duration = state.get("accumulated_duration", 0)
-                # FIX: 重置 start_time 为当前时间，而非使用旧时间戳
-                self._ralph_start_time = time.time()
-                self._empty_response_count = 0  # 重置空响应计数
-                logger.info(f"Resumed Ralph Loop from iteration {self._iteration_count}, "
-                           f"accumulated: {self._accumulated_duration}s")
-            except (json.JSONDecodeError, KeyError):
-                self._iteration_count = 0
-                self._ralph_start_time = time.time()
-                self._accumulated_duration = 0
-                self._empty_response_count = 0
-        else:
-            self._iteration_count = 0
-            self._ralph_start_time = time.time()
-            self._accumulated_duration = 0
-            self._empty_response_count = 0
+        """加载或初始化状态（使用共享模块）"""
+        state = load_or_init_state(self._state_file)
+        self._iteration_count = state.iteration
+        self._accumulated_duration = state.accumulated_duration
+        self._ralph_start_time = state.start_time
+        self._empty_response_count = 0  # 重置空响应计数
 
     def _cleanup_state(self):
-        """清理状态文件"""
-        if self._state_file.exists():
-            self._state_file.unlink()
+        """清理状态文件（使用共享模块）"""
+        cleanup_state_file(self._state_file)
 
     async def _execute_autonomous_task(self):
         """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强）"""
