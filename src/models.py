@@ -7,6 +7,7 @@
 3. 提供商配置管理 (多 API Key、路由策略)
 4. 限流参数建模 (RPM、Rolling Window、并发控制)
 5. 环境变量注入 (.env 文件加载、配置覆盖)
+6. 配置迁移（旧版格式自动转换）
 
 核心模型:
 - FullConfig: 完整系统配置
@@ -15,13 +16,18 @@
 - RateLimitConfig: 限流策略
 """
 
-# 类型注解使用内置类型，不再需要从 typing 导入
 import json
+import logging
 import os
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
+logger = logging.getLogger("seed_agent.config")
+
 DEFAULT_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
+
+# 配置迁移版本号
+CONFIG_VERSION = 2  # v1: 原始格式, v2: 新嵌套格式
 
 
 class RateLimitConfig(BaseModel):
@@ -99,9 +105,11 @@ class ProviderConfig(BaseModel):
     def strip_whitespace(cls, v: str) -> str:
         return v.strip() if v else v
 
+
 class AgentModelConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
     primary: str
+
 
 class AgentConfig(BaseModel):
     model_config = ConfigDict(extra='ignore')
@@ -152,16 +160,82 @@ class FullConfig(BaseModel):
     agents: dict[str, AgentConfig]
     queue: QueueConfigModel | None = None
     timeout: TimeoutConfigModel | None = None
+    version: int | None = None  # 配置版本号（可选）
+
+
+def _migrate_v1_to_v2(data: dict) -> dict:
+    """迁移 v1 配置格式到 v2
+
+    迁移规则:
+    1. models.providers -> models
+    2. agents.defaults.model -> agents.defaults.defaults.primary
+
+    Args:
+        data: 原始配置数据
+
+    Returns:
+        迁移后的配置数据
+    """
+    # 检查是否已迁移
+    if data.get('version', 1) >= CONFIG_VERSION:
+        return data
+
+    migrated = False
+
+    # 1. models.providers -> models
+    if 'models' in data and isinstance(data['models'], dict):
+        models_section = data['models']
+        if 'providers' in models_section:
+            data['models'] = models_section['providers']
+            migrated = True
+            logger.debug("Migrated: models.providers -> models")
+
+    # 2. agents.defaults.model -> agents.defaults.defaults.primary
+    if 'agents' in data and isinstance(data['agents'], dict):
+        agents_section = data['agents']
+        defaults = agents_section.get('defaults')
+        
+        if isinstance(defaults, dict):
+            # 旧格式: {"defaults": {"model": "..."}}
+            if 'model' in defaults and 'defaults' not in defaults:
+                agents_section['defaults'] = {
+                    'defaults': {'primary': defaults['model']}
+                }
+                migrated = True
+                logger.debug("Migrated: agents.defaults.model -> agents.defaults.defaults.primary")
+            
+            # 半迁移格式: {"defaults": {"primary": "..."}}
+            elif 'primary' in defaults and 'defaults' not in defaults:
+                agents_section['defaults'] = {
+                    'defaults': {'primary': defaults['primary']}
+                }
+                migrated = True
+                logger.debug("Migrated: agents.defaults -> agents.defaults.defaults")
+
+    # 标记迁移版本
+    if migrated:
+        data['version'] = CONFIG_VERSION
+        logger.info(f"Config migrated to version {CONFIG_VERSION}")
+
+    return data
+
 
 def load_config(config_path: str | None = None) -> FullConfig:
     """加载并解析配置文件，支持旧版 JSON 结构自动迁移
-    
+
     Args:
         config_path: 配置文件路径，默认为 ~/.seed/config.json
+
+    Returns:
+        FullConfig: 验证后的完整配置
+
+    Raises:
+        ValueError: 配置文件不存在或格式错误
     """
     if config_path is None:
         config_path = DEFAULT_CONFIG_PATH
 
+    # 读取配置文件
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -170,33 +244,16 @@ def load_config(config_path: str | None = None) -> FullConfig:
             f"Configuration file not found: {config_path}\n"
             f"Please create the file or specify a valid config path."
         )
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in config file {config_path}: {e}")
     except Exception as e:
         raise ValueError(f"Failed to load config file {config_path}: {e}")
 
-    # 迁移逻辑: 适配旧版 JSON 结构
-    # 1. 处理 models.providers -> models
-    if 'models' in data and isinstance(data['models'], dict) and 'providers' in data['models']:
-        data['models'] = data['models']['providers']
+    # 执行配置迁移
+    data = _migrate_v1_to_v2(data)
 
-    # 2. 处理 agents.defaults.model -> agents.defaults.defaults
-    #    幂等迁移：已迁移过的配置不会被重复处理
-    if 'agents' in data and isinstance(data['agents'], dict):
-        agent_section = data['agents']
-        if 'defaults' in agent_section and isinstance(agent_section['defaults'], dict):
-            defaults = agent_section['defaults']
-            # 旧格式: {"defaults": {"model": "..."}}
-            if 'model' in defaults:
-                agent_section['defaults'] = {
-                    'defaults': {'primary': defaults['model']}
-                }
-            # 半迁移格式: {"defaults": {"primary": "..."}} → 补全嵌套
-            elif 'primary' in defaults and 'defaults' not in defaults:
-                agent_section['defaults'] = {
-                    'defaults': {'primary': defaults['primary']}
-                }
-            # 已迁移格式: {"defaults": {"defaults": {"primary": "..."}}} → 无需处理
-
+    # 验证并构建配置对象
     try:
         return FullConfig(**data)
-    except ValidationError:
-        raise
+    except ValidationError as e:
+        raise ValueError(f"Config validation failed: {e}")
