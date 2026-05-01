@@ -331,7 +331,7 @@ class SkillLoader:
         return words if words else [query_lower]
 
     def _compute_match_score(self, name: str, meta: dict, query_words: list[str], query_lower: str) -> float:
-        """计算单个 skill 的匹配分数"""
+        """计算单个 skill 的匹配分数（性能优化版）"""
         score = 0.0
 
         # 1. Name 匹配 (最高优先级)
@@ -341,21 +341,25 @@ class SkillLoader:
         elif name_lower in query_lower or query_lower in name_lower:
             score += 2.0
 
-        # 2. Trigger 匹配
+        # 2. Trigger 匹配 (优化：使用 set 实现快速查找)
         triggers = meta.get('triggers', [])
+        triggers_lower = {t.lower() for t in triggers}  # 预处理为 set
         trigger_matched = False
-        for trigger in triggers:
-            trigger_lower = trigger.lower()
-            for qw in query_words:
-                if trigger_lower == qw:
-                    score += 3.0
-                    trigger_matched = True
-                elif qw in trigger_lower:
-                    score += 1.0 + len(qw) / max(len(trigger_lower), 1)
-                    trigger_matched = True
-                elif trigger_lower in qw:
-                    score += 1.5
-                    trigger_matched = True
+
+        for qw in query_words:
+            if qw in triggers_lower:  # O(1) 精确匹配
+                score += 3.0
+                trigger_matched = True
+            else:
+                # 部分匹配仍需遍历（无法用 set 优化）
+                for trigger in triggers:
+                    trigger_lower = trigger.lower()
+                    if qw in trigger_lower:
+                        score += 1.0 + len(qw) / max(len(trigger_lower), 1)
+                        trigger_matched = True
+                    elif trigger_lower in qw:
+                        score += 1.5
+                        trigger_matched = True
 
         # 3. Description 关键词匹配 (仅在没有 trigger 匹配时)
         if not trigger_matched:
