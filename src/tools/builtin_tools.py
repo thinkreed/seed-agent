@@ -59,7 +59,7 @@ except ImportError:
 
 # 缓存已解析的 ALLOWED_DIRS（避免每次调用 resolve()）
 def _resolve_allowed_dirs() -> list[str]:
-    """解析并缓存 ALLOWED_DIRS"""
+    """解析并缓存 ALLOWED_DIRS（模块初始化时调用）"""
     resolved = []
     for allowed in ALLOWED_DIRS_RAW:
         try:
@@ -100,9 +100,12 @@ _RE_OCTAL_ESCAPE = re.compile(r"\\[0-7]{3}")
 _RE_ENV_VAR = re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?")
 
 
-@functools.lru_cache(maxsize=256)
+@functools.lru_cache(maxsize=1024)
 def _is_path_in_allowed_dirs(resolved_path: str) -> bool:
-    """检查路径是否在允许目录内（使用缓存）"""
+    """检查路径是否在允许目录内（使用缓存）
+
+    缓存大小 1024 覆盖高频访问路径，减少重复验证开销。
+    """
     for allowed in ALLOWED_DIRS:
         if resolved_path.startswith(allowed):
             return True
@@ -424,7 +427,7 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
 
 
 def _resolve_execution_cwd(cwd: str | None) -> str:
-    """Resolve working directory for code execution."""
+    """解析代码执行的工作目录（返回绝对路径）"""
     if cwd is None:
         return str(DEFAULT_WORK_DIR)
     if os.path.isabs(cwd):
@@ -446,7 +449,7 @@ def _build_command(code: str, language: str) -> list[str] | None:
 
 
 def _format_execution_result(result: subprocess.CompletedProcess[str], language: str) -> str:
-    """Format subprocess output into result string."""
+    """格式化子进程输出为结果字符串"""
     output = result.stdout
     if result.stderr:
         output += "\n[Stderr]\n" + result.stderr
