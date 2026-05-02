@@ -9,6 +9,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # 缓存路径配置
 CACHE_DIR = Path(os.path.expanduser("~")) / ".seed" / "cache"
@@ -99,9 +100,11 @@ def load_snapshot(skills_dir: Path) -> dict | None:
         return None
 
 
-def _convert_sets_to_lists(obj):
+def _convert_sets_to_lists(obj: dict | list | set | Any) -> dict | list | Any:
     """
     递归转换 dict 中的 set 为 list（JSON 序列化兼容）
+
+    自动将 set 类型字段转换为 list 以支持 JSON 序列化。
 
     Args:
         obj: 待转换的对象（dict、list、set 或其他）
@@ -123,6 +126,7 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
     保存缓存快照到磁盘
 
     使用原子写入模式，先写入临时文件再 rename。
+    自动将 set 类型字段转换为 list 以支持 JSON 序列化。
 
     Args:
         skills_dir: 技能目录路径

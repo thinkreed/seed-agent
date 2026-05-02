@@ -190,6 +190,11 @@ class SkillLoader:
         snapshot = load_snapshot(self.skills_dir)
         if snapshot and snapshot.get("skills"):
             for name, meta in snapshot["skills"].items():
+                # 将缓存中的 list 类型字段转换回 set
+                if "triggers_lower" in meta and isinstance(meta["triggers_lower"], list):
+                    meta["triggers_lower"] = set(meta["triggers_lower"])
+                if "desc_words" in meta and isinstance(meta["desc_words"], list):
+                    meta["desc_words"] = set(meta["desc_words"])
                 self._skills_meta[name] = meta
             return
 
