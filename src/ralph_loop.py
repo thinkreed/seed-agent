@@ -283,23 +283,51 @@ class RalphLoop:
             return False
 
     async def _terminate_process(self, proc: asyncio.subprocess.Process | None) -> None:
-        """安全终止进程（避免重复代码）"""
+        """
+        安全终止进程（完善清理）
+
+        处理步骤:
+        1. 尝试 SIGTERM (terminate)
+        2. 等待 3 秒
+        3. 如果未结束，使用 SIGKILL (kill)
+        4. 等待进程完全退出
+        5. 处理各种异常情况
+        """
         if proc is None:
             return
+
+        # 检查进程是否仍在运行
+        if proc.returncode is not None:
+            return  # 进程已结束
+
         try:
-            proc.kill()
-            await proc.wait()
-        except ProcessLookupError:
-            pass  # 进程已结束
-        except OSError as e:
-            logger.warning(f"Error killing process: {type(e).__name__}: {e}")
-        except asyncio.CancelledError:
-            # 取消时强制终止进程
+            # 1. 先尝试优雅终止 (SIGTERM)
+            proc.terminate()
             try:
+                # 等待最多 3 秒
+                await asyncio.wait_for(proc.wait(), timeout=3)
+                logger.debug(f"Process {proc.pid} terminated gracefully")
+            except asyncio.TimeoutError:
+                # 2. 优雅终止超时，强制终止 (SIGKILL)
+                logger.warning(f"Process {proc.pid} did not terminate gracefully, killing")
                 proc.kill()
+                await proc.wait()
+                logger.debug(f"Process {proc.pid} killed")
+
+        except ProcessLookupError:
+            # 进程已结束，无需处理
+            logger.debug("Process already terminated")
+        except OSError as e:
+            logger.warning(f"Error terminating process: {type(e).__name__}: {e}")
+        except asyncio.CancelledError:
+            # 取消时强制终止进程，不传播取消信号（避免影响主循环）
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
             except (ProcessLookupError, OSError):
                 pass
-            raise  # 传播取消信号
+            # 不 raise，因为这是清理操作
 
     def _parse_test_pass_rate(self, output: str | bytes) -> float:
         """解析测试输出获取通过率"""
@@ -364,6 +392,7 @@ class RalphLoop:
             return False
         repo_path = self.completion_criteria.get("repo_path", str(SEED_DIR))
 
+        proc: asyncio.subprocess.Process | None = None
         try:
             # 使用异步 subprocess 执行 git 命令
             proc = await asyncio.create_subprocess_exec(
@@ -381,6 +410,8 @@ class RalphLoop:
             return is_clean
         except asyncio.TimeoutError:
             logger.warning("Git status check timed out")
+            # 终止超时进程
+            await self._terminate_process(proc)
             return False
         except FileNotFoundError:
             logger.warning("git command not found")

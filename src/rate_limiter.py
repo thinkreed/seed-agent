@@ -7,6 +7,10 @@
 性能优化:
 - TokenBucket: 抽取 refill 方法减少重复计算
 - RollingWindowTracker: 缓存 min 值、批量清理、惰性过期检查
+
+时间处理:
+- 使用 time.monotonic() 计算时间差，不受系统时间调整影响
+- 持久化使用 time.time()，便于外部理解和调试
 """
 
 import asyncio
@@ -47,7 +51,7 @@ class TokenBucket:
         self.rate = rate
         self.capacity = capacity
         self.tokens = initial_tokens if initial_tokens is not None else capacity
-        self.last_refill = time.time()
+        self.last_refill = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
         self._lock = asyncio.Lock()
 
     def _refill(self, now: float) -> None:
@@ -66,7 +70,7 @@ class TokenBucket:
             (allowed, wait_time): 是否允许, 需等待时间
         """
         async with self._lock:
-            now = time.time()
+            now = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
             self._refill(now)
 
             if self.tokens >= tokens:
@@ -87,13 +91,13 @@ class TokenBucket:
         Returns:
             是否成功获取
         """
-        start = time.time()
+        start = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
         while True:
             allowed, wait_time = await self.acquire(tokens)
             if allowed:
                 return True
 
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start  # 使用 monotonic 避免系统时间调整影响
             if elapsed + wait_time > max_wait:
                 logger.warning(f"Token bucket wait timeout: {elapsed + wait_time:.1f}s > {max_wait}s")
                 return False
@@ -186,7 +190,7 @@ class RollingWindowTracker:
             (available, wait_seconds)
         """
         async with self._lock:
-            now = time.time()
+            now = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
             self._clean_expired(now)
 
             if len(self.requests) < self.window_limit:
@@ -202,7 +206,7 @@ class RollingWindowTracker:
     async def record_request(self) -> None:
         """记录一个请求"""
         async with self._lock:
-            now = time.time()
+            now = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
             self.requests.append(now)
             self.total_requests_lifetime += 1
 
@@ -215,7 +219,7 @@ class RollingWindowTracker:
 
         注意：此方法不清理过期记录，结果可能略有偏差
         """
-        now = time.time()
+        now = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
         cutoff = now - self.window_duration
 
         # 快速估算：使用缓存或遍历
@@ -229,9 +233,12 @@ class RollingWindowTracker:
         return max(0, self.window_limit - active_count)
 
     def get_reset_time(self) -> float:
-        """获取窗口重置时间（最早请求过期时间）"""
+        """获取窗口重置时间（最早请求过期时间）
+
+        注意：返回的是 monotonic 时间戳，用于计算等待时间
+        """
         if not self.requests:
-            return time.time()
+            return time.monotonic()  # 使用 monotonic 避免系统时间调整影响
         # 使用缓存的最小值
         return (self._min_timestamp or self.requests[0]) + self.window_duration
 
@@ -243,7 +250,7 @@ class RollingWindowTracker:
         if self.window_limit == 0:
             return 1.0
 
-        now = time.time()
+        now = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
         cutoff = now - self.window_duration
 
         # 快速估算
@@ -255,19 +262,35 @@ class RollingWindowTracker:
         return min(1.0, active_count / self.window_limit)
 
     def get_state(self) -> RollingWindowState:
-        """获取当前状态（用于持久化）"""
+        """获取当前状态（用于持久化）
+
+        注意：持久化时转换为 wall clock 时间（time.time()），
+        便于外部理解和调试。恢复时需要考虑时间差调整。
+        """
+        # 将 monotonic 时间转换为 wall clock 时间用于持久化
+        now_monotonic = time.monotonic()
+        now_wall = time.time()
+        offset = now_wall - now_monotonic  # monotonic 与 wall clock 的偏移
+
         return RollingWindowState(
-            requests=list(self.requests),  # deque 转为 list
+            requests=[t + offset for t in self.requests],  # 转换为 wall clock 时间
             total_requests_lifetime=self.total_requests_lifetime
         )
 
     def restore_state(self, state: RollingWindowState) -> None:
-        """恢复状态（从持久化）"""
-        now = time.time()
-        cutoff = now - self.window_duration
+        """恢复状态（从持久化）
 
-        # 只恢复未过期的请求（使用 deque）
-        self.requests = deque(t for t in state.requests if t >= cutoff)
+        注意：从 wall clock 时间转换为 monotonic 时间，
+        只恢复未过期的请求。
+        """
+        now_monotonic = time.monotonic()
+        now_wall = time.time()
+        offset = now_monotonic - now_wall  # wall clock 与 monotonic 的偏移
+
+        cutoff = now_monotonic - self.window_duration
+
+        # 将 wall clock 时间转换为 monotonic 时间，并过滤过期请求
+        self.requests = deque(t + offset for t in state.requests if t + offset >= cutoff)
         self.total_requests_lifetime = state.total_requests_lifetime
 
         # 更新缓存
@@ -350,7 +373,7 @@ class RateLimiter:
         Returns:
             是否成功获取
         """
-        start = time.time()
+        start = time.monotonic()  # 使用 monotonic 避免系统时间调整影响
         while True:
             allowed, wait_time = await self.acquire()
             if allowed:
@@ -358,7 +381,7 @@ class RateLimiter:
                 await self.window_tracker.record_request()
                 return True
 
-            elapsed = time.time() - start
+            elapsed = time.monotonic() - start  # 使用 monotonic 避免系统时间调整影响
             if elapsed + wait_time > max_wait:
                 logger.warning(f"Rate limiter wait timeout: {elapsed + wait_time:.1f}s > {max_wait}s")
                 return False
@@ -370,9 +393,15 @@ class RateLimiter:
         bucket_state = self.token_bucket.get_state()
         window_state = self.window_tracker.get_state()
 
-        now = time.time()
-        cutoff = now - self.window_tracker.window_duration
-        active_requests = sum(1 for t in window_state.requests if t >= cutoff)
+        # 使用 wall clock 时间显示（便于人类理解）
+        now_wall = time.time()
+        now_monotonic = time.monotonic()
+        offset = now_wall - now_monotonic
+
+        cutoff = now_monotonic - self.window_tracker.window_duration
+        # window_state.requests 已经是 wall clock 时间
+        # 需要转换为 monotonic 进行比较
+        active_requests = sum(1 for t in window_state.requests if t - offset >= cutoff)
 
         return RateLimitStatus(
             tokens_available=bucket_state.tokens,

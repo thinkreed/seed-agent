@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -167,22 +168,28 @@ class SessionDB:
 
     支持上下文管理器协议，确保资源正确释放。
     使用单例模式防止多连接资源泄漏。
+    使用线程锁保证多线程环境下的线程安全。
     """
 
     _instance: "SessionDB | None" = None
     _initialized: bool = False
+    _lock: threading.Lock = threading.Lock()  # 单例创建锁
 
     def __new__(cls, db_path: str | None = None) -> "SessionDB":
-        """单例模式：确保全局只有一个 SessionDB 实例"""
+        """单例模式：确保全局只有一个 SessionDB 实例（线程安全）"""
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._lock:
+                # 双重检查锁定模式，避免不必要的锁开销
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, db_path: str | None = None):
-        # 避免重复初始化
-        if SessionDB._initialized:
-            return
-        SessionDB._initialized = True
+        # 使用类锁保护初始化状态检查
+        with SessionDB._lock:
+            if SessionDB._initialized:
+                return
+            SessionDB._initialized = True
 
         self.db_path = db_path or str(DB_PATH)
         self.conn: sqlite3.Connection | None = None
@@ -1232,13 +1239,18 @@ class SessionDB:
 
 # ==================== 模块级便捷函数 ====================
 
-_db_instance = None
+_db_instance: SessionDB | None = None
+_db_lock = threading.Lock()  # 模块级实例锁
+
 
 def _get_db() -> SessionDB:
-    """获取全局 SessionDB 实例"""
+    """获取全局 SessionDB 实例（线程安全）"""
     global _db_instance
     if _db_instance is None:
-        _db_instance = SessionDB()
+        with _db_lock:
+            # 双重检查锁定模式
+            if _db_instance is None:
+                _db_instance = SessionDB()
     return _db_instance
 
 
