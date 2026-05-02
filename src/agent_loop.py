@@ -22,19 +22,11 @@ import json
 import logging
 import time
 from collections.abc import AsyncGenerator
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import tiktoken
 
 from src.client import LLMGateway
-
-
-class ToolResult(TypedDict):
-    """工具调用结果类型定义"""
-    tool_call_id: str
-    role: str
-    content: str
-
 # OpenTelemetry 可观测性（自动处理 ImportError）
 from src.observability import (
     SPAN_TOOL_PREFIX,
@@ -67,12 +59,27 @@ from src.tools.skill_loader import SkillLoader, register_skill_tools
 from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
 from src.tools.utils import parse_tool_arguments
 
+# Span 类型导入（用于类型注解）
+try:
+    from opentelemetry.trace import Span
+    _SPAN_TYPE_AVAILABLE = True
+except ImportError:
+    Span = None  # type: ignore[misc,assignment]
+    _SPAN_TYPE_AVAILABLE = False
+
 # 模块级 encoding 缓存：避免重复创建 tiktoken encoding 实例
 _ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
 
 logger = logging.getLogger(__name__)
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
+
+
+class ToolResult(TypedDict):
+    """工具调用结果类型定义"""
+    tool_call_id: str
+    role: str
+    content: str
 
 
 class MaxIterationsExceeded(Exception):

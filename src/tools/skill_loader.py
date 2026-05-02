@@ -50,6 +50,13 @@ class SkillMeta(TypedDict, total=False):
 
 import yaml  # type: ignore[import-untyped]
 
+# 尝试导入共享配置模块（在顶部导入避免 E402）
+try:
+    from src.shared_config import get_memory_graph_config
+    _HAS_SHARED_CONFIG = True
+except ImportError:
+    _HAS_SHARED_CONFIG = False
+
 from .skill_cache import (
     SNAPSHOT_PATH,
     build_manifest,
@@ -116,8 +123,7 @@ PLATFORM_MAP = {
 }
 
 # 使用共享配置模块
-try:
-    from src.shared_config import get_memory_graph_config
+if _HAS_SHARED_CONFIG:
     _mg_config = get_memory_graph_config()
     MEMORY_GRAPH_CONFIG = {
         "half_life_days": _mg_config.half_life_days,
@@ -130,7 +136,7 @@ try:
         "recent_days": _mg_config.recent_days,
         "enabled": True,  # Memory Graph 选择默认启用
     }
-except ImportError:
+else:
     # Fallback: 使用默认值（避免循环导入问题）
     MEMORY_GRAPH_CONFIG = {
         "half_life_days": 30,
