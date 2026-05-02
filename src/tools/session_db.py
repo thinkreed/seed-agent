@@ -18,6 +18,7 @@ import sqlite3
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,18 @@ def _sanitize_fts_query(query: str) -> str:
     query = " ".join(safe_tokens)
 
     return query.strip()
+
+
+class BannedSkillInfo(TypedDict):
+    """禁用 Skill 信息类型定义"""
+    skill_name: str
+    total_attempts: int
+    current_value: float
+    success_rate: float
+    laplace_rate: float
+    last_time: str
+    ban_reason: str
+    suggested_action: str
 
 
 class SessionDB:
@@ -557,7 +570,7 @@ class SessionDB:
 
         return p * decay_weight + recent_boost
 
-    def list_banned_skills(self) -> list[dict]:
+    def list_banned_skills(self) -> list[BannedSkillInfo]:
         """
         列出被禁用的 Skill（低于 ban_threshold）（批量查询优化，避免 N+1）
 
@@ -590,7 +603,7 @@ class SessionDB:
                 HAVING COUNT(*) >= ?
             """, (min_attempts,)).fetchall()
 
-            banned = []
+            banned: list[BannedSkillInfo] = []
             for row in rows:
                 skill_name = row["skill_name"]
                 total = row["total"]
@@ -616,7 +629,7 @@ class SessionDB:
             return banned
         except Exception as e:
             logger.warning(f"Failed to list banned skills: {type(e).__name__}: {e}")
-            return []
+            return []  # type: ignore[return-value]
 
     def get_top_skills(self, limit: int = 10) -> list[dict]:
         """
@@ -1265,7 +1278,7 @@ def get_skill_stats(skill_name: str) -> dict:
     return _get_db().get_skill_stats(skill_name)
 
 
-def list_banned_skills() -> list[dict]:
+def list_banned_skills() -> list[BannedSkillInfo]:
     """列出被禁用的 Skill"""
     return _get_db().list_banned_skills()
 
