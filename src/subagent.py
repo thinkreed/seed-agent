@@ -19,7 +19,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import cast
 
 from src.client import LLMGateway
 
@@ -44,6 +43,20 @@ class SubagentType(Enum):
     REVIEW = "review"       # 审查验证：只读 + 代码执行
     IMPLEMENT = "implement" # 实现执行：全权限
     PLAN = "plan"           # 规划分析：只读 + 记忆写入
+
+
+def _get_subagent_type_key(subagent_type: SubagentType | str) -> str:
+    """获取 SubagentType 的字符串键（用于字典查找）
+
+    Args:
+        subagent_type: SubagentType 枚举或字符串
+
+    Returns:
+        str: 类型键（"explore", "review", "implement", "plan"）
+    """
+    if isinstance(subagent_type, SubagentType):
+        return subagent_type.value
+    return subagent_type
 
 
 # 使用共享配置模块
@@ -224,7 +237,7 @@ class SubagentInstance:
         self.subagent_type = subagent_type
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
-        self.timeout = timeout or DEFAULT_TIMEOUTS.get(cast(str, subagent_type.value if hasattr(subagent_type, "value") else subagent_type), 300)
+        self.timeout = timeout or DEFAULT_TIMEOUTS.get(_get_subagent_type_key(subagent_type), 300)
 
         # 独立的对话历史
         self.history: list[dict] = []
@@ -234,7 +247,7 @@ class SubagentInstance:
         self._setup_tools(custom_tools)
 
         # System prompt
-        base_prompt = SUBAGENT_SYSTEM_PROMPTS[cast(str, subagent_type.value if hasattr(subagent_type, "value") else subagent_type)]
+        base_prompt = SUBAGENT_SYSTEM_PROMPTS[_get_subagent_type_key(subagent_type)]
         self.system_prompt = custom_system_prompt or base_prompt
 
         # 状态
@@ -247,7 +260,7 @@ class SubagentInstance:
     def _setup_tools(self, custom_tools: set[str] | None = None):
         """设置工具集"""
         # 确定权限集
-        type_key = cast(str, self.subagent_type.value if hasattr(self.subagent_type, "value") else self.subagent_type)
+        type_key = _get_subagent_type_key(self.subagent_type)
         if custom_tools:
             allowed_tools = custom_tools
         else:
