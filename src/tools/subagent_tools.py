@@ -24,6 +24,22 @@ _subagent_manager: "SubagentManager | None" = None
 
 # 后台任务集合（防止 asyncio.create_task 返回值被垃圾回收）
 _background_tasks: set[asyncio.Task[None]] = set()
+_MAX_BACKGROUND_TASKS = 100  # 最大后台任务数，防止内存泄漏
+
+
+def _add_background_task(task: asyncio.Task[None]) -> None:
+    """安全添加后台任务，超过限制时清理已完成任务"""
+    # 如果超过最大限制，清理已完成任务
+    if len(_background_tasks) >= _MAX_BACKGROUND_TASKS:
+        done_tasks = [t for t in _background_tasks if t.done()]
+        for t in done_tasks:
+            _background_tasks.discard(t)
+        if done_tasks:
+            logger.debug(f"Cleaned {len(done_tasks)} completed background tasks")
+
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 
 # 线程安全锁（保护全局状态）
 _manager_lock = threading.Lock()
@@ -83,8 +99,7 @@ def spawn_subagent(
     try:
         asyncio.get_running_loop()
         task = asyncio.create_task(_run_subagent_async(task_id))
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+        _add_background_task(task)
     except RuntimeError:
         # 没有运行的事件循环，任务只创建不启动
         # 在 AgentLoop 异步环境中会正常启动
@@ -339,8 +354,7 @@ def spawn_parallel_subagents(
     try:
         asyncio.get_running_loop()
         task = asyncio.create_task(_run_parallel_async(task_ids))
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+        _add_background_task(task)
     except RuntimeError:
         # 没有运行的事件循环，任务只创建不启动
         logger.debug(f"No event loop, {len(task_ids)} tasks created but not started")
