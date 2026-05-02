@@ -238,6 +238,11 @@ class LLMGateway:
         self._active_count: int = 0
         self._active_count_lock = asyncio.Lock()
 
+        # 负载因子缓存（避免频繁计算）
+        self._load_factor_cache: float = 0.0
+        self._load_factor_cache_time: float = 0.0
+        self._load_factor_cache_ttl: float = 5.0  # 缓存 TTL（秒）
+
         # 状态持久化
         self._state_db: RateLimitSQLite | None = None
         self._persistence_task: asyncio.Task | None = None
@@ -530,10 +535,17 @@ class LLMGateway:
         return False
 
     def get_load_factor(self) -> float:
-        """计算当前负载因子
+        """计算当前负载因子（带缓存）
 
         负载因子 = 队列填充率 * 0.4 + 限流窗口使用率 * 0.6
+
+        缓存策略：5秒 TTL，避免频繁计算
         """
+        now = time.time()
+        # 缓存有效，直接返回
+        if now - self._load_factor_cache_time < self._load_factor_cache_ttl:
+            return self._load_factor_cache
+
         # 队列填充率
         queue_fill = 0.0
         if self._request_queue:
@@ -547,6 +559,11 @@ class LLMGateway:
 
         # 综合负载因子
         load_factor = queue_fill * 0.4 + window_usage * 0.6
+
+        # 更新缓存
+        self._load_factor_cache = load_factor
+        self._load_factor_cache_time = now
+
         return load_factor
 
     def get_dynamic_timeout(self, priority: RequestPriority) -> float:

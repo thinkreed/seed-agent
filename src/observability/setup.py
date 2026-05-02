@@ -14,6 +14,7 @@ OpenTelemetry SDK 初始化模块
 
 import logging
 import os
+import threading
 
 # 类型注解使用内置类型
 from opentelemetry import metrics, trace
@@ -26,10 +27,11 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 logger = logging.getLogger(__name__)
 
-# 全局状态
+# 全局状态（线程锁保护）
 _tracer: trace.Tracer | None = None
 _meter: metrics.Meter | None = None
 _initialized: bool = False
+_init_lock: threading.Lock = threading.Lock()
 
 
 def setup_observability(
@@ -50,53 +52,59 @@ def setup_observability(
     """
     global _tracer, _meter, _initialized
 
+    # 双重检查锁定模式：避免每次调用都获取锁
     if _initialized:
         logger.warning("Observability already initialized, returning existing instances")
         return _tracer, _meter
 
-    if not enabled:
-        _tracer = trace.NoOpTracer()
+    with _init_lock:
+        # 再次检查，防止锁等待期间其他线程已初始化
+        if _initialized:
+            return _tracer, _meter
+
+        if not enabled:
+            _tracer = trace.NoOpTracer()
+            _meter = metrics.NoOpMeter("seed-agent")
+            _initialized = True
+            logger.info("Observability disabled, using noop providers")
+            return _tracer, _meter
+
+        # OTLP HTTP endpoint
+        endpoint = otlp_endpoint or os.getenv(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "http://localhost:4318"
+        )
+
+        # 确保路径正确
+        if endpoint and not endpoint.endswith("/v1/traces"):
+            endpoint = endpoint.rstrip("/") + "/v1/traces"
+
+        # Resource 配置
+        resource = Resource.create({
+            SERVICE_NAME: service_name,
+            SERVICE_VERSION: "1.0.0",
+            "deployment.environment": os.getenv("DEPLOYMENT_ENV", "local"),
+        })
+
+        # Traces - 使用 BatchSpanProcessor 批量发送（生产环境推荐）
+        trace_provider = TracerProvider(resource=resource)
+        trace_provider.add_span_processor(
+            BatchSpanProcessor(
+                OTLPSpanExporter(endpoint=endpoint),
+                max_queue_size=2048,           # 最大队列大小
+                schedule_delay_millis=5000,    # 5秒批量发送一次
+                export_timeout_millis=30000,   # 导出超时 30秒
+                max_export_batch_size=512,     # 每批最大 512 个 span
+            )
+        )
+        trace.set_tracer_provider(trace_provider)
+
+        _tracer = trace.get_tracer(service_name)
         _meter = metrics.NoOpMeter("seed-agent")
         _initialized = True
-        logger.info("Observability disabled, using noop providers")
+
+        logger.info(f"Observability initialized: service={service_name}, endpoint={endpoint}")
         return _tracer, _meter
-
-    # OTLP HTTP endpoint
-    endpoint = otlp_endpoint or os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://localhost:4318"
-    )
-
-    # 确保路径正确
-    if endpoint and not endpoint.endswith("/v1/traces"):
-        endpoint = endpoint.rstrip("/") + "/v1/traces"
-
-    # Resource 配置
-    resource = Resource.create({
-        SERVICE_NAME: service_name,
-        SERVICE_VERSION: "1.0.0",
-        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "local"),
-    })
-
-    # Traces - 使用 BatchSpanProcessor 批量发送（生产环境推荐）
-    trace_provider = TracerProvider(resource=resource)
-    trace_provider.add_span_processor(
-        BatchSpanProcessor(
-            OTLPSpanExporter(endpoint=endpoint),
-            max_queue_size=2048,           # 最大队列大小
-            schedule_delay_millis=5000,    # 5秒批量发送一次
-            export_timeout_millis=30000,   # 导出超时 30秒
-            max_export_batch_size=512,     # 每批最大 512 个 span
-        )
-    )
-    trace.set_tracer_provider(trace_provider)
-
-    _tracer = trace.get_tracer(service_name)
-    _meter = metrics.NoOpMeter("seed-agent")
-    _initialized = True
-
-    logger.info(f"Observability initialized: service={service_name}, endpoint={endpoint}")
-    return _tracer, _meter
 
 
 def get_tracer() -> trace.Tracer:
@@ -123,20 +131,25 @@ def is_initialized() -> bool:
 def shutdown_observability():
     """
     关闭可观测性系统，强制 flush 所有 pending spans
-    
+
     应在程序退出前调用，确保所有 traces 发送到 collector
     """
     global _tracer, _meter, _initialized
 
+    # 双重检查锁定模式
     if not _initialized:
         return
 
-    # 获取 TracerProvider 并强制 shutdown
-    provider = trace.get_tracer_provider()
-    if hasattr(provider, "shutdown"):
-        provider.shutdown()
-        logger.info("Observability shutdown complete")
+    with _init_lock:
+        if not _initialized:
+            return
 
-    _tracer = None
-    _meter = None
-    _initialized = False
+        # 获取 TracerProvider 并强制 shutdown
+        provider = trace.get_tracer_provider()
+        if hasattr(provider, "shutdown"):
+            provider.shutdown()
+            logger.info("Observability shutdown complete")
+
+        _tracer = None
+        _meter = None
+        _initialized = False
