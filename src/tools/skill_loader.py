@@ -197,11 +197,17 @@ class SkillLoader:
                     "category": meta.get("category", "general"),
                     "version": meta.get("version", "1.0"),
                     "triggers": triggers,
+                    "triggers_lower": {t.lower() for t in triggers},  # 预处理：小写 set 用于快速匹配
                     "platforms": self._normalize_str_list(meta.get("platforms", [])),
                     "allowed_tools": meta.get("allowed-tools", ""),
                     "requires_tools": self._normalize_str_list(metadata.get("requires_tools", [])),
                     "fallback_for_tools": self._normalize_str_list(metadata.get("fallback_for_tools", [])),
                 }
+                # 预处理：description 关键词集合（避免每次匹配时重新计算）
+                desc = self._skills_meta[meta["name"]]["description"]
+                desc_words = set(re.findall(r"[a-zA-Z0-9_]+", desc.lower()))
+                desc_words.update(re.findall(r"[\u4e00-\u9fa5]+", desc.lower()))
+                self._skills_meta[meta["name"]]["desc_words"] = desc_words
             except Exception as e:
                 logger.debug(f"Failed to parse skill metadata from {skill_file}: {type(e).__name__}")
                 continue
@@ -332,7 +338,7 @@ class SkillLoader:
         return words or [query_lower]
 
     def _compute_match_score(self, name: str, meta: dict, query_words: list[str], query_lower: str) -> float:
-        """计算单个 skill 的匹配分数（性能优化版）"""
+        """计算单个 skill 的匹配分数（性能优化版：使用预处理数据）"""
         score = 0.0
 
         # 1. Name 匹配 (最高优先级)
@@ -342,9 +348,8 @@ class SkillLoader:
         elif name_lower in query_lower or query_lower in name_lower:
             score += 2.0
 
-        # 2. Trigger 匹配 (优化：使用 set 实现快速查找)
-        triggers = meta.get("triggers", [])
-        triggers_lower = {t.lower() for t in triggers}  # 预处理为 set
+        # 2. Trigger 匹配 (使用预处理的 triggers_lower set)
+        triggers_lower = meta.get("triggers_lower", set())  # 直接使用预处理数据
         trigger_matched = False
 
         for qw in query_words:
@@ -353,8 +358,7 @@ class SkillLoader:
                 trigger_matched = True
             else:
                 # 部分匹配仍需遍历（无法用 set 优化）
-                for trigger in triggers:
-                    trigger_lower = trigger.lower()
+                for trigger_lower in triggers_lower:
                     if qw in trigger_lower:
                         score += 1.0 + len(qw) / max(len(trigger_lower), 1)
                         trigger_matched = True
@@ -362,10 +366,9 @@ class SkillLoader:
                         score += 1.5
                         trigger_matched = True
 
-        # 3. Description 关键词匹配 (仅在没有 trigger 匹配时)
+        # 3. Description 关键词匹配 (使用预处理的 desc_words set)
         if not trigger_matched:
-            desc_words = set(re.findall(r"[a-zA-Z0-9_]+", meta["description"].lower()))
-            desc_words.update(re.findall(r"[\u4e00-\u9fa5]+", meta["description"].lower()))
+            desc_words = meta.get("desc_words", set())  # 直接使用预处理数据
             for qw in query_words:
                 if any(qw in dw or dw in qw for dw in desc_words):
                     score += 0.5
@@ -374,7 +377,7 @@ class SkillLoader:
         if score < 1.0 and query_words:
             en_words = [w for w in query_words if re.match(r"[a-zA-Z0-9_-]+", w)]
             if en_words:
-                all_keywords = {name_lower} | desc_words | set(t.lower() for t in triggers)
+                all_keywords = {name_lower} | desc_words | triggers_lower
                 for qw in en_words:
                     if len(qw) >= 3 and difflib.get_close_matches(qw, list(all_keywords), n=1, cutoff=0.75):
                         score += 0.5
@@ -595,7 +598,7 @@ class SkillLoader:
             }
 
     def _compute_trigger_score(self, skill_name: str, signals: list[str]) -> float:
-        """计算触发器匹配分数 (最大 3.0)"""
+        """计算触发器匹配分数 (最大 3.0，使用预处理数据)"""
         if not signals:
             return 0.0
 
@@ -603,21 +606,23 @@ class SkillLoader:
         if not meta:
             return 0.0
 
-        triggers = meta.get("triggers", [])
-        if not triggers:
+        triggers_lower = meta.get("triggers_lower", set())
+        if not triggers_lower:
             return 0.0
 
-        # 预处理为小写，避免循环内重复计算
+        # 预处理信号为小写
         signals_lower = [s.lower() for s in signals]
-        triggers_lower = [t.lower() for t in triggers]
 
         score = 0.0
         for signal_lower in signals_lower:
-            for trigger_lower in triggers_lower:
-                if trigger_lower == signal_lower:
-                    score += 1.0  # 精确匹配
-                elif signal_lower in trigger_lower or trigger_lower in signal_lower:
-                    score += 0.5  # 部分匹配
+            # 精确匹配：O(1)
+            if signal_lower in triggers_lower:
+                score += 1.0
+            else:
+                # 部分匹配：遍历
+                for trigger_lower in triggers_lower:
+                    if signal_lower in trigger_lower or trigger_lower in signal_lower:
+                        score += 0.5
 
         return min(score, 3.0)
 
