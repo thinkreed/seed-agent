@@ -215,7 +215,7 @@ class LLMGateway:
     - 阶段4：执行（execute with fallback）
     """
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str) -> None:
         self.config: FullConfig = load_config(config_path)
         self.clients: dict[str, AsyncOpenAI] = {}
         self._fallback_chain: FallbackChain | None = None
@@ -249,7 +249,7 @@ class LLMGateway:
         self._init_rate_limiting()
         self._init_state_persistence()
 
-    def _init_clients(self):
+    def _init_clients(self) -> None:
         """为每个 provider 初始化客户端"""
         for provider_id, provider_cfg in self.config.models.items():
             if provider_cfg.api == "openai-completions":
@@ -259,21 +259,21 @@ class LLMGateway:
                     api_key=api_key
                 )
 
-    def _build_model_config_cache(self):
+    def _build_model_config_cache(self) -> None:
         """构建模型配置缓存（避免重复线性搜索）"""
         for provider_id, provider_cfg in self.config.models.items():
             for model in provider_cfg.models:
                 full_model_id = f"{provider_id}/{model.id}"
                 self._model_config_cache[full_model_id] = model
 
-    def _init_fallback_chain(self):
+    def _init_fallback_chain(self) -> None:
         """初始化降级链"""
         # 从配置获取 provider 优先级（按定义顺序）
         providers = list(self.clients.keys())
         if providers:
             self._fallback_chain = FallbackChain(providers, self.clients)
 
-    def _init_rate_limiting(self):
+    def _init_rate_limiting(self) -> None:
         """从配置初始化限流组件"""
         # 获取第一个有 rateLimit 配置的 provider
         for provider_id, provider_cfg in self.config.models.items():
@@ -333,7 +333,7 @@ class LLMGateway:
         # 使用默认值
         return QueueConfig()
 
-    def _init_state_persistence(self):
+    def _init_state_persistence(self) -> None:
         """初始化状态持久化"""
         self._state_db = RateLimitSQLite()
         logger.info(f"State persistence initialized: {self._state_db.DB_PATH}")
@@ -563,7 +563,7 @@ class LLMGateway:
 
     # ==================== 队列管理（TurnTicket 模式） ====================
 
-    async def start_queue_dispatcher(self):
+    async def start_queue_dispatcher(self) -> None:
         """启动队列调度器"""
         if self._queue_started:
             logger.warning("Queue dispatcher already running")
@@ -573,7 +573,7 @@ class LLMGateway:
             await self._request_queue.start_dispatcher()
             self._queue_started = True
 
-    async def stop_queue_dispatcher(self):
+    async def stop_queue_dispatcher(self) -> None:
         """停止队列调度器"""
         if self._request_queue and self._queue_started:
             await self._request_queue.stop_dispatcher()
@@ -612,7 +612,7 @@ class LLMGateway:
             return await self._request_queue.cancel_ticket(ticket_id, reason)
         return False
 
-    async def cancel_all_tickets(self, reason: str = "Emergency cleanup"):
+    async def cancel_all_tickets(self, reason: str = "Emergency cleanup") -> None:
         """取消所有 ticket"""
         if self._request_queue:
             await self._request_queue.cancel_all_tickets(reason)

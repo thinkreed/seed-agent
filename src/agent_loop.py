@@ -319,7 +319,7 @@ class AgentLoop:
         return (is_context_full or is_round_limit_reached), estimated_tokens, is_context_full
 
 
-    async def _apply_summary(self, summary: str, is_context_full: bool):
+    async def _apply_summary(self, summary: str, is_context_full: bool) -> None:
         """应用摘要并截断历史"""
         # Save summary to metadata
         _save_session_history([], summary=summary, session_id=self.session_id)
@@ -335,7 +335,7 @@ class AgentLoop:
 
         self._last_summary = summary
         self._conversation_rounds = 0
-    async def _maybe_summarize(self):
+    async def _maybe_summarize(self) -> None:
         """检查是否需要总结历史并执行总结"""
         # Save current history to L4 session archive
         if self.history:
@@ -425,7 +425,7 @@ class AgentLoop:
             f"Agent exceeded maximum iterations ({self.max_iterations})"
         )
 
-    def _process_tool_delta(self, tc_list: list[dict], accumulator: dict[int, dict]):
+    def _process_tool_delta(self, tc_list: list[dict], accumulator: dict[int, dict]) -> None:
         """处理流式响应中的 Tool Call 增量块"""
         for tc in tc_list:
             idx = tc.get("index", 0)
@@ -446,7 +446,7 @@ class AgentLoop:
             if func.get("arguments"):
                 acc["function"]["arguments"] += func["arguments"]
 
-    async def _process_final_completion(self, full_content: str):
+    async def _process_final_completion(self, full_content: str) -> AsyncGenerator[dict, None]:
         """处理对话完成的收尾工作 (总结 + 评估)"""
         await self._maybe_summarize()
         self._evaluate_and_record_skill_outcomes(final_success=True)
@@ -537,7 +537,7 @@ class AgentLoop:
                     # 继续处理其他 tool calls，不中断检查流程
         return None
 
-    def _record_load_skill_outcome(self, tool_args: dict, tool_id: str, result: str, failed: bool = False):
+    def _record_load_skill_outcome(self, tool_args: dict, tool_id: str, result: str, failed: bool = False) -> None:
         """记录 load_skill 的执行结果到 Memory Graph"""
         self._pending_skill_outcomes.append({
             "skill_name": tool_args.get("name", ""),
@@ -572,12 +572,12 @@ class AgentLoop:
             self._record_load_skill_if_needed(tool_name, tool_args, tool_id, f"Error: {e!s}", failed=True)
             return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {e!s}"}
 
-    def _record_load_skill_if_needed(self, tool_name: str, tool_args: dict, tool_id: str, content: str, failed: bool):
+    def _record_load_skill_if_needed(self, tool_name: str, tool_args: dict, tool_id: str, content: str, failed: bool) -> None:
         """如果是 load_skill 调用，记录其结果到 Memory Graph"""
         if tool_name == "load_skill":
             self._record_load_skill_outcome(tool_args, tool_id, content, failed)
 
-    def _start_tool_span(self, tool_name: str, tool_args: dict):
+    def _start_tool_span(self, tool_name: str, tool_args: dict) -> Any:
         """创建 OpenTelemetry Span"""
         tracer = get_tracer()
         if not (tracer and _OBSERVABILITY_ENABLED):
@@ -587,7 +587,7 @@ class AgentLoop:
         set_tool_span_attributes(span, tool_name, file_path=tool_args.get("path", ""))
         return span
 
-    def _finish_tool_span(self, span, start_time: float, success: bool, error: Exception | None = None):
+    def _finish_tool_span(self, span: Any, start_time: float, success: bool, error: Exception | None = None) -> None:
         """完成 Span 并记录指标"""
         if not span:
             return
@@ -669,7 +669,7 @@ class AgentLoop:
         else:
             return "success", 1.0 if final_success else 0.8
 
-    def _evaluate_and_record_skill_outcomes(self, final_success: bool = True):
+    def _evaluate_and_record_skill_outcomes(self, final_success: bool = True) -> None:
         """评估并记录待处理的 Skill 执行结果"""
         for pending in self._pending_skill_outcomes:
             skill_name = pending.get("skill_name")
@@ -694,7 +694,7 @@ class AgentLoop:
 
         self._pending_skill_outcomes.clear()
 
-    def clear_history(self, save_current: bool = True):
+    def clear_history(self, save_current: bool = True) -> None:
         """清空对话历史，可选保存当前历史到 L4"""
         if save_current and self.history:
             _save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)

@@ -50,7 +50,7 @@ class ScheduledTask:
             return False
         return time.time() - self.last_run >= self.interval_seconds
 
-    def mark_run(self):
+    def mark_run(self) -> None:
         """标记已执行"""
         self.last_run = time.time()
 
@@ -163,7 +163,7 @@ class TaskScheduler:
         if modified:
             self._save_tasks()
 
-    async def start(self):
+    async def start(self) -> None:
         """启动调度器"""
         if self._running:
             return
@@ -172,7 +172,7 @@ class TaskScheduler:
         self._task = asyncio.create_task(self._schedule_loop())
         logger.info("Task scheduler started")
 
-    async def stop(self):
+    async def stop(self) -> None:
         """停止调度器"""
         self._running = False
         self._save_tasks()
@@ -186,13 +186,13 @@ class TaskScheduler:
 
         logger.info("Task scheduler stopped")
 
-    async def _schedule_loop(self):
+    async def _schedule_loop(self) -> None:
         """调度循环"""
         while self._running:
             await self._check_and_run_tasks()
             await asyncio.sleep(self._check_interval)
 
-    async def _check_and_run_tasks(self):
+    async def _check_and_run_tasks(self) -> None:
         """检查并执行到期任务"""
         for task_id, task in self._tasks.items():
             if task.should_run():
@@ -201,7 +201,7 @@ class TaskScheduler:
                 task.mark_run()
                 self._save_tasks()
 
-    async def _execute_task(self, task: ScheduledTask):
+    async def _execute_task(self, task: ScheduledTask) -> None:
         """执行任务（支持 tool_calls 循环处理）
         
         使用 LOW 优先级，确保定时任务不会阻塞用户请求。
@@ -435,7 +435,7 @@ def get_task_info(task_id: str) -> str:
     return json.dumps(status, ensure_ascii=False, indent=2)
 
 
-def register_scheduler_tools(registry):
+def register_scheduler_tools(registry) -> None:
     """注册定时任务工具"""
     registry.register("create_scheduled_task", create_scheduled_task)
     registry.register("remove_scheduled_task", remove_scheduled_task)
