@@ -109,6 +109,16 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
     Returns:
         (is_safe, error_message): 安全返回 (True, ""), 不安全返回 (False, 错误信息)
     """
+    # URL 编码绕过检测：检查 %2e%2e (%2e = '.' 的 URL 编码) 及双重编码
+    # 常见绕过：%2e%2e, %252e%252e (双重编码), %2e%2e/, ..%2f
+    path_lower = path.lower()
+    if "%" in path_lower:
+        # 检测 URL 编码的路径遍历
+        encoded_patterns = ["%2e", "%252e", "%2f", "%5c", "%255c"]
+        if any(p in path_lower for p in encoded_patterns):
+            logger.warning(f"URL-encoded path traversal attempt blocked: {path}")
+            return False, f"URL-encoded path blocked: '{path}' - encoded characters are not allowed for security"
+
     # 快速检测 .. 序列（使用预编译正则）
     if _RE_DOUBLE_DOT.search(path):
         # 计算遍历深度

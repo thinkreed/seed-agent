@@ -99,21 +99,47 @@ class CodeExecutionSecurityConfig:
     """代码执行安全配置"""
 
     # Shell 黑名单（系统破坏性命令）
+    # 扩展包含：磁盘操作、系统配置、网络工具等
     shell_blacklist: list[str] = field(default_factory=lambda: [
+        # 文件/目录删除
         "rm -rf", "rm -r", "rmdir", "del ", "format",
+        # 磁盘操作（新增）
+        "dd", "mkfs", "fdisk", "parted", "gdisk", "sfdisk",
+        # 权限提升
         "sudo", "su", "chmod 777", "chown",
-        "wget", "curl -o", "nc ", "netcat",
+        # 网络工具（潜在数据泄露）
+        "wget", "curl -o", "nc ", "netcat", "telnet",
+        # 进程终止
         "kill -9", "pkill", "killall",
+        # 命令注入模式
         "; rm", "| rm", "& rm", "`rm", "$(rm",
+        # 敏感文件访问
         "cat /etc/passwd", "cat /etc/shadow",
+        # 系统配置修改（新增）
+        "sysctl", "iptables", "ufw", "systemctl disable",
+        "shutdown", "reboot", "halt", "poweroff",
+        # 包管理器（可能安装恶意软件）
+        "apt install", "yum install", "dnf install", "pip install",
     ])
 
     # PowerShell 黑名单
+    # 扩展包含：磁盘操作、系统配置、远程执行等
     powershell_blacklist: list[str] = field(default_factory=lambda: [
+        # 文件删除
         "Remove-Item", "Delete-Item", "Format-Volume",
+        # 权限/执行策略
         "Set-ExecutionPolicy", "Start-Process -Verb RunAs",
+        # 网络下载
         "Download-File", "Invoke-WebRequest -OutFile",
+        # 进程终止
         "Stop-Process -Force", "Kill-Process",
+        # 系统配置（新增）
+        "Set-ItemProperty", "New-ItemProperty", "Remove-ItemProperty",
+        "Disable-ComputerRestore", "Clear-EventLog",
+        # 远程执行（新增）
+        "Invoke-Command", "Enter-PSSession", "New-SSHSession",
+        # 磁盘操作（新增）
+        "Initialize-Disk", "Clear-Disk", "Remove-Partition",
     ])
 
     # 代码长度限制

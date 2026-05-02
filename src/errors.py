@@ -201,11 +201,9 @@ class ConfigurationError(SeedAgentError):
         super().__init__(message, ErrorType.CONFIG, ErrorSeverity.HIGH, **kwargs)
 
 
-# 向后兼容别名（deprecated，将在 v2.0 版本移除）
-# 注意：这些别名与内置异常同名，可能导致混淆
-# 建议使用 SeedTimeoutError 和 SeedConnectionError
-TimeoutError = SeedTimeoutError  # noqa: A001  # deprecated: use SeedTimeoutError
-ConnectionError = SeedConnectionError  # noqa: A001  # deprecated: use SeedConnectionError
+# 注意：已移除与内置异常同名的向后兼容别名（TimeoutError, ConnectionError）
+# 这些别名在 Python 中可能与内置异常产生歧义，导致意外的异常捕获行为
+# 请直接使用 SeedTimeoutError 和 SeedConnectionError
 
 __all__ = [
     "ErrorType",
@@ -219,7 +217,4 @@ __all__ = [
     "SeedTimeoutError",
     "SeedConnectionError",
     "ConfigurationError",
-    # 向后兼容（deprecated）
-    "TimeoutError",
-    "ConnectionError",
 ]
