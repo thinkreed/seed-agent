@@ -22,7 +22,6 @@ from enum import Enum
 from typing import cast
 
 from src.client import LLMGateway
-from src.tools import ToolRegistry
 
 # OpenTelemetry 可观测性（自动处理 ImportError）
 from src.observability import (
@@ -32,6 +31,7 @@ from src.observability import (
     is_observability_enabled,
     set_subagent_span_attributes,
 )
+from src.tools import ToolRegistry
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 
@@ -224,7 +224,7 @@ class SubagentInstance:
         self.subagent_type = subagent_type
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
-        self.timeout = timeout or DEFAULT_TIMEOUTS.get(cast(str, subagent_type.value if hasattr(subagent_type, 'value') else subagent_type), 300)
+        self.timeout = timeout or DEFAULT_TIMEOUTS.get(cast(str, subagent_type.value if hasattr(subagent_type, "value") else subagent_type), 300)
 
         # 独立的对话历史
         self.history: list[dict] = []
@@ -234,7 +234,7 @@ class SubagentInstance:
         self._setup_tools(custom_tools)
 
         # System prompt
-        base_prompt = SUBAGENT_SYSTEM_PROMPTS[cast(str, subagent_type.value if hasattr(subagent_type, 'value') else subagent_type)]
+        base_prompt = SUBAGENT_SYSTEM_PROMPTS[cast(str, subagent_type.value if hasattr(subagent_type, "value") else subagent_type)]
         self.system_prompt = custom_system_prompt or base_prompt
 
         # 状态
@@ -242,12 +242,12 @@ class SubagentInstance:
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
-        return self.gateway.config.agents['defaults'].defaults.primary
+        return self.gateway.config.agents["defaults"].defaults.primary
 
     def _setup_tools(self, custom_tools: set[str] | None = None):
         """设置工具集"""
         # 确定权限集
-        type_key = cast(str, self.subagent_type.value if hasattr(self.subagent_type, 'value') else self.subagent_type)
+        type_key = cast(str, self.subagent_type.value if hasattr(self.subagent_type, "value") else self.subagent_type)
         if custom_tools:
             allowed_tools = custom_tools
         else:
@@ -286,9 +286,9 @@ class SubagentInstance:
         """执行工具调用"""
         results = []
         for tool_call in tool_calls:
-            tool_id = tool_call['id']
-            tool_name = tool_call['function']['name']
-            raw_args = tool_call['function']['arguments']
+            tool_id = tool_call["id"]
+            tool_name = tool_call["function"]["name"]
+            raw_args = tool_call["function"]["arguments"]
 
             import json
             try:
@@ -296,7 +296,7 @@ class SubagentInstance:
                     raw_args = raw_args.strip()
                     tool_args = json.loads(raw_args) if raw_args else {}
                 else:
-                    tool_args = raw_args if raw_args else {}
+                    tool_args = raw_args or {}
                 if not isinstance(tool_args, dict):
                     tool_args = {}
             except (json.JSONDecodeError, TypeError, ValueError):
@@ -426,16 +426,16 @@ class SubagentInstance:
                 tools=self.tools.get_schemas()
             )
 
-            choice = response['choices'][0]
-            message = choice['message']
+            choice = response["choices"][0]
+            message = choice["message"]
             self.history.append(message)
 
-            if message.get('tool_calls'):
-                tool_results = await self._execute_tool_calls(message['tool_calls'])
+            if message.get("tool_calls"):
+                tool_results = await self._execute_tool_calls(message["tool_calls"])
                 self.history.extend(tool_results)
             else:
                 # 无工具调用 = 完成
-                return message.get('content', '')
+                return message.get("content", "")
 
         raise RuntimeError(f"Subagent exceeded maximum iterations ({self.max_iterations})")
 

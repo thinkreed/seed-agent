@@ -25,7 +25,7 @@ INJECTION_PATTERNS = [
 ]
 
 # 可疑二进制文件扩展名
-SUSPICIOUS_EXTENSIONS = {'.exe', '.dll', '.so', '.dylib', '.bin', '.dat', '.com'}
+SUSPICIOUS_EXTENSIONS = {".exe", ".dll", ".so", ".dylib", ".bin", ".dat", ".com"}
 
 
 def scan_for_injections(content: str) -> str | None:
@@ -63,7 +63,7 @@ def validate_skill_structure(skill_dir: Path) -> str | None:
         skill_dir_resolved = skill_dir.resolve()
 
         # 单次遍历检查所有安全问题
-        for item in skill_dir.rglob('*'):
+        for item in skill_dir.rglob("*"):
             # 检查符号链接逃逸
             if item.is_symlink():
                 resolved = item.resolve()

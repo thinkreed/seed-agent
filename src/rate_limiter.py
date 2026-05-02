@@ -149,7 +149,7 @@ class RollingWindowTracker:
         self.requests: deque[float] = deque()  # 使用 deque 优化头部删除
         self.total_requests_lifetime = 0
         self._lock = asyncio.Lock()
-        
+
         # 缓存：最小时间戳（避免重复 min() 调用）
         self._min_timestamp: float | None = None
         # 缓存：上次清理时间（惰性清理）
@@ -162,17 +162,17 @@ class RollingWindowTracker:
         """
         # 惰性清理：仅在需要时清理（窗口接近满或超过清理间隔）
         cleanup_interval = self.window_duration / 10  # 每 1/10 窗口清理一次
-        
+
         if now - self._last_cleanup_time < cleanup_interval and len(self.requests) < self.window_limit * 0.8:
             return  # 不需要清理
-        
+
         self._last_cleanup_time = now
-        
+
         # 使用 deque 高效清理过期记录（从头部删除）
         cutoff = now - self.window_duration
         while self.requests and self.requests[0] < cutoff:
             self.requests.popleft()
-        
+
         # 更新最小值缓存
         if self.requests:
             self._min_timestamp = self.requests[0]
@@ -205,7 +205,7 @@ class RollingWindowTracker:
             now = time.time()
             self.requests.append(now)
             self.total_requests_lifetime += 1
-            
+
             # 更新缓存（新请求时间戳肯定大于等于当前最小值）
             if self._min_timestamp is None:
                 self._min_timestamp = now
@@ -217,7 +217,7 @@ class RollingWindowTracker:
         """
         now = time.time()
         cutoff = now - self.window_duration
-        
+
         # 快速估算：使用缓存或遍历
         if self._min_timestamp is None or self._min_timestamp >= cutoff:
             # 所有请求都有效（或无请求）
@@ -225,7 +225,7 @@ class RollingWindowTracker:
         else:
             # 需要精确计算（较少情况）
             active_count = sum(1 for t in self.requests if t >= cutoff)
-        
+
         return max(0, self.window_limit - active_count)
 
     def get_reset_time(self) -> float:
@@ -242,16 +242,16 @@ class RollingWindowTracker:
         """
         if self.window_limit == 0:
             return 1.0
-        
+
         now = time.time()
         cutoff = now - self.window_duration
-        
+
         # 快速估算
         if self._min_timestamp is None or self._min_timestamp >= cutoff:
             active_count = len(self.requests)
         else:
             active_count = sum(1 for t in self.requests if t >= cutoff)
-        
+
         return min(1.0, active_count / self.window_limit)
 
     def get_state(self) -> RollingWindowState:
@@ -265,11 +265,11 @@ class RollingWindowTracker:
         """恢复状态（从持久化）"""
         now = time.time()
         cutoff = now - self.window_duration
-        
+
         # 只恢复未过期的请求（使用 deque）
         self.requests = deque(t for t in state.requests if t >= cutoff)
         self.total_requests_lifetime = state.total_requests_lifetime
-        
+
         # 更新缓存
         if self.requests:
             self._min_timestamp = self.requests[0]

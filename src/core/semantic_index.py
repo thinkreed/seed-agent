@@ -81,7 +81,7 @@ class TFIDFEncoder:
     def _tokenize(text: str) -> list[str]:
         """Simple tokenization: lowercase, split on non-alphanumeric."""
         import re
-        return re.findall(r'[a-z0-9]+', text.lower())
+        return re.findall(r"[a-z0-9]+", text.lower())
 
 
 class SemanticIndex:
@@ -106,7 +106,7 @@ class SemanticIndex:
     def add(self, doc_id: str, text: str) -> None:
         """Add a document to the index (before build)."""
         self.doc_ids.append(doc_id)
-        if not hasattr(self, '_texts'):
+        if not hasattr(self, "_texts"):
             self._texts = []
         self._texts.append(text)
 
@@ -119,7 +119,7 @@ class SemanticIndex:
         """Build the TF-IDF vocabulary and FAISS index."""
         import faiss
 
-        if not hasattr(self, '_texts') or not self._texts:
+        if not hasattr(self, "_texts") or not self._texts:
             return
 
         # Fit TF-IDF encoder

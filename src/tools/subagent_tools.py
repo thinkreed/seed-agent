@@ -149,7 +149,7 @@ async def wait_for_subagent_async(
     except asyncio.TimeoutError:
         return f"Error: Timeout waiting for subagent {task_id}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error: {e!s}"
 
 
 def wait_for_subagent(

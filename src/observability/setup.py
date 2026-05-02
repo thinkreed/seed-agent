@@ -133,7 +133,7 @@ def shutdown_observability():
 
     # 获取 TracerProvider 并强制 shutdown
     provider = trace.get_tracer_provider()
-    if hasattr(provider, 'shutdown'):
+    if hasattr(provider, "shutdown"):
         provider.shutdown()
         logger.info("Observability shutdown complete")
 

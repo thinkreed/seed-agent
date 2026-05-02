@@ -153,16 +153,16 @@ class QueueStats:
 
     # 计数
     submitted: dict[RequestPriority, int] = field(
-        default_factory=lambda: {p: 0 for p in RequestPriority}
+        default_factory=lambda: dict.fromkeys(RequestPriority, 0)
     )
     signaled: dict[RequestPriority, int] = field(
-        default_factory=lambda: {p: 0 for p in RequestPriority}
+        default_factory=lambda: dict.fromkeys(RequestPriority, 0)
     )
     rejected: dict[RequestPriority, int] = field(
-        default_factory=lambda: {p: 0 for p in RequestPriority}
+        default_factory=lambda: dict.fromkeys(RequestPriority, 0)
     )
     cancelled: dict[RequestPriority, int] = field(
-        default_factory=lambda: {p: 0 for p in RequestPriority}
+        default_factory=lambda: dict.fromkeys(RequestPriority, 0)
     )
 
     def record_submit(self, priority: RequestPriority):

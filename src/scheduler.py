@@ -66,7 +66,7 @@ class ScheduledTask:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'ScheduledTask':
+    def from_dict(cls, data: dict) -> "ScheduledTask":
         """反序列化"""
         return cls(
             task_id=data["task_id"],
@@ -100,7 +100,7 @@ class TaskScheduler:
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
         if TASKS_FILE.exists():
-            with open(TASKS_FILE, 'r', encoding='utf-8') as f:
+            with open(TASKS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 for task_data in data.get("tasks", []):
                     task = ScheduledTask.from_dict(task_data)
@@ -120,11 +120,11 @@ class TaskScheduler:
         }
 
         # 原子写入：先写临时文件，再替换原文件
-        temp_file = TASKS_FILE.with_suffix('.tmp')
+        temp_file = TASKS_FILE.with_suffix(".tmp")
         try:
-            with open(temp_file, 'w', encoding='utf-8') as f:
+            with open(temp_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            
+
             # 原子替换（replace 在 POSIX 上是原子操作，Windows 上尽量保证）
             temp_file.replace(TASKS_FILE)
         except OSError as e:
@@ -245,10 +245,10 @@ class TaskScheduler:
             raise  # CancelledError 应传播
         except TimeoutError as e:
             logger.warning(f"Task {task.task_id} timed out: {e}")
-            self._log_task_execution(task, f"Timeout: {str(e)}", success=False)
+            self._log_task_execution(task, f"Timeout: {e!s}", success=False)
         except Exception as e:
             logger.exception(f"Task {task.task_id} failed: {e}")
-            self._log_task_execution(task, f"Error: {str(e)}", success=False)
+            self._log_task_execution(task, f"Error: {e!s}", success=False)
 
     def _log_task_execution(self, task: ScheduledTask, result: str, success: bool = True) -> None:
         """记录任务执行日志"""
@@ -262,8 +262,8 @@ class TaskScheduler:
             "result": result[:500]
         }
 
-        with open(log_file, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
     def add_task(
         self,
@@ -352,7 +352,7 @@ class TaskScheduler:
             next_run = "disabled" if not task.enabled else f"{task.interval_seconds}s interval"
             lines.append(f"  {task_id}: {task.task_type} | {next_run} | {task.prompt[:50]}...")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     def get_task_status(self, task_id: str) -> dict:
         """获取任务状态"""

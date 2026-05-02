@@ -94,7 +94,7 @@ class SubagentManager:
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
-        return self.gateway.config.agents['defaults'].defaults.primary
+        return self.gateway.config.agents["defaults"].defaults.primary
 
     def register_status_callback(self, callback: Callable[[str, str], None]):
         """注册状态变更回调"""
@@ -305,7 +305,7 @@ class SubagentManager:
                 return None
             return self._results.get(task_id)
 
-    
+
     def aggregate_results(
         self,
         task_ids: list[str],

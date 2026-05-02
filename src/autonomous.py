@@ -71,7 +71,7 @@ class AutonomousExplorer:
     def _load_sop(self):
         """加载自主探索 SOP"""
         if SOP_PATH.exists():
-            with open(SOP_PATH, 'r', encoding='utf-8') as f:
+            with open(SOP_PATH, "r", encoding="utf-8") as f:
                 self._sop_content = f.read()
             logger.info(f"Loaded autonomous SOP from {SOP_PATH}")
         else:
@@ -239,7 +239,7 @@ class AutonomousExplorer:
         """加载TODO文件内容"""
         todo_path = SEED_DIR / "TODO.md"
         if todo_path.exists():
-            with open(todo_path, 'r', encoding='utf-8') as f:
+            with open(todo_path, "r", encoding="utf-8") as f:
                 return f.read()
         return ""
 
@@ -264,7 +264,7 @@ class AutonomousExplorer:
                 response = await self.agent.run("继续执行自主探索任务")
             except Exception as e:
                 logger.error(f"Agent execution failed at iteration {self._iteration_count}: {type(e).__name__}: {e}")
-                response = f"Error: {str(e)}"
+                response = f"Error: {e!s}"
             self._persist_state(response or "")
 
             if response and any(marker in response for marker in COMPLETION_MARKERS):
@@ -306,7 +306,7 @@ class AutonomousExplorer:
         # 获取 skills prompt（从 skill_loader）
         skills_prompt = ""
         best_skill_suggestion = ""
-        skill_loader = getattr(self.agent, 'skill_loader', None)
+        skill_loader = getattr(self.agent, "skill_loader", None)
         if skill_loader:
             skills_prompt = skill_loader.get_skills_prompt()
 
@@ -314,7 +314,7 @@ class AutonomousExplorer:
             signals = self._extract_task_signals(todo_content, has_todo)
             best_skill = skill_loader.select_best_skill(
                 signals=signals,
-                available_tools=getattr(self.agent.tools, 'get_tool_names', lambda: None)()
+                available_tools=getattr(self.agent.tools, "get_tool_names", lambda: None)()
             )
 
             if best_skill:
@@ -359,7 +359,7 @@ class AutonomousExplorer:
 
         if has_todo and todo_content:
             # 从 TODO 内容提取关键词
-            lines = todo_content.split('\n')
+            lines = todo_content.split("\n")
             for line in lines[:5]:
                 # 提取 TODO 条目中的关键词
                 if line.strip():

@@ -64,11 +64,11 @@ class ToolRegistry:
             return param_descriptions
 
         skip_headers: set[str] = {"args", "returns", "raises", "yields", "note", "example"}
-        for line in doc.split('\n'):
+        for line in doc.split("\n"):
             line = line.strip()
-            if not line or line.endswith(':'):
+            if not line or line.endswith(":"):
                 continue
-            match = re.match(r'([a-zA-Z_]\w*)\s*:\s*(.+)', line)
+            match = re.match(r"([a-zA-Z_]\w*)\s*:\s*(.+)", line)
             if match:
                 name, desc = match.group(1), match.group(2).strip()
                 if name.lower() not in skip_headers:

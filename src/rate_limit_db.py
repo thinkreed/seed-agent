@@ -56,7 +56,7 @@ class RateLimitSQLite:
 
     def _get_conn(self) -> sqlite3.Connection:
         """获取线程本地连接"""
-        if not hasattr(self._local, 'conn') or self._local.conn is None:
+        if not hasattr(self._local, "conn") or self._local.conn is None:
             try:
                 self._local.conn = sqlite3.connect(
                     str(self._db_path),
@@ -98,7 +98,7 @@ class RateLimitSQLite:
                         f"{type(e).__name__}: {e}. Retrying..."
                     )
                     # 重连：清除旧连接，下次调用 _get_conn 会创建新连接
-                    if hasattr(self._local, 'conn'):
+                    if hasattr(self._local, "conn"):
                         try:
                             self._local.conn.close()
                         except sqlite3.Error:
@@ -364,7 +364,7 @@ class RateLimitSQLite:
 
     def close(self):
         """关闭连接"""
-        if hasattr(self._local, 'conn') and self._local.conn:
+        if hasattr(self._local, "conn") and self._local.conn:
             self._local.conn.close()
             self._local.conn = None
 

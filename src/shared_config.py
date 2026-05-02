@@ -11,9 +11,9 @@
 便于用户覆盖和维护更新。
 """
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
-import os
 
 # 统一 SEED 目录定义（避免多文件重复定义）
 SEED_DIR = Path.home() / ".seed"

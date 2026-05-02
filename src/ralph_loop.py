@@ -30,9 +30,9 @@ from src.ralph_state import (
 )
 
 # 预编译正则表达式（性能优化）
-_PASSED_PATTERN = re.compile(r'(\d+)\s+passed')
-_FAILED_PATTERN = re.compile(r'(\d+)\s+failed')
-_ERROR_PATTERN = re.compile(r'(\d+)\s+error')
+_PASSED_PATTERN = re.compile(r"(\d+)\s+passed")
+_FAILED_PATTERN = re.compile(r"(\d+)\s+failed")
+_ERROR_PATTERN = re.compile(r"(\d+)\s+error")
 
 logger = logging.getLogger("seed_agent.ralph")
 
@@ -161,7 +161,7 @@ class RalphLoop:
                     self._cleanup()
                     raise
                 logger.warning(f"Recoverable error at iteration {self._iteration_count}: {e}")
-                response = f"Error: {str(e)}"
+                response = f"Error: {e!s}"
             except Exception as e:
                 # 未知错误：分类后决定处理方式
                 error_type, severity = classify_error(e)
@@ -170,7 +170,7 @@ class RalphLoop:
                     self._cleanup()
                     raise
                 logger.warning(f"Agent execution failed at iteration {self._iteration_count}: {e}")
-                response = f"Error: {str(e)}"
+                response = f"Error: {e!s}"
 
             # 5. 持久化状态
             self._persist_state(response)
@@ -292,7 +292,7 @@ class RalphLoop:
         """解析测试输出获取通过率"""
         # 处理 bytes 类型
         if isinstance(output, bytes):
-            output = output.decode('utf-8', errors='replace')
+            output = output.decode("utf-8", errors="replace")
 
         # 使用预编译正则匹配 pytest 输出格式
         passed_match = _PASSED_PATTERN.search(output)
@@ -331,7 +331,7 @@ class RalphLoop:
 
         try:
             if marker_path.exists():
-                content = marker_path.read_text(encoding='utf-8').strip()
+                content = marker_path.read_text(encoding="utf-8").strip()
                 if content == marker_content:
                     logger.info(f"Marker file verified: {marker_path}")
                     # 可选：清除标志文件
@@ -414,7 +414,7 @@ class RalphLoop:
         """加载任务 prompt（从文件）"""
         if self.task_prompt_path and self.task_prompt_path.exists():
             try:
-                content = self.task_prompt_path.read_text(encoding='utf-8')
+                content = self.task_prompt_path.read_text(encoding="utf-8")
                 return f"[Ralph Loop 迭代 {self._iteration_count}]\n\n{content}"
             except (PermissionError, OSError, UnicodeDecodeError) as e:
                 logger.warning(f"Failed to load task prompt from {self.task_prompt_path}: {e}")
@@ -480,7 +480,7 @@ class RalphLoop:
         task_prompt_path: Path,
         test_command: str = "pytest tests/ -v",
         pass_rate: float = 100
-    ) -> 'RalphLoop':
+    ) -> "RalphLoop":
         """创建测试驱动的 Ralph Loop"""
         return cls(
             agent_loop=agent_loop,
@@ -499,7 +499,7 @@ class RalphLoop:
         task_prompt_path: Path,
         marker_path: Path | None = None,
         marker_content: str = "DONE"
-    ) -> 'RalphLoop':
+    ) -> "RalphLoop":
         """创建标志文件驱动的 Ralph Loop"""
         return cls(
             agent_loop=agent_loop,

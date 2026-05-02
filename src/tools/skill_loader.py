@@ -56,27 +56,27 @@ _validate_skill_structure = validate_skill_structure
 
 # 显式导出列表（用于向后兼容和避免 ruff F401 警告）
 __all__ = [
-    'SkillLoader',
-    'get_loader',
-    '_get_loader',
-    'load_skill',
-    'list_skills',
-    'search_skill',
-    'MEMORY_GRAPH_CONFIG',
-    'SKILLS_DIR',
-    'PLATFORM_MAP',
-    'SNAPSHOT_PATH',
-    'INJECTION_PATTERNS',
-    '_build_manifest',
-    '_scan_for_injections',
-    '_validate_skill_structure',
-    'load_snapshot',
-    'save_snapshot',
-    'clear_snapshot',
-    'build_manifest',
-    'scan_for_injections',
-    'validate_skill_structure',
-    'validate_path_within_dir',
+    "INJECTION_PATTERNS",
+    "MEMORY_GRAPH_CONFIG",
+    "PLATFORM_MAP",
+    "SKILLS_DIR",
+    "SNAPSHOT_PATH",
+    "SkillLoader",
+    "_build_manifest",
+    "_get_loader",
+    "_scan_for_injections",
+    "_validate_skill_structure",
+    "build_manifest",
+    "clear_snapshot",
+    "get_loader",
+    "list_skills",
+    "load_skill",
+    "load_snapshot",
+    "save_snapshot",
+    "scan_for_injections",
+    "search_skill",
+    "validate_path_within_dir",
+    "validate_skill_structure",
 ]
 
 # ==================== 常量配置 ====================
@@ -91,11 +91,11 @@ MAX_COMPACT_CONTENT = 500  # 精简版 skill 内容最大字符数
 
 # 平台映射
 PLATFORM_MAP = {
-    'win32': 'windows',
-    'linux': 'linux',
-    'darwin': 'macos',
-    'windows': 'windows',
-    'macos': 'macos',
+    "win32": "windows",
+    "linux": "linux",
+    "darwin": "macos",
+    "windows": "windows",
+    "macos": "macos",
 }
 
 # 使用共享配置模块
@@ -103,28 +103,28 @@ try:
     from src.shared_config import get_memory_graph_config
     _mg_config = get_memory_graph_config()
     MEMORY_GRAPH_CONFIG = {
-        'half_life_days': _mg_config.half_life_days,
-        'ban_threshold': _mg_config.ban_threshold,
-        'min_attempts_for_ban': _mg_config.min_attempts_for_ban,
-        'memory_weight': _mg_config.memory_weight,
-        'trigger_weight': _mg_config.trigger_weight,
-        'cold_start_penalty': _mg_config.cold_start_penalty,
-        'recent_boost_factor': _mg_config.recent_boost_factor,
-        'recent_days': _mg_config.recent_days,
-        'enabled': True,  # Memory Graph 选择默认启用
+        "half_life_days": _mg_config.half_life_days,
+        "ban_threshold": _mg_config.ban_threshold,
+        "min_attempts_for_ban": _mg_config.min_attempts_for_ban,
+        "memory_weight": _mg_config.memory_weight,
+        "trigger_weight": _mg_config.trigger_weight,
+        "cold_start_penalty": _mg_config.cold_start_penalty,
+        "recent_boost_factor": _mg_config.recent_boost_factor,
+        "recent_days": _mg_config.recent_days,
+        "enabled": True,  # Memory Graph 选择默认启用
     }
 except ImportError:
     # Fallback: 使用默认值（避免循环导入问题）
     MEMORY_GRAPH_CONFIG = {
-        'half_life_days': 30,
-        'ban_threshold': 0.18,
-        'min_attempts_for_ban': 2,
-        'memory_weight': 0.6,
-        'trigger_weight': 0.4,
-        'cold_start_penalty': 0.5,
-        'recent_boost_factor': 0.2,
-        'recent_days': 30,
-        'enabled': True,
+        "half_life_days": 30,
+        "ban_threshold": 0.18,
+        "min_attempts_for_ban": 2,
+        "memory_weight": 0.6,
+        "trigger_weight": 0.4,
+        "cold_start_penalty": 0.5,
+        "recent_boost_factor": 0.2,
+        "recent_days": 30,
+        "enabled": True,
     }
 
 
@@ -157,7 +157,7 @@ class SkillLoader:
     def _normalize_str_list(value) -> list[str]:
         """规范化字符串或列表为字符串列表 (逗号分隔自动拆分)"""
         if isinstance(value, str):
-            return [t.strip() for t in value.split(',') if t.strip()]
+            return [t.strip() for t in value.split(",") if t.strip()]
         if isinstance(value, list):
             return [str(v) for v in value]
         return []
@@ -165,8 +165,8 @@ class SkillLoader:
     def _load_metadata(self):
         """加载所有 skill 元数据 (支持磁盘快照加速)"""
         snapshot = load_snapshot(self.skills_dir)
-        if snapshot and snapshot.get('skills'):
-            for name, meta in snapshot['skills'].items():
+        if snapshot and snapshot.get("skills"):
+            for name, meta in snapshot["skills"].items():
                 self._skills_meta[name] = meta
             return
 
@@ -183,24 +183,24 @@ class SkillLoader:
 
             try:
                 meta = self._parse_frontmatter(skill_file)
-                if not meta or 'name' not in meta:
+                if not meta or "name" not in meta:
                     continue
 
-                triggers = self._normalize_triggers(meta.get('triggers', []))
-                metadata = meta.get('metadata', {}) or {}
+                triggers = self._normalize_triggers(meta.get("triggers", []))
+                metadata = meta.get("metadata", {}) or {}
 
-                self._skills_meta[meta['name']] = {
-                    'path': str(skill_file),
-                    'dir': str(skill_dir),
-                    'name': meta['name'],
-                    'description': meta.get('description', '')[:300],
-                    'category': meta.get('category', 'general'),
-                    'version': meta.get('version', '1.0'),
-                    'triggers': triggers,
-                    'platforms': self._normalize_str_list(meta.get('platforms', [])),
-                    'allowed_tools': meta.get('allowed-tools', ''),
-                    'requires_tools': self._normalize_str_list(metadata.get('requires_tools', [])),
-                    'fallback_for_tools': self._normalize_str_list(metadata.get('fallback_for_tools', [])),
+                self._skills_meta[meta["name"]] = {
+                    "path": str(skill_file),
+                    "dir": str(skill_dir),
+                    "name": meta["name"],
+                    "description": meta.get("description", "")[:300],
+                    "category": meta.get("category", "general"),
+                    "version": meta.get("version", "1.0"),
+                    "triggers": triggers,
+                    "platforms": self._normalize_str_list(meta.get("platforms", [])),
+                    "allowed_tools": meta.get("allowed-tools", ""),
+                    "requires_tools": self._normalize_str_list(metadata.get("requires_tools", [])),
+                    "fallback_for_tools": self._normalize_str_list(metadata.get("fallback_for_tools", [])),
                 }
             except Exception:
                 continue
@@ -218,7 +218,7 @@ class SkillLoader:
     def _parse_frontmatter(self, skill_file: Path) -> dict | None:
         """解析 SKILL.md 的 YAML frontmatter"""
         try:
-            with open(skill_file, 'r', encoding='utf-8') as f:
+            with open(skill_file, "r", encoding="utf-8") as f:
                 content = f.read()
             if not content.startswith("---"):
                 return None
@@ -254,7 +254,7 @@ class SkillLoader:
         meta = self._skills_meta[name]
 
         # 平台检查
-        platforms = meta.get('platforms', [])
+        platforms = meta.get("platforms", [])
         if platforms:
             if not any(
                 p.lower() in self._platform.lower() or self._platform.lower() in p.lower()
@@ -263,13 +263,13 @@ class SkillLoader:
                 return False
 
         # requires_tools 检查
-        requires = meta.get('requires_tools', [])
+        requires = meta.get("requires_tools", [])
         if requires and available_tools is not None:
             if not all(tool in available_tools for tool in requires):
                 return False
 
         # fallback_for_tools 检查
-        fallback = meta.get('fallback_for_tools', [])
+        fallback = meta.get("fallback_for_tools", [])
         if fallback and available_tools is not None:
             if any(tool in available_tools for tool in fallback):
                 return False
@@ -282,7 +282,7 @@ class SkillLoader:
         prefix = "  - " if indent else "- "
         lines = [f"<category name='{cat}'>"]
         for meta in skills:
-            desc = meta['description'][:150]
+            desc = meta["description"][:150]
             lines.append(f"{prefix}**{meta['name']}**: {desc}")
         lines.extend(["</category>", ""])
         return lines
@@ -298,7 +298,7 @@ class SkillLoader:
 
         categories: dict[str, list[dict]] = {}
         for meta in visible_skills.values():
-            cat = meta.get('category', 'general')
+            cat = meta.get("category", "general")
             categories.setdefault(cat, []).append(meta)
 
         lines = [
@@ -311,8 +311,8 @@ class SkillLoader:
             ""
         ]
 
-        if 'general' in categories:
-            lines.extend(self._render_category('general', categories.pop('general')))
+        if "general" in categories:
+            lines.extend(self._render_category("general", categories.pop("general")))
 
         for cat, skills in sorted(categories.items()):
             lines.extend(self._render_category(cat, skills, indent=True))
@@ -325,10 +325,10 @@ class SkillLoader:
     def _tokenize_query(self, query: str) -> list[str]:
         """分词: 英文单词 + 中文字符串"""
         query_lower = query.lower()
-        en_words = re.findall(r'[a-zA-Z0-9_-]+', query_lower)
-        cn_words = re.findall(r'[\u4e00-\u9fa5]+', query_lower)
+        en_words = re.findall(r"[a-zA-Z0-9_-]+", query_lower)
+        cn_words = re.findall(r"[\u4e00-\u9fa5]+", query_lower)
         words = en_words + cn_words
-        return words if words else [query_lower]
+        return words or [query_lower]
 
     def _compute_match_score(self, name: str, meta: dict, query_words: list[str], query_lower: str) -> float:
         """计算单个 skill 的匹配分数（性能优化版）"""
@@ -342,7 +342,7 @@ class SkillLoader:
             score += 2.0
 
         # 2. Trigger 匹配 (优化：使用 set 实现快速查找)
-        triggers = meta.get('triggers', [])
+        triggers = meta.get("triggers", [])
         triggers_lower = {t.lower() for t in triggers}  # 预处理为 set
         trigger_matched = False
 
@@ -363,15 +363,15 @@ class SkillLoader:
 
         # 3. Description 关键词匹配 (仅在没有 trigger 匹配时)
         if not trigger_matched:
-            desc_words = set(re.findall(r'[a-zA-Z0-9_]+', meta['description'].lower()))
-            desc_words.update(re.findall(r'[\u4e00-\u9fa5]+', meta['description'].lower()))
+            desc_words = set(re.findall(r"[a-zA-Z0-9_]+", meta["description"].lower()))
+            desc_words.update(re.findall(r"[\u4e00-\u9fa5]+", meta["description"].lower()))
             for qw in query_words:
                 if any(qw in dw or dw in qw for dw in desc_words):
                     score += 0.5
 
         # 4. 模糊匹配 (仅英文，仅低分时)
         if score < 1.0 and query_words:
-            en_words = [w for w in query_words if re.match(r'[a-zA-Z0-9_-]+', w)]
+            en_words = [w for w in query_words if re.match(r"[a-zA-Z0-9_-]+", w)]
             if en_words:
                 all_keywords = {name_lower} | desc_words | set(t.lower() for t in triggers)
                 for qw in en_words:
@@ -427,14 +427,14 @@ class SkillLoader:
         if name not in self._skills_meta:
             return None
 
-        skill_dir = Path(self._skills_meta[name]['dir'])
-        skill_file = Path(self._skills_meta[name]['path'])
+        skill_dir = Path(self._skills_meta[name]["dir"])
+        skill_file = Path(self._skills_meta[name]["path"])
 
         if not skill_file.exists():
             return None
 
         try:
-            content = skill_file.read_text(encoding='utf-8')
+            content = skill_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             return None
 
@@ -467,10 +467,10 @@ class SkillLoader:
         if name not in self._skills_meta:
             return None
 
-        skill_dir = Path(self._skills_meta[name]['dir'])
+        skill_dir = Path(self._skills_meta[name]["dir"])
 
         # 路径穿越检测
-        if '..' in ref_path:
+        if ".." in ref_path:
             return "Error: Path traversal ('..') is not allowed."
 
         target = (skill_dir / ref_path).resolve()
@@ -481,7 +481,7 @@ class SkillLoader:
             return f"Reference file not found: {ref_path}"
 
         try:
-            return target.read_text(encoding='utf-8')
+            return target.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
             return f"Error reading reference: {e}"
 
@@ -509,8 +509,8 @@ class SkillLoader:
         available_tools: Set[str] | None = None
     ) -> str | None:
         """Memory Graph 增强的 Skill 选择算法"""
-        if not MEMORY_GRAPH_CONFIG.get('enabled', True):
-            query = ' '.join(signals) if signals else ''
+        if not MEMORY_GRAPH_CONFIG.get("enabled", True):
+            query = " ".join(signals) if signals else ""
             return self.match_skill(query, available_tools)
 
         # 基础过滤
@@ -532,18 +532,18 @@ class SkillLoader:
         scores = {}
         for skill_name in candidates:
             scores[skill_name] = self._compute_selection_score(skill_name, signals)
-        return sorted(scores.items(), key=lambda x: x[1]['score'], reverse=True)
+        return sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)
 
     def _select_best_candidate(self, ranked: list[tuple]) -> str | None:
         """从排序列表中返回第一个非禁用的候选"""
-        ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
-        min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
+        ban_threshold = MEMORY_GRAPH_CONFIG["ban_threshold"]
+        min_attempts = MEMORY_GRAPH_CONFIG["min_attempts_for_ban"]
 
         for skill_name, info in ranked:
-            stats = info.get('stats', {})
-            total = stats.get('total', 0)
+            stats = info.get("stats", {})
+            total = stats.get("total", 0)
             # 跳过被禁用的（尝试次数足够且分数过低）
-            if total >= min_attempts and info['score'] < ban_threshold:
+            if total >= min_attempts and info["score"] < ban_threshold:
                 continue
             return skill_name
         return None
@@ -553,26 +553,26 @@ class SkillLoader:
         stats = self._get_skill_outcome_stats(skill_name)
         trigger_score = self._compute_trigger_score(skill_name, signals)
 
-        memory_weight = MEMORY_GRAPH_CONFIG['memory_weight']
-        trigger_weight = MEMORY_GRAPH_CONFIG['trigger_weight']
-        cold_penalty = MEMORY_GRAPH_CONFIG['cold_start_penalty']
+        memory_weight = MEMORY_GRAPH_CONFIG["memory_weight"]
+        trigger_weight = MEMORY_GRAPH_CONFIG["trigger_weight"]
+        cold_penalty = MEMORY_GRAPH_CONFIG["cold_start_penalty"]
 
-        if stats['total'] == 0:
+        if stats["total"] == 0:
             # 冷启动
             score = trigger_score * cold_penalty
             memory_score = 0.0
-            mode = 'cold'
+            mode = "cold"
         else:
             memory_score = self._compute_memory_score(stats)
             score = memory_score * memory_weight + trigger_score * trigger_weight
-            mode = 'warm'
+            mode = "warm"
 
         return {
-            'score': score,
-            'mode': mode,
-            'stats': stats,
-            'trigger_score': trigger_score,
-            'memory_score': memory_score
+            "score": score,
+            "mode": mode,
+            "stats": stats,
+            "trigger_score": trigger_score,
+            "memory_score": memory_score
         }
 
     def _get_skill_outcome_stats(self, skill_name: str) -> dict:
@@ -583,12 +583,12 @@ class SkillLoader:
         except ImportError:
             logger.warning("session_db not available for skill stats")
             return {
-                'total': 0,
-                'successes': 0,
-                'failures': 0,
-                'laplace_rate': 0.5,
-                'last_timestamp': None,
-                'recent_success_rate': 0.0
+                "total": 0,
+                "successes": 0,
+                "failures": 0,
+                "laplace_rate": 0.5,
+                "last_timestamp": None,
+                "recent_success_rate": 0.0
             }
 
     def _compute_trigger_score(self, skill_name: str, signals: list[str]) -> float:
@@ -600,7 +600,7 @@ class SkillLoader:
         if not meta:
             return 0.0
 
-        triggers = meta.get('triggers', [])
+        triggers = meta.get("triggers", [])
         if not triggers:
             return 0.0
 
@@ -618,16 +618,16 @@ class SkillLoader:
 
     def _compute_memory_score(self, stats: dict) -> float:
         """计算记忆分数 (Laplace平滑 + 指数衰减 + 近期加成)"""
-        half_life = MEMORY_GRAPH_CONFIG['half_life_days']
-        recent_boost_factor = MEMORY_GRAPH_CONFIG['recent_boost_factor']
+        half_life = MEMORY_GRAPH_CONFIG["half_life_days"]
+        recent_boost_factor = MEMORY_GRAPH_CONFIG["recent_boost_factor"]
 
         # Laplace 平滑概率
-        successes = stats.get('successes', 0)
-        total = stats.get('total', 1)
+        successes = stats.get("successes", 0)
+        total = stats.get("total", 1)
         p = (successes + 1) / (total + 2)
 
         # 指数衰减
-        last_ts = stats.get('last_timestamp')
+        last_ts = stats.get("last_timestamp")
         if last_ts:
             try:
                 last_time = datetime.fromisoformat(last_ts)
@@ -639,7 +639,7 @@ class SkillLoader:
             decay_weight = 1.0
 
         # 近期成功加成
-        recent_rate = stats.get('recent_success_rate', 0.0)
+        recent_rate = stats.get("recent_success_rate", 0.0)
         recent_boost = recent_rate * recent_boost_factor
 
         return p * decay_weight + recent_boost
@@ -651,12 +651,12 @@ class SkillLoader:
         if name not in self._skills_meta:
             return None
 
-        skill_file = Path(self._skills_meta[name]['path'])
+        skill_file = Path(self._skills_meta[name]["path"])
         if not skill_file.exists():
             return None
 
         try:
-            content = skill_file.read_text(encoding='utf-8')
+            content = skill_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             return None
 
@@ -665,23 +665,23 @@ class SkillLoader:
             return self._extract_compact_skill(content)
 
         output = f"[SYSTEM: Skill '{name}' activated]\n\n## Strategy\n"
-        output += "".join(f"- {item}\n" for item in gene_fields.get('strategy', []))
+        output += "".join(f"- {item}\n" for item in gene_fields.get("strategy", []))
 
-        if gene_fields.get('avoid'):
+        if gene_fields.get("avoid"):
             output += "\n## AVOID\n"
-            output += "".join(f"- {item}\n" for item in gene_fields['avoid'])
+            output += "".join(f"- {item}\n" for item in gene_fields["avoid"])
 
-        if gene_fields.get('constraints'):
+        if gene_fields.get("constraints"):
             output += "\n## Constraints\n"
-            constraints = gene_fields['constraints']
+            constraints = gene_fields["constraints"]
             if isinstance(constraints, dict):
                 output += "".join(f"- {k}: {v}\n" for k, v in constraints.items())
             elif isinstance(constraints, list):
                 output += "".join(f"- {c}\n" for c in constraints)
 
-        if gene_fields.get('validation'):
+        if gene_fields.get("validation"):
             output += "\n## Validation\n"
-            output += "".join(f"- {item}\n" for item in gene_fields['validation'])
+            output += "".join(f"- {item}\n" for item in gene_fields["validation"])
 
         return output
 
@@ -697,10 +697,10 @@ class SkillLoader:
         try:
             frontmatter = yaml.safe_load(parts[1].strip())
             gene_fields = {}
-            for field in ['strategy', 'avoid', 'constraints', 'validation']:
+            for field in ["strategy", "avoid", "constraints", "validation"]:
                 if field in frontmatter:
                     gene_fields[field] = frontmatter[field]
-            return gene_fields if gene_fields else None
+            return gene_fields or None
         except yaml.YAMLError:
             return None
 
@@ -715,9 +715,9 @@ class SkillLoader:
 
         try:
             frontmatter = yaml.safe_load(parts[1].strip())
-            name = frontmatter.get('name', 'unknown')
-            desc = frontmatter.get('description', '')[:200]
-            triggers = frontmatter.get('triggers', [])
+            name = frontmatter.get("name", "unknown")
+            desc = frontmatter.get("description", "")[:200]
+            triggers = frontmatter.get("triggers", [])
 
             output = f"[SYSTEM: Skill '{name}' activated]\n\nDescription: {desc}\n"
             if triggers:
@@ -736,12 +736,12 @@ class SkillLoader:
     def _extract_first_instruction_block(self, body: str) -> str:
         """提取第一个指令块或关键段落"""
         # 提取第一个代码块
-        code_match = re.search(r'```[\w]*\n(.*?)\n```', body, re.DOTALL)
+        code_match = re.search(r"```[\w]*\n(.*?)\n```", body, re.DOTALL)
         if code_match:
             return f"```{code_match.group(1)[:200]}```"
 
         # 提取第一个要点列表
-        list_match = re.search(r'(\n[-*]\s+.+\n){1,5}', body)
+        list_match = re.search(r"(\n[-*]\s+.+\n){1,5}", body)
         if list_match:
             return list_match.group(0)[:300]
 
@@ -799,16 +799,16 @@ def list_skills() -> str:
 
     categories: dict[str, list[dict]] = {}
     for s in skills:
-        cat = s.get('category', 'general')
+        cat = s.get("category", "general")
         categories.setdefault(cat, []).append(s)
 
     output = "Available Skills:\n"
     for cat, items in sorted(categories.items()):
         output += f"\n  [{cat}]\n"
         for s in items:
-            desc = s.get('description', '')[:100]
+            desc = s.get("description", "")[:100]
             output += f"  - {s['name']}: {desc}\n"
-            triggers = s.get('triggers', [])
+            triggers = s.get("triggers", [])
             if triggers:
                 output += f"    Triggers: {', '.join(triggers[:5])}\n"
 
@@ -828,7 +828,7 @@ def search_skill(query: str) -> str:
     candidates = []
     query_lower = query.lower()
     for name, meta in loader._skills_meta.items():
-        if query_lower in name.lower() or query_lower in meta['description'].lower():
+        if query_lower in name.lower() or query_lower in meta["description"].lower():
             candidates.append(f"- {name}: {meta['description'][:100]}")
 
     if candidates:

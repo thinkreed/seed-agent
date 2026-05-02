@@ -17,7 +17,10 @@ logger = logging.getLogger("seed_agent.path")
 
 # 使用共享配置模块
 try:
-    from src.shared_config import get_path_validation_config, get_code_execution_security_config
+    from src.shared_config import (
+        get_code_execution_security_config,
+        get_path_validation_config,
+    )
     _path_config = get_path_validation_config()
     _security_config = get_code_execution_security_config()
     PROJECT_ROOT = _path_config.project_root
@@ -74,17 +77,17 @@ PROJECT_ROOT_RESOLVED = str(PROJECT_ROOT.resolve())
 
 
 # 预编译正则表达式（性能优化）
-_RE_WINDOWS_DRIVE = re.compile(r'^[a-zA-Z]:[/\\]')
-_RE_DOUBLE_DOT = re.compile(r'\.\.')  # 快速检测 .. 序列
+_RE_WINDOWS_DRIVE = re.compile(r"^[a-zA-Z]:[/\\]")
+_RE_DOUBLE_DOT = re.compile(r"\.\.")  # 快速检测 .. 序列
 
 # 代码安全预处理正则
-_RE_ESCAPE_BACKSLASH = re.compile(r'\\([a-zA-Z])')
-_RE_IFS_VAR = re.compile(r'\$\{?IFS\}?')
+_RE_ESCAPE_BACKSLASH = re.compile(r"\\([a-zA-Z])")
+_RE_IFS_VAR = re.compile(r"\$\{?IFS\}?")
 _RE_QUOTED_VAR = re.compile(r"\$'[a-zA-Z]+'")
-_RE_WHITESPACE = re.compile(r'\s+')
+_RE_WHITESPACE = re.compile(r"\s+")
 _RE_QUOTES = re.compile(r'["\']')
-_RE_BASE64_DECODE = re.compile(r'base64\s*(-d|--decode)')
-_RE_PWSH_ENCODED = re.compile(r'-enc|-encodedcommand')
+_RE_BASE64_DECODE = re.compile(r"base64\s*(-d|--decode)")
+_RE_PWSH_ENCODED = re.compile(r"-enc|-encodedcommand")
 
 
 @functools.lru_cache(maxsize=256)
@@ -122,7 +125,7 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
             return False, f"Path traversal blocked: '{path}' contains '..' sequences that escape allowed directories"
 
     # Windows 特殊攻击模式
-    if os.name == 'nt':
+    if os.name == "nt":
         # 检查驱动器字母模式
         if _RE_WINDOWS_DRIVE.match(path):
             try:
@@ -210,12 +213,12 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
     try:
         resolved_path = _resolve_path(path)
         content = None
-        detected_encoding = 'utf-8'
+        detected_encoding = "utf-8"
 
         # 尝试多种编码
-        for enc in ['utf-8', 'gbk', 'gb2312', 'latin-1']:
+        for enc in ["utf-8", "gbk", "gb2312", "latin-1"]:
             try:
-                with open(resolved_path, 'r', encoding=enc) as f:
+                with open(resolved_path, "r", encoding=enc) as f:
                     content = f.readlines()
                 detected_encoding = enc
                 break
@@ -234,14 +237,14 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
             return f"Empty range: lines {start}-{start+count-1} (file has {total_lines} lines)"
 
         result = "".join(f"{i+start_idx+1}|{line}" for i, line in enumerate(selected))
-        enc_note = f" (decoded as {detected_encoding})" if detected_encoding != 'utf-8' else ""
+        enc_note = f" (decoded as {detected_encoding})" if detected_encoding != "utf-8" else ""
         result += f"\n--- File: {resolved_path}{enc_note}, Lines: {start}-{end_idx}/{total_lines} ---"
         return result
 
     except FileNotFoundError:
         return f"Error: File not found - {path}"
     except Exception as e:
-        return f"Error reading file: {str(e)}"
+        return f"Error reading file: {e!s}"
 
 
 def file_write(path: str, content: str, mode: str = "overwrite") -> str:
@@ -259,10 +262,10 @@ def file_write(path: str, content: str, mode: str = "overwrite") -> str:
     try:
         resolved_path = _resolve_path(path)
 
-        write_mode = 'w' if mode == "overwrite" else 'a'
+        write_mode = "w" if mode == "overwrite" else "a"
         Path(resolved_path).parent.mkdir(parents=True, exist_ok=True)
 
-        with open(resolved_path, write_mode, encoding='utf-8') as f:
+        with open(resolved_path, write_mode, encoding="utf-8") as f:
             f.write(content)
 
         action = "written" if mode == "overwrite" else "appended"
@@ -290,7 +293,7 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
     try:
         resolved_path = _resolve_path(path)
 
-        with open(resolved_path, 'r', encoding='utf-8') as f:
+        with open(resolved_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         if old_str not in content:
@@ -303,7 +306,7 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
             count = 1
             new_content = content.replace(old_str, new_str, 1)
 
-        with open(resolved_path, 'w', encoding='utf-8') as f:
+        with open(resolved_path, "w", encoding="utf-8") as f:
             f.write(new_content)
 
         return f"Successfully edited {resolved_path}: replaced {count} occurrence(s)"
@@ -312,7 +315,7 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
         return f"Error: File not found - {path}"
     except Exception as e:
         logger.exception("file_edit failed")
-        return f"Error editing file: {str(e)}"
+        return f"Error editing file: {e!s}"
 
 
 # 语言映射表（用于代码执行）
@@ -329,11 +332,11 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
     code_lower = code.lower()
 
     # 预处理：移除常见绕过技巧
-    normalized_code = _RE_ESCAPE_BACKSLASH.sub(r'\1', code_lower)
-    normalized_code = _RE_IFS_VAR.sub('', normalized_code)
-    normalized_code = _RE_QUOTED_VAR.sub('', normalized_code)
-    normalized_code = _RE_WHITESPACE.sub(' ', normalized_code)
-    normalized_code = _RE_QUOTES.sub('', normalized_code)
+    normalized_code = _RE_ESCAPE_BACKSLASH.sub(r"\1", code_lower)
+    normalized_code = _RE_IFS_VAR.sub("", normalized_code)
+    normalized_code = _RE_QUOTED_VAR.sub("", normalized_code)
+    normalized_code = _RE_WHITESPACE.sub(" ", normalized_code)
+    normalized_code = _RE_QUOTES.sub("", normalized_code)
 
     if language in ("shell", "bash", "sh"):
         for danger in SHELL_BLACKLIST:
@@ -431,8 +434,8 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
             text=True,
             timeout=timeout,
             cwd=cwd,
-            encoding='utf-8',
-            errors='replace'
+            encoding="utf-8",
+            errors="replace"
         )
         exec_logger.info(f"Code execution completed: returncode={result.returncode}")
         return _format_execution_result(result, language)
@@ -450,8 +453,8 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
         exec_logger.error(f"OS error: {type(e).__name__}: {e}")
         return f"Error: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
-        exec_logger.exception(f"Code execution error: {str(e)}")
-        return f"Error executing code: {str(e)}"
+        exec_logger.exception(f"Code execution error: {e!s}")
+        return f"Error executing code: {e!s}"
 
 
 def ask_user(question: str, options: list | None = None) -> str:
@@ -496,7 +499,7 @@ def run_diagnosis(fix: bool = False) -> str:
             cmd,
             capture_output=True,
             text=True,
-            encoding='utf-8',
+            encoding="utf-8",
             cwd=str(DEFAULT_WORK_DIR),
             timeout=120
         )
@@ -509,7 +512,7 @@ def run_diagnosis(fix: bool = False) -> str:
     except subprocess.TimeoutExpired:
         return "Error: Diagnosis timed out (>120s)"
     except Exception as e:
-        return f"Error running diagnosis: {str(e)}"
+        return f"Error running diagnosis: {e!s}"
 
 
 def register_builtin_tools(registry):

@@ -52,7 +52,7 @@ def is_admin() -> bool:
 
 def open_process(pid: int) -> int | None:
     """打开进程获取句柄"""
-    if sys.platform != 'win32':
+    if sys.platform != "win32":
         logger.error("Memory scanning is currently Windows-only.")
         return None
 
@@ -165,11 +165,11 @@ def is_readable_region(protect: int) -> bool:
 
 def _prepare_search_pattern(pattern: str, mode: str) -> bytes | None:
     """Convert pattern string to bytes based on mode."""
-    if mode == 'string':
-        return pattern.encode('utf-8', errors='ignore')
-    elif mode == 'hex':
+    if mode == "string":
+        return pattern.encode("utf-8", errors="ignore")
+    elif mode == "hex":
         try:
-            return bytes.fromhex(pattern.replace(' ', ''))
+            return bytes.fromhex(pattern.replace(" ", ""))
         except ValueError:
             logger.error(f"Invalid hex pattern: {pattern}")
             return None
@@ -204,7 +204,7 @@ def _search_region(data: bytes, pattern: bytes, base_addr: int, max_results: int
 def scan_memory(
     pid: int,
     pattern: str,
-    mode: str = 'string',
+    mode: str = "string",
     max_results: int = 10
 ) -> list[dict]:
     """
@@ -216,7 +216,7 @@ def scan_memory(
         mode: 'hex' 或 'string'
         max_results: 最大返回结果数
     """
-    if sys.platform != 'win32':
+    if sys.platform != "win32":
         logger.error("Memory scanning is Windows-only.")
         return []
 
@@ -278,7 +278,7 @@ if __name__ == "__main__":
     current_pid = os.getpid()
     print(f"Current PID: {current_pid}")
 
-    results = scan_memory(current_pid, "Python", mode='string', max_results=5)
+    results = scan_memory(current_pid, "Python", mode="string", max_results=5)
     if results:
         for r in results:
             print(f"  Found at {r['address_hex']} in {r['region_type']} region")

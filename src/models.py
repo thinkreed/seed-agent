@@ -37,7 +37,7 @@ class RateLimitConfig(BaseModel):
     - rolling_window: 滚动窗口（如百炼 5小时6000次）
     - rpm: 固定 RPM（如 OpenAI 标准限流）
     """
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
     # 滚动窗口模式
     rollingWindowRequests: int | None = None  # 窗口内最大请求
@@ -84,7 +84,7 @@ class RateLimitConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
     id: str
     name: str
     contextWindow: int = 100000
@@ -93,32 +93,32 @@ class ModelConfig(BaseModel):
 
 
 class ProviderConfig(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
     baseUrl: str
     apiKey: str
     api: str = "openai-completions"
     models: list[ModelConfig]
     rateLimit: RateLimitConfig | None = None
 
-    @field_validator('apiKey', 'baseUrl')
+    @field_validator("apiKey", "baseUrl")
     @classmethod
     def strip_whitespace(cls, v: str) -> str:
         return v.strip() if v else v
 
 
 class AgentModelConfig(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
     primary: str
 
 
 class AgentConfig(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
     defaults: AgentModelConfig
 
 
 class QueueConfigModel(BaseModel):
     """队列配置（TurnTicket 模式）"""
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
     # CRITICAL 队列配置
     critical_max_size: int = 10
@@ -139,7 +139,7 @@ class QueueConfigModel(BaseModel):
 
 class TimeoutConfigModel(BaseModel):
     """等待超时配置（动态调整）"""
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
 
     # 基础超时（秒）
     critical_base_timeout: float = 30.0
@@ -155,7 +155,7 @@ class TimeoutConfigModel(BaseModel):
 
 
 class FullConfig(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
     models: dict[str, ProviderConfig]
     agents: dict[str, AgentConfig]
     queue: QueueConfigModel | None = None
@@ -177,44 +177,44 @@ def _migrate_v1_to_v2(data: dict) -> dict:
         迁移后的配置数据
     """
     # 检查是否已迁移
-    if data.get('version', 1) >= CONFIG_VERSION:
+    if data.get("version", 1) >= CONFIG_VERSION:
         return data
 
     migrated = False
 
     # 1. models.providers -> models
-    if 'models' in data and isinstance(data['models'], dict):
-        models_section = data['models']
-        if 'providers' in models_section:
-            data['models'] = models_section['providers']
+    if "models" in data and isinstance(data["models"], dict):
+        models_section = data["models"]
+        if "providers" in models_section:
+            data["models"] = models_section["providers"]
             migrated = True
             logger.debug("Migrated: models.providers -> models")
 
     # 2. agents.defaults.model -> agents.defaults.defaults.primary
-    if 'agents' in data and isinstance(data['agents'], dict):
-        agents_section = data['agents']
-        defaults = agents_section.get('defaults')
-        
+    if "agents" in data and isinstance(data["agents"], dict):
+        agents_section = data["agents"]
+        defaults = agents_section.get("defaults")
+
         if isinstance(defaults, dict):
             # 旧格式: {"defaults": {"model": "..."}}
-            if 'model' in defaults and 'defaults' not in defaults:
-                agents_section['defaults'] = {
-                    'defaults': {'primary': defaults['model']}
+            if "model" in defaults and "defaults" not in defaults:
+                agents_section["defaults"] = {
+                    "defaults": {"primary": defaults["model"]}
                 }
                 migrated = True
                 logger.debug("Migrated: agents.defaults.model -> agents.defaults.defaults.primary")
-            
+
             # 半迁移格式: {"defaults": {"primary": "..."}}
-            elif 'primary' in defaults and 'defaults' not in defaults:
-                agents_section['defaults'] = {
-                    'defaults': {'primary': defaults['primary']}
+            elif "primary" in defaults and "defaults" not in defaults:
+                agents_section["defaults"] = {
+                    "defaults": {"primary": defaults["primary"]}
                 }
                 migrated = True
                 logger.debug("Migrated: agents.defaults -> agents.defaults.defaults")
 
     # 标记迁移版本
     if migrated:
-        data['version'] = CONFIG_VERSION
+        data["version"] = CONFIG_VERSION
         logger.info(f"Config migrated to version {CONFIG_VERSION}")
 
     return data
@@ -237,7 +237,7 @@ def load_config(config_path: str | None = None) -> FullConfig:
 
     # 读取配置文件
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         raise ValueError(

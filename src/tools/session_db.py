@@ -32,28 +32,28 @@ try:
     from src.shared_config import get_memory_graph_config
     _config = get_memory_graph_config()
     MEMORY_GRAPH_CONFIG = {
-        'half_life_days': _config.half_life_days,
-        'ban_threshold': _config.ban_threshold,
-        'min_attempts_for_ban': _config.min_attempts_for_ban,
-        'memory_weight': _config.memory_weight,
-        'trigger_weight': _config.trigger_weight,
-        'cold_start_penalty': _config.cold_start_penalty,
-        'recent_boost_factor': _config.recent_boost_factor,
-        'recent_days': _config.recent_days,
-        'max_entries_per_skill': _config.max_entries_per_skill,
+        "half_life_days": _config.half_life_days,
+        "ban_threshold": _config.ban_threshold,
+        "min_attempts_for_ban": _config.min_attempts_for_ban,
+        "memory_weight": _config.memory_weight,
+        "trigger_weight": _config.trigger_weight,
+        "cold_start_penalty": _config.cold_start_penalty,
+        "recent_boost_factor": _config.recent_boost_factor,
+        "recent_days": _config.recent_days,
+        "max_entries_per_skill": _config.max_entries_per_skill,
     }
 except ImportError:
     # Fallback: 使用默认值（避免循环导入问题）
     MEMORY_GRAPH_CONFIG = {
-        'half_life_days': 30,
-        'ban_threshold': 0.18,
-        'min_attempts_for_ban': 2,
-        'memory_weight': 0.6,
-        'trigger_weight': 0.4,
-        'cold_start_penalty': 0.5,
-        'recent_boost_factor': 0.2,
-        'recent_days': 30,
-        'max_entries_per_skill': 5000,
+        "half_life_days": 30,
+        "ban_threshold": 0.18,
+        "min_attempts_for_ban": 2,
+        "memory_weight": 0.6,
+        "trigger_weight": 0.4,
+        "cold_start_penalty": 0.5,
+        "recent_boost_factor": 0.2,
+        "recent_days": 30,
+        "max_entries_per_skill": 5000,
     }
 
 # 数据库路径
@@ -75,13 +75,13 @@ def tokenize_for_fts5(text: str) -> str:
     - 空字符串直接返回，避免无意义处理
     """
     if not text:
-        return ''
+        return ""
 
     # 长文本不缓存，直接分词
     if len(text) > _MAX_CACHE_TEXT_LENGTH:
         if _HAS_JIEBA:
             tokens = jieba.cut(text)
-            return ' '.join(tokens)
+            return " ".join(tokens)
         return text
 
     # 短文本使用缓存
@@ -93,19 +93,19 @@ def _tokenize_cached(text: str) -> str:
     """缓存版本的分词函数，仅用于短文本"""
     if _HAS_JIEBA:
         tokens = jieba.cut(text)
-        return ' '.join(tokens)
+        return " ".join(tokens)
     return text
 
 
 # 预编译翻译表：一次性移除所有 FTS5 特殊字符和 Unicode 特殊字符
 # 性能优化：避免循环替换 21 次（11 FTS + 10 Unicode）
 _FTS_SPECIAL_CHARS = '"():*^#&|-!~'
-_UNICODE_SPECIAL_CHARS = '\u200b\u200c\u200d\u00ad\u2060\u2061\u2062\u2063\u2064\ufeff'
-_FTS_SANITIZE_TABLE = str.maketrans('', '', _FTS_SPECIAL_CHARS + _UNICODE_SPECIAL_CHARS)
+_UNICODE_SPECIAL_CHARS = "\u200b\u200c\u200d\u00ad\u2060\u2061\u2062\u2063\u2064\ufeff"
+_FTS_SANITIZE_TABLE = str.maketrans("", "", _FTS_SPECIAL_CHARS + _UNICODE_SPECIAL_CHARS)
 
 # 预编译 FTS5 关键字正则表达式
 _FTS_KEYWORDS_PATTERN = re.compile(
-    r'\b(?:AND|OR|NOT|NEAR|ORDER|BY|LIMIT|OFFSET)\b',
+    r"\b(?:AND|OR|NOT|NEAR|ORDER|BY|LIMIT|OFFSET)\b",
     flags=re.IGNORECASE
 )
 
@@ -123,7 +123,7 @@ def _sanitize_fts_query(query: str) -> str:
     5. 处理 Unicode 特殊字符
     """
     if not query:
-        return ''
+        return ""
 
     # 限制查询长度防止 DoS
     if len(query) > 200:
@@ -133,18 +133,18 @@ def _sanitize_fts_query(query: str) -> str:
     # 分词处理
     if _HAS_JIEBA:
         tokens = jieba.cut(query)
-        query = ' '.join(tokens)
+        query = " ".join(tokens)
 
     # 一次性移除所有特殊字符（性能优化）
     query = query.translate(_FTS_SANITIZE_TABLE)
 
     # 禁止 FTS5 关键字（预编译正则）
-    query = _FTS_KEYWORDS_PATTERN.sub('', query)
+    query = _FTS_KEYWORDS_PATTERN.sub("", query)
 
     # 移除数字开头的 token（FTS5 可能解析为 column filter）
     tokens = query.split()
     safe_tokens = [t for t in tokens if not t.isdigit() and len(t) > 0 and not t[0].isdigit()]
-    query = ' '.join(safe_tokens)
+    query = " ".join(safe_tokens)
 
     return query.strip()
 
@@ -223,7 +223,7 @@ class SessionDB:
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        for idx in ['session_id', 'timestamp', 'role']:
+        for idx in ["session_id", "timestamp", "role"]:
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_session_messages_{idx} ON session_messages({idx})")
         cursor.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS session_messages_fts
@@ -297,7 +297,7 @@ class SessionDB:
     def _create_gene_outcomes_indexes(self):
         """创建 gene_outcomes 索引"""
         cursor = self._ensure_conn().cursor()
-        for col in ['skill_name', 'timestamp', 'outcome_status', 'session_id']:
+        for col in ["skill_name", "timestamp", "outcome_status", "session_id"]:
             cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_gene_{col} ON gene_outcomes({col})")
 
         # 复合索引：优化近期统计查询 (skill_name + timestamp)
@@ -327,12 +327,12 @@ class SessionDB:
         blast_radius: dict | None = None
     ) -> str:
         """记录 Skill 执行结果到 gene_outcomes 表"""
-        if outcome not in ('success', 'failed', 'partial'):
+        if outcome not in ("success", "failed", "partial"):
             return f"Invalid outcome status: {outcome}"
         if not (0.0 <= score <= 1.0):
             return f"Invalid score: {score} (must be 0.0-1.0)"
 
-        signal_pattern = ' '.join(signals) if signals else ''
+        signal_pattern = " ".join(signals) if signals else ""
         timestamp = datetime.now().isoformat()
         blast_radius_json = json.dumps(blast_radius) if blast_radius else None
 
@@ -348,7 +348,7 @@ class SessionDB:
         except sqlite3.IntegrityError:
             return f"Duplicate outcome ignored: {skill_name} at {timestamp}"
         except Exception as e:
-            return f"Error recording outcome: {str(e)}"
+            return f"Error recording outcome: {e!s}"
 
     def _execute_skill_outcome_insert(self, skill_name, signal_pattern, outcome, score,
                                       session_id, timestamp, context, intent, blast_radius_json):
@@ -385,49 +385,49 @@ class SessionDB:
                 SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as recent_successes
             FROM gene_outcomes
             WHERE skill_name = ? AND timestamp > datetime('now', ?)
-        """, (skill_name, f'-{recent_days} days')).fetchone()
+        """, (skill_name, f"-{recent_days} days")).fetchone()
         return dict(recent_row) if recent_row else {}
 
     def _compute_ban_status(self, skill_name: str, total: int, selection_value: float) -> bool:
         """检查 Skill 是否应被禁用"""
-        min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
-        ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
+        min_attempts = MEMORY_GRAPH_CONFIG["min_attempts_for_ban"]
+        ban_threshold = MEMORY_GRAPH_CONFIG["ban_threshold"]
         return total >= min_attempts and selection_value < ban_threshold
 
     def get_skill_stats(self, skill_name: str) -> dict:
         """获取 Skill 的聚合统计信息"""
         try:
             row = self._get_skill_basic_stats(skill_name)
-            if not row or row.get('total', 0) == 0:
+            if not row or row.get("total", 0) == 0:
                 return self._get_default_stats()
 
-            total = row['total']
-            successes = row['successes']
-            failures = row['failures']
+            total = row["total"]
+            successes = row["successes"]
+            failures = row["failures"]
 
             rates = self._calculate_rates(skill_name, successes, total)
             return {
-                'total': total, 'successes': successes, 'failures': failures,
-                'success_rate': rates['success_rate'],
-                'laplace_rate': rates['laplace_rate'],
-                'recent_success_rate': rates['recent_success_rate'],
-                'last_success': row['last_success'],
-                'last_failure': row['last_failure'],
-                'avg_score': row['avg_score'],
-                'is_banned': rates['is_banned'],
-                'selection_value': rates['selection_value']
+                "total": total, "successes": successes, "failures": failures,
+                "success_rate": rates["success_rate"],
+                "laplace_rate": rates["laplace_rate"],
+                "recent_success_rate": rates["recent_success_rate"],
+                "last_success": row["last_success"],
+                "last_failure": row["last_failure"],
+                "avg_score": row["avg_score"],
+                "is_banned": rates["is_banned"],
+                "selection_value": rates["selection_value"]
             }
         except Exception as e:
-            return {'error': str(e)}
+            return {"error": str(e)}
 
     def _get_default_stats(self) -> dict:
         """返回冷启动默认统计"""
         return {
-            'total': 0, 'successes': 0, 'failures': 0,
-            'success_rate': 0.0, 'recent_success_rate': 0.0,
-            'last_success': None, 'last_failure': None,
-            'is_banned': False, 'selection_value': 0.0,
-            'laplace_rate': 0.5
+            "total": 0, "successes": 0, "failures": 0,
+            "success_rate": 0.0, "recent_success_rate": 0.0,
+            "last_success": None, "last_failure": None,
+            "is_banned": False, "selection_value": 0.0,
+            "laplace_rate": 0.5
         }
 
     def _calculate_rates(self, skill_name: str, successes: int, total: int) -> dict:
@@ -435,21 +435,21 @@ class SessionDB:
         success_rate = successes / total if total > 0 else 0.0
         laplace_rate = (successes + 1) / (total + 2)
 
-        recent_days: int = MEMORY_GRAPH_CONFIG['recent_days']  # type: ignore[assignment]
+        recent_days: int = MEMORY_GRAPH_CONFIG["recent_days"]  # type: ignore[assignment]
         recent_row = self._get_skill_recent_stats(skill_name, recent_days)
         recent_success_rate = 0.0
-        if recent_row and recent_row.get('recent_total', 0) > 0:
-            recent_success_rate = recent_row['recent_successes'] / recent_row['recent_total']
+        if recent_row and recent_row.get("recent_total", 0) > 0:
+            recent_success_rate = recent_row["recent_successes"] / recent_row["recent_total"]
 
         selection_value = self._compute_selection_value(skill_name, successes, total, recent_success_rate)
         is_banned = self._compute_ban_status(skill_name, total, selection_value)
 
         return {
-            'success_rate': success_rate,
-            'laplace_rate': laplace_rate,
-            'recent_success_rate': recent_success_rate,
-            'selection_value': selection_value,
-            'is_banned': is_banned
+            "success_rate": success_rate,
+            "laplace_rate": laplace_rate,
+            "recent_success_rate": recent_success_rate,
+            "selection_value": selection_value,
+            "is_banned": is_banned
         }
 
     def _compute_selection_value(
@@ -464,8 +464,8 @@ class SessionDB:
 
         公式: value = laplace_rate * decay_weight + recent_boost
         """
-        half_life = MEMORY_GRAPH_CONFIG['half_life_days']
-        recent_boost_factor = MEMORY_GRAPH_CONFIG['recent_boost_factor']
+        half_life = MEMORY_GRAPH_CONFIG["half_life_days"]
+        recent_boost_factor = MEMORY_GRAPH_CONFIG["recent_boost_factor"]
 
         # Laplace 平滑概率
         p = (successes + 1) / (total + 2)
@@ -478,8 +478,8 @@ class SessionDB:
                 WHERE skill_name = ?
             """, (skill_name,)).fetchone()
 
-            if last_row and last_row['last_time']:
-                last_time = datetime.fromisoformat(last_row['last_time'])
+            if last_row and last_row["last_time"]:
+                last_time = datetime.fromisoformat(last_row["last_time"])
                 age_days = (datetime.now() - last_time).days
                 decay_weight = 0.5 ** (age_days / half_life)
             else:
@@ -508,8 +508,8 @@ class SessionDB:
                 }
             ]
         """
-        min_attempts = MEMORY_GRAPH_CONFIG['min_attempts_for_ban']
-        ban_threshold = MEMORY_GRAPH_CONFIG['ban_threshold']
+        min_attempts = MEMORY_GRAPH_CONFIG["min_attempts_for_ban"]
+        ban_threshold = MEMORY_GRAPH_CONFIG["ban_threshold"]
 
         try:
             rows = self._ensure_conn().execute("""
@@ -525,17 +525,17 @@ class SessionDB:
 
             banned = []
             for row in rows:
-                stats = self.get_skill_stats(row['skill_name'])
-                if stats['selection_value'] < ban_threshold:
+                stats = self.get_skill_stats(row["skill_name"])
+                if stats["selection_value"] < ban_threshold:
                     banned.append({
-                        'skill_name': row['skill_name'],
-                        'total_attempts': row['total'],
-                        'current_value': stats['selection_value'],
-                        'success_rate': stats['success_rate'],
-                        'laplace_rate': stats['laplace_rate'],
-                        'last_time': row['last_time'],
-                        'ban_reason': 'Low success rate',
-                        'suggested_action': 'Review strategy or retire'
+                        "skill_name": row["skill_name"],
+                        "total_attempts": row["total"],
+                        "current_value": stats["selection_value"],
+                        "success_rate": stats["success_rate"],
+                        "laplace_rate": stats["laplace_rate"],
+                        "last_time": row["last_time"],
+                        "ban_reason": "Low success rate",
+                        "suggested_action": "Review strategy or retire"
                     })
 
             return banned
@@ -557,17 +557,17 @@ class SessionDB:
 
             skill_values = []
             for row in rows:
-                stats = self.get_skill_stats(row['skill_name'])
-                if stats['total'] > 0:
+                stats = self.get_skill_stats(row["skill_name"])
+                if stats["total"] > 0:
                     skill_values.append({
-                        'skill_name': row['skill_name'],
-                        'selection_value': stats['selection_value'],
-                        'success_rate': stats['success_rate'],
-                        'total': stats['total']
+                        "skill_name": row["skill_name"],
+                        "selection_value": stats["selection_value"],
+                        "success_rate": stats["success_rate"],
+                        "total": stats["total"]
                     })
 
             # 按选择分数排序
-            skill_values.sort(key=lambda x: x['selection_value'], reverse=True)
+            skill_values.sort(key=lambda x: x["selection_value"], reverse=True)
             return skill_values[:limit]
         except Exception as e:
             logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
@@ -614,7 +614,7 @@ class SessionDB:
         Returns:
             清理的记录总数
         """
-        max_entries = max_entries_per_skill or MEMORY_GRAPH_CONFIG['max_entries_per_skill']
+        max_entries = max_entries_per_skill or MEMORY_GRAPH_CONFIG["max_entries_per_skill"]
         total_deleted = 0
 
         try:
@@ -627,8 +627,8 @@ class SessionDB:
             """, (max_entries,)).fetchall()
 
             for row in rows:
-                skill_name = row['skill_name']
-                excess = row['count'] - max_entries
+                skill_name = row["skill_name"]
+                excess = row["count"] - max_entries
 
                 # 删除最旧的记录
                 cursor = self._ensure_conn().execute("""
@@ -665,14 +665,14 @@ class SessionDB:
         batch = []
         fts_batch = []
         for msg in messages:
-            ts = msg.get('timestamp', now)
-            role = msg.get('role', 'unknown')
-            content = msg.get('content', '')
-            tool_calls = self._parse_tool_calls(msg.get('tool_calls'))
-            tool_call_id = msg.get('tool_call_id')
+            ts = msg.get("timestamp", now)
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            tool_calls = self._parse_tool_calls(msg.get("tool_calls"))
+            tool_call_id = msg.get("tool_call_id")
 
-            batch.append((session_id, ts, role, content, tool_calls, tool_call_id, 'message'))
-            tokenized = tokenize_for_fts5(content) if content else ''
+            batch.append((session_id, ts, role, content, tool_calls, tool_call_id, "message"))
+            tokenized = tokenize_for_fts5(content) if content else ""
             fts_batch.append((session_id, tokenized, role))
         return batch, fts_batch
 
@@ -743,7 +743,7 @@ class SessionDB:
             return f"Session saved: {session_id} ({msg_count} messages)"
         except Exception as e:
             self._ensure_conn().rollback()
-            return f"Error saving session: {str(e)}"
+            return f"Error saving session: {e!s}"
 
     def load_session_history(self, session_id: str) -> str:
         """从 SQLite 加载指定会话"""
@@ -752,9 +752,9 @@ class SessionDB:
             if not row:
                 return f"Session not found: {session_id}"
 
-            actual_id = row['session_id']
-            msg_count = row['message_count']
-            summary = row['summary'] if 'summary' in row.keys() else None
+            actual_id = row["session_id"]
+            msg_count = row["message_count"]
+            summary = row["summary"] if "summary" in row.keys() else None
 
             messages = self._ensure_conn().execute("""
                 SELECT role, content, tool_calls_json, tool_call_id
@@ -775,7 +775,7 @@ class SessionDB:
 
             return output
         except Exception as e:
-            return f"Error loading session: {str(e)}"
+            return f"Error loading session: {e!s}"
 
     def _find_session(self, session_id: str) -> sqlite3.Row | None:
         """查找会话（精确匹配后尝试模糊匹配）"""
@@ -793,19 +793,19 @@ class SessionDB:
 
     def _format_session_message(self, msg: sqlite3.Row) -> str:
         """格式化单条会话消息"""
-        role = msg['role']
-        content = msg['content'] or ''
+        role = msg["role"]
+        content = msg["content"] or ""
 
-        if msg['tool_calls_json']:
+        if msg["tool_calls_json"]:
             try:
-                tc_list = json.loads(msg['tool_calls_json'])
-                tc_names = [tc.get('function', {}).get('name', 'unknown') for tc in tc_list]
+                tc_list = json.loads(msg["tool_calls_json"])
+                tc_names = [tc.get("function", {}).get("name", "unknown") for tc in tc_list]
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
             except Exception as e:
                 logger.debug(f"Failed to parse tool_calls_json: {e}")
 
-        if msg['tool_call_id']:
-            content = (msg['content'] or '')[:200]
+        if msg["tool_call_id"]:
+            content = (msg["content"] or "")[:200]
 
         if len(content) > 500:
             content = content[:500] + "..."
@@ -828,14 +828,14 @@ class SessionDB:
             output = "Recent Sessions:\n"
             for s in sessions:
                 output += f"- {s['session_id']}: {s['message_count']} msgs, {s['created_at']}\n"
-                if s['summary']:
-                    summary_text = s['summary'][:100] if s['summary'] else ''
+                if s["summary"]:
+                    summary_text = s["summary"][:100] if s["summary"] else ""
                     if summary_text:
                         output += f"  Summary: {summary_text}...\n"
 
             return output
         except Exception as e:
-            return f"Error listing sessions: {str(e)}"
+            return f"Error listing sessions: {e!s}"
 
     def search_history(self, keyword: str, limit: int = 20) -> str:
         """使用 FTS5 全文搜索"""
@@ -849,12 +849,12 @@ class SessionDB:
 
             query_expr = fts_query
 
-            has_cjk = any('\u4e00' <= c <= '\u9fff' for c in fts_query)
+            has_cjk = any("\u4e00" <= c <= "\u9fff" for c in fts_query)
 
             if has_cjk:
                 tokens = fts_query.split()
                 if len(tokens) > 1:
-                    query_expr = ' OR '.join(tokens)
+                    query_expr = " OR ".join(tokens)
 
             results = self._ensure_conn().execute("""
                 SELECT
@@ -873,9 +873,9 @@ class SessionDB:
 
             output = f"Found {len(results)} matches for '{keyword}':\n"
             for r in results:
-                content = r['content'] or ''
+                content = r["content"] or ""
                 matched_preview = self._highlight_match(content, keyword)
-                context = self._get_context(r['session_id'], r['msg_id'], 1)
+                context = self._get_context(r["session_id"], r["msg_id"], 1)
 
                 output += f"\n[{r['session_id']}] {r['timestamp']}\n"
                 output += f"{r['role']}: {matched_preview}\n"
@@ -885,7 +885,7 @@ class SessionDB:
         except sqlite3.OperationalError:
             return self._fallback_search(keyword, limit)
         except Exception as e:
-            return f"Error searching history: {str(e)}"
+            return f"Error searching history: {e!s}"
 
     def _fallback_search(self, keyword: str, limit: int = 20) -> str:
         """简单的字符串匹配搜索"""
@@ -902,16 +902,16 @@ class SessionDB:
 
             output = f"Found {len(results)} matches for '{keyword}':\n"
             for r in results:
-                content = r['content'] or ''
+                content = r["content"] or ""
                 matched_preview = self._highlight_match(content, keyword)
-                context = self._get_context(r['session_id'], r['msg_id'], 1)
+                context = self._get_context(r["session_id"], r["msg_id"], 1)
                 output += f"\n[{r['session_id']}] {r['timestamp']}\n"
                 output += f"{r['role']}: {matched_preview}\n"
                 output += f"Context: {context}\n"
 
             return output
         except Exception as e:
-            return f"Error in fallback search: {str(e)}"
+            return f"Error in fallback search: {e!s}"
 
     def _highlight_match(self, content: str, keyword: str, max_len: int = 300) -> str:
         """高亮匹配部分"""
@@ -1059,7 +1059,7 @@ class SessionDB:
             self._ensure_conn().commit()
             return "FTS5 index optimized."
         except Exception as e:
-            return f"Error optimizing index: {str(e)}"
+            return f"Error optimizing index: {e!s}"
 
     def rebuild_index(self):
         """重建 FTS5 索引"""
@@ -1070,7 +1070,7 @@ class SessionDB:
             self._ensure_conn().commit()
             return "FTS5 index rebuilt."
         except Exception as e:
-            return f"Error rebuilding index: {str(e)}"
+            return f"Error rebuilding index: {e!s}"
 
     def _generate_session_filename(self) -> str:
         """生成会话文件名"""
@@ -1083,7 +1083,7 @@ class SessionDB:
         except Exception as e:
             # __del__ 中不应抛出异常，但记录 debug 级别日志
             import sys
-            if hasattr(sys, '_getframe'):
+            if hasattr(sys, "_getframe"):
                 logger.debug(f"SessionDB close in __del__ failed: {e}")
 
 

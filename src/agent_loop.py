@@ -27,6 +27,15 @@ from typing import Any
 import tiktoken
 
 from src.client import LLMGateway
+
+# OpenTelemetry 可观测性（自动处理 ImportError）
+from src.observability import (
+    SPAN_TOOL_PREFIX,
+    StatusCode,
+    get_tracer,
+    is_observability_enabled,
+    set_tool_span_attributes,
+)
 from src.request_queue import RequestPriority
 from src.scheduler import TaskScheduler, register_scheduler_tools
 from src.subagent_manager import SubagentManager
@@ -42,15 +51,6 @@ from src.tools.ralph_tools import register_ralph_tools
 from src.tools.skill_loader import SkillLoader, register_skill_tools
 from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
 
-# OpenTelemetry 可观测性（自动处理 ImportError）
-from src.observability import (
-    SPAN_TOOL_PREFIX,
-    StatusCode,
-    get_tracer,
-    is_observability_enabled,
-    set_tool_span_attributes,
-)
-
 # 模块级 encoding 缓存：避免重复创建 tiktoken encoding 实例
 _ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
 
@@ -61,15 +61,12 @@ _OBSERVABILITY_ENABLED = is_observability_enabled()
 
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数异常"""
-    pass
 
 class ProviderNotFoundError(Exception):
     """提供商不存在异常"""
-    pass
 
 class ToolNotFoundError(Exception):
     """工具不存在异常"""
-    pass
 
 class AgentLoop:
     """Agent 主循环"""
@@ -160,12 +157,12 @@ class AgentLoop:
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
-        return self.gateway.config.agents['defaults'].defaults.primary
+        return self.gateway.config.agents["defaults"].defaults.primary
 
     def _get_tokenizer(self) -> tiktoken.Encoding | None:
         """获取当前模型的 tokenizer（带缓存）"""
         # Extract model name from "provider/model" format
-        model_name = self.model_id.split('/', 1)[-1] if '/' in self.model_id else self.model_id
+        model_name = self.model_id.split("/", 1)[-1] if "/" in self.model_id else self.model_id
 
         # 检查缓存
         if model_name in _ENCODING_CACHE:
@@ -191,8 +188,8 @@ class AgentLoop:
     def _get_model_context_window(self) -> int:
         """获取当前模型的上下文窗口大小"""
         # Extract provider_id and model_id from "provider/model" format
-        if '/' in self.model_id:
-            provider_id, model_id = self.model_id.split('/', 1)
+        if "/" in self.model_id:
+            provider_id, model_id = self.model_id.split("/", 1)
             provider = self.gateway.config.models.get(provider_id)
             if provider:
                 for m in provider.models:
@@ -208,17 +205,17 @@ class AgentLoop:
 
     def _cache_message_tokens(self, msg: dict) -> int:
         """计算并缓存单条消息的 token 数"""
-        content = msg.get('content', '')
+        content = msg.get("content", "")
         tokens = 0
         if isinstance(content, str):
             tokens = self._encode_text(content)
         elif isinstance(content, list):
             for item in content:
-                if isinstance(item, dict) and 'text' in item:
-                    tokens += self._encode_text(item['text'])
+                if isinstance(item, dict) and "text" in item:
+                    tokens += self._encode_text(item["text"])
         # tool_calls 也有 token 开销，简单估算
-        if msg.get('tool_calls'):
-            tc_text = json.dumps(msg['tool_calls'])
+        if msg.get("tool_calls"):
+            tc_text = json.dumps(msg["tool_calls"])
             tokens += self._encode_text(tc_text)
         return tokens
 
@@ -265,14 +262,14 @@ class AgentLoop:
         """将历史记录格式化为文本"""
         lines = []
         for msg in self.history:
-            role = msg.get('role', 'unknown')
-            content = msg.get('content', '')
-            if msg.get('tool_calls'):
-                tc_names = [tc['function']['name'] for tc in msg['tool_calls'] if tc.get('function')]
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            if msg.get("tool_calls"):
+                tc_names = [tc["function"]["name"] for tc in msg["tool_calls"] if tc.get("function")]
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
             if content:
                 lines.append(f"{role}: {content}")
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     async def _summarize_history(self) -> str | None:
         """使用 LLM 总结对话历史"""
@@ -290,7 +287,7 @@ class AgentLoop:
                 [{"role": "user", "content": prompt}],
                 tools=None
             )
-            summary = response['choices'][0]['message']['content']
+            summary = response["choices"][0]["message"]["content"]
             return summary.strip()
         except Exception as e:
             logger.warning(f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}", exc_info=True)
@@ -357,12 +354,12 @@ class AgentLoop:
         Returns:
             (next_input, new_iteration, should_return)
         """
-        choice = response['choices'][0]
-        message = choice['message']
+        choice = response["choices"][0]
+        message = choice["message"]
         self.history.append(message)
 
-        if message.get('tool_calls'):
-            tool_results = await self._execute_tool_calls(message['tool_calls'])
+        if message.get("tool_calls"):
+            tool_results = await self._execute_tool_calls(message["tool_calls"])
             self.history.extend(tool_results)
             return None, iteration, False  # Continue loop
         else:
@@ -370,7 +367,7 @@ class AgentLoop:
             await self._maybe_summarize()
             # Memory Graph: 评估并记录 Skill 执行结果
             self._evaluate_and_record_skill_outcomes(final_success=True)
-            return message.get('content', ''), iteration, True  # Return response
+            return message.get("content", ""), iteration, True  # Return response
 
     async def _handle_pending_input(self) -> bool:
         """处理中断/新输入
@@ -419,23 +416,23 @@ class AgentLoop:
     def _process_tool_delta(self, tc_list: list[dict], accumulator: dict[int, dict]):
         """处理流式响应中的 Tool Call 增量块"""
         for tc in tc_list:
-            idx = tc.get('index', 0)
+            idx = tc.get("index", 0)
             if idx not in accumulator:
                 accumulator[idx] = {
-                    'id': tc.get('id'),
-                    'type': tc.get('type', 'function'),
-                    'function': {'name': '', 'arguments': ''}
+                    "id": tc.get("id"),
+                    "type": tc.get("type", "function"),
+                    "function": {"name": "", "arguments": ""}
                 }
             acc = accumulator[idx]
-            if tc.get('id'):
-                acc['id'] = tc['id']
-            if tc.get('type'):
-                acc['type'] = tc['type']
-            func = tc.get('function', {})
-            if func.get('name'):
-                acc['function']['name'] = func['name']
-            if func.get('arguments'):
-                acc['function']['arguments'] += func['arguments']
+            if tc.get("id"):
+                acc["id"] = tc["id"]
+            if tc.get("type"):
+                acc["type"] = tc["type"]
+            func = tc.get("function", {})
+            if func.get("name"):
+                acc["function"]["name"] = func["name"]
+            if func.get("arguments"):
+                acc["function"]["arguments"] += func["arguments"]
 
     async def _process_final_completion(self, full_content: str):
         """处理对话完成的收尾工作 (总结 + 评估)"""
@@ -466,13 +463,13 @@ class AgentLoop:
             async for chunk in self.gateway.stream_chat_completion(
                 self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
             ):
-                delta = chunk['choices'][0].get('delta', {})
-                content = delta.get('content')
+                delta = chunk["choices"][0].get("delta", {})
+                content = delta.get("content")
                 if content:
                     full_content += content
                     yield {"type": "chunk", "content": content}
 
-                tc_list = delta.get('tool_calls')
+                tc_list = delta.get("tool_calls")
                 if tc_list:
                     self._process_tool_delta(tc_list, tool_calls_accumulator)
 
@@ -486,7 +483,7 @@ class AgentLoop:
             self.history.append({
                 "role": "assistant",
                 "content": full_content or None,
-                "tool_calls": tool_calls if tool_calls else None
+                "tool_calls": tool_calls or None
             })
 
             if tool_calls:
@@ -511,18 +508,18 @@ class AgentLoop:
         Returns:
             Error response list if conflict detected, None otherwise.
         """
-        write_tools = {'file_write', 'file_edit'}
+        write_tools = {"file_write", "file_edit"}
         seen_paths = {}
         for tc in tool_calls:
-            if tc['function']['name'] in write_tools:
+            if tc["function"]["name"] in write_tools:
                 try:
-                    args = json.loads(tc['function']['arguments']) if isinstance(tc['function']['arguments'], str) else tc['function']['arguments']
-                    path = args.get('path', '')
+                    args = json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
+                    path = args.get("path", "")
                     if path:
                         if path in seen_paths:
                             logger.warning(f"Concurrent write conflict detected: {path}")
-                            return [{"role": "tool", "tool_call_id": tc['id'], "content": f"Error: Concurrent write conflict on '{path}'. Please execute sequentially."} for tc in tool_calls]
-                        seen_paths[path] = tc['id']
+                            return [{"role": "tool", "tool_call_id": tc["id"], "content": f"Error: Concurrent write conflict on '{path}'. Please execute sequentially."} for tc in tool_calls]
+                        seen_paths[path] = tc["id"]
                 except Exception as e:
                     logger.debug(f"Failed to parse tool args for conflict check: {e}")
                     # 继续处理其他 tool calls，不中断检查流程
@@ -536,18 +533,18 @@ class AgentLoop:
     def _record_load_skill_outcome(self, tool_args: dict, tool_id: str, result: str, failed: bool = False):
         """记录 load_skill 的执行结果到 Memory Graph"""
         self._pending_skill_outcomes.append({
-            'skill_name': tool_args.get('name', ''),
-            'tool_call_id': tool_id,
-            'result': result,
-            'signals': self._extract_signals_from_context(),
-            **({'failed': True} if failed else {})
+            "skill_name": tool_args.get("name", ""),
+            "tool_call_id": tool_id,
+            "result": result,
+            "signals": self._extract_signals_from_context(),
+            **({"failed": True} if failed else {})
         })
 
     async def _run_single_tool_call(self, tool_call: dict) -> dict:
         """执行单个工具调用，包含追踪和记录逻辑"""
-        tool_id = tool_call['id']
-        tool_name = tool_call['function']['name']
-        tool_args = self._parse_tool_args(tool_call['function']['arguments'], tool_name)
+        tool_id = tool_call["id"]
+        tool_name = tool_call["function"]["name"]
+        tool_args = self._parse_tool_args(tool_call["function"]["arguments"], tool_name)
 
         span = self._start_tool_span(tool_name, tool_args)
         start_time = time.time()
@@ -565,12 +562,12 @@ class AgentLoop:
             self._finish_tool_span(span, start_time, success=False, error=e)
 
             # Memory Graph 跟踪 (失败情况)
-            self._record_load_skill_if_needed(tool_name, tool_args, tool_id, f"Error: {str(e)}", failed=True)
-            return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {str(e)}"}
+            self._record_load_skill_if_needed(tool_name, tool_args, tool_id, f"Error: {e!s}", failed=True)
+            return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {e!s}"}
 
     def _record_load_skill_if_needed(self, tool_name: str, tool_args: dict, tool_id: str, content: str, failed: bool):
         """如果是 load_skill 调用，记录其结果到 Memory Graph"""
-        if tool_name == 'load_skill':
+        if tool_name == "load_skill":
             self._record_load_skill_outcome(tool_args, tool_id, content, failed)
 
     def _start_tool_span(self, tool_name: str, tool_args: dict):
@@ -580,7 +577,7 @@ class AgentLoop:
             return None
 
         span = tracer.start_span(f"{SPAN_TOOL_PREFIX}{tool_name}")
-        set_tool_span_attributes(span, tool_name, file_path=tool_args.get('path', ''))
+        set_tool_span_attributes(span, tool_name, file_path=tool_args.get("path", ""))
         return span
 
     def _finish_tool_span(self, span, start_time: float, success: bool, error: Exception | None = None):
@@ -618,7 +615,7 @@ class AgentLoop:
                 if isinstance(result, asyncio.CancelledError):
                     raise result
 
-                tool_name = tool_calls[i].get('function', {}).get('name', 'unknown')
+                tool_name = tool_calls[i].get("function", {}).get("name", "unknown")
                 logger.error(f"Tool call {tool_name} failed: {type(result).__name__}: {result}")
                 processed_results.append({
                     "tool_call_id": tool_calls[i].get("id", "unknown"),
@@ -635,7 +632,7 @@ class AgentLoop:
         signals = []
         # 从最近几条消息中提取关键词
         for msg in self.history[-3:]:
-            content = msg.get('content', '')
+            content = msg.get("content", "")
             if isinstance(content, str):
                 # 简单提取：前 5 个词作为信号
                 words = content.split()[:5]
@@ -649,31 +646,31 @@ class AgentLoop:
             (outcome, score): e.g., ('success', 1.0), ('failed', 0.0)
         """
         result_str = str(result)
-        if failed or 'Error' in result_str or 'not found' in result_str.lower():
-            return 'failed', 0.0
-        elif 'Security Warning' in result_str:
-            return 'partial', 0.5
+        if failed or "Error" in result_str or "not found" in result_str.lower():
+            return "failed", 0.0
+        elif "Security Warning" in result_str:
+            return "partial", 0.5
         else:
-            return 'success', 1.0 if final_success else 0.8
+            return "success", 1.0 if final_success else 0.8
 
     def _evaluate_and_record_skill_outcomes(self, final_success: bool = True):
         """评估并记录待处理的 Skill 执行结果"""
         for pending in self._pending_skill_outcomes:
-            skill_name = pending.get('skill_name')
+            skill_name = pending.get("skill_name")
             if not skill_name:
                 continue
 
             try:
                 outcome, score = self._evaluate_skill_outcome(
-                    pending.get('result', ''),
-                    pending.get('failed', False),
+                    pending.get("result", ""),
+                    pending.get("failed", False),
                     final_success
                 )
                 _record_skill_outcome(
                     skill_name=skill_name,
                     outcome=outcome,
                     score=score,
-                    signals=pending.get('signals', []),
+                    signals=pending.get("signals", []),
                     session_id=self.session_id
                 )
             except Exception as e:

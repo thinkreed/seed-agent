@@ -35,8 +35,8 @@ def build_manifest(skills_dir: Path) -> str:
             if skill_file.exists():
                 stat = skill_file.stat()
                 manifest[str(skill_dir.name)] = {
-                    'mtime': stat.st_mtime,
-                    'size': stat.st_size,
+                    "mtime": stat.st_mtime,
+                    "size": stat.st_size,
                 }
 
     return hashlib.md5(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
@@ -56,12 +56,12 @@ def load_snapshot(skills_dir: Path) -> dict | None:
         if not SNAPSHOT_PATH.exists():
             return None
 
-        with open(SNAPSHOT_PATH, 'r', encoding='utf-8') as f:
+        with open(SNAPSHOT_PATH, "r", encoding="utf-8") as f:
             snapshot = json.load(f)
 
         # 检查 manifest 是否匹配
         current_manifest = build_manifest(skills_dir)
-        if snapshot.get('manifest') != current_manifest:
+        if snapshot.get("manifest") != current_manifest:
             return None  # 文件已变更，快照失效
 
         return snapshot
@@ -83,14 +83,14 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
         snapshot = {
-            'manifest': build_manifest(skills_dir),
-            'timestamp': datetime.now().isoformat(),
-            'skills': skills_meta,
+            "manifest": build_manifest(skills_dir),
+            "timestamp": datetime.now().isoformat(),
+            "skills": skills_meta,
         }
 
         # 原子写入
-        tmp_path = SNAPSHOT_PATH.with_suffix('.tmp')
-        with open(tmp_path, 'w', encoding='utf-8') as f:
+        tmp_path = SNAPSHOT_PATH.with_suffix(".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, SNAPSHOT_PATH)
     except OSError:

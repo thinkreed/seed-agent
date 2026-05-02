@@ -34,10 +34,10 @@ class NoOpSpan:
 
     def set_status(self, status: str, description: str | None = None) -> None:
         pass
-    
+
     def end(self) -> None:
         pass
-    
+
     def is_recording(self) -> bool:
         return False
 
@@ -103,7 +103,6 @@ def setup_observability(**kwargs) -> tuple[NoOpTracer, None]:
 
 def shutdown_observability() -> None:
     """NoOp 关闭"""
-    pass
 
 
 def classify_error(error: Exception) -> str:
@@ -125,17 +124,14 @@ def record_llm_span_error(span: NoOpSpan, error: Exception) -> str:
 
 def record_llm_success(provider: str, model: str, input_tokens: int, output_tokens: int, duration_ms: float) -> None:
     """记录成功（NoOp）"""
-    pass
 
 
 def record_llm_error(provider: str, model: str, duration_ms: float, error_type: str) -> None:
     """记录错误（NoOp）"""
-    pass
 
 
 def add_fallback_event(span: NoOpSpan, from_provider: str, to_provider: str, reason: str, attempt: int) -> None:
     """添加 Fallback 事件（NoOp）"""
-    pass
 
 
 def set_llm_span_attributes(
@@ -147,7 +143,6 @@ def set_llm_span_attributes(
     output_tokens: int | None = None,
 ) -> None:
     """设置 LLM Span 属性（NoOp）"""
-    pass
 
 
 def set_tool_span_attributes(
@@ -157,7 +152,6 @@ def set_tool_span_attributes(
     duration_ms: float | None = None,
 ) -> None:
     """设置工具 Span 属性（NoOp）"""
-    pass
 
 
 def set_subagent_span_attributes(
@@ -167,7 +161,6 @@ def set_subagent_span_attributes(
     status: str | None = None,
 ) -> None:
     """设置 Subagent Span 属性（NoOp）"""
-    pass
 
 
 def start_span(name: str, attributes: dict[str, SpanAttributeValue] | None = None) -> NoOpSpan:

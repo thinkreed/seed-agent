@@ -48,12 +48,12 @@ _ERROR_TYPE_RULES: list[tuple[ErrorType, list[str], ErrorSeverity]] = [
     (ErrorType.CONNECTION, ["connection", "connect", "network", "socket", "dns", "refused"], ErrorSeverity.MEDIUM),
     (ErrorType.PERMISSION, ["permission", "access denied", "unauthorized", "forbidden", "403"], ErrorSeverity.HIGH),
     (ErrorType.NOT_FOUND, ["not found", "404", "does not exist", "no such"], ErrorSeverity.LOW),
-    
+
     # 中优先级错误
     (ErrorType.CONTEXT_OVERFLOW, ["context", "overflow", "too long", "maximum context", "token limit"], ErrorSeverity.HIGH),
     (ErrorType.VALIDATION, ["validation", "invalid", "malformed", "parse error", "json"], ErrorSeverity.MEDIUM),
     (ErrorType.CONFIG, ["config", "configuration", "missing key", "invalid value"], ErrorSeverity.HIGH),
-    
+
     # 低优先级（兜底）
     (ErrorType.API_ERROR, ["api", "server", "500", "502", "503", "internal"], ErrorSeverity.MEDIUM),
 ]

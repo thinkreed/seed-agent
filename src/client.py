@@ -27,6 +27,20 @@ from typing import Any, Callable
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
 
 from src.models import FullConfig, ModelConfig, RateLimitConfig, load_config
+
+# OpenTelemetry 可观测性（自动处理 ImportError）
+from src.observability import (
+    SPAN_LLM_REQUEST,
+    StatusCode,
+    add_fallback_event,
+    classify_error,
+    get_tracer,
+    is_observability_enabled,
+    record_llm_error,
+    record_llm_span_error,
+    record_llm_success,
+    set_llm_span_attributes,
+)
 from src.rate_limit_db import RateLimitSQLite
 from src.rate_limiter import (
     RateLimiter,
@@ -42,20 +56,6 @@ from src.request_queue import (
     TurnWaitTimeout,
 )
 
-# OpenTelemetry 可观测性（自动处理 ImportError）
-from src.observability import (
-    SPAN_LLM_REQUEST,
-    StatusCode,
-    add_fallback_event,
-    classify_error,
-    get_tracer,
-    is_observability_enabled,
-    record_llm_error,
-    record_llm_span_error,
-    record_llm_success,
-    set_llm_span_attributes,
-)
-
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 
 logger = logging.getLogger("seed_agent")
@@ -64,7 +64,6 @@ logger = logging.getLogger("seed_agent")
 # 使用自定义限流异常，避免 OpenAI SDK 的类型限制
 class RateLimitTimeoutError(Exception):
     """自定义限流等待超时异常"""
-    pass
 
 
 @dataclass
@@ -291,7 +290,7 @@ class LLMGateway:
     def _load_queue_config(self) -> QueueConfig:
         """从配置加载 QueueConfig"""
         # 尝试从 FullConfig 的 queue 字段加载
-        if hasattr(self.config, 'queue') and self.config.queue:
+        if hasattr(self.config, "queue") and self.config.queue:
             return QueueConfig(
                 critical_max_size=self.config.queue.critical_max_size,
                 critical_backpressure_threshold=self.config.queue.critical_backpressure_threshold,
@@ -442,7 +441,7 @@ class LLMGateway:
             AsyncOpenAI 实例
         """
         if model_id:
-            provider_id = model_id.split('/')[0]
+            provider_id = model_id.split("/")[0]
             if provider_id in self.clients:
                 return self.clients[provider_id]
             available = list(self.clients.keys())
@@ -472,7 +471,7 @@ class LLMGateway:
             return self._model_config_cache[model_id]
 
         # 缓存未命中时的 fallback（兼容动态添加的模型）
-        provider_id, model_name = model_id.split('/', 1)
+        provider_id, model_name = model_id.split("/", 1)
         provider = self.config.models.get(provider_id)
         if not provider:
             available = list(self.config.models.keys())
@@ -491,7 +490,7 @@ class LLMGateway:
 
     def _get_fallback_model_id(self, original_model_id: str, fallback_provider: str) -> str | None:
         """获取 fallback provider 的等效模型"""
-        _, model_name = original_model_id.split('/', 1)
+        _, model_name = original_model_id.split("/", 1)
 
         # 尝试在 fallback provider 找同名模型
         if fallback_provider in self.config.models:
@@ -815,7 +814,7 @@ class LLMGateway:
         **kwargs
     ) -> dict:
         """内部方法：带跨 Provider 降级的非流式聊天补全"""
-        provider_id = model_id.split('/')[0]
+        provider_id = model_id.split("/")[0]
         active_provider = await self.get_active_provider()
         start_time = time.time()
 
@@ -830,7 +829,7 @@ class LLMGateway:
                     await self._fallback_chain.mark_healthy(provider_id)
 
                 duration_ms = self._calc_duration_ms(start_time)
-                usage = result.get('usage') if result else None
+                usage = result.get("usage") if result else None
                 self._record_success_metrics(span, active_provider, model_id, usage, duration_ms)
                 return result  # type: ignore[return-value]  # result is dict here
 
@@ -866,8 +865,8 @@ class LLMGateway:
         if usage is None:
             usage = {}
         if usage:
-            input_tokens = usage.get('prompt_tokens', 0)
-            output_tokens = usage.get('completion_tokens', 0)
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
 
             record_llm_success(
                 provider=provider,
@@ -882,7 +881,7 @@ class LLMGateway:
                 span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
                 span.set_status(StatusCode.OK)
 
-        if span and provider != model_id.split('/')[0]:
+        if span and provider != model_id.split("/")[0]:
             span.set_attribute("seed.provider", provider)
 
     def _handle_llm_error(self, span, provider: str, model_id: str, start_time: float, e: Exception):
@@ -926,7 +925,7 @@ class LLMGateway:
 
         active_provider = await self.get_active_provider()
 
-        for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, model_id.split('/')[0]):
+        for fallback_provider, fallback_model_id in self._iterate_fallback_models(model_id, model_id.split("/")[0]):
             if span:
                 add_fallback_event(
                     span,
@@ -942,7 +941,7 @@ class LLMGateway:
                 await self._fallback_chain.mark_healthy(fallback_provider)
 
                 duration_ms = self._calc_duration_ms(start_time)
-                usage = result.get('usage')
+                usage = result.get("usage")
                 self._record_success_metrics(span, fallback_provider, fallback_model_id, usage, duration_ms)
 
                 return True, result
@@ -963,9 +962,9 @@ class LLMGateway:
         model_config = self.get_model_config(model_id)
 
         # 清理空 tools 数组（部分 API 不允许空数组）
-        tools = kwargs.get('tools')
+        tools = kwargs.get("tools")
         if not tools:
-            kwargs.pop('tools', None)
+            kwargs.pop("tools", None)
 
         response = await client.chat.completions.create(
             model=model_config.id,
@@ -990,8 +989,8 @@ class LLMGateway:
             等待时间（秒），上限 60 秒防止过度阻塞
         """
         # 1. Check for Retry-After header (common in 429 Rate Limit errors)
-        if error and hasattr(error, 'response') and error.response is not None:
-            retry_after = error.response.headers.get('retry-after')
+        if error and hasattr(error, "response") and error.response is not None:
+            retry_after = error.response.headers.get("retry-after")
             if retry_after:
                 try:
                     wait_time = int(retry_after)
@@ -1036,7 +1035,7 @@ class LLMGateway:
         **kwargs
     ) -> AsyncGenerator[dict, None]:
         """内部方法：带跨 Provider 降级的流式聊天补全"""
-        provider_id = model_id.split('/')[0]
+        provider_id = model_id.split("/")[0]
         active_provider = await self.get_active_provider()
         last_error = None
         start_time = time.time()
@@ -1082,7 +1081,7 @@ class LLMGateway:
                     chunk_count += 1
 
                 if self._fallback_chain:
-                    await self._fallback_chain.mark_healthy(model_id.split('/')[0])
+                    await self._fallback_chain.mark_healthy(model_id.split("/")[0])
 
                 # 流式 token 估算
                 duration_ms = self._calc_duration_ms(start_time)
@@ -1176,9 +1175,9 @@ class LLMGateway:
         model_config = self.get_model_config(model_id)
 
         # 清理空 tools 数组（部分 API 不允许空数组）
-        tools = kwargs.get('tools')
+        tools = kwargs.get("tools")
         if not tools:
-            kwargs.pop('tools', None)
+            kwargs.pop("tools", None)
 
         response = await client.chat.completions.create(
             model=model_config.id,
@@ -1189,7 +1188,7 @@ class LLMGateway:
         )
 
         # 兼容不同 SDK 版本：AsyncStream vs 协程包装
-        if hasattr(response, '__aiter__'):
+        if hasattr(response, "__aiter__"):
             stream = response
         elif asyncio.iscoroutine(response):
             stream = await response
@@ -1204,7 +1203,7 @@ class LLMGateway:
         async for chunk in stream:
             try:
                 chunk_dict = chunk.model_dump()
-                if chunk_dict.get('choices'):
+                if chunk_dict.get("choices"):
                     yield chunk_dict
             except Exception as e:
                 logger.debug(f"Failed to serialize stream chunk: {type(e).__name__}")
