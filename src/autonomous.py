@@ -11,10 +11,12 @@
 import asyncio
 import logging
 import time
+import uuid
 from pathlib import Path
 from typing import Callable
 
 from src.ralph_state import (
+    RalphState,
     SEED_DIR,
     check_safety_limits,
     cleanup_state_file,
@@ -65,7 +67,9 @@ class AutonomousExplorer:
         self._ralph_start_time: float = 0  # 当前会话开始时间
         self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
         self._empty_response_count: int = 0  # 空响应计数
-        self._state_file: Path = SEED_DIR / "ralph_state.json"  # 状态持久化
+        # 状态持久化：使用唯一标识符避免多实例冲突
+        self._instance_id: str = uuid.uuid4().hex[:8]
+        self._state_file: Path = SEED_DIR / "ralph" / f"autonomous_{self._instance_id}_state.json"
         self._load_sop()
 
     def _load_sop(self):
@@ -182,8 +186,21 @@ class AutonomousExplorer:
         )
 
     def _load_or_init_state(self):
-        """加载或初始化状态（使用共享模块）"""
+        """加载或初始化状态（使用共享模块）
+
+        如果加载的状态已达到迭代上限，则重置状态开始新会话。
+        """
         state = load_or_init_state(self._state_file)
+
+        # 如果迭代次数已达到上限，重置状态开始新会话
+        if state.iteration >= RALPH_MAX_ITERATIONS:
+            logger.warning(
+                f"Loaded state has reached max iterations ({state.iteration}/{RALPH_MAX_ITERATIONS}), "
+                "resetting for new session"
+            )
+            self._cleanup_state()  # 清理旧状态文件
+            state = RalphState()  # 重新初始化
+
         self._iteration_count = state.iteration
         self._accumulated_duration = state.accumulated_duration
         self._ralph_start_time = state.start_time
@@ -250,7 +267,8 @@ class AutonomousExplorer:
             self._iteration_count += 1
 
             if self._check_safety_limits():
-                logger.info("Ralph Loop safety limit reached, generating report")
+                logger.info("Ralph Loop safety limit reached, cleaning up state for next session")
+                self._cleanup_state()  # 清理状态，防止下次启动时立即达到上限
                 break
 
             if self._check_completion_promise():

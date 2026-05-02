@@ -47,6 +47,7 @@ class RalphState:
         return {
             "iteration": self.iteration,
             "accumulated_duration": self.accumulated_duration,
+            "start_time": self.start_time,  # 保存原始开始时间
             "last_response": self.last_response[:500] if self.last_response else "",
             "timestamp": time.time(),
             "task_file": self.task_file,
@@ -59,7 +60,7 @@ class RalphState:
         return cls(
             iteration=data.get("iteration", 0),
             accumulated_duration=data.get("accumulated_duration", 0),
-            start_time=time.time(),  # 重置为当前时间
+            start_time=data.get("start_time", time.time()),  # 使用保存的开始时间
             last_response=data.get("last_response", ""),
             task_file=data.get("task_file", ""),
             completion_type=data.get("completion_type", ""),
@@ -115,7 +116,7 @@ def persist_state(
     completion_type: str = "",
 ) -> None:
     """
-    持久化当前状态到 JSON 文件
+    久化当前状态到 JSON 文件
 
     Args:
         state_file: 状态文件路径
@@ -136,6 +137,7 @@ def persist_state(
     state_data = {
         "iteration": iteration,
         "accumulated_duration": total_accumulated,
+        "start_time": start_time,  # 保存原始开始时间，恢复时使用
         "last_response": response[:500] if response else "",
         "timestamp": time.time(),
         "task_file": task_file,

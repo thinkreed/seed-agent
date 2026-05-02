@@ -13,6 +13,7 @@ import asyncio
 import logging
 import re
 import time
+import uuid
 from enum import Enum
 from pathlib import Path
 from typing import Callable
@@ -108,7 +109,9 @@ class RalphLoop:
         self._iteration_count: int = 0
         self._start_time: float = 0  # 当前会话开始时间
         self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
-        self._state_file: Path = SEED_DIR / "ralph" / f"task_{task_prompt_path.stem if task_prompt_path else 'unknown'}_state.json"
+        # 状态文件名：使用任务文件名或 UUID（避免多实例冲突）
+        state_name = task_prompt_path.stem if task_prompt_path else f"auto_{uuid.uuid4().hex[:8]}"
+        self._state_file: Path = SEED_DIR / "ralph" / f"task_{state_name}_state.json"
         self._is_running: bool = False
 
     # === 核心方法 ===
