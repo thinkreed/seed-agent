@@ -179,8 +179,10 @@ class SessionDB:
         if self.conn:
             try:
                 self.conn.close()
+            except sqlite3.OperationalError as e:
+                logger.warning(f"Database operational error on close: {e}")
             except sqlite3.Error as e:
-                logger.warning(f"Error closing database connection: {type(e).__name__}: {e}")
+                logger.warning(f"Database error on close: {type(e).__name__}: {e}")
             finally:
                 self.conn = None
 
@@ -810,9 +812,18 @@ class SessionDB:
 
             self._ensure_conn().commit()
             return f"Session saved: {session_id} ({msg_count} messages)"
+        except sqlite3.OperationalError as e:
+            self._ensure_conn().rollback()
+            logger.error(f"Database operational error saving session: {e}")
+            return f"Error saving session (database issue): {e!s}"
+        except sqlite3.IntegrityError as e:
+            self._ensure_conn().rollback()
+            logger.error(f"Database integrity error saving session: {e}")
+            return f"Error saving session (integrity issue): {e!s}"
         except Exception as e:
             self._ensure_conn().rollback()
-            return f"Error saving session: {e!s}"
+            logger.error(f"Unexpected error saving session: {type(e).__name__}: {e}", exc_info=True)
+            return f"Error saving session: {type(e).__name__}: {e!s}"
 
     def load_session_history(self, session_id: str) -> str:
         """从 SQLite 加载指定会话"""
@@ -843,8 +854,12 @@ class SessionDB:
                 output += self._format_session_message(msg) + "\n"
 
             return output
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database operational error loading session: {e}")
+            return f"Error loading session (database issue): {e!s}"
         except Exception as e:
-            return f"Error loading session: {e!s}"
+            logger.error(f"Unexpected error loading session: {type(e).__name__}: {e}")
+            return f"Error loading session: {type(e).__name__}: {e!s}"
 
     def _find_session(self, session_id: str) -> sqlite3.Row | None:
         """查找会话（精确匹配后尝试模糊匹配）"""
@@ -903,8 +918,12 @@ class SessionDB:
                         output += f"  Summary: {summary_text}...\n"
 
             return output
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database operational error listing sessions: {e}")
+            return f"Error listing sessions (database issue): {e!s}"
         except Exception as e:
-            return f"Error listing sessions: {e!s}"
+            logger.error(f"Unexpected error listing sessions: {type(e).__name__}: {e}")
+            return f"Error listing sessions: {type(e).__name__}: {e!s}"
 
     def search_history(self, keyword: str, limit: int = 20) -> str:
         """使用 FTS5 全文搜索"""
@@ -951,10 +970,15 @@ class SessionDB:
                 output += f"Context: {context}\n"
 
             return output
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as e:
+            logger.debug(f"FTS search failed, falling back to LIKE search: {e}")
             return self._fallback_search(keyword, limit)
+        except sqlite3.DatabaseError as e:
+            logger.error(f"Database error searching history: {e}")
+            return f"Error searching history (database issue): {e!s}"
         except Exception as e:
-            return f"Error searching history: {e!s}"
+            logger.error(f"Unexpected error searching history: {type(e).__name__}: {e}")
+            return f"Error searching history: {type(e).__name__}: {e!s}"
 
     def _fallback_search(self, keyword: str, limit: int = 20) -> str:
         """简单的字符串匹配搜索"""
@@ -979,8 +1003,12 @@ class SessionDB:
                 output += f"Context: {context}\n"
 
             return output
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database operational error in fallback search: {e}")
+            return f"Error in fallback search (database issue): {e!s}"
         except Exception as e:
-            return f"Error in fallback search: {e!s}"
+            logger.error(f"Unexpected error in fallback search: {type(e).__name__}: {e}")
+            return f"Error in fallback search: {type(e).__name__}: {e!s}"
 
     def _highlight_match(self, content: str, keyword: str, max_len: int = 300) -> str:
         """高亮匹配部分"""
@@ -1100,7 +1128,7 @@ class SessionDB:
             ).fetchone()
 
             if not meta:
-                return {"error": "Session not found"}
+                return {"error": "Session not found", "error_type": "not_found"}
 
             fts_size = self._ensure_conn().execute("""
                 SELECT COUNT(*) as fts_count
@@ -1116,8 +1144,12 @@ class SessionDB:
                 "fts_indexed_count": fts_size["fts_count"],
                 "has_summary": bool(meta["summary"])
             }
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database operational error getting session stats: {e}")
+            return {"error": str(e), "error_type": "database_operational"}
         except Exception as e:
-            return {"error": str(e)}
+            logger.error(f"Unexpected error getting session stats: {type(e).__name__}: {e}")
+            return {"error": str(e), "error_type": type(e).__name__}
 
     def optimize_index(self):
         """优化 FTS5 索引"""
@@ -1127,8 +1159,12 @@ class SessionDB:
             )
             self._ensure_conn().commit()
             return "FTS5 index optimized."
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database operational error optimizing index: {e}")
+            return f"Error optimizing index (database issue): {e!s}"
         except Exception as e:
-            return f"Error optimizing index: {e!s}"
+            logger.error(f"Unexpected error optimizing index: {type(e).__name__}: {e}")
+            return f"Error optimizing index: {type(e).__name__}: {e!s}"
 
     def rebuild_index(self):
         """重建 FTS5 索引"""
@@ -1138,8 +1174,12 @@ class SessionDB:
             )
             self._ensure_conn().commit()
             return "FTS5 index rebuilt."
+        except sqlite3.OperationalError as e:
+            logger.error(f"Database operational error rebuilding index: {e}")
+            return f"Error rebuilding index (database issue): {e!s}"
         except Exception as e:
-            return f"Error rebuilding index: {e!s}"
+            logger.error(f"Unexpected error rebuilding index: {type(e).__name__}: {e}")
+            return f"Error rebuilding index: {type(e).__name__}: {e!s}"
 
     def _generate_session_filename(self) -> str:
         """生成会话文件名"""
