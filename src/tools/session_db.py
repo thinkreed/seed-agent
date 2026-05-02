@@ -540,6 +540,9 @@ class SessionDB:
         计算选择分数 (GEP-style)
 
         公式: value = laplace_rate * decay_weight + recent_boost
+
+        注意: 此方法会执行额外的数据库查询获取时间戳。
+        推荐使用 _compute_selection_value_with_timestamp 以避免 N+1 查询问题。
         """
         half_life = MEMORY_GRAPH_CONFIG["half_life_days"]
         recent_boost_factor = MEMORY_GRAPH_CONFIG["recent_boost_factor"]
