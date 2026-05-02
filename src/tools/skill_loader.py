@@ -29,7 +29,24 @@ import threading
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-from typing import Set
+from typing import Set, TypedDict
+
+
+class SkillMeta(TypedDict, total=False):
+    """Skill 元数据类型定义"""
+    path: str
+    dir: str
+    name: str
+    description: str
+    category: str
+    version: str
+    triggers: list[str]
+    triggers_lower: set[str]
+    platforms: list[str]
+    allowed_tools: str
+    requires_tools: list[str]
+    fallback_for_tools: list[str]
+    desc_words: set[str]
 
 import yaml  # type: ignore[import-untyped]
 
@@ -142,7 +159,7 @@ class SkillLoader:
 
     def __init__(self, skills_dir: Path | None = None):
         self.skills_dir = skills_dir or SKILLS_DIR
-        self._skills_meta: dict[str, dict] = {}
+        self._skills_meta: dict[str, SkillMeta] = {}
         self._lock = threading.Lock()
 
         # LRU 缓存: 完整 skill 内容缓存
@@ -337,7 +354,7 @@ class SkillLoader:
         words = en_words + cn_words
         return words or [query_lower]
 
-    def _compute_match_score(self, name: str, meta: dict, query_words: list[str], query_lower: str) -> float:
+    def _compute_match_score(self, name: str, meta: SkillMeta, query_words: list[str], query_lower: str) -> float:
         """计算单个 skill 的匹配分数（性能优化版：使用预处理数据）"""
         score = 0.0
 
