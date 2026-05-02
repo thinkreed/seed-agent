@@ -439,14 +439,16 @@ class SkillLoader:
         except (OSError, UnicodeDecodeError):
             return None
 
-        # 安全检查
+        # 安全检查：Prompt Injection 检测
         injection = scan_for_injections(content)
         if injection:
-            content = f"[Security Warning] {injection}\n\n{content}"
+            # 高危注入模式：阻止加载，返回错误
+            logger.error(f"Prompt injection detected in skill '{name}': {injection}")
+            return f"[Security Error] Skill '{name}' blocked due to prompt injection pattern: {injection}. The skill content contains potentially malicious patterns that could manipulate the LLM behavior."
 
         symlink_check = validate_skill_structure(skill_dir)
         if symlink_check:
-            return f"[Security Warning] {symlink_check}"
+            return f"[Security Error] {symlink_check}"
 
         # Context Fencing
         fenced_content = f"<skill_content name='{name}'>\n{content}\n</skill_content>"
