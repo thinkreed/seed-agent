@@ -22,11 +22,18 @@ import json
 import logging
 import time
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TypedDict
 
 import tiktoken
 
 from src.client import LLMGateway
+
+
+class ToolResult(TypedDict):
+    """工具调用结果类型定义"""
+    tool_call_id: str
+    role: str
+    content: str
 
 # OpenTelemetry 可观测性（自动处理 ImportError）
 from src.observability import (
@@ -36,6 +43,14 @@ from src.observability import (
     is_observability_enabled,
     set_tool_span_attributes,
 )
+
+# Span 类型导入（用于类型注解）
+try:
+    from opentelemetry.trace import Span
+    _SPAN_TYPE_AVAILABLE = True
+except ImportError:
+    Span = None  # type: ignore[misc,assignment]
+    _SPAN_TYPE_AVAILABLE = False
 from src.request_queue import RequestPriority
 from src.scheduler import TaskScheduler, register_scheduler_tools
 from src.subagent_manager import SubagentManager
@@ -577,7 +592,7 @@ class AgentLoop:
         if tool_name == "load_skill":
             self._record_load_skill_outcome(tool_args, tool_id, content, failed)
 
-    def _start_tool_span(self, tool_name: str, tool_args: dict) -> Any:
+    def _start_tool_span(self, tool_name: str, tool_args: dict) -> "Span | None":
         """创建 OpenTelemetry Span"""
         tracer = get_tracer()
         if not (tracer and _OBSERVABILITY_ENABLED):
@@ -587,7 +602,7 @@ class AgentLoop:
         set_tool_span_attributes(span, tool_name, file_path=tool_args.get("path", ""))
         return span
 
-    def _finish_tool_span(self, span: Any, start_time: float, success: bool, error: Exception | None = None) -> None:
+    def _finish_tool_span(self, span: "Span | None", start_time: float, success: bool, error: Exception | None = None) -> None:
         """完成 Span 并记录指标"""
         if not span:
             return
@@ -597,12 +612,13 @@ class AgentLoop:
             span.set_attribute("seed.tool.duration_ms", duration_ms)
             span.set_status(StatusCode.OK)
         else:
-            span.record_exception(error)
-            span.set_attribute("seed.error.message", str(error)[:500])
-            span.set_status(StatusCode.ERROR, str(error)[:200])
+            if error is not None:
+                span.record_exception(error)
+            span.set_attribute("seed.error.message", str(error)[:500] if error else "Unknown error")
+            span.set_status(StatusCode.ERROR, str(error)[:200] if error else "Unknown error")
         span.end()
 
-    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict]:
+    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[ToolResult]:
         """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
         conflict_result = self._check_write_conflicts(tool_calls)
         if conflict_result:
@@ -615,7 +631,7 @@ class AgentLoop:
         )
 
         # 处理可能的异常结果，转换为错误响应
-        processed_results: list[dict[str, Any]] = []
+        processed_results: list[ToolResult] = []
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
                 # CancelledError 应传播，不应转换为错误响应
