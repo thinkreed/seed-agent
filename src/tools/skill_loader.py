@@ -29,24 +29,7 @@ import threading
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
-from typing import Set, TypedDict
-
-
-class SkillMeta(TypedDict, total=False):
-    """Skill 元数据类型定义"""
-    path: str
-    dir: str
-    name: str
-    description: str
-    category: str
-    version: str
-    triggers: list[str]
-    triggers_lower: set[str]
-    platforms: list[str]
-    allowed_tools: str
-    requires_tools: list[str]
-    fallback_for_tools: list[str]
-    desc_words: set[str]
+from typing import Any, Set, TypedDict
 
 import yaml  # type: ignore[import-untyped]
 
@@ -77,6 +60,23 @@ logger = logging.getLogger(__name__)
 _build_manifest = build_manifest
 _scan_for_injections = scan_for_injections
 _validate_skill_structure = validate_skill_structure
+
+
+class SkillMeta(TypedDict, total=False):
+    """Skill 元数据类型定义"""
+    path: str
+    dir: str
+    name: str
+    description: str
+    category: str
+    version: str
+    triggers: list[str]
+    triggers_lower: set[str]
+    platforms: list[str]
+    allowed_tools: str
+    requires_tools: list[str]
+    fallback_for_tools: list[str]
+    desc_words: set[str]
 
 # 显式导出列表（用于向后兼容和避免 ruff F401 警告）
 __all__ = [
@@ -331,10 +331,10 @@ class SkillLoader:
         if not visible_skills:
             return ""
 
-        categories: dict[str, list[dict]] = {}
+        categories: dict[str, list[dict[str, Any]]] = {}
         for meta in visible_skills.values():
             cat = meta.get("category", "general")
-            categories.setdefault(cat, []).append(meta)
+            categories.setdefault(cat, []).append(meta)  # type: ignore[arg-type]
 
         lines = [
             "<skills_index>",
@@ -519,9 +519,9 @@ class SkillLoader:
         except (OSError, UnicodeDecodeError) as e:
             return f"Error reading reference: {e}"
 
-    def get_skill_info(self, name: str) -> dict | None:
+    def get_skill_info(self, name: str) -> dict[str, Any] | None:
         """获取 skill 元数据 (不含完整内容)"""
-        return self._skills_meta.get(name)
+        return self._skills_meta.get(name)  # type: ignore[return-value]
 
     def refresh(self):
         """强制刷新元数据 (清除缓存并重新扫描)"""
@@ -835,15 +835,15 @@ def list_skills() -> str:
     if not skills:
         return "No skills available."
 
-    categories: dict[str, list[dict]] = {}
+    categories: dict[str, list[dict[str, Any]]] = {}
     for s in skills:
         cat = s.get("category", "general")
-        categories.setdefault(cat, []).append(s)
+        categories.setdefault(cat, []).append(s)  # type: ignore[arg-type]
 
     output = "Available Skills:\n"
     for cat, items in sorted(categories.items()):
         output += f"\n  [{cat}]\n"
-        for s in items:
+        for s in items:  # type: ignore[assignment]
             desc = s.get("description", "")[:100]
             output += f"  - {s['name']}: {desc}\n"
             triggers = s.get("triggers", [])

@@ -130,7 +130,7 @@ class AgentLoop:
         self.max_iterations = max_iterations
         self.summary_interval = summary_interval
 
-        self.history: list[dict] = []
+        self.history: list[dict[str, Any]] = []
         self._conversation_rounds: int = 0  # 用户消息计数
         self._last_summary: str | None = None  # 最近一次摘要
         self.session_id: str = session_id or _generate_session_filename()  # 当前会话ID
@@ -625,7 +625,7 @@ class AgentLoop:
             span.set_status(StatusCode.ERROR, str(error)[:200] if error else "Unknown error")
         span.end()
 
-    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[ToolResult]:
+    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict[str, Any]]:
         """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
         conflict_result = self._check_write_conflicts(tool_calls)
         if conflict_result:
@@ -638,7 +638,7 @@ class AgentLoop:
         )
 
         # 处理可能的异常结果，转换为错误响应
-        processed_results: list[ToolResult] = []
+        processed_results: list[dict[str, Any]] = []
         for i, result in enumerate(results):
             if isinstance(result, BaseException):
                 # CancelledError 应传播，不应转换为错误响应
