@@ -151,11 +151,26 @@ def _sanitize_fts_query(query: str) -> str:
 
 class SessionDB:
     """Session 数据库管理类 (SQLite + FTS5 + Memory Graph)
-    
+
     支持上下文管理器协议，确保资源正确释放。
+    使用单例模式防止多连接资源泄漏。
     """
 
+    _instance: "SessionDB | None" = None
+    _initialized: bool = False
+
+    def __new__(cls, db_path: str | None = None) -> "SessionDB":
+        """单例模式：确保全局只有一个 SessionDB 实例"""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, db_path: str | None = None):
+        # 避免重复初始化
+        if SessionDB._initialized:
+            return
+        SessionDB._initialized = True
+
         self.db_path = db_path or str(DB_PATH)
         self.conn: sqlite3.Connection | None = None
         self._init_db()
@@ -175,7 +190,7 @@ class SessionDB:
         self._create_schema()
 
     def close(self) -> None:
-        """关闭数据库连接，释放资源"""
+        """关闭数据库连接，释放资源并重置单例状态"""
         if self.conn:
             try:
                 self.conn.close()
@@ -185,6 +200,9 @@ class SessionDB:
                 logger.warning(f"Database error on close: {type(e).__name__}: {e}")
             finally:
                 self.conn = None
+                # 重置单例状态，允许重新初始化
+                SessionDB._instance = None
+                SessionDB._initialized = False
 
     def __enter__(self) -> "SessionDB":
         """上下文管理器入口"""
