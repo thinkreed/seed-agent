@@ -243,7 +243,7 @@ class TaskScheduler:
             logger.info(f"Task {task.task_id} cancelled")
             self._log_task_execution(task, "Cancelled", success=False)
             raise  # CancelledError 应传播
-        except TimeoutError as e:
+        except asyncio.TimeoutError as e:
             logger.warning(f"Task {task.task_id} timed out: {e}")
             self._log_task_execution(task, f"Timeout: {e!s}", success=False)
         except Exception as e:

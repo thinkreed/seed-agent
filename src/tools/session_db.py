@@ -405,7 +405,8 @@ class SessionDB:
             successes = row["successes"]
             failures = row["failures"]
 
-            rates = self._calculate_rates(skill_name, successes, total)
+            # 传递 basic_stats 避免 N+1 查询
+            rates = self._calculate_rates(skill_name, successes, total, basic_stats=row)
             return {
                 "total": total, "successes": successes, "failures": failures,
                 "success_rate": rates["success_rate"],
@@ -430,8 +431,15 @@ class SessionDB:
             "laplace_rate": 0.5
         }
 
-    def _calculate_rates(self, skill_name: str, successes: int, total: int) -> dict:
-        """计算各种分数和状态"""
+    def _calculate_rates(self, skill_name: str, successes: int, total: int, basic_stats: dict | None = None) -> dict:
+        """计算各种分数和状态
+
+        Args:
+            skill_name: Skill 名称
+            successes: 成功次数
+            total: 总次数
+            basic_stats: 基础统计信息（可选，用于避免重复查询）
+        """
         success_rate = successes / total if total > 0 else 0.0
         laplace_rate = (successes + 1) / (total + 2)
 
@@ -441,7 +449,9 @@ class SessionDB:
         if recent_row and recent_row.get("recent_total", 0) > 0:
             recent_success_rate = recent_row["recent_successes"] / recent_row["recent_total"]
 
-        selection_value = self._compute_selection_value(skill_name, successes, total, recent_success_rate)
+        # 使用传入的 basic_stats 避免 N+1 查询
+        last_timestamp = basic_stats.get("last_success") if basic_stats else None
+        selection_value = self._compute_selection_value_with_timestamp(successes, total, recent_success_rate, last_timestamp)
         is_banned = self._compute_ban_status(skill_name, total, selection_value)
 
         return {
@@ -451,6 +461,40 @@ class SessionDB:
             "selection_value": selection_value,
             "is_banned": is_banned
         }
+
+    def _compute_selection_value_with_timestamp(
+        self,
+        successes: int,
+        total: int,
+        recent_success_rate: float,
+        last_timestamp: str | None = None
+    ) -> float:
+        """
+        计算选择分数 (GEP-style) - 使用传入的时间戳避免重复查询
+
+        公式: value = laplace_rate * decay_weight + recent_boost
+        """
+        half_life = MEMORY_GRAPH_CONFIG["half_life_days"]
+        recent_boost_factor = MEMORY_GRAPH_CONFIG["recent_boost_factor"]
+
+        # Laplace 平滑概率
+        p = (successes + 1) / (total + 2)
+
+        # 计算衰减权重（使用传入的时间戳）
+        decay_weight = 1.0
+        if last_timestamp:
+            try:
+                last_time = datetime.fromisoformat(last_timestamp)
+                age_days = (datetime.now() - last_time).days
+                decay_weight = 0.5 ** (age_days / half_life)
+            except Exception as e:
+                logger.debug(f"Decay calculation failed: {type(e).__name__}")
+                decay_weight = 1.0
+
+        # 近期成功加成
+        recent_boost = recent_success_rate * recent_boost_factor
+
+        return p * decay_weight + recent_boost
 
     def _compute_selection_value(
         self,

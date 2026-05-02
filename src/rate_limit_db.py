@@ -86,6 +86,7 @@ class RateLimitSQLite:
             sqlite3.Error: 重试耗尽后抛出最后一次异常
         """
         last_error: sqlite3.Error | None = None
+        close_lock = threading.Lock()  # 线程安全锁保护连接关闭
 
         for attempt in range(max_retries):
             try:
@@ -97,13 +98,14 @@ class RateLimitSQLite:
                         f"DB operation failed (attempt {attempt + 1}/{max_retries}): "
                         f"{type(e).__name__}: {e}. Retrying..."
                     )
-                    # 重连：清除旧连接，下次调用 _get_conn 会创建新连接
-                    if hasattr(self._local, "conn"):
-                        try:
-                            self._local.conn.close()
-                        except sqlite3.Error:
-                            pass
-                        self._local.conn = None
+                    # 重连：使用锁保护连接关闭，防止竞态条件
+                    with close_lock:
+                        if hasattr(self._local, "conn") and self._local.conn is not None:
+                            try:
+                                self._local.conn.close()
+                            except sqlite3.Error:
+                                pass
+                            self._local.conn = None
                     time.sleep(0.1 * (attempt + 1))  # 递增等待时间
 
         logger.error(f"DB operation failed after {max_retries} retries")

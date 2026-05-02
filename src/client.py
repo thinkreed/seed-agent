@@ -170,6 +170,10 @@ class FallbackChain:
         async with self._lock:
             logger.warning(f"Provider {failed_provider} failed, attempting fallback")
 
+            # 清理缓存：确保不会返回已失效的 provider
+            if self._active_provider == failed_provider:
+                self._active_provider = None
+
             # 找到下一个可用 provider
             failed_idx = self._providers.index(failed_provider) if failed_provider in self._providers else -1
             for i, provider in enumerate(self._providers):
