@@ -264,22 +264,8 @@ class RalphLoop:
             return pass_rate >= required_rate
         except asyncio.TimeoutError:
             logger.warning("Test execution timed out")
-            # 尝试终止超时的进程
-            if proc is not None:
-                try:
-                    proc.kill()
-                    await proc.wait()  # 确保进程完全终止
-                except ProcessLookupError:
-                    pass  # 进程已结束
-                except OSError as e:
-                    logger.warning(f"Error killing timed-out process: {type(e).__name__}: {e}")
-                except asyncio.CancelledError:
-                    # 如果在等待进程终止时被取消，强制终止进程
-                    try:
-                        proc.kill()
-                    except (ProcessLookupError, OSError):
-                        pass
-                    raise  # 传播取消信号
+            # 终止超时进程（使用辅助方法）
+            await self._terminate_process(proc)
             return False
         except (ValueError, FileNotFoundError, PermissionError) as e:
             logger.warning(f"Test command setup failed: {type(e).__name__}: {e}")
@@ -287,6 +273,25 @@ class RalphLoop:
         except Exception as e:
             logger.warning(f"Test execution failed: {type(e).__name__}: {e}")
             return False
+
+    async def _terminate_process(self, proc: asyncio.subprocess.Process | None) -> None:
+        """安全终止进程（避免重复代码）"""
+        if proc is None:
+            return
+        try:
+            proc.kill()
+            await proc.wait()
+        except ProcessLookupError:
+            pass  # 进程已结束
+        except OSError as e:
+            logger.warning(f"Error killing process: {type(e).__name__}: {e}")
+        except asyncio.CancelledError:
+            # 取消时强制终止进程
+            try:
+                proc.kill()
+            except (ProcessLookupError, OSError):
+                pass
+            raise  # 传播取消信号
 
     def _parse_test_pass_rate(self, output: str | bytes) -> float:
         """解析测试输出获取通过率"""

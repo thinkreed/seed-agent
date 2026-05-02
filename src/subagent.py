@@ -31,6 +31,7 @@ from src.observability import (
     set_subagent_span_attributes,
 )
 from src.tools import ToolRegistry
+from src.tools.utils import parse_tool_arguments
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 
@@ -301,19 +302,7 @@ class SubagentInstance:
         for tool_call in tool_calls:
             tool_id = tool_call["id"]
             tool_name = tool_call["function"]["name"]
-            raw_args = tool_call["function"]["arguments"]
-
-            import json
-            try:
-                if isinstance(raw_args, str):
-                    raw_args = raw_args.strip()
-                    tool_args = json.loads(raw_args) if raw_args else {}
-                else:
-                    tool_args = raw_args or {}
-                if not isinstance(tool_args, dict):
-                    tool_args = {}
-            except (json.JSONDecodeError, TypeError, ValueError):
-                tool_args = {}
+            tool_args = parse_tool_arguments(tool_call["function"]["arguments"])
 
             try:
                 result = await self.tools.execute(tool_name, **tool_args)

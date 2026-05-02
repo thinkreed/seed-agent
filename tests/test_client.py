@@ -261,19 +261,23 @@ class TestResolveApiKey:
             self.gateway = LLMGateway("dummy")
 
     def test_resolve_env_var(self, valid_api_key_env):
-        result = self.gateway._resolve_api_key("${TEST_API_KEY}")
+        from src.client import _resolve_api_key
+        result = _resolve_api_key("${TEST_API_KEY}")
         assert result == "sk-test-12345"
 
     def test_resolve_env_var_missing(self):
-        result = self.gateway._resolve_api_key("${NONEXISTENT_VAR}")
+        from src.client import _resolve_api_key
+        result = _resolve_api_key("${NONEXISTENT_VAR}")
         assert result == ""
 
     def test_resolve_direct_key(self):
-        result = self.gateway._resolve_api_key("sk-direct-key")
+        from src.client import _resolve_api_key
+        result = _resolve_api_key("sk-direct-key")
         assert result == "sk-direct-key"
 
     def test_resolve_strips_whitespace(self):
-        result = self.gateway._resolve_api_key("  sk-key  ")
+        from src.client import _resolve_api_key
+        result = _resolve_api_key("  sk-key  ")
         assert result == "sk-key"
 
 class TestGetClient:

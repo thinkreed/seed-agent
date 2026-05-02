@@ -50,6 +50,7 @@ from src.tools.memory_tools import (
 from src.tools.ralph_tools import register_ralph_tools
 from src.tools.skill_loader import SkillLoader, register_skill_tools
 from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
+from src.tools.utils import parse_tool_arguments
 
 # 模块级 encoding 缓存：避免重复创建 tiktoken encoding 实例
 _ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
@@ -525,11 +526,6 @@ class AgentLoop:
                     # 继续处理其他 tool calls，不中断检查流程
         return None
 
-    def _parse_tool_args(self, raw_args: str | dict | None, tool_name: str) -> dict:
-        """鲁棒地解析工具参数"""
-        from src.tools.utils import parse_tool_arguments
-        return parse_tool_arguments(raw_args)
-
     def _record_load_skill_outcome(self, tool_args: dict, tool_id: str, result: str, failed: bool = False):
         """记录 load_skill 的执行结果到 Memory Graph"""
         self._pending_skill_outcomes.append({
@@ -544,7 +540,7 @@ class AgentLoop:
         """执行单个工具调用，包含追踪和记录逻辑"""
         tool_id = tool_call["id"]
         tool_name = tool_call["function"]["name"]
-        tool_args = self._parse_tool_args(tool_call["function"]["arguments"], tool_name)
+        tool_args = parse_tool_arguments(tool_call["function"]["arguments"])
 
         span = self._start_tool_span(tool_name, tool_args)
         start_time = time.time()
