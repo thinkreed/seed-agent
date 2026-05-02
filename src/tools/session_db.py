@@ -539,7 +539,7 @@ class SessionDB:
 
     def list_banned_skills(self) -> list[dict]:
         """
-        列出被禁用的 Skill（低于 ban_threshold）
+        列出被禁用的 Skill（低于 ban_threshold）（批量查询优化，避免 N+1）
 
         Returns:
             [
@@ -557,12 +557,14 @@ class SessionDB:
         ban_threshold = MEMORY_GRAPH_CONFIG["ban_threshold"]
 
         try:
+            # 单次批量查询：计算所有 skill 的统计数据
             rows = self._ensure_conn().execute("""
                 SELECT
                     skill_name,
                     COUNT(*) as total,
                     SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as successes,
-                    MAX(timestamp) as last_time
+                    MAX(timestamp) as last_time,
+                    AVG(outcome_score) as avg_score
                 FROM gene_outcomes
                 GROUP BY skill_name
                 HAVING COUNT(*) >= ?
@@ -570,14 +572,22 @@ class SessionDB:
 
             banned = []
             for row in rows:
-                stats = self.get_skill_stats(row["skill_name"])
-                if stats["selection_value"] < ban_threshold:
+                skill_name = row["skill_name"]
+                total = row["total"]
+                successes = row["successes"]
+
+                # 计算统计数据（避免调用 get_skill_stats）
+                success_rate = successes / total if total > 0 else 0.0
+                laplace_rate = (successes + 1) / (total + 2)
+                selection_value = laplace_rate
+
+                if selection_value < ban_threshold:
                     banned.append({
-                        "skill_name": row["skill_name"],
-                        "total_attempts": row["total"],
-                        "current_value": stats["selection_value"],
-                        "success_rate": stats["success_rate"],
-                        "laplace_rate": stats["laplace_rate"],
+                        "skill_name": skill_name,
+                        "total_attempts": total,
+                        "current_value": selection_value,
+                        "success_rate": success_rate,
+                        "laplace_rate": laplace_rate,
                         "last_time": row["last_time"],
                         "ban_reason": "Low success rate",
                         "suggested_action": "Review strategy or retire"
@@ -585,37 +595,51 @@ class SessionDB:
 
             return banned
         except Exception as e:
-            logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
+            logger.warning(f"Failed to list banned skills: {type(e).__name__}: {e}")
             return []
 
     def get_top_skills(self, limit: int = 10) -> list[dict]:
         """
-        获取成功率最高的 Skill
+        获取成功率最高的 Skill（批量查询优化，避免 N+1）
 
         Returns:
             按 selection_value 排序的 Skill 列表
         """
         try:
+            # 单次批量查询：计算所有 skill 的统计数据
             rows = self._ensure_conn().execute("""
-                SELECT DISTINCT skill_name FROM gene_outcomes
+                SELECT
+                    skill_name,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN outcome_status = 'success' THEN 1 ELSE 0 END) as successes
+                FROM gene_outcomes
+                GROUP BY skill_name
+                HAVING COUNT(*) > 0
             """).fetchall()
 
             skill_values = []
             for row in rows:
-                stats = self.get_skill_stats(row["skill_name"])
-                if stats["total"] > 0:
-                    skill_values.append({
-                        "skill_name": row["skill_name"],
-                        "selection_value": stats["selection_value"],
-                        "success_rate": stats["success_rate"],
-                        "total": stats["total"]
-                    })
+                skill_name = row["skill_name"]
+                total = row["total"]
+                successes = row["successes"]
+
+                # 计算统计数据（避免调用 get_skill_stats）
+                success_rate = successes / total if total > 0 else 0.0
+                laplace_rate = (successes + 1) / (total + 2)
+                selection_value = laplace_rate
+
+                skill_values.append({
+                    "skill_name": skill_name,
+                    "selection_value": selection_value,
+                    "success_rate": success_rate,
+                    "total": total
+                })
 
             # 按选择分数排序
             skill_values.sort(key=lambda x: x["selection_value"], reverse=True)
             return skill_values[:limit]
         except Exception as e:
-            logger.warning(f"Failed to get context messages: {type(e).__name__}: {e}")
+            logger.warning(f"Failed to get top skills: {type(e).__name__}: {e}")
             return []
 
     def search_outcomes_by_signal(self, signal: str, limit: int = 20) -> list[dict]:

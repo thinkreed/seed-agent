@@ -313,11 +313,14 @@ class SubagentInstance:
                 })
             except Exception as e:
                 error_type = type(e).__name__
-                error_msg = str(e)[:200]  # 截断长错误信息
+                full_error_msg = str(e)  # 保留完整错误信息
+                truncated_msg = full_error_msg[:200]  # 截断用于返回给 LLM
+                # 记录完整错误到日志（便于调试）
+                logger.error(f"Tool {tool_name} failed: {error_type}: {full_error_msg}")
                 results.append({
                     "role": "tool",
                     "tool_call_id": tool_id,
-                    "content": f"Error in {tool_name}: {error_type} - {error_msg}"
+                    "content": f"Error in {tool_name}: {error_type} - {truncated_msg}"
                 })
 
         return results

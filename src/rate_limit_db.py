@@ -52,6 +52,7 @@ class RateLimitSQLite:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self._lock = asyncio.Lock()
+        self._close_lock = threading.Lock()  # 线程安全锁保护连接关闭
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
@@ -86,7 +87,6 @@ class RateLimitSQLite:
             sqlite3.Error: 重试耗尽后抛出最后一次异常
         """
         last_error: sqlite3.Error | None = None
-        close_lock = threading.Lock()  # 线程安全锁保护连接关闭
 
         for attempt in range(max_retries):
             try:
@@ -98,8 +98,8 @@ class RateLimitSQLite:
                         f"DB operation failed (attempt {attempt + 1}/{max_retries}): "
                         f"{type(e).__name__}: {e}. Retrying..."
                     )
-                    # 重连：使用锁保护连接关闭，防止竞态条件
-                    with close_lock:
+                    # 重连：使用类属性锁保护连接关闭，防止竞态条件
+                    with self._close_lock:
                         if hasattr(self._local, "conn") and self._local.conn is not None:
                             try:
                                 self._local.conn.close()

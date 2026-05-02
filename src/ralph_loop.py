@@ -14,11 +14,16 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import Coroutine
 from enum import Enum
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from src.errors import ConfigurationError, ErrorSeverity, SeedAgentError, classify_error
+
+if TYPE_CHECKING:
+    from src.agent_loop import AgentLoop
+
 from src.ralph_state import (
     SEED_DIR,
     check_safety_limits,
@@ -73,11 +78,11 @@ class RalphLoop:
 
     def __init__(
         self,
-        agent_loop,
+        agent_loop: "AgentLoop",
         completion_type: CompletionType,
         completion_criteria: dict | None = None,
         task_prompt_path: Path | None = None,
-        on_iteration_complete: Callable | None = None,
+        on_iteration_complete: Callable[[int, str], None] | Callable[[int, str], Coroutine[Any, Any, None]] | None = None,
         max_iterations: int | None = None,
         max_duration: int | None = None,
         context_reset_interval: int | None = None

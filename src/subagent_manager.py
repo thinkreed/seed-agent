@@ -112,7 +112,7 @@ class SubagentManager:
         self,
         subagent_type: SubagentType,
         prompt: str,
-        custom_tools: set | None = None,
+        custom_tools: set[str] | None = None,
         custom_system_prompt: str | None = None,
         max_iterations: int | None = None,
         timeout: int | None = None,
@@ -322,7 +322,12 @@ class SubagentManager:
 
         Returns:
             str: 聚合后的结果摘要
+
+        Raises:
+            ValueError: max_length <= 0 时
         """
+        if max_length <= 0:
+            raise ValueError("max_length must be positive")
         summaries: list[str] = []
         for task_id in task_ids:
             result = self._results.get(task_id)

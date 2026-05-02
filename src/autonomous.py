@@ -12,8 +12,12 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.agent_loop import AgentLoop
 
 from src.ralph_state import (
     RalphState,
@@ -56,23 +60,27 @@ class AutonomousExplorer:
 
     IDLE_TIMEOUT = 2 * 60 * 60  # 2小时（秒）
 
-    def __init__(self, agent_loop, on_explore_complete: Callable | None = None):
+    def __init__(
+        self,
+        agent_loop: "AgentLoop",
+        on_explore_complete: Callable[[str], None] | Callable[[str], Coroutine[Any, Any, None]] | None = None
+    ):
         self.agent = agent_loop
         self.on_explore_complete = on_explore_complete
         self._last_activity: float = time.time()
         self._running: bool = False
-        self._task: asyncio.Task | None = None
+        self._task: asyncio.Task[None] | None = None
         self._sop_content: str | None = None
         self._iteration_count: int = 0  # Ralph Loop 迭代计数
-        self._ralph_start_time: float = 0  # 当前会话开始时间
-        self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
+        self._ralph_start_time: float = 0.0  # 当前会话开始时间
+        self._accumulated_duration: float = 0.0  # 累计执行时间（跨会话）
         self._empty_response_count: int = 0  # 空响应计数
         # 状态持久化：使用唯一标识符避免多实例冲突
         self._instance_id: str = uuid.uuid4().hex[:8]
         self._state_file: Path = SEED_DIR / "ralph" / f"autonomous_{self._instance_id}_state.json"
         self._load_sop()
 
-    def _load_sop(self):
+    def _load_sop(self) -> None:
         """加载自主探索 SOP"""
         if SOP_PATH.exists():
             with open(SOP_PATH, "r", encoding="utf-8") as f:

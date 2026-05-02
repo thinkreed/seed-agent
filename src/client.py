@@ -65,6 +65,9 @@ logger = logging.getLogger("seed_agent")
 class RateLimitTimeoutError(Exception):
     """自定义限流等待超时异常"""
 
+    def __init__(self, message: str = "Rate limit wait timeout") -> None:
+        super().__init__(message)
+
 
 # === 模块级辅助函数（避免静态方法开销） ===
 

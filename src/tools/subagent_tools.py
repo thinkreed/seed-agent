@@ -11,6 +11,7 @@ Subagent 工具集 - 为 AgentLoop 提供 Subagent 操作接口
 
 import asyncio
 import logging
+import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,7 +23,10 @@ logger = logging.getLogger(__name__)
 _subagent_manager: "SubagentManager | None" = None
 
 # 后台任务集合（防止 asyncio.create_task 返回值被垃圾回收）
-_background_tasks: set[asyncio.Task] = set()
+_background_tasks: set[asyncio.Task[None]] = set()
+
+# 线程安全锁（保护全局状态）
+_manager_lock = threading.Lock()
 
 
 def init_subagent_manager(manager):

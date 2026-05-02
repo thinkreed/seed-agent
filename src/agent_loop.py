@@ -63,11 +63,22 @@ _OBSERVABILITY_ENABLED = is_observability_enabled()
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数异常"""
 
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 class ProviderNotFoundError(Exception):
     """提供商不存在异常"""
 
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 class ToolNotFoundError(Exception):
     """工具不存在异常"""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
 
 class AgentLoop:
     """Agent 主循环"""
@@ -135,7 +146,7 @@ class AgentLoop:
 
         # 加载 skills (渐进式披露: 仅注入索引)
         self.skill_loader = SkillLoader()
-        self._available_tools: set[str] | None = None
+        self._available_tools: set[str] = set()  # 初始化为空集合而非 None
 
     def _setup_subsystems(self, system_prompt: str | None = None) -> None:
         """初始化子系统（Subagent、调度器、Prompt）"""
@@ -618,8 +629,17 @@ class AgentLoop:
                     "role": "tool",
                     "content": f"Error: Tool execution failed - {type(result).__name__}: {str(result)[:200]}"
                 })
+            elif isinstance(result, dict):
+                # 显式类型窄化：确保 result 是 dict 类型
+                processed_results.append(result)
             else:
-                processed_results.append(result)  # type: ignore[misc]  # result is dict here
+                # 未知类型：记录警告并转换为错误响应
+                logger.warning(f"Unexpected result type: {type(result).__name__}")
+                processed_results.append({
+                    "tool_call_id": tool_calls[i].get("id", "unknown"),
+                    "role": "tool",
+                    "content": f"Error: Unexpected result type - {type(result).__name__}"
+                })
 
         return processed_results
 
