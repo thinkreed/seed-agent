@@ -604,11 +604,13 @@ class SkillLoader:
         if not triggers:
             return 0.0
 
+        # 预处理为小写，避免循环内重复计算
+        signals_lower = [s.lower() for s in signals]
+        triggers_lower = [t.lower() for t in triggers]
+
         score = 0.0
-        for signal in signals:
-            signal_lower = signal.lower()
-            for trigger in triggers:
-                trigger_lower = trigger.lower()
+        for signal_lower in signals_lower:
+            for trigger_lower in triggers_lower:
                 if trigger_lower == signal_lower:
                     score += 1.0  # 精确匹配
                 elif signal_lower in trigger_lower or trigger_lower in signal_lower:

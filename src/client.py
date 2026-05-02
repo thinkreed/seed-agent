@@ -822,7 +822,7 @@ class LLMGateway:
 
         try:
             # 尝试主 provider（带重试）
-            success, result = await self._try_provider_with_retry(model_id, messages, **kwargs)
+            success, result = await self._try_provider_with_retry(model_id, messages, provider_id, **kwargs)
 
             if success:
                 if self._fallback_chain:
@@ -894,7 +894,7 @@ class LLMGateway:
         if span:
             record_llm_span_error(span, e)
 
-    async def _try_provider_with_retry(self, model_id: str, messages: list[dict], **kwargs) -> tuple[bool, dict | None]:
+    async def _try_provider_with_retry(self, model_id: str, messages: list[dict], provider_id: str, **kwargs) -> tuple[bool, dict | None]:
         """尝试单个 provider 调用（带重试）
         
         Returns:
@@ -910,7 +910,7 @@ class LLMGateway:
                     logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.warning(f"Provider {model_id.split('/')[0]} exhausted retries")
+                    logger.warning(f"Provider {provider_id} exhausted retries")
                     break
         return False, None
 
@@ -1081,7 +1081,7 @@ class LLMGateway:
                     chunk_count += 1
 
                 if self._fallback_chain:
-                    await self._fallback_chain.mark_healthy(model_id.split("/")[0])
+                    await self._fallback_chain.mark_healthy(active_provider)
 
                 # 流式 token 估算
                 duration_ms = self._calc_duration_ms(start_time)
@@ -1114,7 +1114,7 @@ class LLMGateway:
                     logger.warning(f"Retry {attempt+1}/3 after {wait_time}s: {e}")
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.warning(f"Provider {model_id.split('/')[0]} exhausted retries")
+                    logger.warning(f"Provider {active_provider} exhausted retries")
                     raise
 
     async def _stream_fallback_providers(self, model_id: str, messages: list[dict], span, active_provider: str, start_time: float, exclude_provider: str, **kwargs) -> AsyncGenerator[dict, None]:
