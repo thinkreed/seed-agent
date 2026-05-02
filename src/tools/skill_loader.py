@@ -202,7 +202,8 @@ class SkillLoader:
                     "requires_tools": self._normalize_str_list(metadata.get("requires_tools", [])),
                     "fallback_for_tools": self._normalize_str_list(metadata.get("fallback_for_tools", [])),
                 }
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to parse skill metadata from {skill_file}: {type(e).__name__}")
                 continue
 
         save_snapshot(self.skills_dir, self._skills_meta)

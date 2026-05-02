@@ -370,7 +370,11 @@ class RateLimitSQLite:
 
     def __del__(self):
         """析构时确保连接关闭"""
-        self.close()
+        # __del__ 中不应抛出异常，静默关闭
+        try:
+            self.close()
+        except Exception:
+            pass  # 静默忽略，避免 Python 解释器关闭时的警告
 
     async def aclose(self):
         """异步关闭（用于异步上下文）"""

@@ -484,7 +484,8 @@ class SessionDB:
                 decay_weight = 0.5 ** (age_days / half_life)
             else:
                 decay_weight = 1.0  # 新记录不衰减
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Decay calculation failed for skill '{skill_name}': {type(e).__name__}")
             decay_weight = 1.0
 
         # 近期成功加成
@@ -1078,13 +1079,13 @@ class SessionDB:
         return f"session_{timestamp}.jsonl"
 
     def __del__(self):
+        # __del__ 中不应抛出异常，静默关闭
+        # 注意：在 __del__ 中调用 logger 或其他模块是不安全的
+        # 因为 Python 解释器可能已在关闭过程中
         try:
             self.close()
-        except Exception as e:
-            # __del__ 中不应抛出异常，但记录 debug 级别日志
-            import sys
-            if hasattr(sys, "_getframe"):
-                logger.debug(f"SessionDB close in __del__ failed: {e}")
+        except Exception:
+            pass  # 静默忽略，避免 Python 解释器关闭时的警告
 
 
 # ==================== 模块级便捷函数 ====================
