@@ -173,14 +173,18 @@ def ask_vision(
 ) -> str:
     """
     同步视觉分析包装器 (适用于 Skill 调用)
-    
+
+    自动检测运行环境：
+    - 在异步环境中：使用 asyncio.run_coroutine_threadsafe() 或创建任务
+    - 在同步环境中：创建新事件循环执行
+
     Args:
         image: 文件路径 (str) 或 PIL Image 对象
         prompt: 分析提示词
         backend: 提供商 (claude/openai/dashscope)
         timeout: 超时秒数
         max_pixels: 最大像素限制
-    
+
     Returns:
         分析结果文本
     """
@@ -202,22 +206,61 @@ def ask_vision(
             return f"Error: Config not found at {DEFAULT_CONFIG_PATH}"
 
         gateway = LLMGateway(DEFAULT_CONFIG_PATH)
-        loop = asyncio.new_event_loop()
-        try:
-            result = loop.run_until_complete(
-                gateway.chat_completion(
-                    model_id=model_id, messages=messages,
-                    priority=RequestPriority.HIGH, max_tokens=2048, timeout=timeout
-                )
-            )
-            return result.get("content", "No content returned")
-        finally:
-            loop.close()
 
+        # 智能检测当前是否在异步事件循环中
+        try:
+            asyncio.get_running_loop()  # 检测是否在异步环境中
+            # 已在异步环境中：使用线程池执行避免阻塞当前循环
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    _run_vision_in_new_loop,
+                    gateway, model_id, messages, timeout
+                )
+                result = future.result(timeout=timeout + 5)  # 额外 5 秒缓冲
+                return result.get("content", "No content returned")
+        except RuntimeError:
+            # 不在异步环境中：创建新事件循环
+            loop = asyncio.new_event_loop()
+            try:
+                result = loop.run_until_complete(
+                    gateway.chat_completion(
+                        model_id=model_id, messages=messages,
+                        priority=RequestPriority.HIGH, max_tokens=2048, timeout=timeout
+                    )
+                )
+                return result.get("content", "No content returned")
+            finally:
+                loop.close()
+
+    except concurrent.futures.TimeoutError:
+        return f"Error: Vision API call timed out ({timeout}s)"
+    except ImportError as e:
+        return f"Error: Missing dependency: {e}"
     except Exception as e:
         error_msg = f"Vision API error: {type(e).__name__}: {e}"
-        logger.error(error_msg)
+        logger.error(error_msg, exc_info=True)
         return error_msg
+
+
+def _run_vision_in_new_loop(gateway, model_id: str, messages: list, timeout: int) -> dict:
+    """在独立线程中创建新事件循环执行视觉分析"""
+    import asyncio
+    from src.client import RequestPriority
+
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(
+            gateway.chat_completion(
+                model_id=model_id, messages=messages,
+                priority=RequestPriority.HIGH, max_tokens=2048, timeout=timeout
+            )
+        )
+        return result
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
 
 
 if __name__ == "__main__":
