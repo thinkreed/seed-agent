@@ -133,20 +133,17 @@ def _get_path(level, filename=None):
         return None
     base = mapping[level]
 
-    if base.endswith(".md"):
+    # L1 是单个文件，无需 filename
+    if level == "L1":
         return os.path.join(MEMORY_ROOT, base)
 
+    # L2-L4 需要指定 filename
     if not filename:
         return None
 
-    # L2 特殊处理：skill 目录结构
-    if level == "L2":
-        # filename 可以是 "skill_name/SKILL.md" 或 "SKILL.md"（需要配合 skill_name）
-        if filename.endswith("/SKILL.md") or filename == "SKILL.md":
-            return os.path.join(MEMORY_ROOT, base, filename)
-        else:
-            # 如果只传了 skill_name，自动补全为 skill_name/SKILL.md
-            return os.path.join(MEMORY_ROOT, base, filename, "SKILL.md")
+    # L2 特殊处理：skill 目录结构，自动补全 SKILL.md
+    if level == "L2" and not filename.endswith("/SKILL.md") and filename != "SKILL.md":
+        filename = os.path.join(filename, "SKILL.md")
 
     return os.path.join(MEMORY_ROOT, base, filename)
 

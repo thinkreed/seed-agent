@@ -17,7 +17,7 @@ def parse_tool_arguments(raw_args: str | dict | None) -> dict:
         raw_args: 原始参数，可能是 JSON 字符串、字典或 None
 
     Returns:
-        dict: 解析后的参数字典
+        dict: 解析后的参数字典（确保返回 dict 类型）
 
     Examples:
         >>> parse_tool_arguments('{"path": "/tmp/file.txt"}')
@@ -26,11 +26,17 @@ def parse_tool_arguments(raw_args: str | dict | None) -> dict:
         {}
         >>> parse_tool_arguments(None)
         {}
+        >>> parse_tool_arguments('["invalid"]')  # 非 dict JSON
+        {}
     """
     try:
         if isinstance(raw_args, str):
             raw_args = raw_args.strip()
-            return json.loads(raw_args) if raw_args else {}
+            if not raw_args:
+                return {}
+            parsed = json.loads(raw_args)
+            # 确保 JSON 解析结果是 dict 类型
+            return parsed if isinstance(parsed, dict) else {}
         if isinstance(raw_args, dict):
             return raw_args
         return {}
