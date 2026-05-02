@@ -591,7 +591,9 @@ class SkillLoader:
         trigger_weight = MEMORY_GRAPH_CONFIG["trigger_weight"]
         cold_penalty = MEMORY_GRAPH_CONFIG["cold_start_penalty"]
 
-        if stats["total"] == 0:
+        # 处理异常情况：stats 可能包含 error 键而非 total 键
+        total = stats.get("total", 0)
+        if total == 0:
             # 冷启动
             score = trigger_score * cold_penalty
             memory_score = 0.0
