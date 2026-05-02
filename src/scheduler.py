@@ -25,6 +25,18 @@ TASKS_DIR = Path(os.path.expanduser("~")) / ".seed" / "tasks"
 TASKS_FILE = TASKS_DIR / "scheduled_tasks.json"
 
 
+def _get_scheduler() -> "TaskScheduler":
+    """获取全局 TaskScheduler 单例（延迟初始化）"""
+    global _global_scheduler
+    if _global_scheduler is None:
+        _global_scheduler = TaskScheduler()
+    return _global_scheduler
+
+
+# 模块级单例：避免工具函数重复创建实例
+_global_scheduler: "TaskScheduler | None" = None
+
+
 class ScheduledTask:
     """定时任务定义"""
 
@@ -383,8 +395,7 @@ def create_scheduled_task(task_id: str, interval_minutes: int, prompt: str) -> s
     Returns:
         Success message or error.
     """
-    scheduler = TaskScheduler()
-    return scheduler.add_task(
+    return _get_scheduler().add_task(
         task_id=task_id,
         task_type="custom",
         interval_seconds=interval_minutes * 60,
@@ -402,8 +413,7 @@ def remove_scheduled_task(task_id: str) -> str:
     Returns:
         Success message or error.
     """
-    scheduler = TaskScheduler()
-    return scheduler.remove_task(task_id)
+    return _get_scheduler().remove_task(task_id)
 
 
 def list_scheduled_tasks() -> str:
@@ -413,8 +423,7 @@ def list_scheduled_tasks() -> str:
     Returns:
         Formatted list of tasks.
     """
-    scheduler = TaskScheduler()
-    return scheduler.list_tasks()
+    return _get_scheduler().list_tasks()
 
 
 def get_task_info(task_id: str) -> str:
@@ -427,8 +436,7 @@ def get_task_info(task_id: str) -> str:
     Returns:
         Task status information.
     """
-    scheduler = TaskScheduler()
-    status = scheduler.get_task_status(task_id)
+    status = _get_scheduler().get_task_status(task_id)
     if "error" in status:
         return status["error"]
 
