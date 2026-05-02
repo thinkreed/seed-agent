@@ -80,6 +80,12 @@ PROJECT_ROOT_RESOLVED = str(PROJECT_ROOT.resolve())
 _RE_WINDOWS_DRIVE = re.compile(r"^[a-zA-Z]:[/\\]")
 _RE_DOUBLE_DOT = re.compile(r"\.\.")  # 快速检测 .. 序列
 
+# URL 编码攻击模式（包括双重编码和 UTF-8 过长编码）
+_RE_URL_ENCODED = re.compile(r"%[0-9a-fA-F]{2}", re.IGNORECASE)
+_RE_DOUBLE_URL_ENCODED = re.compile(r"%25[0-9a-fA-F]{2}", re.IGNORECASE)
+# UTF-8 过长编码：\xc0\xae 或 \xe0\x80\xae 等变体表示 '.'
+_RE_UTF8_OVERLONG = re.compile(r"[\xc0-\xc1][\x80-\xbf]|\xe0\x80[\xae\xaf]|\xed\xa0[\x80-\xbf]")
+
 # 代码安全预处理正则
 _RE_ESCAPE_BACKSLASH = re.compile(r"\\([a-zA-Z])")
 _RE_IFS_VAR = re.compile(r"\$\{?IFS\}?")
@@ -88,6 +94,10 @@ _RE_WHITESPACE = re.compile(r"\s+")
 _RE_QUOTES = re.compile(r'["\']')
 _RE_BASE64_DECODE = re.compile(r"base64\s*(-d|--decode)")
 _RE_PWSH_ENCODED = re.compile(r"-enc|-encodedcommand")
+# 额外的危险模式检测
+_RE_HEX_ESCAPE = re.compile(r"\\x[0-9a-fA-F]{2}")
+_RE_OCTAL_ESCAPE = re.compile(r"\\[0-7]{3}")
+_RE_ENV_VAR = re.compile(r"\$\{?[A-Za-z_][A-Za-z0-9_]*\}?")
 
 
 @functools.lru_cache(maxsize=256)
@@ -109,17 +119,29 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
     Returns:
         (is_safe, error_message): 安全返回 (True, ""), 不安全返回 (False, 错误信息)
     """
-    # URL 编码绕过检测：检查 %2e%2e (%2e = '.' 的 URL 编码) 及双重编码
-    # 常见绕过：%2e%2e, %252e%252e (双重编码), %2e%2e/, ..%2f
+    # 1. URL 编码绕过检测（单层和双重编码）
     path_lower = path.lower()
-    if "%" in path_lower:
-        # 检测 URL 编码的路径遍历
-        encoded_patterns = ["%2e", "%252e", "%2f", "%5c", "%255c"]
-        if any(p in path_lower for p in encoded_patterns):
-            logger.warning(f"URL-encoded path traversal attempt blocked: {path}")
-            return False, f"URL-encoded path blocked: '{path}' - encoded characters are not allowed for security"
+    if _RE_URL_ENCODED.search(path_lower) or _RE_DOUBLE_URL_ENCODED.search(path_lower):
+        # 解码后检查是否包含危险字符
+        try:
+            from urllib.parse import unquote
+            decoded_once = unquote(path)
+            decoded_twice = unquote(decoded_once)
+            for decoded in [path, decoded_once, decoded_twice]:
+                if ".." in decoded or decoded.startswith("/") or decoded.startswith("\\"):
+                    logger.warning(f"URL-encoded path traversal attempt blocked: {path} -> {decoded}")
+                    return False, f"URL-encoded path blocked: '{path[:50]}...' - decoded path contains traversal patterns"
+        except Exception:
+            # 解码失败时保守拒绝
+            logger.warning(f"URL-encoded path blocked (decode failed): {path}")
+            return False, f"URL-encoded path blocked: '{path[:50]}...' - cannot safely decode"
 
-    # 快速检测 .. 序列（使用预编译正则）
+    # 2. UTF-8 过长编码检测（绕过技术）
+    if _RE_UTF8_OVERLONG.search(path):
+        logger.warning(f"UTF-8 overlong encoding detected: {path}")
+        return False, f"UTF-8 overlong encoding blocked: '{path[:50]}...' - potential path traversal attempt"
+
+    # 3. 快速检测 .. 序列（使用预编译正则）
     if _RE_DOUBLE_DOT.search(path):
         # 计算遍历深度
         normalized = path.replace("\\", "/")
@@ -348,6 +370,23 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
     normalized_code = _RE_WHITESPACE.sub(" ", normalized_code)
     normalized_code = _RE_QUOTES.sub("", normalized_code)
 
+    # 通用安全检查（所有语言）
+    # 检测十六进制转义序列（如 \x2e = '.'）
+    if _RE_HEX_ESCAPE.search(code):
+        hex_decoded = _RE_HEX_ESCAPE.sub(lambda m: chr(int(m.group(0)[2:], 16)), code)
+        if ".." in hex_decoded or any(d.lower() in hex_decoded.lower() for d in SHELL_BLACKLIST[:5]):
+            if exec_logger:
+                exec_logger.warning("Blocked hex escape sequence in code")
+            return "Error: Blocked hex escape sequence that may encode dangerous patterns."
+
+    # 检测八进制转义序列（如 \056 = '.'）
+    if _RE_OCTAL_ESCAPE.search(code):
+        oct_decoded = _RE_OCTAL_ESCAPE.sub(lambda m: chr(int(m.group(0)[1:], 8)), code)
+        if ".." in oct_decoded or any(d.lower() in oct_decoded.lower() for d in SHELL_BLACKLIST[:5]):
+            if exec_logger:
+                exec_logger.warning("Blocked octal escape sequence in code")
+            return "Error: Blocked octal escape sequence that may encode dangerous patterns."
+
     if language in ("shell", "bash", "sh"):
         for danger in SHELL_BLACKLIST:
             danger_lower = danger.lower()
@@ -359,6 +398,15 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
             if exec_logger:
                 exec_logger.warning("Blocked base64 decode attempt")
             return "Error: Blocked base64 decode pattern. Encoded commands are not allowed."
+        # 检测环境变量注入攻击
+        env_matches = _RE_ENV_VAR.findall(normalized_code)
+        dangerous_env_vars = ["PATH", "HOME", "USER", "SHELL", "IFS", "LD_PRELOAD", "LD_LIBRARY_PATH"]
+        for env_var in env_matches:
+            env_name = env_var.replace("${", "").replace("}", "").replace("$", "")
+            if env_name in dangerous_env_vars:
+                if exec_logger:
+                    exec_logger.warning(f"Blocked dangerous env var reference: {env_var}")
+                return f"Error: Blocked dangerous environment variable: '{env_name}'. Environment manipulation is not allowed."
 
     elif language in ("powershell", "ps", "pwsh"):
         for danger in POWERSHELL_BLACKLIST:
