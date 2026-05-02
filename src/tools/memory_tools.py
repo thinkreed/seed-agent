@@ -75,8 +75,14 @@ def write_memory(level: str, content: str, title: str = "", metadata: str = "") 
                     f.write(f"# {title}\n")
                     f.write(content.strip() + "\n")
             return f"Saved {level} Memory: {os.path.basename(path)}"
+    except PermissionError:
+        return f"Error writing memory: Permission denied - {path}"
+    except OSError as e:
+        return f"Error writing memory: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
-        return f"Error writing memory: {e!s}"
+        # 完整错误记录到日志
+        logger.exception(f"Unexpected error writing memory to {path}: {type(e).__name__}: {e}")
+        return f"Error writing memory: {type(e).__name__}: {str(e)[:100]}"
 
 
 def _validate_skill_format(content: str, name: str = "") -> str:
@@ -129,7 +135,7 @@ def _validate_skill_format(content: str, name: str = "") -> str:
     return ""  # 校验通过
 
 
-def _get_path(level, filename=None):
+def _get_path(level: str, filename: str | None = None) -> str | None:
     """获取记忆文件路径"""
     mapping = {"L1": "notes.md", "L2": "skills", "L3": "knowledge", "L4": "raw"}
     if level not in mapping:
@@ -158,7 +164,7 @@ def read_memory_index() -> str:
         Content of notes.md
     """
     path = _get_path("L1")
-    if not os.path.exists(path):
+    if path is None or not os.path.exists(path):
         return "Memory index not found."
     try:
         with open(path, "r", encoding="utf-8") as f:

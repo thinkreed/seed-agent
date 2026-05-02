@@ -308,6 +308,8 @@ def file_write(path: str, content: str, mode: str = "overwrite") -> str:
 
     except Exception as e:
         error_type = type(e).__name__
+        # 完整错误记录到日志，截断版本返回给用户
+        logger.error(f"Full error writing to '{resolved_path}': {error_type}: {e}")
         error_msg = str(e)[:200]
         return f"Error writing to '{resolved_path}': {error_type} - {error_msg}. Check permissions and disk space."
 
