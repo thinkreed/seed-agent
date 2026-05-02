@@ -280,15 +280,16 @@ class SubagentInstance:
         self._filter_tools(allowed_tools)
 
     def _filter_tools(self, allowed: set[str]):
-        """只保留允许的工具"""
-        tools_to_remove = [
-            name for name in list(self.tools._tools.keys())
-            if name not in allowed
-        ]
-        for name in tools_to_remove:
-            del self.tools._tools[name]
-            if name in self.tools._tool_schemas:
-                del self.tools._tool_schemas[name]
+        """只保留允许的工具（一次性重建，避免逐个删除的低效操作）"""
+        # 一次性重建字典，只保留允许的工具
+        self.tools._tools = {
+            name: tool for name, tool in self.tools._tools.items()
+            if name in allowed
+        }
+        self.tools._tool_schemas = {
+            name: schema for name, schema in self.tools._tool_schemas.items()
+            if name in allowed
+        }
 
     def _build_messages(self) -> list[dict]:
         """构建消息列表"""

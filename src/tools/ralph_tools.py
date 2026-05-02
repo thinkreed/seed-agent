@@ -85,7 +85,10 @@ def start_ralph_loop(
         "status": "pending"
     }
 
-    config_file.write_text(json.dumps(config, indent=2))
+    try:
+        config_file.write_text(json.dumps(config, indent=2))
+    except OSError as e:
+        return f"Error: Failed to write config file - {type(e).__name__}: {str(e)[:100]}"
 
     return f"""Ralph Loop configured successfully:
 - ID: {ralph_id}
@@ -123,11 +126,12 @@ def write_completion_marker(content: str = "DONE", marker_path: str | None = Non
     else:
         path = COMPLETION_PROMISE_FILE
 
-    # 确保目录存在
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    # 写入标志
-    path.write_text(content)
+    # 确保目录存在并写入标志
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    except OSError as e:
+        return f"Error: Failed to write completion marker - {type(e).__name__}: {str(e)[:100]}"
 
     return f"Completion marker written: {path} -> {content}"
 
@@ -159,17 +163,23 @@ def check_ralph_status(ralph_id: str | None = None) -> str:
         result = f"Ralph Loop: {ralph_id}\n"
 
         if state_file.exists():
-            state = json.loads(state_file.read_text())
-            result += f"- Iteration: {state.get('iteration', 'N/A')}\n"
-            result += f"- Started: {state.get('start_time', 'N/A')}\n"
-            result += f"- Last Response: {state.get('last_response', '')[:100]}...\n"
-            result += "- Status: running\n"
+            try:
+                state = json.loads(state_file.read_text())
+                result += f"- Iteration: {state.get('iteration', 'N/A')}\n"
+                result += f"- Started: {state.get('start_time', 'N/A')}\n"
+                result += f"- Last Response: {state.get('last_response', '')[:100]}...\n"
+                result += "- Status: running\n"
+            except json.JSONDecodeError as e:
+                result += f"- State file corrupted: {str(e)[:50]}\n"
 
         if config_file.exists():
-            config = json.loads(config_file.read_text())
-            result += f"- Task: {config.get('task_file', 'N/A')}\n"
-            result += f"- Completion Type: {config.get('completion_type', 'N/A')}\n"
-            result += f"- Max Iterations: {config.get('max_iterations', 'N/A')}\n"
+            try:
+                config = json.loads(config_file.read_text())
+                result += f"- Task: {config.get('task_file', 'N/A')}\n"
+                result += f"- Completion Type: {config.get('completion_type', 'N/A')}\n"
+                result += f"- Max Iterations: {config.get('max_iterations', 'N/A')}\n"
+            except json.JSONDecodeError as e:
+                result += f"- Config file corrupted: {str(e)[:50]}\n"
 
         return result
 

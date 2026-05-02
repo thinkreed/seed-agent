@@ -536,50 +536,7 @@ class SessionDB:
 
         return p * decay_weight + recent_boost
 
-    def _compute_selection_value(
-        self,
-        skill_name: str,
-        successes: int,
-        total: int,
-        recent_success_rate: float
-    ) -> float:
-        """
-        计算选择分数 (GEP-style)
-
-        公式: value = laplace_rate * decay_weight + recent_boost
-
-        注意: 此方法会执行额外的数据库查询获取时间戳。
-        推荐使用 _compute_selection_value_with_timestamp 以避免 N+1 查询问题。
-        """
-        half_life = MEMORY_GRAPH_CONFIG["half_life_days"]
-        recent_boost_factor = MEMORY_GRAPH_CONFIG["recent_boost_factor"]
-
-        # Laplace 平滑概率
-        p = (successes + 1) / (total + 2)
-
-        # 计算最近一次执行距今的天数（用于衰减）
-        try:
-            last_row = self._ensure_conn().execute("""
-                SELECT MAX(timestamp) as last_time
-                FROM gene_outcomes
-                WHERE skill_name = ?
-            """, (skill_name,)).fetchone()
-
-            if last_row and last_row["last_time"]:
-                last_time = datetime.fromisoformat(last_row["last_time"])
-                age_days = (datetime.now() - last_time).days
-                decay_weight = 0.5 ** (age_days / half_life)
-            else:
-                decay_weight = 1.0  # 新记录不衰减
-        except Exception as e:
-            logger.debug(f"Decay calculation failed for skill '{skill_name}': {type(e).__name__}")
-            decay_weight = 1.0
-
-        # 近期成功加成
-        recent_boost = recent_success_rate * recent_boost_factor
-
-        return p * decay_weight + recent_boost
-
+    
     def list_banned_skills(self) -> list[BannedSkillInfo]:
         """
         列出被禁用的 Skill（低于 ban_threshold）（批量查询优化，避免 N+1）

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.request_queue import RequestPriority
+from src.tools import ToolRegistry
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -443,7 +444,7 @@ def get_task_info(task_id: str) -> str:
     return json.dumps(status, ensure_ascii=False, indent=2)
 
 
-def register_scheduler_tools(registry) -> None:
+def register_scheduler_tools(registry: ToolRegistry) -> None:
     """注册定时任务工具"""
     registry.register("create_scheduled_task", create_scheduled_task)
     registry.register("remove_scheduled_task", remove_scheduled_task)

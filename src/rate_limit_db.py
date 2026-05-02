@@ -72,9 +72,11 @@ class RateLimitSQLite:
                 raise
         return self._local.conn
 
-    def _retry_db_operation(self, operation: Callable[[], T], max_retries: int = 3) -> T:
+    async def _retry_db_operation_async(
+        self, operation: Callable[[], T], max_retries: int = 3
+    ) -> T:
         """
-        执行数据库操作，带重试逻辑
+        执行数据库操作，带异步重试逻辑
 
         Args:
             operation: 数据库操作函数
@@ -106,7 +108,7 @@ class RateLimitSQLite:
                             except sqlite3.Error:
                                 pass
                             self._local.conn = None
-                    time.sleep(0.1 * (attempt + 1))  # 递增等待时间
+                    await asyncio.sleep(0.1 * (attempt + 1))  # 异步等待，不阻塞事件循环
 
         logger.error(f"DB operation failed after {max_retries} retries")
         if last_error:
@@ -211,7 +213,7 @@ class RateLimitSQLite:
                 ))
                 conn.commit()
 
-            self._retry_db_operation(_save)
+            await self._retry_db_operation_async(_save)
 
     async def save_bucket_state(self, bucket_state: TokenBucketState) -> None:
         """保存 Token Bucket 状态（带重试）"""
@@ -231,7 +233,7 @@ class RateLimitSQLite:
                 ))
                 conn.commit()
 
-            self._retry_db_operation(_save)
+            await self._retry_db_operation_async(_save)
 
     async def save_window_state(self, window_state: RollingWindowState) -> None:
         """保存滚动窗口状态（带重试）"""
@@ -251,7 +253,7 @@ class RateLimitSQLite:
                 ))
                 conn.commit()
 
-            self._retry_db_operation(_save)
+            await self._retry_db_operation_async(_save)
 
     async def record_request(
         self,

@@ -46,7 +46,8 @@ def is_admin() -> bool:
     """检查是否以管理员权限运行"""
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"is_admin check failed: {type(e).__name__}")
         return False
 
 

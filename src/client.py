@@ -1223,7 +1223,8 @@ class LLMGateway:
             # 非流式响应，直接 yield 并返回
             try:
                 yield response.model_dump()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Failed to serialize response: {type(e).__name__}")
                 yield {"error": str(response)}  # type: ignore[misc]
             return
 

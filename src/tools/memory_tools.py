@@ -20,6 +20,8 @@ import os
 import re
 from datetime import datetime
 
+from . import ToolRegistry
+
 logger = logging.getLogger(__name__)
 
 # 定位 ~/.seed/memory
@@ -172,17 +174,19 @@ def read_memory_index() -> str:
     except Exception as e:
         return f"Error reading index: {e!s}"
 
-def search_memory(keyword: str, levels: list = ["L1", "L2", "L3"]) -> str:
+def search_memory(keyword: str, levels: list[str] | None = None) -> str:
     """
     Search memory by keyword across L1/L2/L3.
-    
+
     Args:
         keyword: Search keyword
         levels: Levels to search (default L1, L2, L3)
-        
+
     Returns:
         List of matching files with levels.
     """
+    if levels is None:
+        levels = ["L1", "L2", "L3"]
     results = []
     if not os.path.exists(MEMORY_ROOT):
         return "Memory root not found."
@@ -241,7 +245,7 @@ def start_long_term_update(args, **kwargs):
 3. **避坑/知识**: 失败原因、解决方案、通用规则 (Level: L3)。
 4. **用户偏好**: 特定的需求或习惯 (Level: L2)。"""
 
-def register_memory_tools(registry):
+def register_memory_tools(registry: ToolRegistry) -> None:
     """Register memory tools to the Agent system."""
     registry.register("write_memory", write_memory)
     registry.register("read_memory_index", read_memory_index)

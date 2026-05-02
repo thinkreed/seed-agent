@@ -13,6 +13,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from . import ToolRegistry
+
 logger = logging.getLogger("seed_agent.path")
 
 # 使用共享配置模块
@@ -134,9 +136,9 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
                 if ".." in decoded or decoded.startswith("/") or decoded.startswith("\\"):
                     logger.warning(f"URL-encoded path traversal attempt blocked: {path} -> {decoded}")
                     return False, f"URL-encoded path blocked: '{path[:50]}...' - decoded path contains traversal patterns"
-        except Exception:
+        except Exception as e:
             # 解码失败时保守拒绝
-            logger.warning(f"URL-encoded path blocked (decode failed): {path}")
+            logger.warning(f"URL-encoded path blocked (decode failed: {path}, error: {type(e).__name__})")
             return False, f"URL-encoded path blocked: '{path[:50]}...' - cannot safely decode"
 
     # 2. UTF-8 过长编码检测（绕过技术）
@@ -578,7 +580,7 @@ def run_diagnosis(fix: bool = False) -> str:
         return f"Error running diagnosis: {e!s}"
 
 
-def register_builtin_tools(registry):
+def register_builtin_tools(registry: ToolRegistry) -> None:
     """Register the 6 core builtin tools."""
     registry.register("file_read", file_read)
     registry.register("file_write", file_write)
