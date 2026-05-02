@@ -4,6 +4,7 @@ import sys
 import os
 import logging
 from pathlib import Path
+from datetime import date
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -15,8 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 # Setup cross-platform logging to ~/.seed/logs with daily rotation
 LOG_DIR = Path(os.path.expanduser("~")) / ".seed" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-from datetime import date
 
 # 按天分割日志文件：seed_agent_2026-04-18.log
 log_file = LOG_DIR / f"seed_agent_{date.today().isoformat()}.log"
@@ -34,7 +33,7 @@ logger = logging.getLogger("seed_agent")
 
 # 初始化 OpenTelemetry 可观测性
 try:
-    from observability import setup_observability, is_initialized, shutdown_observability
+    from observability import setup_observability, is_initialized, shutdown_observability  # noqa: E402
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
     if not otlp_endpoint:
         otlp_endpoint = "http://localhost:4318"
@@ -51,13 +50,13 @@ except ImportError:
     logger.warning("OpenTelemetry not installed, observability disabled")
     # 定义 dummy shutdown 函数
     def shutdown_observability(): pass
-except Exception as e:
-    logger.warning(f"Failed to initialize observability: {e}")
+except Exception:
+    logger.warning("Failed to initialize observability")
     def shutdown_observability(): pass
 
-from agent_loop import AgentLoop
-from client import LLMGateway
-from autonomous import AutonomousExplorer
+from agent_loop import AgentLoop  # noqa: E402
+from client import LLMGateway  # noqa: E402
+from autonomous import AutonomousExplorer  # noqa: E402
 
 
 def on_autonomous_complete(response: str):
@@ -92,7 +91,7 @@ async def main(args=None):
         if os.path.exists(pid_file):
             try:
                 os.remove(pid_file)
-            except:
+            except Exception:
                 pass
     atexit.register(remove_pid)
 
@@ -124,8 +123,8 @@ async def main(args=None):
                         print(f"  ℹ️  诊断发现 {warned} 个警告")
                     else:
                         print(f"  ✅ 诊断通过 ({summary.get('passed', 0)} 项)")
-        except Exception as e:
-            logger.warning(f"Pre-start diagnosis skipped: {e}")
+        except Exception:
+            logger.warning("Pre-start diagnosis skipped")
 
     try:
         # 初始化网关和 Agent
@@ -137,7 +136,7 @@ async def main(args=None):
             try:
                 response = await agent.run(args.chat)
                 print(response)
-            except Exception as e:
+            except Exception:
                 logger.exception("One-shot chat failed")
             return
 
@@ -148,7 +147,7 @@ async def main(args=None):
 
         print("Agent initialized successfully. Type 'exit' to quit.\n")
         print("Starting interactive loop (自主探索: 2小时空闲触发, 定时任务: 自动执行)...")
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to initialize agent")
         return
 
@@ -194,7 +193,7 @@ async def main(args=None):
             print("\nInterrupted by user.")
             await explorer.stop()
             break
-        except Exception as e:
+        except Exception:
             logger.exception("Error occurred during interaction")
 
 if __name__ == "__main__":

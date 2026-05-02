@@ -11,7 +11,7 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 # 导入测试模块
-from request_queue import (
+from request_queue import (  # noqa: E402
     RequestQueue,
     RequestPriority,
     TurnTicket,

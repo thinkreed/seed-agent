@@ -13,23 +13,23 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 # 导入测试模块
-from rate_limiter import (
+from rate_limiter import (  # noqa: E402
     TokenBucket,
     RollingWindowTracker,
     RateLimiter,
     RateLimitStatus,
 )
-from request_queue import (
+from request_queue import (  # noqa: E402
     RequestQueue,
     RequestPriority,
     QueueFullError,
     QueueConfig,
 )
-from rate_limit_db import (
+from rate_limit_db import (  # noqa: E402
     RateLimitSQLite,
     RateLimitState,
 )
-from models import RateLimitConfig
+from models import RateLimitConfig  # noqa: E402
 
 
 class TestTokenBucket(unittest.TestCase):
@@ -72,8 +72,8 @@ class TestTokenBucket(unittest.TestCase):
             self.assertTrue(allowed)
             self.assertEqual(wait_time, 0.0)
 
-        # 现在 token 应该为 0
-        self.assertEqual(bucket.tokens, 0.0)
+        # 现在 token 应该接近 0（浮点精度问题）
+        self.assertAlmostEqual(bucket.tokens, 0.0, places=2)
 
     def test_acquire_when_empty(self):
         """测试 token 耗尽时获取"""

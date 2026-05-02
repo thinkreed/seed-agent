@@ -28,8 +28,8 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 # CompletionType 现在从 ralph_loop 导入，避免重复定义
-from ralph_loop import CompletionType
-from autonomous import (
+from ralph_loop import CompletionType  # noqa: E402
+from autonomous import (  # noqa: E402
     AutonomousExplorer,
     RALPH_MAX_ITERATIONS,
     RALPH_MAX_DURATION,

@@ -25,13 +25,13 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # 导入测试模块（使用 src 前缀确保一致性）
-from src.subagent import (
+from src.subagent import (  # noqa: E402
     SubagentType,
     SubagentInstance,
     SubagentState,
     SubagentResult,
 )
-from src.subagent_manager import (
+from src.subagent_manager import (  # noqa: E402
     SubagentManager,
     SubagentTask,
     RalphSubagentOrchestrator,
