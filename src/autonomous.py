@@ -169,6 +169,9 @@ class AutonomousExplorer:
 
         使用 SessionEventStream 的上下文重置标记，而不是直接清空 history。
         这样确保所有状态变更都通过 Session 正确记录。
+
+        关键修复：确保自主探索的 prompt（system_prompt）在重置后仍然保留，
+        否则 LLM 会误判为"收到空消息"。
         """
         if not CONTEXT_RESET_ENABLED:
             return None
@@ -177,8 +180,17 @@ class AutonomousExplorer:
         if self._iteration_count % CONTEXT_RESET_INTERVAL != 0:
             return None
 
-        # 提取关键上下文
-        preserved = extract_critical_context(self.agent.history)
+        # 提取关键上下文（从 history）
+        history_context = extract_critical_context(self.agent.history) or ""
+
+        # 关键修复：保留自主探索的核心指令（从 system_prompt 提取关键部分）
+        # 避免在上下文重置后丢失自主探索的任务指引
+        autonomous_prompt = self.agent.system_prompt or ""
+        # 提取 SOP 和任务指令部分（而非完整 skills prompt）
+        preserved_autonomous = self._extract_autonomous_prompt_core(autonomous_prompt)
+
+        # 合并：自主探索指令 + 上次执行摘要
+        preserved = f"{preserved_autonomous}\n\n---\n\n{history_context}" if history_context else preserved_autonomous
 
         # 通过 Session 创建上下文重置标记
         self.agent.session.create_context_reset_marker(
@@ -188,6 +200,43 @@ class AutonomousExplorer:
 
         logger.info(f"Context reset marker created at iteration {self._iteration_count}")
         return preserved
+
+    def _extract_autonomous_prompt_core(self, full_prompt: str) -> str:
+        """从完整自主探索 prompt 中提取核心指令部分
+
+        只保留 SOP 和任务指令，避免重复注入 skills（会导致上下文膨胀）。
+        """
+        # 提取 SOP 部分（以 "# 自主探索 SOP" 或 "## 自主探索 SOP" 开头）
+        import re
+
+        # 匹配 SOP 部分
+        sop_match = re.search(
+            r'(##?\s*自主探索\s*SOP.*?)(?=##?\s*|$)',
+            full_prompt,
+            re.DOTALL | re.IGNORECASE
+        )
+        sop_content = sop_match.group(1) if sop_match else ""
+
+        # 匹配任务指令部分（以 "# 自主探索任务触发" 开头）
+        task_match = re.search(
+            r'(##?\s*自主探索任务触发.*?)(?=请开始执行|$)',
+            full_prompt,
+            re.DOTALL | re.IGNORECASE
+        )
+        task_content = task_match.group(1) if task_match else ""
+
+        # 合并核心部分
+        core_parts = []
+        if sop_content:
+            core_parts.append(sop_content.strip())
+        if task_content:
+            core_parts.append(task_content.strip())
+
+        if core_parts:
+            return "\n\n".join(core_parts)
+
+        # 如果无法提取，返回 prompt 的前 2000 字符作为 fallback
+        return full_prompt[:2000] if full_prompt else ""
 
     def _persist_state(self, response: str = ""):
         """持久化当前状态（使用共享模块）"""
