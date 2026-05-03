@@ -56,6 +56,22 @@ class EventType(str, Enum):
     ERROR_OCCURRED = "error_occurred"        # 错误发生
     STATE_PERSISTED = "state_persisted"      # 状态持久化
 
+    # 用户交互事件 (Ask User 机制)
+    USER_QUESTION = "user_question"          # 发起问题
+    USER_WAITING = "user_waiting"            # 等待用户响应
+    USER_RESPONSE = "user_response"          # 用户响应
+    USER_CANCELLED = "user_cancelled"        # 用户取消
+
+    # 执行控制事件 (取消机制)
+    EXECUTION_CANCEL = "execution_cancel"    # 执行取消
+    EXECUTION_PAUSE = "execution_pause"      # 执行暂停
+    EXECUTION_RESUME = "execution_resume"    # 执行恢复
+
+    # 后台任务事件
+    TASK_START = "task_start"                # 后台任务开始
+    TASK_END = "task_end"                    # 后台任务结束
+    TASK_CANCEL = "task_cancel"              # 后台任务取消
+
 
 class SessionEventStream:
     """不可变事件流 - 只追加日志

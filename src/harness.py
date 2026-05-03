@@ -17,6 +17,16 @@ Harness (控制器) 模块
 - 不依赖模型记忆：由系统确保关键流程执行
 - 支持扩展：可动态注册自定义钩子
 
+Ask User 机制：
+- 检测工具返回的等待标记
+- 暂停执行循环等待用户响应
+- 恢复执行并注入响应结果
+
+取消机制：
+- AbortSignal 支持任务取消
+- 每轮检查取消状态
+- 优雅关闭和状态恢复
+
 核心职责：
 1. 执行对话循环 (run_cycle)
 2. 从 Session 构建优化上下文（上下文工程）
@@ -24,10 +34,12 @@ Harness (控制器) 模块
 4. 路由工具调用到 Sandbox
 5. 记录事件到 Session
 6. 触发生命周期钩子
+7. 处理 Ask User 等待和恢复
+8. 处理取消信号
 
 性能优化：
 - 大脑(LLMClient)从容器(Sandbox)分离
-- 首Token延迟降低 60-90%
+- Token延迟降低 60-90%
 """
 
 import asyncio
@@ -37,12 +49,14 @@ import time
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from src.abort_signal import AbortSignal
 from src.context_engineering import ContextEngineering
 from src.lifecycle_hooks import HookPoint, HookTriggerReport, LifecycleHookRegistry
 from src.llm_client import LLMClient
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
+    from src.tools.ask_user_types import AskUserResult
 from src.observability import (
     SPAN_TOOL_PREFIX,
     StatusCode,
@@ -53,6 +67,10 @@ from src.observability import (
 from src.request_queue import RequestPriority
 from src.sandbox import Sandbox
 from src.session_event_stream import EventType, SessionEventStream
+from src.tools.builtin_tools import (
+    get_pending_ask_user_request,
+    clear_ask_user_state,
+)
 from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 logger = logging.getLogger(__name__)
@@ -78,11 +96,21 @@ class MaxIterationsExceeded(Exception):
         self.iterations = iterations
 
 
+class ExecutionCancelled(Exception):
+    """执行被取消"""
+    def __init__(self, reason: str = "") -> None:
+        super().__init__(f"Execution cancelled: {reason}")
+        self.reason = reason
+
+
 class CycleResult(TypedDict):
     """单轮循环结果"""
-    response: dict[str, Any]
+    status: str  # "continue" | "waiting_for_user" | "cancelled" | "complete"
+    response: dict[str, Any] | None
     tool_results: list[dict[str, Any]] | None
     continue_loop: bool
+    pending_request: dict[str, Any] | None  # Ask User 请求（等待状态时）
+    cancel_reason: str | None  # 取消原因（取消状态时）
 
 
 class ToolExecutionMetrics(TypedDict):
@@ -94,7 +122,7 @@ class ToolExecutionMetrics(TypedDict):
 
 
 class Harness:
-    """Harness 控制器 - 无状态驱动 + 生命周期钩子
+    """Harness 控制器 - 无状态驱动 + 生命周期钩子 + Ask User + 取消支持
 
     三件套解耦架构中的"控制器"层：
     - 无状态：不持有历史，只通过 Session 访问
@@ -103,6 +131,16 @@ class Harness:
     - 记录事件：将响应和结果写入 Session
     - 钩子触发：在关键节点自动触发预设动作
 
+    Ask User 机制：
+    - 检测工具返回的 [AWAITING_USER_INPUT] 标记
+    - 暂停执行循环，返回等待状态
+    - resume_with_user_response() 恢复执行
+
+    取消机制：
+    - run_cycle/run_conversation 接收 AbortSignal 参数
+    - 每轮检查 signal.aborted 状态
+    - 取消时触发 SESSION_PAUSE 钩子并返回
+
     上下文工程优化：
     - 渐进式压缩：根据容量使用率动态压缩
     - 智能裁剪：根据任务相关性过滤历史
@@ -110,6 +148,7 @@ class Harness:
 
     生命周期钩子：
     - session_start/end: 会话生命周期
+    - session_pause/resume: 会话暂停/恢复
     - tool_call_before/after: 工具执行生命周期
     - llm_call_before/after: LLM 调用生命周期
     - response_before/after: 响应生命周期
@@ -119,6 +158,8 @@ class Harness:
     - 无状态：所有状态存储在 Session 中
     - 可观测：完整的事件流追踪 + OpenTelemetry
     - 确定性钩子：关键节点自动触发预设动作
+    - Ask User：真正的等待机制，支持用户交互
+    - 取消支持：AbortSignal 机制，优雅取消执行
     """
 
     def __init__(
@@ -169,6 +210,10 @@ class Harness:
         # 钩子执行报告（用于调试）
         self._hook_reports: list[HookTriggerReport] = []
 
+        # Ask User 等待状态
+        self._waiting_for_user: bool = False
+        self._pending_tool_call_id: str | None = None
+
         logger.info(
             f"Harness initialized: session={session.session_id}, "
             f"max_iterations={max_iterations}, tools={len(sandbox.get_tool_schemas())}, "
@@ -201,34 +246,52 @@ class Harness:
 
     async def run_cycle(
         self,
-        priority: int = RequestPriority.NORMAL
+        priority: int = RequestPriority.NORMAL,
+        signal: AbortSignal | None = None,
     ) -> CycleResult:
-        """执行一轮对话循环（带生命周期钩子）
+        """执行一轮对话循环（带生命周期钩子 + 取消支持 + Ask User）
 
         核心流程：
-        1. 触发 response_before 钩子
-        2. 从 Session 拉取上下文（无状态关键）
-        3. 触发 llm_call_before 钩子
-        4. 调用 LLM 推理
-        5. 触发 llm_call_after 钩子
-        6. 记录响应到 Session
-        7. 如有工具调用：
+        1. 检查取消信号
+        2. 触发 response_before 钩子
+        3. 从 Session 拉取上下文（无状态关键）
+        4. 触发 llm_call_before 钩子
+        5. 调用 LLM 推理
+        6. 触发 llm_call_after 钩子
+        7. 记录响应到 Session
+        8. 如有工具调用：
            - 触发 tool_call_before 钩子
            - 执行工具
+           - 检查 Ask User 等待标记
            - 触发 tool_call_after 钩子
            - 记录工具结果到 Session
-        8. 触发 response_after 钩子
+        9. 触发 response_after 钩子
 
         Args:
             priority: 请求优先级
+            signal: 取消信号（可选）
 
         Returns:
             CycleResult: 循环结果
+                - status: "continue" | "waiting_for_user" | "cancelled" | "complete"
+                - pending_request: Ask User 请求（等待状态时）
+                - cancel_reason: 取消原因（取消状态时）
         """
-        # 1. 从 Session 构建上下文（关键：无状态）
+        # 1. 检查取消信号
+        if signal and signal.aborted:
+            return {
+                "status": "cancelled",
+                "response": None,
+                "tool_results": None,
+                "continue_loop": False,
+                "pending_request": None,
+                "cancel_reason": signal.reason,
+            }
+
+        # 2. 从 Session 构建上下文（关键：无状态）
         context = self._build_context_from_session()
 
-        # 2. 触发 llm_call_before 钩子
+        # 3. 触发 llm_call_before 钩子
         llm_before_ctx = {
             "session": self.session,
             "harness": self,
@@ -239,7 +302,7 @@ class Harness:
         }
         await self._trigger_hook(HookPoint.LLM_CALL_BEFORE, llm_before_ctx)
 
-        # 3. 触发 response_before 钩子
+        # 4. 触发 response_before 钩子
         response_before_ctx = {
             "session": self.session,
             "harness": self,
@@ -248,10 +311,21 @@ class Harness:
         }
         await self._trigger_hook(HookPoint.RESPONSE_BEFORE, response_before_ctx)
 
-        # 4. 获取工具 schemas
+        # 5. 再次检查取消信号（LLM 调用前）
+        if signal and signal.aborted:
+            return {
+                "status": "cancelled",
+                "response": None,
+                "tool_results": None,
+                "continue_loop": False,
+                "pending_request": None,
+                "cancel_reason": signal.reason,
+            }
+
+        # 6. 获取工具 schemas
         tools = self.sandbox.get_tool_schemas()
 
-        # 5. 调用 LLM 推理
+        # 7. 调用 LLM 推理
         start_time = time.time()
         response = await self.llm_client.reason(
             context,
@@ -260,7 +334,7 @@ class Harness:
         )
         duration_ms = (time.time() - start_time) * 1000
 
-        # 6. 触发 llm_call_after 钩子
+        # 8. 触发 llm_call_after 钩子
         llm_after_ctx = {
             "session": self.session,
             "harness": self,
@@ -269,11 +343,11 @@ class Harness:
         }
         await self._trigger_hook(HookPoint.LLM_CALL_AFTER, llm_after_ctx)
 
-        # 7. 解析响应
+        # 9. 解析响应
         choice = response["choices"][0]
         message = choice["message"]
 
-        # 8. 记录 LLM 响应事件
+        # 10. 记录 LLM 响应事件
         llm_data: dict[str, Any] = {}
         if message.get("content"):
             llm_data["content"] = message["content"]
@@ -282,10 +356,41 @@ class Harness:
 
         self.session.emit_event(EventType.LLM_RESPONSE, llm_data)
 
-        # 9. 处理工具调用或完成
+        # 11. 处理工具调用或完成
         if message.get("tool_calls"):
             # 路由工具调用到 Sandbox（带钩子）
             tool_results = await self._route_tool_calls_with_hooks(message["tool_calls"])
+
+            # **关键：检查是否触发了 ask_user 等待**
+            pending_request = get_pending_ask_user_request()
+            if pending_request:
+                # 发送等待事件到 Session
+                self.session.emit_event(
+                    EventType.USER_WAITING,
+                    {
+                        "request": pending_request.to_dict(),
+                        "tool_call_id": message["tool_calls"][0].get("id"),
+                    }
+                )
+
+                # 设置等待状态
+                self._waiting_for_user = True
+                self._pending_tool_call_id = message["tool_calls"][0].get("id")
+
+                # 触发 SESSION_PAUSE 钩子
+                await self._trigger_hook(HookPoint.SESSION_PAUSE, {
+                    "reason": "user_input_required",
+                    "request": pending_request.to_dict(),
+                })
+
+                return {
+                    "status": "waiting_for_user",
+                    "response": response,
+                    "tool_results": tool_results,
+                    "continue_loop": False,  # 暂停循环
+                    "pending_request": pending_request.to_dict(),
+                    "cancel_reason": None,
+                }
 
             # 记录工具结果事件
             for result in tool_results:
@@ -304,9 +409,12 @@ class Harness:
             await self._trigger_hook(HookPoint.RESPONSE_AFTER, response_after_ctx)
 
             return {
+                "status": "continue",
                 "response": response,
                 "tool_results": tool_results,
-                "continue_loop": True
+                "continue_loop": True,
+                "pending_request": None,
+                "cancel_reason": None,
             }
 
         # 触发 response_after 钩子（完成）
@@ -320,29 +428,40 @@ class Harness:
 
         # 无工具调用 = 对话完成
         return {
+            "status": "complete",
             "response": response,
             "tool_results": None,
-            "continue_loop": False
+            "continue_loop": False,
+            "pending_request": None,
+            "cancel_reason": None,
         }
 
     async def run_conversation(
         self,
         initial_prompt: str,
-        priority: int = RequestPriority.CRITICAL
-    ) -> str:
-        """执行完整对话（带生命周期钩子）
+        priority: int = RequestPriority.CRITICAL,
+        signal: AbortSignal | None = None,
+    ) -> dict[str, Any]:
+        """执行完整对话（带生命周期钩子 + 取消支持 + Ask User）
 
-        循环直到对话完成或达到上限
+        循环直到对话完成、等待用户输入、被取消或达到上限
 
         Args:
             initial_prompt: 用户输入
             priority: 请求优先级
+            signal: 取消信号（可选）
 
         Returns:
-            最终响应文本
+            dict: 执行结果
+                - status: "completed" | "waiting_for_user" | "cancelled" | "max_iterations"
+                - content: 最终响应文本（完成时）
+                - pending_request: Ask User 请求（等待时）
+                - cancel_reason: 取消原因（取消时）
+                - iterations: 执行的迭代次数
 
         Raises:
             MaxIterationsExceeded: 超过最大迭代次数
+            ExecutionCancelled: 执行被取消
         """
         # 1. 触发 session_start 钩子
         session_start_ctx = {
@@ -361,17 +480,54 @@ class Harness:
 
         try:
             while iteration < self.max_iterations:
-                iteration += 1
+                # 每轮开始检查取消信号
+                if signal and signal.aborted:
+                    self.session.emit_event(EventType.EXECUTION_CANCEL, {
+                        "reason": signal.reason,
+                        "iteration": iteration,
+                    })
+                    return {
+                        "status": "cancelled",
+                        "content": "",
+                        "pending_request": None,
+                        "cancel_reason": signal.reason,
+                        "iterations": iteration,
+                    }
 
+                iteration += 1
                 logger.debug(f"Harness iteration {iteration}/{self.max_iterations}")
 
                 # 执行一轮循环
-                cycle_result = await self.run_cycle(priority)
+                cycle_result = await self.run_cycle(priority, signal)
 
-                if not cycle_result["continue_loop"]:
+                # 处理不同的状态
+                if cycle_result["status"] == "cancelled":
+                    return {
+                        "status": "cancelled",
+                        "content": "",
+                        "pending_request": None,
+                        "cancel_reason": cycle_result["cancel_reason"],
+                        "iterations": iteration,
+                    }
+
+                if cycle_result["status"] == "waiting_for_user":
+                    # 返回等待状态给调用方（AgentLoop）
+                    return {
+                        "status": "waiting_for_user",
+                        "content": "",
+                        "pending_request": cycle_result["pending_request"],
+                        "cancel_reason": None,
+                        "iterations": iteration,
+                    }
+
+                if cycle_result["status"] == "complete":
                     # 对话完成
-                    final_response = cycle_result["response"]["choices"][0]["message"].get("content", "")
+                    response = cycle_result["response"]
+                    if response:
+                        final_response = response["choices"][0]["message"].get("content", "")
                     break
+
+                # 继续循环（status == "continue"）
 
             if iteration >= self.max_iterations:
                 # 超过最大迭代
@@ -390,10 +546,159 @@ class Harness:
             await self._trigger_hook(HookPoint.SESSION_END, session_end_ctx)
 
             self.session.record_session_end("completed")
-            return final_response
+            return {
+                "status": "completed",
+                "content": final_response,
+                "pending_request": None,
+                "cancel_reason": None,
+                "iterations": iteration,
+            }
 
         except Exception as e:
             # 触发 session_end 钩子（错误）
+            session_end_ctx = {
+                "session": self.session,
+                "harness": self,
+                "session_id": self.session.session_id,
+                "reason": "error",
+                "event_count": self.session.get_event_count(),
+                "error": str(e)[:500],
+            }
+            await self._trigger_hook(HookPoint.SESSION_END, session_end_ctx)
+
+            self.session.record_session_end("error")
+            raise
+
+    async def resume_with_user_response(
+        self,
+        response: "AskUserResult",
+        priority: int = RequestPriority.CRITICAL,
+        signal: AbortSignal | None = None,
+    ) -> dict[str, Any]:
+        """恢复执行（用户响应后）
+
+        Args:
+            response: 用户响应数据
+            priority: 请求优先级
+            signal: 取消信号
+
+        Returns:
+            dict: 执行结果（同 run_conversation）
+        """
+        # 1. 清理等待状态
+        self._waiting_for_user = False
+        clear_ask_user_state()
+
+        # 2. 记录用户响应事件
+        self.session.emit_event(EventType.USER_RESPONSE, {
+            "request_id": response.request_id,
+            "responses": [r.to_dict() for r in response.responses],
+            "cancelled": response.cancelled,
+            "timeout": response.timeout,
+        })
+
+        # 3. 触发 SESSION_RESUME 钩子
+        await self._trigger_hook(HookPoint.SESSION_RESUME, {
+            "reason": "user_input_received",
+            "response": response.to_dict(),
+        })
+
+        # 4. 构造工具结果并注入历史
+        if response.cancelled:
+            tool_result = "[USER_CANCELLED]"
+        elif response.timeout:
+            tool_result = "[USER_TIMEOUT]"
+        else:
+            # 格式化用户选择
+            selected = response.get_selected_values()
+            tool_result = f"User selected: {selected}"
+
+        # 5. 注入到历史（作为 tool result）
+        if self._pending_tool_call_id:
+            self.session.emit_event(EventType.TOOL_RESULT, {
+                "tool_call_id": self._pending_tool_call_id,
+                "content": tool_result,
+            })
+            self._pending_tool_call_id = None
+
+        # 6. 继续执行循环
+        iteration = 0
+        final_response: str = ""
+
+        try:
+            while iteration < self.max_iterations:
+                # 每轮开始检查取消信号
+                if signal and signal.aborted:
+                    self.session.emit_event(EventType.EXECUTION_CANCEL, {
+                        "reason": signal.reason,
+                        "iteration": iteration,
+                    })
+                    return {
+                        "status": "cancelled",
+                        "content": "",
+                        "pending_request": None,
+                        "cancel_reason": signal.reason,
+                        "iterations": iteration,
+                    }
+
+                iteration += 1
+                logger.debug(f"Harness iteration {iteration}/{self.max_iterations} (resumed)")
+
+                # 执行一轮循环
+                cycle_result = await self.run_cycle(priority, signal)
+
+                # 处理不同的状态
+                if cycle_result["status"] == "cancelled":
+                    return {
+                        "status": "cancelled",
+                        "content": "",
+                        "pending_request": None,
+                        "cancel_reason": cycle_result["cancel_reason"],
+                        "iterations": iteration,
+                    }
+
+                if cycle_result["status"] == "waiting_for_user":
+                    # 再次等待用户输入
+                    return {
+                        "status": "waiting_for_user",
+                        "content": "",
+                        "pending_request": cycle_result["pending_request"],
+                        "cancel_reason": None,
+                        "iterations": iteration,
+                    }
+
+                if cycle_result["status"] == "complete":
+                    # 对话完成
+                    resp = cycle_result["response"]
+                    if resp:
+                        final_response = resp["choices"][0]["message"].get("content", "")
+                    break
+
+            if iteration >= self.max_iterations:
+                self.session.record_session_end("max_iterations_exceeded")
+                raise MaxIterationsExceeded(iteration)
+
+            # 触发 session_end 钩子（成功）
+            session_end_ctx = {
+                "session": self.session,
+                "harness": self,
+                "session_id": self.session.session_id,
+                "reason": "completed",
+                "event_count": self.session.get_event_count(),
+                "final_response": final_response,
+            }
+            await self._trigger_hook(HookPoint.SESSION_END, session_end_ctx)
+
+            self.session.record_session_end("completed")
+            return {
+                "status": "completed",
+                "content": final_response,
+                "pending_request": None,
+                "cancel_reason": None,
+                "iterations": iteration,
+            }
+
+        except Exception as e:
             session_end_ctx = {
                 "session": self.session,
                 "harness": self,

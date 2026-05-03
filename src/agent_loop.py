@@ -22,6 +22,17 @@ Session 宠物哲学：
 - 摘要只创建标记，不修改原数据
 - 支持从任意事件点重放状态
 
+Ask User 机制：
+- 真正的等待机制（而非字符串标记）
+- Harness 检测等待标记后暂停循环
+- AgentLoop 等待用户响应注入
+- 恢复执行继续循环
+
+取消机制：
+- AbortController/AbortSignal 支持任务取消
+- 每轮检查取消状态
+- Ctrl+C 触发优雅取消
+
 核心流程:
 - 接收用户输入 → Harness.run_cycle() → LLM 推理 → Sandbox 执行工具 → 循环
 """
@@ -34,6 +45,7 @@ from typing import Any
 
 import tiktoken
 
+from src.abort_signal import AbortController, AbortSignal
 from src.builtin_hooks import register_builtin_hooks
 from src.client import LLMGateway
 from src.context_engineering import (
@@ -62,6 +74,7 @@ from src.security.secure_sandbox import SecureSandbox
 from src.session_event_stream import EventType, SessionEventStream
 from src.subagent_manager import SubagentManager
 from src.tools import ToolRegistry
+from src.tools.ask_user_types import AskUserResult
 from src.tools.builtin_tools import register_builtin_tools
 from src.tools.collaboration_tools import register_tools as register_collaboration_tools
 from src.tools.memory_tools import (
@@ -173,6 +186,11 @@ class AgentLoop:
         self._conversation_rounds: int = 0
         self._pending_skill_outcomes: list[dict] = []
         self._encoding = self._get_tokenizer()
+
+        # === 取消控制 ===
+        self._abort_controller: AbortController = AbortController()
+        self._user_input_event: asyncio.Event = asyncio.Event()
+        self._pending_user_response: AskUserResult | None = None
 
         # === 上下文窗口管理 ===
         self.context_window = self._get_model_context_window()
@@ -456,25 +474,79 @@ class AgentLoop:
 
     # === 核心执行流程 ===
 
-    async def run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> str:
-        """执行对话
+    async def run(
+        self,
+        user_input: str,
+        priority: int = RequestPriority.CRITICAL,
+        wait_for_user: bool = True,
+    ) -> str:
+        """执行对话（支持 Ask User 等待）
 
         Args:
             user_input: 用户输入
             priority: 请求优先级
+            wait_for_user: 是否阻塞等待用户响应（默认 True）
 
         Returns:
             最终响应文本
+
+        注意：
+            如果 wait_for_user=False，当遇到 Ask User 时返回特殊字符串
+            "[AWAITING_USER_INPUT]" 而非阻塞等待
         """
         self._conversation_rounds += 1
 
+        # 重置取消信号
+        self._abort_controller = AbortController()
+        signal = self._abort_controller.signal
+
         try:
-            result = await self.harness.run_conversation(user_input, priority)
+            result = await self.harness.run_conversation(
+                user_input, priority, signal
+            )
 
-            await self._maybe_summarize()
-            self._evaluate_and_record_skill_outcomes(final_success=True)
+            # 处理等待状态
+            if result["status"] == "waiting_for_user":
+                if wait_for_user:
+                    # 阻塞等待用户响应
+                    await self._user_input_event.wait()
 
-            return result
+                    # 获取注入的响应
+                    user_response = self._pending_user_response
+                    assert user_response is not None, "user_response should be set after wait"
+
+                    # 清理状态
+                    self._user_input_event.clear()
+                    self._pending_user_response = None
+
+                    # 恢复执行
+                    final_result = await self.harness.resume_with_user_response(
+                        user_response, priority, signal
+                    )
+
+                    if final_result["status"] == "completed":
+                        await self._maybe_summarize()
+                        self._evaluate_and_record_skill_outcomes(final_success=True)
+                        return final_result["content"]
+                    elif final_result["status"] == "cancelled":
+                        return f"[CANCELLED: {final_result['cancel_reason']}]"
+                    else:
+                        # 可能再次等待或其他状态
+                        return f"[{final_result['status']}]"
+                else:
+                    # 不阻塞，返回等待标记
+                    return "[AWAITING_USER_INPUT]"
+
+            elif result["status"] == "cancelled":
+                return f"[CANCELLED: {result['cancel_reason']}]"
+
+            elif result["status"] == "completed":
+                await self._maybe_summarize()
+                self._evaluate_and_record_skill_outcomes(final_success=True)
+                return result["content"]
+
+            else:
+                return f"[{result['status']}]"
 
         except MaxIterationsExceeded:
             logger.exception("Max iterations exceeded")
@@ -490,23 +562,81 @@ class AgentLoop:
         user_input: str,
         priority: int = RequestPriority.CRITICAL
     ) -> AsyncGenerator[dict, None]:
-        """流式执行对话
+        """流式执行对话（支持 Ask User 等待和取消）
 
         Args:
             user_input: 用户输入
             priority: 请求优先级
 
         Yields:
-            流式响应 chunk
+            流式响应 chunk:
+                - {"type": "chunk", "content": "..."} - 文本片段
+                - {"type": "tool_start", "tool_name": "..."} - 工具开始
+                - {"type": "tool_end", "result": "..."} - 工具结束
+                - {"type": "awaiting_user_input", "request": {...}} - 等待用户输入
+                - {"type": "cancelled", "reason": "..."} - 执行取消
+                - {"type": "final", "content": "..."} - 最终响应
+                - {"type": "error", "content": "..."} - 错误
         """
         self._conversation_rounds += 1
 
-        try:
-            async for chunk in self.harness.stream_conversation(user_input, priority):
-                yield chunk
+        # 重置取消信号
+        self._abort_controller = AbortController()
+        signal = self._abort_controller.signal
 
-            await self._maybe_summarize()
-            self._evaluate_and_record_skill_outcomes(final_success=True)
+        try:
+            # 执行对话
+            result = await self.harness.run_conversation(user_input, priority, signal)
+
+            # 处理等待状态
+            if result["status"] == "waiting_for_user":
+                # 流式返回等待信息
+                yield {
+                    "type": "awaiting_user_input",
+                    "request": result["pending_request"],
+                }
+
+                # 阻塞等待用户响应
+                await self._user_input_event.wait()
+
+                # 获取注入的响应
+                user_response = self._pending_user_response
+                assert user_response is not None, "user_response should be set after wait"
+
+                # 清理状态
+                self._user_input_event.clear()
+                self._pending_user_response = None
+
+                # 恢复执行
+                final_result = await self.harness.resume_with_user_response(
+                    user_response, priority, signal
+                )
+
+                if final_result["status"] == "completed":
+                    await self._maybe_summarize()
+                    self._evaluate_and_record_skill_outcomes(final_success=True)
+                    yield {"type": "final", "content": final_result["content"]}
+                elif final_result["status"] == "cancelled":
+                    yield {"type": "cancelled", "reason": final_result["cancel_reason"]}
+                elif final_result["status"] == "waiting_for_user":
+                    # 再次等待（递归处理）
+                    yield {
+                        "type": "awaiting_user_input",
+                        "request": final_result["pending_request"],
+                    }
+                else:
+                    yield {"type": "error", "content": f"Unexpected status: {final_result['status']}"}
+
+            elif result["status"] == "cancelled":
+                yield {"type": "cancelled", "reason": result["cancel_reason"]}
+
+            elif result["status"] == "completed":
+                await self._maybe_summarize()
+                self._evaluate_and_record_skill_outcomes(final_success=True)
+                yield {"type": "final", "content": result["content"]}
+
+            else:
+                yield {"type": "error", "content": f"Unexpected status: {result['status']}"}
 
         except MaxIterationsExceeded as e:
             logger.exception("Max iterations exceeded")
@@ -516,6 +646,33 @@ class AgentLoop:
             logger.exception("Agent execution failed")
             self.session.record_session_end("error")
             yield {"type": "error", "content": str(e)}
+
+    def inject_user_input(self, response: AskUserResult) -> None:
+        """注入用户响应（外部调用）
+
+        Args:
+            response: 用户响应数据
+
+        用法：
+            # 在 main.py 或外部系统调用
+            agent.inject_user_input(AskUserResult(
+                request_id="abc123",
+                responses=[UserResponse(question_id="0", selected=["Yes"])],
+            ))
+        """
+        self._pending_user_response = response
+        self._user_input_event.set()
+
+    def cancel_current_execution(self) -> None:
+        """取消当前执行"""
+        self._abort_controller.abort(reason="user_interrupt")
+
+        # 唤醒用户等待（如果有）
+        self._user_input_event.set()
+
+    def get_abort_signal(self) -> AbortSignal:
+        """获取当前的取消信号"""
+        return self._abort_controller.signal
 
     # === Skill Outcome 记录 ===
 

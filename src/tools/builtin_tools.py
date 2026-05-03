@@ -4,6 +4,11 @@
 - 缓存 ALLOWED_DIRS 解析结果
 - 使用 lru_cache 缓存路径验证结果
 - 预编译正则表达式
+
+Ask User 机制:
+- 真正的等待机制（而非字符串标记）
+- 结构化问题定义
+- 支持单选、多选、自定义输入
 """
 
 import functools
@@ -12,8 +17,14 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 from . import ToolRegistry
+from .ask_user_types import (
+    AskUserRequest,
+    AskUserResult,
+    get_ask_user_state,
+)
 
 logger = logging.getLogger("seed_agent.path")
 
@@ -522,22 +533,84 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
         return f"Error executing code: {e!s}"
 
 
-def ask_user(question: str, options: list | None = None) -> str:
+def ask_user(
+    question: str,
+    options: Optional[list[str]] = None,
+    header: Optional[str] = None,
+    multi_select: bool = False,
+) -> str:
     """
     Ask user for input/confirmation during task execution.
 
+    这是真正的等待机制：
+    - 返回等待标记字符串
+    - Harness 检测标记后暂停循环
+    - 外部（main.py）注入用户响应
+    - Harness 恢复循环继续执行
+
     Args:
-        question: Question or prompt to display to user.
-        options: Optional list of choices for user to select.
+        question: 问题文本
+        options: 选项列表（可选，默认 ["Yes", "No"]）
+        header: 简短标题（可选，默认从问题截取前30字符）
+        multi_select: 是否多选
 
     Returns:
-        Instruction for agent to pause and ask user.
+        等待标记字符串，实际响应由 Harness 处理
+
+    示例：
+        ask_user("Continue?", ["Yes", "No", "Cancel"])
+        -> "[AWAITING_USER_INPUT] request_id=abc123\\nContinue?\\nOptions: Yes, No, Cancel"
     """
-    result = f"[ASK_USER] {question}"
-    if options:
-        result += f"\nOptions: {', '.join(options)}"
-    result += "\n[Waiting for user response]"
+    # 构造请求结构
+    request = AskUserRequest.from_simple(
+        question=question,
+        options=options,
+        header=header,
+        multi_select=multi_select,
+    )
+
+    # 设置全局等待状态
+    state = get_ask_user_state()
+    state.set_request(request)
+
+    # 构造返回字符串（等待标记）
+    options_str = ", ".join(options or ["Yes", "No"])
+    result = f"[AWAITING_USER_INPUT] request_id={request.request_id}\n{question}\nOptions: {options_str}"
+
+    if multi_select:
+        result += "\n[Multi-select enabled]"
+
     return result
+
+
+def inject_user_response(response: AskUserResult) -> None:
+    """注入用户响应（由外部调用）
+
+    Args:
+        response: 用户响应数据
+
+    用法：
+        # 在 main.py 或外部系统调用
+        from tools.builtin_tools import inject_user_response
+        inject_user_response(AskUserResult(
+            request_id="abc123",
+            responses=[UserResponse(question_id="0", selected=["Yes"])],
+        ))
+    """
+    state = get_ask_user_state()
+    state.inject_response(response)
+
+
+def get_pending_ask_user_request() -> Optional[AskUserRequest]:
+    """获取当前等待中的 ask_user 请求"""
+    state = get_ask_user_state()
+    return state.pending_request
+
+
+def clear_ask_user_state() -> None:
+    """清理等待状态"""
+    state = get_ask_user_state()
+    state.clear()
 
 
 def run_diagnosis(fix: bool = False) -> str:

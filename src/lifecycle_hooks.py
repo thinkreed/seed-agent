@@ -69,6 +69,29 @@ class HookPoint(str, Enum):
     RALPH_COMPLETION_CHECK = "ralph_completion_check"  # Ralph 完成检查
     RALPH_CONTEXT_RESET = "ralph_context_reset"      # Ralph 上下文重置
 
+    # Ask User 生命周期（新增）
+    USER_QUESTION = "user_question"          # 发起用户问题
+    USER_WAITING = "user_waiting"            # 等待用户响应
+    USER_RESPONSE = "user_response"          # 用户响应接收
+    USER_CANCELLED = "user_cancelled"        # 用户取消
+
+    # 执行控制生命周期（新增）
+    EXECUTION_CANCEL = "execution_cancel"    # 执行被取消
+    EXECUTION_PAUSE = "execution_pause"      # 执行暂停
+    EXECUTION_RESUME = "execution_resume"    # 执行恢复
+
+    # 后台任务生命周期（新增）
+    TASK_START = "task_start"                # 后台任务开始
+    TASK_END = "task_end"                    # 后台任务结束
+    TASK_CANCEL = "task_cancel"              # 后台任务取消
+    TASK_ERROR = "task_error"                # 后台任务错误
+    GRACE_PERIOD_START = "grace_period_start"  # 优雅期开始
+    GRACE_PERIOD_END = "grace_period_end"      # 优雅期结束
+
+    # 关闭生命周期（新增）
+    SHUTDOWN_START = "shutdown_start"        # 关闭开始
+    SHUTDOWN_COMPLETE = "shutdown_complete"  # 关闭完成
+
 
 @dataclass
 class HookExecutionResult:
@@ -197,6 +220,25 @@ class LifecycleHookRegistry:
         HookPoint.RALPH_ITERATION_END.value: "Ralph 迭代结束",
         HookPoint.RALPH_COMPLETION_CHECK.value: "Ralph 完成检查",
         HookPoint.RALPH_CONTEXT_RESET.value: "Ralph 上下文重置",
+        # Ask User 生命周期
+        HookPoint.USER_QUESTION.value: "发起用户问题",
+        HookPoint.USER_WAITING.value: "等待用户响应",
+        HookPoint.USER_RESPONSE.value: "用户响应接收",
+        HookPoint.USER_CANCELLED.value: "用户取消",
+        # 执行控制生命周期
+        HookPoint.EXECUTION_CANCEL.value: "执行被取消",
+        HookPoint.EXECUTION_PAUSE.value: "执行暂停",
+        HookPoint.EXECUTION_RESUME.value: "执行恢复",
+        # 后台任务生命周期
+        HookPoint.TASK_START.value: "后台任务开始",
+        HookPoint.TASK_END.value: "后台任务结束",
+        HookPoint.TASK_CANCEL.value: "后台任务取消",
+        HookPoint.TASK_ERROR.value: "后台任务错误",
+        HookPoint.GRACE_PERIOD_START.value: "优雅期开始",
+        HookPoint.GRACE_PERIOD_END.value: "优雅期结束",
+        # 关闭生命周期
+        HookPoint.SHUTDOWN_START.value: "关闭开始",
+        HookPoint.SHUTDOWN_COMPLETE.value: "关闭完成",
     }
 
     def __init__(self):

@@ -31,7 +31,7 @@ from src.observability import (
     set_subagent_span_attributes,
 )
 from src.tools import ToolRegistry
-from src.tools.utils import is_parse_failed, parse_tool_arguments
+from src.tools.utils import parse_tool_arguments
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 
