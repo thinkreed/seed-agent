@@ -47,6 +47,16 @@ class SubagentType(Enum):
     PLAN = "plan"  # 规划分析：只读 + 记忆写入
 
 
+class SubagentStatus(str, Enum):
+    """Subagent 状态枚举"""
+
+    PENDING = "pending"  # 等待执行
+    RUNNING = "running"  # 正在执行
+    COMPLETED = "completed"  # 执行完成
+    FAILED = "failed"  # 执行失败
+    TIMEOUT = "timeout"  # 执行超时
+
+
 def _get_subagent_type_key(subagent_type: SubagentType | str) -> str:
     """获取 SubagentType 的字符串键（用于字典查找）
 
@@ -189,7 +199,7 @@ class SubagentState:
 
     id: str
     subagent_type: SubagentType
-    status: str  # "pending", "running", "completed", "failed", "timeout"
+    status: SubagentStatus | str  # 使用枚举或字符串（兼容性）
     prompt: str
     result: str | None = None
     error: str | None = None

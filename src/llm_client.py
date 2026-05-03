@@ -43,6 +43,21 @@ logger = logging.getLogger(__name__)
 # OpenTelemetry 状态
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 
+
+def _parse_model_id(model_id: str) -> tuple[str, str]:
+    """解析 model_id 为 (provider, model_name)
+
+    Args:
+        model_id: 模型标识符，格式如 "provider/model-name"
+
+    Returns:
+        (provider, model_name) 元组，若无 provider 则返回 ("unknown", model_id)
+    """
+    if "/" in model_id:
+        parts = model_id.split("/", 1)
+        return parts[0], parts[1]
+    return "unknown", model_id
+
 try:
     from opentelemetry.trace import Span
 
@@ -177,16 +192,7 @@ class LLMClient:
             # 记录成功指标
             if _OBSERVABILITY_ENABLED:
                 usage = response.get("usage", {})
-                provider = (
-                    self.model_id.split("/", 1)[0]
-                    if "/" in self.model_id
-                    else "unknown"
-                )
-                model_name = (
-                    self.model_id.split("/", 1)[-1]
-                    if "/" in self.model_id
-                    else self.model_id
-                )
+                provider, model_name = _parse_model_id(self.model_id)
                 record_llm_success(
                     provider,
                     model_name,
@@ -256,16 +262,7 @@ class LLMClient:
             # 记录成功指标（估算 token 数）
             if _OBSERVABILITY_ENABLED:
                 estimated_tokens = chunk_count * 10  # 每chunk约10 tokens
-                provider = (
-                    self.model_id.split("/", 1)[0]
-                    if "/" in self.model_id
-                    else "unknown"
-                )
-                model_name = (
-                    self.model_id.split("/", 1)[-1]
-                    if "/" in self.model_id
-                    else self.model_id
-                )
+                provider, model_name = _parse_model_id(self.model_id)
                 record_llm_success(
                     provider,
                     model_name,

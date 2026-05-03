@@ -488,6 +488,17 @@ class LifecycleHookRegistry:
                     )
                 )
 
+            except asyncio.CancelledError:
+                # 取消信号应传播，不应被吞没
+                if stats:
+                    stats.total_calls += 1
+                    stats.failed_calls += 1
+                    stats.last_call_time = time.time()
+                    stats.last_error = "CancelledError"
+                report.hooks_failed += 1
+                logger.warning(f"Hook {hook_id} cancelled at {point_value}")
+                raise  # 传播取消信号
+
             except Exception as e:
                 # 钩子失败处理
                 if stats:

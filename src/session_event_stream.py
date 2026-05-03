@@ -93,6 +93,7 @@ class SessionEventStream:
         self.session_id = session_id
         self._storage_path = storage_path or DEFAULT_STORAGE_PATH
         self._events: list[dict[str, Any]] = []
+        self._event_index: dict[int, dict[str, Any]] = {}  # 事件 ID -> 事件的索引
         self._event_counter: int = 0
         self._loaded: bool = False
 
@@ -127,6 +128,7 @@ class SessionEventStream:
 
         # 内存追加
         self._events.append(event)
+        self._event_index[event_id] = event  # 维护索引
         self._event_counter = event_id
 
         # 持久化
@@ -464,12 +466,14 @@ class SessionEventStream:
                     try:
                         event = json.loads(line)
                         self._events.append(event)
-                        self._event_counter = max(
-                            self._event_counter, event.get("id", 0)
-                        )
+                        event_id = event.get("id", 0)
+                        if event_id:
+                            self._event_index[event_id] = event  # 维护索引
+                        self._event_counter = max(self._event_counter, event_id)
                     except json.JSONDecodeError as e:
                         logger.warning(
-                            f"Failed to parse event: {type(e).__name__}: {str(e)[:50]}"
+                            f"Failed to parse event in {event_file}: "
+                            f"{type(e).__name__}: {str(e)[:50]}"
                         )
                         continue
 
@@ -478,7 +482,9 @@ class SessionEventStream:
                 f"Loaded {len(self._events)} events for session {self.session_id}"
             )
         except OSError as e:
-            logger.warning(f"Failed to load events: {type(e).__name__}: {e}")
+            logger.warning(
+                f"Failed to load events from {event_file}: {type(e).__name__}: {e}"
+            )
 
     # === 辅助方法 ===
 
@@ -493,11 +499,8 @@ class SessionEventStream:
         return None
 
     def get_event_by_id(self, event_id: int) -> dict[str, Any] | None:
-        """根据 ID 获取事件"""
-        for event in self._events:
-            if event["id"] == event_id:
-                return event
-        return None
+        """根据 ID 获取事件 (O(1) 查找)"""
+        return self._event_index.get(event_id)
 
     def build_context_for_llm(
         self, system_prompt: str | None = None, max_recent_events: int | None = None

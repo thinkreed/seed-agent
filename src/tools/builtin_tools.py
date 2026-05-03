@@ -668,8 +668,12 @@ async def code_as_policy_async(
             )
         except asyncio.TimeoutError:
             # Kill process on timeout
-            proc.kill()
-            await proc.wait()
+            try:
+                proc.kill()
+                await proc.wait()
+            except ProcessLookupError:
+                # 进程已结束，无需处理
+                pass
             exec_logger.warning(
                 f"Async code execution timed out: language={language}, timeout={timeout}s"
             )
