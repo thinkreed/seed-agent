@@ -11,6 +11,7 @@ OpenTelemetry Fallback 实现
 
 import asyncio
 from collections.abc import Callable, Coroutine
+from contextlib import AbstractContextManager
 from typing import Any, TypeVar
 
 # 类型别名，用于 Span 属性值
@@ -86,7 +87,7 @@ def get_tracer() -> NoOpTracer:
     return NoOpTracer()
 
 
-def get_meter():
+def get_meter() -> None:
     """获取 NoOp Meter"""
     return None
 
@@ -168,7 +169,9 @@ def start_span(name: str, attributes: dict[str, SpanAttributeValue] | None = Non
     return NoOpSpan()
 
 
-def start_as_current_span(name: str, attributes: dict[str, SpanAttributeValue] | None = None):
+def start_as_current_span(
+    name: str, attributes: dict[str, SpanAttributeValue] | None = None
+) -> "AbstractContextManager[NoOpSpan]":
     """启动作为当前 Span（NoOp context manager）"""
     class NoOpContextManager:
         def __enter__(self) -> NoOpSpan:

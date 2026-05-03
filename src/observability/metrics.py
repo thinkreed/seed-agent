@@ -35,7 +35,7 @@ _init_lock = threading.Lock()
 _initialized = False
 
 
-def _init_instruments():
+def _init_instruments() -> None:
     """延迟初始化 Instruments（线程安全，双重检查锁定）"""
     global _tokens_input_counter, _tokens_output_counter
     global _request_counter, _error_counter, _duration_histogram, _initialized

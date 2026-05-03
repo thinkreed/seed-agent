@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.subagent_manager import SubagentManager
+    from src.tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def _add_background_task(task: asyncio.Task[None]) -> None:
 _manager_lock = threading.Lock()
 
 
-def init_subagent_manager(manager):
+def init_subagent_manager(manager: "SubagentManager") -> None:
     """初始化全局 SubagentManager"""
     global _subagent_manager
     _subagent_manager = manager
@@ -373,7 +374,7 @@ async def _run_parallel_async(task_ids: list[str]):
         logger.error(f"Parallel execution error: {e}")
 
 
-def register_subagent_tools(registry):
+def register_subagent_tools(registry: "ToolRegistry") -> None:
     """注册 Subagent 工具到 Registry"""
     # 注册同步工具（返回状态或需要异步等待的提示）
     registry.register("spawn_subagent", spawn_subagent)

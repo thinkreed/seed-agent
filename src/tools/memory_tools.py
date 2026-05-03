@@ -19,6 +19,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from typing import Any
 
 from . import ToolRegistry
 
@@ -219,9 +220,9 @@ def search_memory(keyword: str, levels: list[str] | None = None) -> str:
     return "\n".join(results) if results else "No matching memory found."
 
 
-def start_long_term_update(args, **kwargs):
+def start_long_term_update(args: dict[str, Any], **kwargs: Any) -> str:
     """
-    Triggered when the agent believes a task is complete. 
+    Triggered when the agent believes a task is complete.
     Dynamically reads memory SOP and injects it into the prompt.
     """
     memory_md_path = os.path.join(os.path.dirname(__file__), "..", "..", "memory", "memory.md")
@@ -279,7 +280,7 @@ def register_memory_tools(registry: ToolRegistry) -> None:
 # 迁移完成后，JSONL 文件将不再使用，但保留 _ensure_sessions_dir 等函数
 # 以支持可能仍依赖它们的旧代码。
 
-def _ensure_sessions_dir():
+def _ensure_sessions_dir() -> None:
     """确保 sessions 目录存在（保留兼容）"""
     os.makedirs(SESSIONS_DIR, exist_ok=True)
 

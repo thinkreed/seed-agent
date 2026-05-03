@@ -9,6 +9,10 @@
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.tools import ToolRegistry
 
 from src.shared_config import SEED_DIR
 
@@ -257,7 +261,7 @@ def create_ralph_task_file(task_name: str, task_description: str) -> str:
     return f"Task file created: {task_file}"
 
 
-def register_ralph_tools(registry):
+def register_ralph_tools(registry: "ToolRegistry") -> None:
     """注册 Ralph Loop 工具"""
     registry.register("start_ralph_loop", start_ralph_loop)
     registry.register("write_completion_marker", write_completion_marker)

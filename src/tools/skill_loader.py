@@ -29,6 +29,10 @@ import threading
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.tools import ToolRegistry
 from typing import Any, Set, TypedDict
 
 import yaml  # type: ignore[import-untyped]
@@ -874,7 +878,7 @@ def search_skill(query: str) -> str:
     return f"No skill matches: {query}. Available: {', '.join(loader.get_skill_names())}"
 
 
-def register_skill_tools(registry):
+def register_skill_tools(registry: "ToolRegistry") -> None:
     """Register skill tools to the Agent system."""
     registry.register("load_skill", load_skill)
     registry.register("list_skills", list_skills)
