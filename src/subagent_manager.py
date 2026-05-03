@@ -98,7 +98,8 @@ class SubagentManager:
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
-        return self.gateway.config.agents["defaults"].defaults.primary
+        from src.shared_config import get_primary_model
+        return get_primary_model(self.gateway)
 
     def register_status_callback(self, callback: Callable[[str, str], None]):
         """注册状态变更回调"""
@@ -244,41 +245,40 @@ class SubagentManager:
                 if not result.success:
                     break
             return sequential_results
-        else:
-            # 并行执行
-            tasks = [self.run_subagent(task_id) for task_id in task_ids]
-            results_list = await asyncio.gather(*tasks, return_exceptions=True)
+        # 并行执行
+        tasks = [self.run_subagent(task_id) for task_id in task_ids]
+        results_list = await asyncio.gather(*tasks, return_exceptions=True)
 
-            parallel_results: dict[str, SubagentResult] = {}
-            for task_id, raw_result in zip(task_ids, results_list):
-                # asyncio.gather(return_exceptions=True) 返回 Union[SubagentResult, BaseException]
-                if isinstance(raw_result, BaseException):
-                    # 创建失败状态（加锁读取任务信息）
-                    with self._dict_sync_lock:
-                        task = self._tasks.get(task_id)
-                    if task:
-                        state = SubagentState(
-                            id=task_id,
-                            subagent_type=task.subagent_type,
-                            status="failed",
-                            prompt=task.prompt,
-                            error=str(raw_result),
-                        )
-                    else:
-                        # 任务不存在，创建通用失败状态
-                        state = SubagentState(
-                            id=task_id,
-                            subagent_type=SubagentType.EXPLORE,
-                            status="failed",
-                            prompt="",
-                            error=str(raw_result),
-                        )
-                    parallel_results[task_id] = SubagentResult(state)
+        parallel_results: dict[str, SubagentResult] = {}
+        for task_id, raw_result in zip(task_ids, results_list):
+            # asyncio.gather(return_exceptions=True) 返回 Union[SubagentResult, BaseException]
+            if isinstance(raw_result, BaseException):
+                # 创建失败状态（加锁读取任务信息）
+                with self._dict_sync_lock:
+                    task = self._tasks.get(task_id)
+                if task:
+                    state = SubagentState(
+                        id=task_id,
+                        subagent_type=task.subagent_type,
+                        status="failed",
+                        prompt=task.prompt,
+                        error=str(raw_result),
+                    )
                 else:
-                    # 类型窄化：raw_result 不是 BaseException，所以是 SubagentResult
-                    parallel_results[task_id] = raw_result
+                    # 任务不存在，创建通用失败状态
+                    state = SubagentState(
+                        id=task_id,
+                        subagent_type=SubagentType.EXPLORE,
+                        status="failed",
+                        prompt="",
+                        error=str(raw_result),
+                    )
+                parallel_results[task_id] = SubagentResult(state)
+            else:
+                # 类型窄化：raw_result 不是 BaseException，所以是 SubagentResult
+                parallel_results[task_id] = raw_result
 
-            return parallel_results
+        return parallel_results
 
     def get_status(self, task_id: str) -> str | None:
         """获取任务状态（同步方法）"""

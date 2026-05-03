@@ -13,7 +13,6 @@
 参考来源: Harness Engineering "工具与权限"
 """
 
-import json
 import logging
 import time
 from dataclasses import dataclass
@@ -21,21 +20,21 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.sandbox import IsolationLevel, Sandbox
-
 from src.security.risk_classifier import (
-    CommandRiskClassifier,
     ClassificationResult,
-    RiskLevel,
+    CommandRiskClassifier,
     RiskAction,
-)
-from src.security.tool_expander import (
-    ProgressiveToolExpander,
-    ToolTier,
-    TOOL_TIER_CONFIGS,
+    RiskLevel,
 )
 from src.security.single_purpose_tools import (
     SinglePurposeToolFactory,
 )
+from src.security.tool_expander import (
+    TOOL_TIER_CONFIGS,
+    ProgressiveToolExpander,
+    ToolTier,
+)
+from src.tools.utils import parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -188,16 +187,12 @@ class SecureSandbox(Sandbox):
 
         start_time = time.time()
 
-        # 解析参数
-        try:
-            if isinstance(raw_args, str):
-                tool_args = json.loads(raw_args)
-            else:
-                tool_args = raw_args
-        except json.JSONDecodeError as e:
+        # 使用统一函数解析参数
+        tool_args = parse_tool_arguments(raw_args)
+        if not tool_args and raw_args:
             return SecureExecutionResult(
                 tool_call_id=tool_call_id,
-                content=f"Error: Failed to parse arguments: {e}",
+                content="Error: Failed to parse arguments: invalid JSON",
                 success=False,
                 duration_ms=0.0,
             )

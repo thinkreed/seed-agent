@@ -26,6 +26,7 @@ Session 宠物哲学：
 - 接收用户输入 → Harness.run_cycle() → LLM 推理 → Sandbox 执行工具 → 循环
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import AsyncGenerator, Callable
@@ -33,6 +34,7 @@ from typing import Any
 
 import tiktoken
 
+from src.builtin_hooks import register_builtin_hooks
 from src.client import LLMGateway
 from src.context_engineering import (
     CompressionConfig,
@@ -40,29 +42,10 @@ from src.context_engineering import (
     PruningConfig,
 )
 from src.harness import Harness, MaxIterationsExceeded
-from src.llm_client import LLMClient
-from src.sandbox import IsolationLevel, Sandbox
-from src.security.secure_sandbox import SecureSandbox
-from src.session_event_stream import EventType, SessionEventStream
-from src.subagent_manager import SubagentManager
-from src.tools import ToolRegistry
-from src.tools.builtin_tools import register_builtin_tools
-from src.tools.memory_tools import (
-    _generate_session_filename,
-    _record_skill_outcome,
-    _save_session_history,
-    register_memory_tools,
-)
-from src.tools.ralph_tools import register_ralph_tools
-from src.tools.skill_loader import SkillLoader, register_skill_tools
-from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
-from src.tools.collaboration_tools import register_tools as register_collaboration_tools
-from src.scheduler import TaskScheduler, register_scheduler_tools
-from src.request_queue import RequestPriority
 
 # 生命周期钩子
 from src.lifecycle_hooks import LifecycleHookRegistry, get_global_registry
-from src.builtin_hooks import register_builtin_hooks
+from src.llm_client import LLMClient
 
 # OpenTelemetry
 from src.observability import (
@@ -72,6 +55,24 @@ from src.observability import (
     is_observability_enabled,
     set_tool_span_attributes,
 )
+from src.request_queue import RequestPriority
+from src.sandbox import IsolationLevel, Sandbox
+from src.scheduler import TaskScheduler, register_scheduler_tools
+from src.security.secure_sandbox import SecureSandbox
+from src.session_event_stream import EventType, SessionEventStream
+from src.subagent_manager import SubagentManager
+from src.tools import ToolRegistry
+from src.tools.builtin_tools import register_builtin_tools
+from src.tools.collaboration_tools import register_tools as register_collaboration_tools
+from src.tools.memory_tools import (
+    _generate_session_filename,
+    _record_skill_outcome,
+    _save_session_history,
+    register_memory_tools,
+)
+from src.tools.ralph_tools import register_ralph_tools
+from src.tools.skill_loader import SkillLoader, register_skill_tools
+from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
 
 try:
     from opentelemetry.trace import Span
@@ -201,7 +202,8 @@ class AgentLoop:
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
-        return self.gateway.config.agents["defaults"].defaults.primary
+        from src.shared_config import get_primary_model
+        return get_primary_model(self.gateway)
 
     def _setup_tools_and_skills(self) -> None:
         """注册工具并加载技能"""
@@ -474,12 +476,12 @@ class AgentLoop:
 
             return result
 
-        except MaxIterationsExceeded as e:
-            logger.error(f"Max iterations exceeded: {e}")
+        except MaxIterationsExceeded:
+            logger.exception("Max iterations exceeded")
             self.session.record_session_end("max_iterations_exceeded")
             raise
-        except Exception as e:
-            logger.error(f"Agent execution failed: {type(e).__name__}: {e}")
+        except (RuntimeError, OSError, ValueError, asyncio.CancelledError):
+            logger.exception("Agent execution failed")
             self.session.record_session_end("error")
             raise
 
@@ -507,11 +509,11 @@ class AgentLoop:
             self._evaluate_and_record_skill_outcomes(final_success=True)
 
         except MaxIterationsExceeded as e:
-            logger.error(f"Max iterations exceeded: {e}")
+            logger.exception("Max iterations exceeded")
             self.session.record_session_end("max_iterations_exceeded")
             yield {"type": "error", "content": str(e)}
-        except Exception as e:
-            logger.error(f"Agent execution failed: {type(e).__name__}: {e}")
+        except (RuntimeError, OSError, ValueError, asyncio.CancelledError) as e:
+            logger.exception("Agent execution failed")
             self.session.record_session_end("error")
             yield {"type": "error", "content": str(e)}
 
@@ -617,11 +619,10 @@ class AgentLoop:
         if success:
             span.set_attribute("seed.tool.duration_ms", duration_ms)
             span.set_status(StatusCode.OK)
-        else:
-            if error:
-                span.record_exception(error)
-                span.set_attribute("seed.error.message", str(error)[:500])
-                span.set_status(StatusCode.ERROR, str(error)[:200])
+        elif error:
+            span.record_exception(error)
+            span.set_attribute("seed.error.message", str(error)[:500])
+            span.set_status(StatusCode.ERROR, str(error)[:200])
         span.end()
 
     # === 状态恢复 ===

@@ -206,3 +206,15 @@ def get_code_execution_security_config() -> CodeExecutionSecurityConfig:
 def get_vision_config() -> VisionConfig:
     """获取视觉处理配置"""
     return _vision_config
+
+
+def get_primary_model(gateway) -> str:
+    """从 Gateway 配置获取主模型 ID
+
+    Args:
+        gateway: LLMGateway 实例
+
+    Returns:
+        str: 主模型 ID
+    """
+    return gateway.config.agents["defaults"].defaults.primary

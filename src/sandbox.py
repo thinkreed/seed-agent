@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from src.tools import ToolRegistry
+from src.tools.utils import parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -296,18 +297,14 @@ class Sandbox:
         tool_name = func_data.get("name", "unknown")
         raw_args = func_data.get("arguments", "{}")
 
-        # 解析参数
-        try:
-            if isinstance(raw_args, str):
-                tool_args = json.loads(raw_args)
-            else:
-                tool_args = raw_args
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse tool arguments: {e}")
+        # 使用统一函数解析参数
+        tool_args = parse_tool_arguments(raw_args)
+        if not tool_args and raw_args:
+            # 解析失败，返回错误
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": f"Error: Failed to parse arguments: {e}"
+                "content": "Error: Failed to parse arguments: invalid JSON"
             }
 
         # 路径映射

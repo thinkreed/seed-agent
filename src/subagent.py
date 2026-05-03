@@ -256,7 +256,8 @@ class SubagentInstance:
 
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
-        return self.gateway.config.agents["defaults"].defaults.primary
+        from src.shared_config import get_primary_model
+        return get_primary_model(self.gateway)
 
     def _setup_tools(self, custom_tools: set[str] | None = None):
         """设置工具集"""

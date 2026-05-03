@@ -35,11 +35,11 @@ import json
 import logging
 import time
 from collections.abc import AsyncGenerator
-from typing import Any, TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from src.llm_client import LLMClient
 from src.context_engineering import ContextEngineering
-from src.lifecycle_hooks import HookPoint, LifecycleHookRegistry, HookTriggerReport
+from src.lifecycle_hooks import HookPoint, HookTriggerReport, LifecycleHookRegistry
+from src.llm_client import LLMClient
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
@@ -53,6 +53,7 @@ from src.observability import (
 from src.request_queue import RequestPriority
 from src.sandbox import Sandbox
 from src.session_event_stream import EventType, SessionEventStream
+from src.tools.utils import parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -588,9 +589,8 @@ class Harness:
             })
 
         # 并发执行工具调用
-        results = await self._execute_tools_parallel(tool_calls)
+        return await self._execute_tools_parallel(tool_calls)
 
-        return results
 
     async def _route_tool_calls_with_hooks(
         self,
@@ -615,9 +615,8 @@ class Harness:
             })
 
         # 并发执行工具调用（带钩子）
-        results = await self._execute_tools_parallel_with_hooks(tool_calls)
+        return await self._execute_tools_parallel_with_hooks(tool_calls)
 
-        return results
 
     async def _execute_tools_parallel(
         self,
@@ -743,18 +742,13 @@ class Harness:
         raw_args = tool_call.get("function", {}).get("arguments", "{}")
         tool_call_id = tool_call.get("id", "unknown")
 
-        # 解析参数
-        try:
-            if isinstance(raw_args, str):
-                tool_args = json.loads(raw_args)
-            else:
-                tool_args = raw_args
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse tool arguments: {e}")
+        # 使用统一函数解析参数
+        tool_args = parse_tool_arguments(raw_args)
+        if not tool_args and raw_args:
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": f"Error: Failed to parse arguments: {e}"
+                "content": "Error: Failed to parse arguments: invalid JSON"
             }
 
         # 1. 触发 tool_call_before 钩子
@@ -971,11 +965,10 @@ class Harness:
         if success:
             span.set_attribute("seed.tool.duration_ms", duration_ms)
             span.set_status(StatusCode.OK)
-        else:
-            if error:
-                span.record_exception(error)
-                span.set_attribute("seed.error.message", str(error)[:500])
-                span.set_status(StatusCode.ERROR, str(error)[:200])
+        elif error:
+            span.record_exception(error)
+            span.set_attribute("seed.error.message", str(error)[:500])
+            span.set_status(StatusCode.ERROR, str(error)[:200])
         span.end()
 
     # === 状态恢复 ===

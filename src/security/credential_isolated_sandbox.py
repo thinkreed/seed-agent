@@ -22,11 +22,12 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.sandbox import IsolationLevel
-from src.security.secure_sandbox import SecureSandbox, SecureExecutionResult
 from src.security.credential_proxy import CredentialProxy
+from src.security.secure_sandbox import SecureExecutionResult, SecureSandbox
+from src.tools.utils import parse_tool_arguments
 
 if TYPE_CHECKING:
     pass
@@ -212,16 +213,12 @@ class CredentialIsolatedSandbox(SecureSandbox):
         tool_name = func_data.get("name", "unknown")
         raw_args = func_data.get("arguments", "{}")
 
-        # 解析参数
-        try:
-            if isinstance(raw_args, str):
-                tool_args = json.loads(raw_args)
-            else:
-                tool_args = raw_args
-        except json.JSONDecodeError as e:
+        # 使用统一函数解析参数
+        tool_args = parse_tool_arguments(raw_args)
+        if not tool_args and raw_args:
             return SecureExecutionResult(
                 tool_call_id=tool_call_id,
-                content=f"Error: Failed to parse arguments: {e}",
+                content="Error: Failed to parse arguments: invalid JSON",
                 success=False,
                 duration_ms=0.0,
             )
@@ -473,18 +470,17 @@ class CredentialIsolatedSandbox(SecureSandbox):
         import re
 
         # sk-* 模式 (OpenAI)
-        output = re.sub(r'sk-[a-zA-Z0-9]{20,}', '[REDACTED_API_KEY]', output)
+        output = re.sub(r"sk-[a-zA-Z0-9]{20,}", "[REDACTED_API_KEY]", output)
 
         #Bearer * 模式
-        output = re.sub(r'Bearer\s+[a-zA-Z0-9_-]{20,}', 'Bearer [REDACTED]', output)
+        output = re.sub(r"Bearer\s+[a-zA-Z0-9_-]{20,}", "Bearer [REDACTED]", output)
 
         #AWS Access Key 模式
-        output = re.sub(r'AKIA[A-Z0-9]{16}', '[REDACTED_AWS_KEY]', output)
+        output = re.sub(r"AKIA[A-Z0-9]{16}", "[REDACTED_AWS_KEY]", output)
 
         # 通用 API Key 模式
-        output = re.sub(r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}', 'api_key=[REDACTED]', output)
+        return re.sub(r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}', "api_key=[REDACTED]", output)
 
-        return output
 
     # === 凭证代理集成 ===
 
