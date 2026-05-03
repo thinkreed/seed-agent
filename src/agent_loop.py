@@ -1,16 +1,22 @@
 """
 Agent 主循环模块
 
+基于 Harness Engineering "宠物与牲畜基础设施哲学" 设计：
+- Session 是宠物：精心培育、持久保存、不可丢失
+- 核心接口：emitEvent() 记录事件、getEvents() 读取事件
+- 只追加的日志，天然支持重放和状态恢复
+
 负责:
-1. 消息历史管理 (上下文窗口控制、摘要压缩)
+1. Session 不可变事件流 (只追加日志、摘要标记、状态重放)
 2. 工具调用执行 (并发安全、路径重叠检查)
 3. 技能加载与匹配 (渐进式披露、Memory Graph 选择)
 4. 子代理生命周期管理 (创建、等待、结果聚合)
-5. 会话持久化 (SQLite 存储、历史回溯)
+5. 上下文窗口管理 (摘要触发、Token 估算)
 
 核心流程:
-- 接收用户输入 → 构建 messages → 调用 LLM → 解析 tool_calls → 执行工具 → 返回结果 → 循环
-- 支持流式响应、上下文压缩、双重 System Message 防护
+- 接收用户输入 → 记录事件 → 构建 messages → 调用 LLM → 记录响应 → 执行工具 → 循环
+- 摘要只创建标记，不截断历史
+- 支持从任意事件点重放状态
 
 OpenTelemetry 嵌入:
 - 工具调用 Span (seed.tool.{name})
@@ -27,7 +33,6 @@ from typing import Any, TypedDict
 import tiktoken
 
 from src.client import LLMGateway
-# OpenTelemetry 可观测性（自动处理 ImportError）
 from src.observability import (
     SPAN_TOOL_PREFIX,
     StatusCode,
@@ -35,16 +40,9 @@ from src.observability import (
     is_observability_enabled,
     set_tool_span_attributes,
 )
-
-# Span 类型导入（用于类型注解）
-try:
-    from opentelemetry.trace import Span
-    _SPAN_TYPE_AVAILABLE = True
-except ImportError:
-    Span = None  # type: ignore[misc,assignment]
-    _SPAN_TYPE_AVAILABLE = False
 from src.request_queue import RequestPriority
 from src.scheduler import TaskScheduler, register_scheduler_tools
+from src.session_event_stream import EventType, SessionEventStream
 from src.subagent_manager import SubagentManager
 from src.tools import ToolRegistry
 from src.tools.builtin_tools import register_builtin_tools
@@ -59,7 +57,7 @@ from src.tools.skill_loader import SkillLoader, register_skill_tools
 from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
 from src.tools.utils import parse_tool_arguments
 
-# Span 类型导入（用于类型注解）
+# OpenTelemetry Span 类型导入
 try:
     from opentelemetry.trace import Span
     _SPAN_TYPE_AVAILABLE = True
@@ -67,7 +65,7 @@ except ImportError:
     Span = None  # type: ignore[misc,assignment]
     _SPAN_TYPE_AVAILABLE = False
 
-# 模块级 encoding 缓存：避免重复创建 tiktoken encoding 实例
+# 模块级 encoding 缓存
 _ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
 
 logger = logging.getLogger(__name__)
@@ -84,26 +82,19 @@ class ToolResult(TypedDict):
 
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数异常"""
-
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
-
-class ProviderNotFoundError(Exception):
-    """提供商不存在异常"""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
-
-class ToolNotFoundError(Exception):
-    """工具不存在异常"""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
 
 class AgentLoop:
-    """Agent 主循环"""
+    """Agent 主循环 - 基于 Session 不可变事件流
+
+    Harness Engineering 宠物哲学：
+    - Session 是宠物，不可丢失
+    - 历史只追加，不可修改/截断/清空
+    - 摘要只创建标记，不修改原数据
+    - 支持从任意事件点重放状态
+    """
 
     SUMMARY_PROMPT = """请将以下对话历史压缩成简洁的摘要，保留关键信息：
 1. 用户的核心需求和意图
@@ -125,35 +116,43 @@ class AgentLoop:
         summary_interval: int = 10,
         session_id: str | None = None
     ):
+        """初始化 AgentLoop
+
+        Args:
+            gateway: LLM Gateway 实例
+            model_id: 模型 ID (格式: provider/model)
+            system_prompt: 系统提示
+            max_iterations: 最大迭代次数
+            summary_interval: 摘要触发间隔 (对话轮数)
+            session_id: 会话 ID (用于事件流持久化)
+        """
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
         self.summary_interval = summary_interval
+        self.session_id = session_id or _generate_session_filename()
 
-        self.history: list[dict[str, Any]] = []
-        self._conversation_rounds: int = 0  # 用户消息计数
-        self._last_summary: str | None = None  # 最近一次摘要
-        self.session_id: str = session_id or _generate_session_filename()  # 当前会话ID
+        # === 不可变事件流 (替代可变历史) ===
+        self.session = SessionEventStream(self.session_id)
+        self.session.record_session_start({
+            "model_id": self.model_id,
+            "max_iterations": self.max_iterations,
+            "summary_interval": self.summary_interval
+        })
 
-        self._setup_internal_state()
-        self._setup_tools_and_skills()
-        self._setup_subsystems(system_prompt)
-
+        # === 内部状态 ===
+        self._conversation_rounds: int = 0
+        self._pending_skill_outcomes: list[dict] = []
+        self._pending_user_input: str | None = None
         self._encoding = self._get_tokenizer()
 
-    def _setup_internal_state(self) -> None:
-        """初始化内部状态与上下文管理"""
-        # Memory Graph: Skill 执行跟踪
-        self._pending_skill_outcomes: list[dict] = []
-
-        # Context Window Management
+        # === 上下文窗口管理 ===
         self.context_window = self._get_model_context_window()
-        self.context_usage_threshold = 0.75  # Trigger summary at 75% usage
+        self.context_usage_threshold = 0.75
 
-        # Context Token Cache
-        self._message_token_cache: list[int] = []
-        self._system_prompt_tokens: int = 0
-        self._pending_user_input: str | None = None
+        # === 初始化子系统 ===
+        self._setup_tools_and_skills()
+        self._setup_subsystems(system_prompt)
 
     def _setup_tools_and_skills(self) -> None:
         """注册工具并加载技能"""
@@ -166,39 +165,35 @@ class AgentLoop:
         register_ralph_tools(self.tools)
         register_subagent_tools(self.tools)
 
-        # 加载 skills (渐进式披露: 仅注入索引)
         self.skill_loader = SkillLoader()
-        self._available_tools: set[str] = set()  # 初始化为空集合而非 None
+        self._available_tools: set[str] = set()
 
     def _setup_subsystems(self, system_prompt: str | None = None) -> None:
-        """初始化子系统（Subagent、调度器、Prompt）"""
-        # 初始化 SubagentManager
+        """初始化子系统"""
         self.subagent_manager = SubagentManager(
             gateway=self.gateway,
             model_id=self.model_id,
         )
         init_subagent_manager(self.subagent_manager)
 
-        # 初始化定时任务调度器
         self.scheduler = TaskScheduler(self)
 
-        # 构建 System Prompt
         skills_prompt = self.skill_loader.get_skills_prompt()
         if system_prompt:
             self.system_prompt = system_prompt + "\n\n" + skills_prompt
         else:
             self.system_prompt = skills_prompt
 
+    # === Token 管理 ===
+
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         return self.gateway.config.agents["defaults"].defaults.primary
 
     def _get_tokenizer(self) -> tiktoken.Encoding | None:
-        """获取当前模型的 tokenizer（带缓存）"""
-        # Extract model name from "provider/model" format
+        """获取 tokenizer (带缓存)"""
         model_name = self.model_id.split("/", 1)[-1] if "/" in self.model_id else self.model_id
 
-        # 检查缓存
         if model_name in _ENCODING_CACHE:
             return _ENCODING_CACHE[model_name]
 
@@ -207,7 +202,6 @@ class AgentLoop:
             _ENCODING_CACHE[model_name] = encoding
             return encoding
         except KeyError:
-            # Fallback: try common encodings
             for enc_name in ["cl100k_base", "p50k_base", "r50k_base"]:
                 if enc_name in _ENCODING_CACHE:
                     return _ENCODING_CACHE[enc_name]
@@ -220,8 +214,7 @@ class AgentLoop:
             return None
 
     def _get_model_context_window(self) -> int:
-        """获取当前模型的上下文窗口大小"""
-        # Extract provider_id and model_id from "provider/model" format
+        """获取模型上下文窗口大小"""
         if "/" in self.model_id:
             provider_id, model_id = self.model_id.split("/", 1)
             provider = self.gateway.config.models.get(provider_id)
@@ -229,92 +222,76 @@ class AgentLoop:
                 for m in provider.models:
                     if m.id == model_id:
                         return m.contextWindow
-        return 100000  # Default fallback
+        return 100000
 
     def _encode_text(self, text: str) -> int:
-        """编码文本并返回 token 计数"""
+        """编码文本返回 token 数"""
         if self._encoding:
             return len(self._encoding.encode(text))
         return int(len(text) * 0.7)
 
-    def _cache_message_tokens(self, msg: dict) -> int:
-        """计算并缓存单条消息的 token 数"""
-        content = msg.get("content", "")
-        tokens = 0
-        if isinstance(content, str):
-            tokens = self._encode_text(content)
-        elif isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and "text" in item:
-                    tokens += self._encode_text(item["text"])
-        # tool_calls 也有 token 开销，简单估算
-        if msg.get("tool_calls"):
-            tc_text = json.dumps(msg["tool_calls"])
-            tokens += self._encode_text(tc_text)
-        return tokens
-
-    def _rebuild_token_cache(self) -> None:
-        """重建 Token 缓存（用于历史截断后）"""
-        self._message_token_cache = []
-        self._system_prompt_tokens = 0
-        for msg in self.history:
-            self._message_token_cache.append(self._cache_message_tokens(msg))
-        if self.system_prompt:
-            self._system_prompt_tokens = self._encode_text(self.system_prompt)
-
-    def _update_message_token_cache(self) -> None:
-        """更新消息 Token 缓存（增量或全量重建）"""
-        cache_len = len(self._message_token_cache)
-        history_len = len(self.history)
-
-        if cache_len < history_len:
-            # 增量：仅编码新增部分
-            for msg in self.history[cache_len:]:
-                self._message_token_cache.append(self._cache_message_tokens(msg))
-        elif cache_len > history_len:
-            # 历史被截断：全量重建
-            self._rebuild_token_cache()
-
     def _estimate_context_size(self) -> int:
-        """估算当前上下文的 Token 数量"""
-        # 缓存 system prompt（仅首次或变化时）
-        if self._system_prompt_tokens == 0 and self.system_prompt:
-            self._system_prompt_tokens = self._encode_text(self.system_prompt)
+        """估算当前上下文 Token 数"""
+        # 从事件流构建当前上下文并估算
+        messages = self.session.build_context_for_llm(system_prompt=self.system_prompt)
+        total = 0
 
-        self._update_message_token_cache()
-        return self._system_prompt_tokens + sum(self._message_token_cache)
+        if self.system_prompt:
+            total += self._encode_text(self.system_prompt)
+
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                total += self._encode_text(content)
+            if msg.get("tool_calls"):
+                total += self._encode_text(json.dumps(msg["tool_calls"]))
+
+        return total
+
+    # === 上下文构建 ===
 
     def _build_messages(self) -> list[dict]:
-        """构建完整的消息列表"""
-        messages = []
-        if self.system_prompt:
-            messages.append({"role": "system", "content": self.system_prompt})
-        messages.extend(self.history)
-        return messages
+        """从事件流构建消息列表"""
+        return self.session.build_context_for_llm(system_prompt=self.system_prompt)
 
-    def _format_history_for_summary(self) -> str:
-        """将历史记录格式化为文本"""
+    # === 摘要机制 (不截断历史) ===
+
+    def _format_events_for_summary(self) -> str:
+        """将事件格式化为摘要文本"""
+        # 获取最近摘要之后的事件
+        events = self.session.get_events_since_last_summary([
+            EventType.USER_INPUT,
+            EventType.LLM_RESPONSE,
+            EventType.TOOL_RESULT
+        ])
+
         lines = []
-        for msg in self.history:
-            role = msg.get("role", "unknown")
-            content = msg.get("content", "")
-            if msg.get("tool_calls"):
-                tc_names = [tc["function"]["name"] for tc in msg["tool_calls"] if tc.get("function")]
-                content = f"[Tool Calls: {', '.join(tc_names)}]"
-            if content:
-                lines.append(f"{role}: {content}")
+        for event in events:
+            event_type = event["type"]
+            data = event["data"]
+
+            if event_type == EventType.USER_INPUT.value:
+                lines.append(f"user: {data.get('content', '')}")
+            elif event_type == EventType.LLM_RESPONSE.value:
+                content = data.get("content", "")
+                if data.get("tool_calls"):
+                    tc_names = [tc["function"]["name"] for tc in data["tool_calls"] if tc.get("function")]
+                    content = f"[Tool Calls: {', '.join(tc_names)}]"
+                if content:
+                    lines.append(f"assistant: {content}")
+            elif event_type == EventType.TOOL_RESULT.value:
+                content = data.get("content", "")[:200]
+                lines.append(f"tool: {content}")
+
         return "\n".join(lines)
 
-    async def _summarize_history(self) -> str | None:
-        """使用 LLM 总结对话历史"""
-        if not self.history:
+    async def _summarize_events(self) -> str | None:
+        """使用 LLM 总结事件流"""
+        events_text = self._format_events_for_summary()
+        if not events_text:
             return None
 
-        history_text = self._format_history_for_summary()
-        if not history_text:
-            return None
-
-        prompt = self.SUMMARY_PROMPT.format(history=history_text)
+        prompt = self.SUMMARY_PROMPT.format(history=events_text)
         try:
             response = await self.gateway.chat_completion(
                 self.model_id,
@@ -324,13 +301,12 @@ class AgentLoop:
             summary = response["choices"][0]["message"]["content"]
             return summary.strip()
         except Exception as e:
-            logger.warning(f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}", exc_info=True)
+            logger.warning(f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}")
             return None
 
-
     def _should_summarize(self) -> tuple[bool, int, bool]:
-        """检查是否需要总结
-        
+        """检查是否需要摘要
+
         Returns:
             (should_summarize, estimated_tokens, is_context_full)
         """
@@ -340,97 +316,75 @@ class AgentLoop:
         is_round_limit_reached = self._conversation_rounds >= self.summary_interval
         return (is_context_full or is_round_limit_reached), estimated_tokens, is_context_full
 
+    async def _create_summary_marker(self, is_context_full: bool) -> None:
+        """创建摘要标记 (不截断历史)"""
+        summary = await self._summarize_events()
+        if not summary:
+            return
 
-    async def _apply_summary(self, summary: str, is_context_full: bool) -> None:
-        """应用摘要并截断历史"""
-        # Save summary to metadata
+        # 记录摘要事件
+        self.session.emit_event(EventType.SUMMARY_GENERATED, {
+            "summary": summary,
+            "is_context_full": is_context_full
+        })
+
+        # 创建摘要标记
+        current_event_id = self.session.get_event_count()
+        self.session.create_summary_marker(
+            current_event_id,
+            summary,
+            {"is_context_full": is_context_full}
+        )
+
+        # 持久化摘要到 L4
         _save_session_history([], summary=summary, session_id=self.session_id)
 
-        # Keep fewer messages if context is very full
-        keep_count = 2 if is_context_full else 4
-        preserved = self.history[-keep_count:] if len(self.history) > keep_count else self.history
-
-        # Replace history with summary + preserved messages
-        self.history = [
-            {"role": "user", "content": f"[System Note: 之前对话的摘要，作为当前上下文的参考]\n{summary}"}
-        ] + preserved
-
-        self._last_summary = summary
         self._conversation_rounds = 0
-    async def _maybe_summarize(self) -> None:
-        """检查是否需要总结历史并执行总结"""
-        # Save current history to L4 session archive
-        if self.history:
-            _save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
+        logger.info(f"Summary marker created: covers events 1-{current_event_id}")
 
-        # Check if summary is needed
+    async def _maybe_summarize(self) -> None:
+        """检查并执行摘要"""
         needs_summary, estimated_tokens, is_context_full = self._should_summarize()
         if not needs_summary:
             return
 
         logger.info(
-            f"Summary triggered: context_tokens={estimated_tokens}/{self.context_window} "
-            f"(threshold={self.context_window * self.context_usage_threshold}), "
+            f"Summary triggered: tokens={estimated_tokens}/{self.context_window}, "
             f"rounds={self._conversation_rounds}/{self.summary_interval}"
         )
 
-        # Generate summary
-        summary = await self._summarize_history()
-        if not summary:
-            return
+        await self._create_summary_marker(is_context_full)
 
-        # Apply summary and truncate history
-        await self._apply_summary(summary, is_context_full)
-
-    async def _process_run_response(self, response: dict, iteration: int) -> tuple[str | None, int, bool]:
-        """处理 LLM 响应并执行相应动作
-        
-        Returns:
-            (next_input, new_iteration, should_return)
-        """
-        choice = response["choices"][0]
-        message = choice["message"]
-        self.history.append(message)
-
-        if message.get("tool_calls"):
-            tool_results = await self._execute_tool_calls(message["tool_calls"])
-            self.history.extend(tool_results)
-            return None, iteration, False  # Continue loop
-        else:
-            # 对话完成，检查是否需要总结
-            await self._maybe_summarize()
-            # Memory Graph: 评估并记录 Skill 执行结果
-            self._evaluate_and_record_skill_outcomes(final_success=True)
-            return message.get("content", ""), iteration, True  # Return response
-
-    async def _handle_pending_input(self) -> bool:
-        """处理中断/新输入
-        
-        Returns:
-            True if a new input was handled (reset iteration), False otherwise.
-        """
-        if self._pending_user_input:
-            new_input = self._pending_user_input
-            self._pending_user_input = None
-            self.history.append({"role": "user", "content": new_input})
-            self._conversation_rounds += 1
-            return True
-        return False
+    # === 核心执行流程 ===
 
     async def run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> str:
-        """处理用户输入,返回最终响应"""
-        self.history.append({"role": "user", "content": user_input})
+        """执行对话
+
+        Args:
+            user_input: 用户输入
+            priority: 请求优先级
+
+        Returns:
+            最终响应文本
+        """
+        # 1. 记录用户输入事件
+        self.session.emit_event(EventType.USER_INPUT, {"content": user_input})
         self._conversation_rounds += 1
 
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
 
-            # 处理中断/新输入
-            if await self._handle_pending_input():
+            # 2. 处理中断输入
+            if self._pending_user_input:
+                pending = self._pending_user_input
+                self._pending_user_input = None
+                self.session.emit_event(EventType.USER_INPUT, {"content": pending})
+                self._conversation_rounds += 1
                 iteration = 0
                 continue
 
+            # 3. 构建上下文并调用 LLM
             messages = self._build_messages()
             response = await self.gateway.chat_completion(
                 self.model_id,
@@ -439,16 +393,119 @@ class AgentLoop:
                 tools=self.tools.get_schemas()
             )
 
-            final_response, iteration, should_return = await self._process_run_response(response, iteration)
-            if should_return:
-                return final_response or ""  # 确保返回非空字符串
+            # 4. 处理响应
+            choice = response["choices"][0]
+            message = choice["message"]
 
+            # 记录 LLM 响应事件
+            llm_data: dict[str, Any] = {}
+            if message.get("content"):
+                llm_data["content"] = message["content"]
+            if message.get("tool_calls"):
+                llm_data["tool_calls"] = message["tool_calls"]
+
+            self.session.emit_event(EventType.LLM_RESPONSE, llm_data)
+
+            # 5. 执行工具调用或返回
+            if message.get("tool_calls"):
+                tool_results = await self._execute_tool_calls(message["tool_calls"])
+                # 记录工具结果事件
+                for result in tool_results:
+                    self.session.emit_event(EventType.TOOL_RESULT, {
+                        "tool_call_id": result["tool_call_id"],
+                        "content": result["content"]
+                    })
+                # 继续循环
+            else:
+                # 对话完成
+                await self._maybe_summarize()
+                self._evaluate_and_record_skill_outcomes(final_success=True)
+                self.session.record_session_end("completed")
+                return message.get("content", "")
+
+        self.session.record_session_end("max_iterations_exceeded")
+        raise MaxIterationsExceeded(
+            f"Agent exceeded maximum iterations ({self.max_iterations})"
+        )
+
+    async def stream_run(
+        self,
+        user_input: str,
+        priority: int = RequestPriority.CRITICAL
+    ) -> AsyncGenerator[dict, None]:
+        """流式执行对话"""
+        # 1. 记录用户输入事件
+        self.session.emit_event(EventType.USER_INPUT, {"content": user_input})
+        self._conversation_rounds += 1
+
+        iteration = 0
+        while iteration < self.max_iterations:
+            iteration += 1
+
+            # 2. 处理中断输入
+            if self._pending_user_input:
+                pending = self._pending_user_input
+                self._pending_user_input = None
+                self.session.emit_event(EventType.USER_INPUT, {"content": pending})
+                self._conversation_rounds += 1
+                iteration = 0
+                continue
+
+            # 3. 流式调用 LLM
+            messages = self._build_messages()
+            full_content = ""
+            tool_calls_accumulator: dict[int, dict] = {}
+
+            async for chunk in self.gateway.stream_chat_completion(
+                self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
+            ):
+                delta = chunk["choices"][0].get("delta", {})
+                content = delta.get("content")
+                if content:
+                    full_content += content
+                    yield {"type": "chunk", "content": content}
+
+                tc_list = delta.get("tool_calls")
+                if tc_list:
+                    self._process_tool_delta(tc_list, tool_calls_accumulator)
+
+            # 4. 累积工具调用
+            tool_calls = (
+                [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
+                if tool_calls_accumulator else []
+            )
+
+            # 5. 记录 LLM 响应事件
+            llm_data: dict[str, Any] = {}
+            if full_content:
+                llm_data["content"] = full_content
+            if tool_calls:
+                llm_data["tool_calls"] = tool_calls
+
+            self.session.emit_event(EventType.LLM_RESPONSE, llm_data)
+
+            # 6. 执行工具或完成
+            if tool_calls:
+                tool_results = await self._execute_tool_calls(tool_calls)
+                for result in tool_results:
+                    self.session.emit_event(EventType.TOOL_RESULT, {
+                        "tool_call_id": result["tool_call_id"],
+                        "content": result["content"]
+                    })
+            else:
+                await self._maybe_summarize()
+                self._evaluate_and_record_skill_outcomes(final_success=True)
+                self.session.record_session_end("completed")
+                yield {"type": "final", "content": full_content}
+                return
+
+        self.session.record_session_end("max_iterations_exceeded")
         raise MaxIterationsExceeded(
             f"Agent exceeded maximum iterations ({self.max_iterations})"
         )
 
     def _process_tool_delta(self, tc_list: list[dict], accumulator: dict[int, dict]) -> None:
-        """处理流式响应中的 Tool Call 增量块"""
+        """处理流式 Tool Call 增量"""
         for tc in tc_list:
             idx = tc.get("index", 0)
             if idx not in accumulator:
@@ -468,82 +525,13 @@ class AgentLoop:
             if func.get("arguments"):
                 acc["function"]["arguments"] += func["arguments"]
 
-    async def _process_final_completion(self, full_content: str) -> AsyncGenerator[dict, None]:
-        """处理对话完成的收尾工作 (总结 + 评估)"""
-        await self._maybe_summarize()
-        self._evaluate_and_record_skill_outcomes(final_success=True)
-        yield {"type": "final", "content": full_content}
-
-    async def stream_run(self, user_input: str, priority: int = RequestPriority.CRITICAL) -> AsyncGenerator[dict, None]:
-        """流式处理用户输入"""
-        self.history.append({"role": "user", "content": user_input})
-        self._conversation_rounds += 1
-
-        iteration = 0
-        while iteration < self.max_iterations:
-            iteration += 1
-
-            # 处理中断/新输入
-            if await self._handle_pending_input():
-                iteration = 0
-                continue
-
-            messages = self._build_messages()
-
-            # 流式调用 LLM 并 yield 内容
-            full_content = ""
-            tool_calls_accumulator: dict[int, dict] = {}
-
-            async for chunk in self.gateway.stream_chat_completion(
-                self.model_id, messages, priority=priority, tools=self.tools.get_schemas()
-            ):
-                delta = chunk["choices"][0].get("delta", {})
-                content = delta.get("content")
-                if content:
-                    full_content += content
-                    yield {"type": "chunk", "content": content}
-
-                tc_list = delta.get("tool_calls")
-                if tc_list:
-                    self._process_tool_delta(tc_list, tool_calls_accumulator)
-
-            # 累积工具调用
-            tool_calls = (
-                [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
-                if tool_calls_accumulator else []
-            )
-
-            # 记录历史
-            self.history.append({
-                "role": "assistant",
-                "content": full_content or None,
-                "tool_calls": tool_calls or None
-            })
-
-            if tool_calls:
-                # 执行工具调用并继续循环
-                tool_results = await self._execute_tool_calls(tool_calls)
-                self.history.extend(tool_results)
-                # 继续下一轮迭代
-            else:
-                # 对话完成
-                await self._maybe_summarize()
-                self._evaluate_and_record_skill_outcomes(final_success=True)
-                yield {"type": "final", "content": full_content}
-                return
-
-        raise MaxIterationsExceeded(
-            f"Agent exceeded maximum iterations ({self.max_iterations})"
-        )
+    # === 工具执行 ===
 
     def _check_write_conflicts(self, tool_calls: list[dict]) -> list[dict] | None:
-        """检查写工具调用的路径重叠，防止并发冲突。
-        
-        Returns:
-            Error response list if conflict detected, None otherwise.
-        """
+        """检查并发写冲突"""
         write_tools = {"file_write", "file_edit"}
         seen_paths = {}
+
         for tc in tool_calls:
             if tc["function"]["name"] in write_tools:
                 try:
@@ -551,26 +539,55 @@ class AgentLoop:
                     path = args.get("path", "")
                     if path:
                         if path in seen_paths:
-                            logger.warning(f"Concurrent write conflict detected: {path}")
-                            return [{"role": "tool", "tool_call_id": tc["id"], "content": f"Error: Concurrent write conflict on '{path}'. Please execute sequentially."} for tc in tool_calls]
+                            logger.warning(f"Concurrent write conflict: {path}")
+                            return [
+                                {"role": "tool", "tool_call_id": tc["id"],
+                                 "content": f"Error: Concurrent write conflict on '{path}'"}
+                                for tc in tool_calls
+                            ]
                         seen_paths[path] = tc["id"]
                 except Exception as e:
-                    logger.debug(f"Failed to parse tool args for conflict check: {e}")
-                    # 继续处理其他 tool calls，不中断检查流程
+                    logger.debug(f"Failed to parse tool args: {e}")
         return None
 
-    def _record_load_skill_outcome(self, tool_args: dict, tool_id: str, result: str, failed: bool = False) -> None:
-        """记录 load_skill 的执行结果到 Memory Graph"""
-        self._pending_skill_outcomes.append({
-            "skill_name": tool_args.get("name", ""),
-            "tool_call_id": tool_id,
-            "result": result,
-            "signals": self._extract_signals_from_context(),
-            **({"failed": True} if failed else {})
-        })
+    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict[str, Any]]:
+        """批量执行工具调用"""
+        conflict_result = self._check_write_conflicts(tool_calls)
+        if conflict_result:
+            return conflict_result
+
+        results = await asyncio.gather(
+            *[self._run_single_tool_call(tc) for tc in tool_calls],
+            return_exceptions=True
+        )
+
+        processed_results: list[dict[str, Any]] = []
+        for i, result in enumerate(results):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+
+            if isinstance(result, BaseException):
+                tool_name = tool_calls[i].get("function", {}).get("name", "unknown")
+                logger.error(f"Tool {tool_name} failed: {type(result).__name__}: {result}")
+                processed_results.append({
+                    "tool_call_id": tool_calls[i].get("id", "unknown"),
+                    "role": "tool",
+                    "content": f"Error: {type(result).__name__}: {str(result)[:200]}"
+                })
+            elif isinstance(result, dict):
+                processed_results.append(result)
+            else:
+                logger.warning(f"Unexpected result type: {type(result).__name__}")
+                processed_results.append({
+                    "tool_call_id": tool_calls[i].get("id", "unknown"),
+                    "role": "tool",
+                    "content": "Error: Unexpected result type"
+                })
+
+        return processed_results
 
     async def _run_single_tool_call(self, tool_call: dict) -> dict:
-        """执行单个工具调用，包含追踪和记录逻辑"""
+        """执行单个工具调用"""
         tool_id = tool_call["id"]
         tool_name = tool_call["function"]["name"]
         tool_args = parse_tool_arguments(tool_call["function"]["arguments"])
@@ -582,7 +599,13 @@ class AgentLoop:
             result = await self.tools.execute(tool_name, **tool_args)
             self._finish_tool_span(span, start_time, success=True)
 
-            # Memory Graph 跟踪
+            # 记录工具调用事件
+            self.session.emit_event(EventType.TOOL_CALL, {
+                "tool_call_id": tool_id,
+                "tool_name": tool_name,
+                "arguments": tool_args
+            })
+
             self._record_load_skill_if_needed(tool_name, tool_args, tool_id, str(result), failed=False)
 
             return {"role": "tool", "tool_call_id": tool_id, "content": str(result)}
@@ -590,17 +613,53 @@ class AgentLoop:
         except Exception as e:
             self._finish_tool_span(span, start_time, success=False, error=e)
 
-            # Memory Graph 跟踪 (失败情况)
+            self.session.emit_event(EventType.ERROR_OCCURRED, {
+                "error_type": type(e).__name__,
+                "error_message": str(e)[:500],
+                "tool_name": tool_name,
+                "tool_call_id": tool_id
+            })
+
             self._record_load_skill_if_needed(tool_name, tool_args, tool_id, f"Error: {e!s}", failed=True)
+
             return {"role": "tool", "tool_call_id": tool_id, "content": f"Error: {e!s}"}
 
-    def _record_load_skill_if_needed(self, tool_name: str, tool_args: dict, tool_id: str, content: str, failed: bool) -> None:
-        """如果是 load_skill 调用，记录其结果到 Memory Graph"""
+    def _record_load_skill_if_needed(
+        self,
+        tool_name: str,
+        tool_args: dict,
+        tool_id: str,
+        content: str,
+        failed: bool
+    ) -> None:
+        """记录 load_skill 结果"""
         if tool_name == "load_skill":
-            self._record_load_skill_outcome(tool_args, tool_id, content, failed)
+            self._pending_skill_outcomes.append({
+                "skill_name": tool_args.get("name", ""),
+                "tool_call_id": tool_id,
+                "result": content,
+                "signals": self._extract_signals_from_events(),
+                **({"failed": True} if failed else {})
+            })
+
+    def _extract_signals_from_events(self) -> list[str]:
+        """从最近事件提取触发信号"""
+        signals = []
+        recent_events = self.session.get_events(start_id=-5)
+
+        for event in recent_events:
+            if event["type"] == EventType.USER_INPUT.value:
+                content = event["data"].get("content", "")
+                if content:
+                    words = content.split()[:5]
+                    signals.extend(words)
+
+        return signals[:10]
+
+    # === OpenTelemetry ===
 
     def _start_tool_span(self, tool_name: str, tool_args: dict) -> "Span | None":
-        """创建 OpenTelemetry Span"""
+        """创建工具 Span"""
         tracer = get_tracer()
         if not (tracer and _OBSERVABILITY_ENABLED):
             return None
@@ -609,8 +668,14 @@ class AgentLoop:
         set_tool_span_attributes(span, tool_name, file_path=tool_args.get("path", ""))
         return span
 
-    def _finish_tool_span(self, span: "Span | None", start_time: float, success: bool, error: Exception | None = None) -> None:
-        """完成 Span 并记录指标"""
+    def _finish_tool_span(
+        self,
+        span: "Span | None",
+        start_time: float,
+        success: bool,
+        error: Exception | None = None
+    ) -> None:
+        """完成 Span"""
         if not span:
             return
 
@@ -619,115 +684,72 @@ class AgentLoop:
             span.set_attribute("seed.tool.duration_ms", duration_ms)
             span.set_status(StatusCode.OK)
         else:
-            if error is not None:
+            if error:
                 span.record_exception(error)
-            span.set_attribute("seed.error.message", str(error)[:500] if error else "Unknown error")
-            span.set_status(StatusCode.ERROR, str(error)[:200] if error else "Unknown error")
+                span.set_attribute("seed.error.message", str(error)[:500])
+                span.set_status(StatusCode.ERROR, str(error)[:200])
         span.end()
 
-    async def _execute_tool_calls(self, tool_calls: list[dict]) -> list[dict[str, Any]]:
-        """批量并行执行工具调用 (含 Memory Graph 自动记录 + 路径重叠检查 + OpenTelemetry Tracing)"""
-        conflict_result = self._check_write_conflicts(tool_calls)
-        if conflict_result:
-            return conflict_result
+    # === Memory Graph ===
 
-        # 使用 return_exceptions=True 确保单个工具失败不会影响整个批次
-        results = await asyncio.gather(
-            *[self._run_single_tool_call(tc) for tc in tool_calls],
-            return_exceptions=True
-        )
-
-        # 处理可能的异常结果，转换为错误响应
-        processed_results: list[dict[str, Any]] = []
-        for i, result in enumerate(results):
-            if isinstance(result, BaseException):
-                # CancelledError 应传播，不应转换为错误响应
-                if isinstance(result, asyncio.CancelledError):
-                    raise result
-
-                tool_name = tool_calls[i].get("function", {}).get("name", "unknown")
-                logger.error(f"Tool call {tool_name} failed: {type(result).__name__}: {result}")
-                processed_results.append({
-                    "tool_call_id": tool_calls[i].get("id", "unknown"),
-                    "role": "tool",
-                    "content": f"Error: Tool execution failed - {type(result).__name__}: {str(result)[:200]}"
-                })
-            elif isinstance(result, dict):
-                # 显式类型窄化：确保 result 是 dict 类型
-                processed_results.append(result)
-            else:
-                # 未知类型：记录警告并转换为错误响应
-                logger.warning(f"Unexpected result type: {type(result).__name__}")
-                processed_results.append({
-                    "tool_call_id": tool_calls[i].get("id", "unknown"),
-                    "role": "tool",
-                    "content": f"Error: Unexpected result type - {type(result).__name__}"
-                })
-
-        return processed_results
-
-    def _extract_signals_from_context(self) -> list[str]:
-        """从当前上下文提取触发信号"""
-        signals = []
-        # 从最近几条消息中提取关键词
-        for msg in self.history[-3:]:
-            content = msg.get("content", "")
-            if isinstance(content, str):
-                # 简单提取：前 5 个词作为信号
-                words = content.split()[:5]
-                signals.extend(words)
-        return signals[:10]  # 最大 10 个信号
-
-    def _evaluate_skill_outcome(self, result: str, failed: bool, final_success: bool) -> tuple[str, float]:
-        """评估单个 Skill 的执行结果
-        
-        Returns:
-            (outcome, score): e.g., ('success', 1.0), ('failed', 0.0)
-        """
-        result_str = str(result)
-        if failed or "Error" in result_str or "not found" in result_str.lower():
-            return "failed", 0.0
-        elif "Security Warning" in result_str:
-            return "partial", 0.5
-        else:
-            return "success", 1.0 if final_success else 0.8
-
-    def _evaluate_and_record_skill_outcomes(self, final_success: bool = True) -> None:
-        """评估并记录待处理的 Skill 执行结果"""
-        for pending in self._pending_skill_outcomes:
-            skill_name = pending.get("skill_name")
+    def _evaluate_and_record_skill_outcomes(self, final_success: bool) -> None:
+        """评估并记录 Skill 执行结果"""
+        for outcome in self._pending_skill_outcomes:
+            skill_name = outcome.get("skill_name", "")
             if not skill_name:
                 continue
 
-            try:
-                outcome, score = self._evaluate_skill_outcome(
-                    pending.get("result", ""),
-                    pending.get("failed", False),
-                    final_success
-                )
-                _record_skill_outcome(
-                    skill_name=skill_name,
-                    outcome=outcome,
-                    score=score,
-                    signals=pending.get("signals", []),
-                    session_id=self.session_id
-                )
-            except Exception as e:
-                logger.warning(f"Failed to record skill outcome: {type(e).__name__}: {e}")
+            result = outcome.get("result", "")
+            failed = outcome.get("failed", False)
+            signals = outcome.get("signals", [])
+
+            outcome_status, score = self._evaluate_skill_outcome(result, failed, final_success)
+
+            _record_skill_outcome(
+                skill_name=skill_name,
+                outcome=outcome_status,
+                score=score,
+                signals=signals,
+                session_id=self.session_id,
+                context=f"Event stream session: {self.session_id}"
+            )
 
         self._pending_skill_outcomes.clear()
 
-    def clear_history(self, save_current: bool = True) -> None:
-        """清空对话历史，可选保存当前历史到 L4"""
-        if save_current and self.history:
-            _save_session_history(self.history, summary=self._last_summary, session_id=self.session_id)
-        self.history.clear()
-        self._conversation_rounds = 0
-        self._last_summary = None
-        self._message_token_cache.clear()
-        self._system_prompt_tokens = 0
-        self.session_id = _generate_session_filename()  # 新会话ID
+    def _evaluate_skill_outcome(
+        self,
+        result: str,
+        failed: bool,
+        final_success: bool
+    ) -> tuple[str, float]:
+        """评估单个 Skill 结果"""
+        if failed:
+            return "failed", 0.0
 
-    def interrupt(self, user_input: str):
-        """中断当前处理,优先响应用户输入"""
-        self._pending_user_input = user_input
+        if final_success:
+            if "Error:" in result or "error" in result.lower():
+                return "partial", 0.5
+            return "success", 1.0
+
+        return "partial", 0.7
+
+    # === 状态恢复 ===
+
+    def replay_to_event(self, event_id: int) -> dict[str, Any]:
+        """重放事件到指定状态"""
+        return self.session.replay_to_state(event_id)
+
+    def get_current_state(self) -> dict[str, Any]:
+        """获取当前状态"""
+        return self.session.get_current_state()
+
+    def get_event_count(self) -> int:
+        """获取事件总数"""
+        return self.session.get_event_count()
+
+    # === 兼容性接口 (供外部调用) ===
+
+    @property
+    def history(self) -> list[dict[str, Any]]:
+        """兼容性属性：从事件流构建消息列表"""
+        return self.session.build_context_for_llm(system_prompt=None)
