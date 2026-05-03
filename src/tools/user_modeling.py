@@ -407,6 +407,17 @@ class UserModelingLayer:
         """
         conflicts = []
 
+        # 收集所有需要查询的偏好键（批量加载避免 N+1）
+        pref_keys = set()
+        for obs in observations:
+            if obs["type"] == "preference":
+                key = obs["data"].get("key")
+                if key:
+                    pref_keys.add(key)
+
+        # 批量获取所有偏好
+        existing_prefs = self._get_preferences_batch(pref_keys) if pref_keys else {}
+
         for obs in observations:
             if obs["type"] != "preference":
                 continue
@@ -417,8 +428,8 @@ class UserModelingLayer:
             if not pref_key or not pref_value:
                 continue
 
-            # 查找现有偏好
-            existing = self._get_preference_from_db(pref_key)
+            # 从批量结果中获取现有偏好
+            existing = existing_prefs.get(pref_key)
 
             if existing and self._is_conflicting(existing, pref_value, obs["context"]):
                 conflicts.append({
@@ -455,6 +466,48 @@ class UserModelingLayer:
             }
 
         return None
+
+    def _get_preferences_batch(self, keys: set[str]) -> dict[str, dict[str, Any]]:
+        """批量从数据库获取偏好（避免 N+1 查询）
+
+        Args:
+            keys: 偏好键集合
+
+        Returns:
+            dict: {key: preference_data}
+        """
+        if not keys:
+            return {}
+
+        # 使用单个查询获取所有偏好
+        placeholders = ",".join("?" * len(keys))
+        rows = self._ensure_conn().execute(f"""
+            SELECT preference_key, preference_value, confidence, last_updated, metadata
+            FROM user_profiles
+            WHERE preference_key IN ({placeholders})
+            ORDER BY preference_key, last_updated DESC
+        """, list(keys)).fetchall()  # noqa: S608
+
+        # 解析结果，每个 key 取最新的
+        result: dict[str, dict[str, Any]] = {}
+        seen_keys: set[str] = set()
+
+        for row in rows:
+            key = row["preference_key"]
+            if key in seen_keys:
+                continue  # 已有更新的记录
+            seen_keys.add(key)
+
+            pref_data = json.loads(row["preference_value"])
+            result[key] = {
+                "value": pref_data.get("usual", pref_data.get("value")),
+                "confidence": pref_data.get("confidence", row["confidence"]),
+                "last_updated": pref_data.get("last_updated", row["last_updated"]),
+                "exceptions": pref_data.get("exceptions", {}),
+                "usual": pref_data.get("usual", pref_data.get("value"))
+            }
+
+        return result
 
     def _is_conflicting(
         self,
