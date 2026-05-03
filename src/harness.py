@@ -959,7 +959,10 @@ class Harness:
     async def _execute_tools_parallel(
         self, tool_calls: list[dict]
     ) -> list[dict[str, Any]]:
-        """并发执行工具调用
+        """并发执行工具调用（无钩子版本）
+
+        注意：此方法已弃用，推荐使用 _execute_tools_parallel_with_hooks。
+        为保持向后兼容保留此方法，内部调用带钩子版本。
 
         Args:
             tool_calls: 工具调用列表
@@ -967,47 +970,8 @@ class Harness:
         Returns:
             工具执行结果列表
         """
-        # 检查并发写冲突
-        conflict_result = self._check_write_conflicts(tool_calls)
-        if conflict_result:
-            return conflict_result
-
-        # 并发执行
-        results = await asyncio.gather(
-            *[self._execute_single_tool_with_metrics(tc) for tc in tool_calls],
-            return_exceptions=True,
-        )
-
-        processed_results: list[dict[str, Any]] = []
-        for i, result in enumerate(results):
-            if isinstance(result, asyncio.CancelledError):
-                raise result
-
-            if isinstance(result, BaseException):
-                tool_name = tool_calls[i].get("function", {}).get("name", "unknown")
-                logger.error(
-                    f"Tool {tool_name} failed: {type(result).__name__}: {result}"
-                )
-                processed_results.append(
-                    {
-                        "tool_call_id": tool_calls[i].get("id", "unknown"),
-                        "role": "tool",
-                        "content": f"Error: {type(result).__name__}: {str(result)[:200]}",
-                    }
-                )
-            elif isinstance(result, dict):
-                processed_results.append(result)
-            else:
-                logger.warning(f"Unexpected result type: {type(result).__name__}")
-                processed_results.append(
-                    {
-                        "tool_call_id": tool_calls[i].get("id", "unknown"),
-                        "role": "tool",
-                        "content": "Error: Unexpected result type",
-                    }
-                )
-
-        return processed_results
+        # 内部调用带钩子版本，保持一致性
+        return await self._execute_tools_parallel_with_hooks(tool_calls)
 
     async def _execute_tools_parallel_with_hooks(
         self, tool_calls: list[dict]
