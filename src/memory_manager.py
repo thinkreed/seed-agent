@@ -52,7 +52,7 @@ class MemoryManager:
 
     _instance: "MemoryManager | None" = None
     _initialized: bool = False
-    _lock: threading.Lock | None = None
+    _lock: "threading.Lock | None" = None
 
     def __new__(cls, *args, **kwargs) -> "MemoryManager":
         """单例模式 - 忽略构造参数"""
