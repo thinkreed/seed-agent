@@ -7,9 +7,14 @@ Harness (控制器) 模块
 - 本身无状态，可随时创建、销毁、替换
 - 不持有对话历史，只通过 SessionEventStream 访问
 
+上下文工程优化：
+- 渐进式压缩：最新完整保留 → 稍旧轻量总结 → 更早简短摘要
+- 智能裁剪：根据任务相关性过滤不相关历史
+- 原始数据不丢失：Session 保留完整历史
+
 核心职责：
 1. 执行对话循环 (run_cycle)
-2. 从 Session 构建上下文（无状态关键）
+2. 从 Session 构建优化上下文（上下文工程）
 3. 调用 LLMClient 推理
 4. 路由工具调用到 Sandbox
 5. 记录事件到 Session
@@ -27,9 +32,11 @@ from collections.abc import AsyncGenerator
 from typing import Any, TYPE_CHECKING, TypedDict
 
 from src.llm_client import LLMClient
+from src.context_engineering import ContextEngineering
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
+    from src.context_engineering import CompressionConfig, PruningConfig
 from src.observability import (
     SPAN_TOOL_PREFIX,
     StatusCode,
@@ -88,6 +95,11 @@ class Harness:
     - 路由工具：将 tool_calls 转发到 Sandbox
     - 记录事件：将响应和结果写入 Session
 
+    上下文工程优化：
+    - 渐进式压缩：根据容量使用率动态压缩
+    - 智能裁剪：根据任务相关性过滤历史
+    - 原始数据不丢失：Session 保留完整历史
+
     关键特性：
     - 可替换：随时创建/销毁不影响 Session
     - 无状态：所有状态存储在 Session 中
@@ -100,7 +112,10 @@ class Harness:
         session: SessionEventStream,
         sandbox: Sandbox,
         max_iterations: int = MAX_ITERATIONS,
-        system_prompt: str | None = None
+        system_prompt: str | None = None,
+        context_engineering: ContextEngineering | None = None,
+        context_window: int = 100000,
+        enable_pruning: bool = True
     ):
         """初始化 Harness
 
@@ -110,6 +125,9 @@ class Harness:
             sandbox: Sandbox (执行环境)
             max_iterations: 最大迭代次数
             system_prompt: 系统提示
+            context_engineering: 上下文工程实例（可选）
+            context_window: 上下文窗口大小
+            enable_pruning: 是否启用智能裁剪
         """
         self.llm_client = llm_client      # 大脑
         self.session = session            # 状态（只读访问）
@@ -117,12 +135,21 @@ class Harness:
         self.max_iterations = max_iterations
         self.system_prompt = system_prompt
 
+        # 上下文工程
+        self._context_engineering = context_engineering
+        self._context_window = context_window
+        self._enable_pruning = enable_pruning
+
+        # 当前任务（用于智能裁剪）
+        self._current_task: str | None = None
+
         # 执行指标
         self._metrics: list[ToolExecutionMetrics] = []
 
         logger.info(
             f"Harness initialized: session={session.session_id}, "
-            f"max_iterations={max_iterations}, tools={len(sandbox.get_tool_schemas())}"
+            f"max_iterations={max_iterations}, tools={len(sandbox.get_tool_schemas())}, "
+            f"context_engineering={context_engineering is not None}"
         )
 
     # === 核心循环 ===
@@ -324,17 +351,71 @@ class Harness:
         self.session.record_session_end("max_iterations_exceeded")
         raise MaxIterationsExceeded(iteration)
 
-    # === 上下文构建 (无状态核心) ===
+    # === 上下文构建 (上下文工程) ===
 
-    def _build_context_from_session(self) -> list[dict[str, Any]]:
-        """从 Session 构建上下文（关键：无状态）
+    def _build_context_from_session(
+        self,
+        current_task: str | None = None
+    ) -> list[dict[str, Any]]:
+        """从 Session 构建优化上下文（上下文工程）
 
-        使用摘要标记机制，不截断历史
+        流程：
+        1. 如有 ContextEngineering 实例，使用渐进式压缩 + 智能裁剪
+        2. 否则使用 Session 原生方法（摘要标记机制）
+
+        Args:
+            current_task: 当前任务描述（用于智能裁剪）
 
         Returns:
-            messages 格式的上下文
+            messages 格式的优化上下文
         """
+        if self._context_engineering:
+            # 使用上下文工程优化
+            return self._context_engineering.build_optimized_context(
+                session=self.session,
+                context_window=self._context_window,
+                current_task=current_task or self._current_task,
+                system_prompt=self.system_prompt,
+                enable_pruning=self._enable_pruning
+            )
+
+        # 无上下文工程时，使用 Session 原生方法
         return self.session.build_context_for_llm(system_prompt=self.system_prompt)
+
+    async def _build_context_from_session_async(
+        self,
+        current_task: str | None = None,
+        enable_semantic_pruning: bool = False
+    ) -> list[dict[str, Any]]:
+        """异步构建优化上下文（支持 LLM 摘要）
+
+        Args:
+            current_task: 当前任务描述
+            enable_semantic_pruning: 是否启用语义裁剪（LLM）
+
+        Returns:
+            messages 格式的优化上下文
+        """
+        if self._context_engineering:
+            return await self._context_engineering.build_optimized_context_async(
+                session=self.session,
+                context_window=self._context_window,
+                current_task=current_task or self._current_task,
+                system_prompt=self.system_prompt,
+                enable_pruning=self._enable_pruning,
+                enable_semantic_pruning=enable_semantic_pruning
+            )
+
+        return self.session.build_context_for_llm(system_prompt=self.system_prompt)
+
+    def set_current_task(self, task: str) -> None:
+        """设置当前任务（用于智能裁剪）
+
+        Args:
+            task: 当前任务描述
+        """
+        self._current_task = task
+        logger.debug(f"Current task set: {task[:50]}...")
 
     def _get_events_since_last_summary(self) -> list[dict[str, Any]]:
         """获取最近摘要标记之后的事件"""

@@ -1,8 +1,9 @@
 """
-Tests for src/harness.py - 三件套控制器
+Tests for src/harness.py - 三件套控制器 + 上下文工程
 
 Coverage targets:
 - Harness initialization
+- 上下文工程集成
 - run_cycle() method
 - run_conversation() method
 - stream_conversation() method
@@ -144,6 +145,82 @@ class TestHarnessInit:
         harness = Harness(llm_client, session, sandbox)
 
         assert len(harness._metrics) == 0
+
+    def test_init_context_window(self, tmp_path):
+        """Test initialization with context_window"""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox, context_window=50000)
+
+        assert harness._context_window == 50000
+
+    def test_init_enable_pruning(self, tmp_path):
+        """Test initialization with enable_pruning"""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox, enable_pruning=False)
+
+        assert harness._enable_pruning is False
+
+
+class TestHarnessContextEngineering:
+    """Test Harness 上下文工程集成"""
+
+    def test_build_context_without_context_engineering(self, tmp_path):
+        """Test _build_context_from_session without ContextEngineering."""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        session.emit_event(EventType.USER_INPUT, {"content": "hello"})
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+
+        context = harness._build_context_from_session()
+
+        assert isinstance(context, list)
+        assert len(context) > 0
+
+    def test_build_context_with_system_prompt(self, tmp_path):
+        """Test _build_context_from_session with system prompt."""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(
+            llm_client, session, sandbox,
+            system_prompt="You are helpful"
+        )
+
+        context = harness._build_context_from_session()
+
+        assert len(context) > 0
+        assert context[0]["role"] == "system"
+
+    def test_set_current_task(self, tmp_path):
+        """Test set_current_task method."""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+
+        harness.set_current_task("重构 agent_loop.py")
+
+        assert harness._current_task == "重构 agent_loop.py"
 
 
 class TestHarnessRunCycle:

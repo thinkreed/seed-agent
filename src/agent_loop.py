@@ -6,6 +6,11 @@ Agent 主循环模块
 - Harness (控制器): 驱动循环，路由工具
 - Sandbox (工作台): 隔离执行，安全可控
 
+上下文工程优化：
+- 渐进式压缩：最新完整保留 → 稍旧轻量总结 → 更早简短摘要
+- 智能裁剪：根据任务相关性过滤不相关历史
+- 原始数据不丢失：Session 保留完整历史
+
 Session 宠物哲学：
 - Session 是宠物，不可丢失
 - 历史只追加，不可修改/截断/清空
@@ -24,6 +29,11 @@ from typing import Any
 import tiktoken
 
 from src.client import LLMGateway
+from src.context_engineering import (
+    CompressionConfig,
+    ContextEngineering,
+    PruningConfig,
+)
 from src.harness import Harness, MaxIterationsExceeded
 from src.llm_client import LLMClient
 from src.sandbox import IsolationLevel, Sandbox
@@ -68,18 +78,20 @@ _OBSERVABILITY_ENABLED = is_observability_enabled()
 
 
 class AgentLoop:
-    """Agent 主循环 - 纯三件套架构
+    """Agent 主循环 - 纯三件套架构 + 上下文工程
 
     架构设计：
     - LLMClient: 大脑，负责推理
     - Harness: 控制器，驱动循环
     - Sandbox: 工作台，隔离执行
     - SessionEventStream: 状态存储，只追加
+    - ContextEngineering: 上下文工程，渐进式压缩 + 智能裁剪
 
     特性：
     - 无 legacy 代码，强制使用三件套
     - Session 不可变事件流
     - 摘要标记机制（不截断历史）
+    - 上下文工程优化（渐进压缩 + 智能裁剪）
     - OpenTelemetry 可观测性
     """
 
@@ -103,6 +115,9 @@ class AgentLoop:
         summary_interval: int = 10,
         session_id: str | None = None,
         isolation_level: IsolationLevel = IsolationLevel.PROCESS,
+        compression_config: CompressionConfig | None = None,
+        pruning_config: PruningConfig | None = None,
+        enable_pruning: bool = True,
     ):
         """初始化 AgentLoop
 
@@ -114,6 +129,9 @@ class AgentLoop:
             summary_interval: 摘要触发间隔 (对话轮数)
             session_id: 会话 ID (用于事件流持久化)
             isolation_level: Sandbox 隔离级别
+            compression_config: 上下文压缩配置
+            pruning_config: 上下文裁剪配置
+            enable_pruning: 是否启用智能裁剪
         """
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
@@ -127,7 +145,8 @@ class AgentLoop:
             "model_id": self.model_id,
             "max_iterations": self.max_iterations,
             "summary_interval": self.summary_interval,
-            "isolation_level": isolation_level.value
+            "isolation_level": isolation_level.value,
+            "enable_pruning": enable_pruning
         })
 
         # === 内部状态 ===
@@ -139,10 +158,16 @@ class AgentLoop:
         self.context_window = self._get_model_context_window()
         self.context_usage_threshold = 0.75
 
+        # === 上下文工程配置 ===
+        self._compression_config = compression_config
+        self._pruning_config = pruning_config
+        self._enable_pruning = enable_pruning
+
         # === 初始化三件套架构 ===
         self._setup_tools_and_skills()
         self._setup_subsystems(system_prompt)
         self._setup_harness_trio(isolation_level)
+        self._setup_context_engineering()
 
     # === 初始化方法 ===
 
@@ -199,18 +224,38 @@ class AgentLoop:
         )
         self.sandbox.register_tools(self.tools)
 
-        # 3. Harness (控制器)
+        # 3. Harness (控制器) - 不传递 context_engineering，稍后初始化
         self.harness = Harness(
             llm_client=self.llm_client,
             session=self.session,
             sandbox=self.sandbox,
             max_iterations=self.max_iterations,
-            system_prompt=self.system_prompt
+            system_prompt=self.system_prompt,
+            context_window=self.context_window,
+            enable_pruning=self._enable_pruning
         )
 
         logger.info(
             f"AgentLoop trio initialized: model={self.model_id}, "
             f"isolation={isolation_level.value}, tools={len(self.tools._tools)}"
+        )
+
+    def _setup_context_engineering(self) -> None:
+        """初始化上下文工程"""
+        self._context_engineering = ContextEngineering(
+            gateway=self.gateway,
+            model_id=self.model_id,
+            compression_config=self._compression_config,
+            pruning_config=self._pruning_config
+        )
+
+        # 将 ContextEngineering 实例传递给 Harness
+        self.harness._context_engineering = self._context_engineering
+
+        logger.info(
+            f"ContextEngineering initialized: "
+            f"compression={self._compression_config is not None}, "
+            f"pruning={self._enable_pruning}"
         )
 
     # === Token 管理 ===
@@ -569,5 +614,10 @@ class AgentLoop:
             "conversation_rounds": self._conversation_rounds,
             "context_window": self.context_window,
             "isolation_level": self.sandbox.isolation_level.value,
-            "harness_status": self.harness.get_status()
+            "harness_status": self.harness.get_status(),
+            "context_engineering": {
+                "enabled": self._context_engineering is not None,
+                "pruning_enabled": self._enable_pruning,
+                "compression_configured": self._compression_config is not None
+            }
         }

@@ -11,12 +11,17 @@ src/
 ├── agent_loop.py         # Main agent loop with message handling and tool execution
 ├── autonomous.py         # Idle-time autonomous exploration (Ralph Loop enhanced)
 ├── client.py             # LLM Gateway with multi-provider fallback
+├── context_engineering.py # Progressive compression + intelligent pruning
+├── harness.py            # Controller: drives loop, routes tools (stateless)
+├── llm_client.py         # LLMClient: brain, responsible for reasoning
 ├── models.py             # Pydantic configuration validation
 ├── ralph_loop.py         # Long-cycle deterministic task executor
 ├── rate_limiter.py       # Token Bucket + Rolling Window dual rate limiting
 ├── rate_limit_db.py      # SQLite persistence for rate limit state
 ├── request_queue.py      # TurnTicket request queue with priority and backpressure
+├── sandbox.py            # Sandbox: isolated execution environment
 ├── scheduler.py          # Task scheduling and management
+├── session_event_stream.py # Immutable event stream (append-only)
 ├── subagent_manager.py   # Subagent orchestration and lifecycle management
 └── subagent.py           # Independent context subagent execution
 ```
@@ -467,6 +472,130 @@ ralph = RalphLoop.create_marker_driven(
     marker_path=Path(".seed/done")
 )
 ```
+
+---
+
+## ContextEngineering
+
+The `ContextEngineering` module implements Harness Engineering "Context Engineering" patterns: progressive compression and intelligent pruning. It ensures the LLM always receives the most relevant context while preserving original data in the Session.
+
+### Purpose
+
+ContextEngineering optimizes context window usage through two mechanisms:
+1. **Progressive Compression**: Tier-based compression with gradual information loss
+2. **Intelligent Pruning**: Task-relevance filtering to remove unrelated history
+
+### Key Classes
+
+#### ProgressiveContextCompressor
+
+Three-tier compression strategy based on context window usage:
+
+```python
+class ProgressiveContextCompressor:
+    """渐进式上下文压缩"""
+
+    COMPRESSION_TIERS = {
+        "tier_1": "recent_full",      # 最新 5 轮完整保留
+        "tier_2": "medium_light",     # 稍旧 10 轮轻量总结
+        "tier_3": "old_abstract",     # 更早历史简短摘要
+    }
+
+    def compress(
+        self,
+        session: SessionEventStream,
+        context_window: int,
+        system_prompt: str | None = None
+    ) -> list[dict[str, Any]]:
+        """应用三层压缩
+
+        - usage < 50%: Tier 1 only (full retention)
+        - usage < 75%: Tier 1 + Tier 2 (light summary)
+        - usage >= 75%: All three tiers (abstract)
+        """
+```
+
+#### IntelligentContextPruner
+
+Task-relevance based pruning with entity extraction:
+
+```python
+class IntelligentContextPruner:
+    """智能上下文裁剪"""
+
+    def prune_for_task(
+        self,
+        history: list[dict[str, Any]],
+        current_task: str
+    ) -> list[dict[str, Any]]:
+        """根据当前任务裁剪不相关上下文
+
+        - Extract entities: file paths, function names, keywords
+        - Compute relevance scores: entity matches + role weights
+        - Preserve high-relevance messages
+        - Minimum preservation protection
+        """
+```
+
+#### ContextEngineering
+
+Integration manager coordinating compression and pruning:
+
+```python
+class ContextEngineering:
+    """上下文工程集成管理器"""
+
+    def build_optimized_context(
+        self,
+        session: SessionEventStream,
+        context_window: int,
+        current_task: str | None = None,
+        system_prompt: str | None = None,
+        enable_pruning: bool = True
+    ) -> list[dict[str, Any]]:
+        """构建优化后的上下文
+
+        Flow:
+        1. Build full history from Session
+        2. Intelligent pruning (optional, task-based)
+        3. Progressive compression (usage-based)
+        """
+```
+
+### Configuration
+
+```python
+@dataclass
+class CompressionConfig:
+    tiers: dict[CompressionTier, TierConfig]
+    token_per_char: float = 0.5
+    max_context_messages: int = 50
+
+@dataclass
+class PruningConfig:
+    relevance_threshold: float = 0.3
+    entity_weights: dict[str, float]
+    role_weights: dict[str, float]
+    min_preserve_count: int = 5
+```
+
+### Integration Points
+
+| Component | Integration |
+|-----------|-------------|
+| AgentLoop | Initializes `ContextEngineering` instance |
+| Harness | Uses `_build_context_from_session()` with optimization |
+| Session | Original data preserved (append-only) |
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Progressive compression** | 50% → 75% threshold tier-based processing |
+| **Intelligent pruning** | Entity extraction + relevance scoring |
+| **Original data preserved** | Session maintains complete history |
+| **Async support** | LLM-generated summaries and semantic pruning |
+| **Configurable** | Custom compression and pruning configs |
 
 ---
 

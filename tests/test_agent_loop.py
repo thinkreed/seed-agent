@@ -1,13 +1,19 @@
 """
-Tests for src/agent_loop.py - 纯三件套架构
+Tests for src/agent_loop.py - 纯三件套架构 + 上下文工程
 
 基于 Harness Engineering "三件套解耦架构" 设计：
 - AgentLoop 强制使用 Harness/Sandbox/LLMClient
 - 无 legacy 代码，移除向后兼容测试
 - Session 不可变事件流测试保留
 
+上下文工程优化：
+- 渐进式压缩：三层压缩策略
+- 智能裁剪：任务相关性过滤
+- 原始数据不丢失：Session 保留完整历史
+
 Coverage targets:
 - 三件套架构初始化
+- 上下文工程初始化
 - SessionEventStream integration
 - run() 方法 (使用 Harness)
 - stream_run() 方法 (使用 Harness)
@@ -30,6 +36,7 @@ from harness import MaxIterationsExceeded
 from session_event_stream import SessionEventStream, EventType
 from sandbox import IsolationLevel
 from request_queue import RequestPriority
+from context_engineering import CompressionConfig, PruningConfig
 
 
 # ==================== Fixtures ====================
@@ -228,6 +235,71 @@ class TestTrioArchitecture:
         assert agent.sandbox._tools is not None
         assert agent.sandbox._tools == agent.tools
 
+    def test_context_engineering_initialized(self, agent_loop_instance):
+        """Test ContextEngineering 初始化."""
+        agent = agent_loop_instance
+        assert agent._context_engineering is not None
+        assert agent.harness._context_engineering is not None
+
+
+# ==================== 上下文工程 Tests ====================
+
+class TestContextEngineeringIntegration:
+    """Test 上下文工程集成."""
+
+    def test_default_pruning_enabled(self, agent_loop_instance):
+        """Test default pruning is enabled."""
+        agent = agent_loop_instance
+        assert agent._enable_pruning is True
+
+    def test_custom_compression_config(self, mock_gateway, temp_storage_path):
+        """Test custom compression configuration."""
+        custom_config = CompressionConfig()
+        custom_config.max_context_messages = 30
+
+        agent, mgr = create_agent(
+            mock_gateway,
+            storage_path=temp_storage_path,
+            compression_config=custom_config
+        )
+
+        try:
+            assert agent._compression_config is not None
+            assert agent._compression_config.max_context_messages == 30
+        finally:
+            mgr.__exit__(None, None, None)
+
+    def test_custom_pruning_config(self, mock_gateway, temp_storage_path):
+        """Test custom pruning configuration."""
+        custom_config = PruningConfig()
+        custom_config.relevance_threshold = 0.5
+
+        agent, mgr = create_agent(
+            mock_gateway,
+            storage_path=temp_storage_path,
+            pruning_config=custom_config
+        )
+
+        try:
+            assert agent._pruning_config is not None
+            assert agent._pruning_config.relevance_threshold == 0.5
+        finally:
+            mgr.__exit__(None, None, None)
+
+    def test_disable_pruning(self, mock_gateway, temp_storage_path):
+        """Test disabling pruning."""
+        agent, mgr = create_agent(
+            mock_gateway,
+            storage_path=temp_storage_path,
+            enable_pruning=False
+        )
+
+        try:
+            assert agent._enable_pruning is False
+            assert agent.harness._enable_pruning is False
+        finally:
+            mgr.__exit__(None, None, None)
+
 
 # ==================== Run Tests ====================
 
@@ -401,6 +473,9 @@ class TestStatusMethods:
         assert "context_window" in status
         assert "isolation_level" in status
         assert "harness_status" in status
+        assert "context_engineering" in status
+        assert "enabled" in status["context_engineering"]
+        assert "pruning_enabled" in status["context_engineering"]
 
     def test_history_property(self, agent_loop_instance):
         """Test history property returns messages from event stream."""
