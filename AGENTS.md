@@ -47,8 +47,10 @@
 
 | 组件 | 文件 | 功能 |
 |------|------|------|
-| **AgentLoop** | `src/agent_loop.py` | 主执行引擎：集成三件套、Session管理、摘要触发 |
+| **AgentLoop** | `src/agent_loop.py` | 主执行引擎：集成三件套、Session管理、摘要触发、生命周期钩子 |
 | **SessionEventStream** | `src/session_event_stream.py` | 不可变事件流：只追加日志、状态重放、摘要标记 |
+| **LifecycleHooks** | `src/lifecycle_hooks.py` | 确定性生命周期钩子：关键节点自动触发、优先级执行、统计 |
+| **BuiltinHooks** | `src/builtin_hooks.py` | 内置钩子定义：会话、工具、LLM、响应等全生命周期覆盖 |
 | **LLMGateway** | `src/client.py` | 多Provider网关：FallbackChain自动降级、重试逻辑 |
 | **RalphLoop** | `src/ralph_loop.py` | 长周期任务执行器：外部验证驱动完成、上下文重置防漂移 |
 | **Scheduler** | `src/scheduler.py` | 定时任务调度：内置任务 + 自定义任务管理 |

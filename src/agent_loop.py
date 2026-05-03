@@ -6,6 +6,11 @@ Agent 主循环模块
 - Harness (控制器): 驱动循环，路由工具
 - Sandbox (工作台): 隔离执行，安全可控
 
+生命周期钩子：
+- 确定性执行：关键节点自动触发预设动作
+- 不依赖模型记忆：由系统确保关键流程执行
+- 支持扩展：可动态注册自定义钩子
+
 上下文工程优化：
 - 渐进式压缩：最新完整保留 → 稍旧轻量总结 → 更早简短摘要
 - 智能裁剪：根据任务相关性过滤不相关历史
@@ -52,6 +57,10 @@ from src.tools.skill_loader import SkillLoader, register_skill_tools
 from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
 from src.scheduler import TaskScheduler, register_scheduler_tools
 from src.request_queue import RequestPriority
+
+# 生命周期钩子
+from src.lifecycle_hooks import LifecycleHookRegistry, get_global_registry
+from src.builtin_hooks import register_builtin_hooks
 
 # OpenTelemetry
 from src.observability import (
@@ -118,6 +127,8 @@ class AgentLoop:
         compression_config: CompressionConfig | None = None,
         pruning_config: PruningConfig | None = None,
         enable_pruning: bool = True,
+        hook_registry: LifecycleHookRegistry | None = None,
+        enable_builtin_hooks: bool = True,
     ):
         """初始化 AgentLoop
 
@@ -132,6 +143,8 @@ class AgentLoop:
             compression_config: 上下文压缩配置
             pruning_config: 上下文裁剪配置
             enable_pruning: 是否启用智能裁剪
+            hook_registry: 生命周期钩子注册中心（可选，默认使用全局注册中心）
+            enable_builtin_hooks: 是否启用内置钩子（默认 True）
         """
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
@@ -162,6 +175,11 @@ class AgentLoop:
         self._compression_config = compression_config
         self._pruning_config = pruning_config
         self._enable_pruning = enable_pruning
+
+        # === 生命周期钩子 ===
+        self._hook_registry = hook_registry or get_global_registry()
+        if enable_builtin_hooks and self._hook_registry.get_hook_count() == 0:
+            register_builtin_hooks(self._hook_registry)
 
         # === 初始化三件套架构 ===
         self._setup_tools_and_skills()
@@ -232,12 +250,14 @@ class AgentLoop:
             max_iterations=self.max_iterations,
             system_prompt=self.system_prompt,
             context_window=self.context_window,
-            enable_pruning=self._enable_pruning
+            enable_pruning=self._enable_pruning,
+            hook_registry=self._hook_registry,
         )
 
         logger.info(
             f"AgentLoop trio initialized: model={self.model_id}, "
-            f"isolation={isolation_level.value}, tools={len(self.tools._tools)}"
+            f"isolation={isolation_level.value}, tools={len(self.tools._tools)}, "
+            f"hooks={self._hook_registry.get_hook_count()}"
         )
 
     def _setup_context_engineering(self) -> None:
@@ -619,5 +639,48 @@ class AgentLoop:
                 "enabled": self._context_engineering is not None,
                 "pruning_enabled": self._enable_pruning,
                 "compression_configured": self._compression_config is not None
+            },
+            "hooks": {
+                "registry": self._hook_registry is not None,
+                "hooks_registered": self._hook_registry.get_hook_count() if self._hook_registry else 0,
+                "hook_reports": len(self.harness.get_hook_reports()),
             }
         }
+
+    def get_hook_registry(self) -> LifecycleHookRegistry | None:
+        """获取钩子注册中心"""
+        return self._hook_registry
+
+    def get_hook_stats(self) -> dict[str, Any]:
+        """获取钩子执行统计"""
+        if self._hook_registry:
+            return self._hook_registry.get_all_stats()
+        return {"global": {}, "hooks": {}}
+
+    def register_custom_hook(
+        self,
+        hook_point: str,
+        callback: callable,
+        priority: int = 100,
+        name: str | None = None,
+    ) -> str | None:
+        """注册自定义钩子
+
+        Args:
+            hook_point: 钩子节点名称
+            callback: 钩子回调函数
+            priority: 执行优先级（数值越小越先执行）
+            name: 钩子名称
+
+        Returns:
+            hook_id: 钩子唯一标识
+        """
+        if self._hook_registry:
+            from src.lifecycle_hooks import HookPoint
+            # 尝试转换字符串为 HookPoint
+            try:
+                point = HookPoint(hook_point)
+            except ValueError:
+                point = hook_point
+            return self._hook_registry.register(point, callback, priority=priority, name=name)
+        return None

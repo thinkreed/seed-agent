@@ -10,9 +10,11 @@ The core engine consists of five main components that work together to create an
 src/
 ├── agent_loop.py         # Main agent loop with message handling and tool execution
 ├── autonomous.py         # Idle-time autonomous exploration (Ralph Loop enhanced)
+├── builtin_hooks.py      # Built-in lifecycle hooks for all hook points
 ├── client.py             # LLM Gateway with multi-provider fallback
 ├── context_engineering.py # Progressive compression + intelligent pruning
-├── harness.py            # Controller: drives loop, routes tools (stateless)
+├── harness.py            # Controller: drives loop, routes tools (stateless + hooks)
+├── lifecycle_hooks.py    # Lifecycle hook registry with priority and stats
 ├── llm_client.py         # LLMClient: brain, responsible for reasoning
 ├── models.py             # Pydantic configuration validation
 ├── ralph_loop.py         # Long-cycle deterministic task executor
@@ -745,6 +747,179 @@ def _resolve_api_key(self, api_key: str) -> str:
         return os.environ.get(env_var, "").strip()
     return api_key.strip()
 ```
+
+---
+
+## LifecycleHooks
+
+The `lifecycle_hooks` module provides a deterministic lifecycle hook system that triggers preset actions at key points in the agent's lifecycle. It ensures critical processes are executed by the system, not relying on model memory.
+
+### Purpose
+
+LifecycleHooks enables reliable execution of predefined actions at critical lifecycle points. The system guarantees hook execution regardless of model behavior, supporting dynamic registration, priority management, execution statistics, and failure handling.
+
+### Key Classes
+
+#### HookPoint (Enum)
+
+Defines all lifecycle hook points in the agent system:
+
+```python
+class HookPoint(str, Enum):
+    # Session lifecycle (4 points)
+    SESSION_START = "session_start"          # Session start
+    SESSION_END = "session_end"              # Session end
+    SESSION_PAUSE = "session_pause"          # Session pause
+    SESSION_RESUME = "session_resume"        # Session resume
+
+    # Tool execution lifecycle (3 points)
+    TOOL_CALL_BEFORE = "tool_call_before"    # Before tool call
+    TOOL_CALL_AFTER = "tool_call_after"      # After tool call
+    TOOL_CALL_ERROR = "tool_call_error"      # Tool call error
+
+    # LLM call lifecycle (5 points)
+    LLM_CALL_BEFORE = "llm_call_before"      # Before LLM call
+    LLM_CALL_AFTER = "llm_call_after"        # After LLM call
+    LLM_STREAM_START = "llm_stream_start"    # Stream start
+    LLM_STREAM_CHUNK = "llm_stream_chunk"    # Stream chunk
+    LLM_STREAM_END = "llm_stream_end"        # Stream end
+
+    # Response lifecycle (2 points)
+    RESPONSE_BEFORE = "response_before"      # Before response
+    RESPONSE_AFTER = "response_after"        # After response
+
+    # Context lifecycle (3 points)
+    CONTEXT_RESET_BEFORE = "context_reset_before"
+    CONTEXT_RESET_AFTER = "context_reset_after"
+    SUMMARY_GENERATED = "summary_generated"
+
+    # Subagent lifecycle (4 points)
+    SUBAGENT_SPAWN = "subagent_spawn"
+    SUBAGENT_START = "subagent_start"
+    SUBAGENT_END = "subagent_end"
+    SUBAGENT_ERROR = "subagent_error"
+
+    # Ralph Loop lifecycle (4 points)
+    RALPH_ITERATION_START = "ralph_iteration_start"
+    RALPH_ITERATION_END = "ralph_iteration_end"
+    RALPH_COMPLETION_CHECK = "ralph_completion_check"
+    RALPH_CONTEXT_RESET = "ralph_context_reset"
+```
+
+#### LifecycleHookRegistry
+
+Central registry for all lifecycle hooks with priority-based execution:
+
+```python
+class LifecycleHookRegistry:
+    """Deterministic lifecycle hook registry"""
+
+    def __init__(self):
+        self._hooks: dict[str, list[tuple[int, Callable, str]]] = {
+            point.value: [] for point in HookPoint
+        }
+        self._hook_stats: dict[str, HookStats] = {}
+
+    # === Registration ===
+    def register(hook_point, callback, priority=0, name=None) -> str:
+        """Register hook with priority (lower = earlier execution)"""
+    
+    def unregister(hook_id) -> bool:
+        """Unregister hook by ID"""
+    
+    def clear_hooks(hook_point=None) -> int:
+        """Clear all hooks or hooks for specific point"""
+
+    # === Triggering ===
+    async def trigger(hook_point, context, fail_fast=False) -> HookTriggerReport:
+        """Trigger hooks asynchronously"""
+    
+    def trigger_sync(hook_point, context) -> HookTriggerReport:
+        """Trigger hooks synchronously"""
+
+    # === Query ===
+    def list_hooks(hook_point=None) -> list[dict]:
+        """List registered hooks"""
+    
+    def get_hook_stats(hook_id) -> dict:
+        """Get execution statistics"""
+    
+    def get_all_stats() -> dict:
+        """Get global and per-hook statistics"""
+
+    def get_hook_count(hook_point=None) -> int:
+        """Count registered hooks"""
+    
+    def has_hook(hook_id) -> bool:
+        """Check if hook exists"""
+```
+
+#### HookStats / HookTriggerReport / HookExecutionResult
+
+Data classes for tracking hook execution:
+
+```python
+@dataclass
+class HookStats:
+    hook_id: str
+    hook_point: str
+    priority: int
+    total_calls: int = 0
+    success_calls: int = 0
+    failed_calls: int = 0
+    total_duration_ms: float = 0.0
+    last_call_time: float | None = None
+
+@dataclass
+class HookTriggerReport:
+    hook_point: str
+    hooks_count: int
+    hooks_executed: int
+    hooks_failed: int
+    results: list[HookExecutionResult]
+
+@dataclass
+class HookExecutionResult:
+    hook_id: str
+    status: str  # "success" | "failed" | "skipped"
+    duration_ms: float
+    result: Any | None = None
+    error: str | None = None
+```
+
+### Built-in Hooks
+
+The `builtin_hooks.py` module provides pre-registered hooks for all lifecycle points:
+
+| Hook Point | Hook Name | Function |
+|------------|-----------|----------|
+| `session_start` | `session_log_start` | Log session start |
+| `session_end` | `session_log_end` | Log session end |
+| `tool_call_before` | `tool_permission_check` | Check tool permissions |
+| `tool_call_before` | `tool_log_call` | Log tool call |
+| `tool_call_after` | `tool_validate_result` | Validate tool result |
+| `llm_call_before` | `llm_context_check` | Check context size |
+| `llm_call_after` | `llm_validate_response` | Validate LLM response |
+| `response_after` | `response_check_completion` | Check if complete |
+
+### Integration Points
+
+| Component | Integration |
+|-----------|-------------|
+| AgentLoop | Initializes hook registry, auto-registers builtin hooks |
+| Harness | Triggers hooks at lifecycle points in run_cycle/run_conversation |
+| Sandbox | Hooks can access sandbox for permission checks |
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Deterministic execution** | System guarantees hook execution |
+| **Priority ordering** | Hooks execute in priority order (lower = earlier) |
+| **Execution statistics** | Call count, success rate, duration tracking |
+| **Failure handling** | Hook failure doesn't interrupt main flow |
+| **Async support** | Both sync and async hook callbacks |
+| **Dynamic registration** | Register custom hooks at runtime |
 
 ---
 

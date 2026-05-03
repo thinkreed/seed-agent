@@ -1,517 +1,320 @@
 # 优化点 05: 确定性生命周期钩子体系
 
-> **版本**: v1.0  
-> **创建日期**: 2026-05-03  
-> **优先级**: 中  
-> **依赖**: 01_session_event_stream_design, 02_harness_sandbox_decoupling_design  
+> **版本**: v2.0 (已落地实现)
+> **创建日期**: 2026-05-03
+> **实现日期**: 2026-05-03
+> **优先级**: 中
+> **状态**: ✅ 已完成
+> **依赖**: 01_session_event_stream_design, 02_harness_sandbox_decoupling_design
 > **参考来源**: Harness Engineering "确定性生命周期钩子"
 
 ---
 
-## 问题分析
+## 实现状态
 
-### Harness Engineering 理念
+### ✅ 已完成模块
 
-**确定性生命周期钩子**: 
-> 在智能体生命周期的关键节点自动触发预设动作（如代码格式化），由系统确保关键流程被执行，不依赖可能被模型遗忘的指令
+| 模块 | 文件 | 实现状态 |
+|------|------|----------|
+| **LifecycleHookRegistry** | `src/lifecycle_hooks.py` | ✅ 已实现，含完整 API |
+| **内置钩子** | `src/builtin_hooks.py` | ✅ 已实现，覆盖所有节点 |
+| **Harness 集成** | `src/harness.py` | ✅ 已集成，带钩子触发 |
+| **AgentLoop 集成** | `src/agent_loop.py` | ✅ 已集成，自动初始化 |
+| **测试** | `tests/test_lifecycle_hooks.py` | ✅ 已实现，覆盖所有功能 |
 
-**关键节点**:
+### 关键变更
 
-| 钩子节点 | 触发时机 | 预设动作示例 |
-|----------|----------|-------------|
-| `session_start` | 会话开始 | 加载记忆索引、初始化上下文 |
-| `tool_call_before` | 工具调用前 | 代码格式化、权限检查 |
-| `tool_call_after` | 工具调用后 | 结果验证、日志记录 |
-| `response_before` | 响应生成前 | 上下文裁剪、格式检查 |
-| `response_after` | 响应生成后 | 记忆整理、摘要生成 |
-| `session_end` | 会话结束 | 状态持久化、归档 L5 |
-
-### seed-agent 当前状态
-
-**已有的钩子实现**:
-
-| 钩子 | 实现位置 | 状态 |
-|------|----------|------|
-| `autodream` | Scheduler (12小时) | ✅ 已有 |
-| `autonomous_explore` | AutonomousExplorer (2小时空闲) | ✅ 已有 |
-| `_maybe_summarize` | AgentLoop (轮数/阈值触发) | ⚠️ 部分 |
-| OpenTelemetry Span | `_run_single_tool_call` | ⚠️ 部分 |
-
-**问题**:
-- ❌ 钩子散落在各模块，无统一注册体系
-- ❌ 缺少关键节点钩子 (tool_call_before/after, response_before/after)
-- ❌ 无法动态注册自定义钩子
-- ❌ 钩子执行无优先级管理
-- ❌ 钩子失败处理不完善
+1. **统一注册体系**: 所有钩子通过 `LifecycleHookRegistry` 集中管理
+2. **优先级执行**: 钩子按优先级顺序执行（数值越小越先执行）
+3. **执行统计**: 每个钩子有完整的调用统计（次数、成功率、耗时）
+4. **失败处理**: 钩子失败不中断主流程，可选 fail_fast 模式
+5. **内置钩子**: 会话、工具、LLM、响应、上下文等全生命周期覆盖
 
 ---
 
-## 设计方案
+## 落地架构
 
-### 1. 生命周期钩子注册体系
+### 钩子注册体系
 
 ```python
 class LifecycleHookRegistry:
     """确定性生命周期钩子注册中心"""
-    
-    HOOK_POINTS = {
-        # 会话生命周期
-        "session_start": "会话开始",
-        "session_end": "会话结束",
-        "session_pause": "会话暂停",
-        "session_resume": "会话恢复",
-        
-        # 工具执行生命周期
-        "tool_call_before": "工具调用前",
-        "tool_call_after": "工具调用后",
-        "tool_call_error": "工具调用错误",
-        
-        # LLM 调用生命周期
-        "llm_call_before": "LLM 调用前",
-        "llm_call_after": "LLM 调用后",
-        "llm_stream_start": "LLM 流式响应开始",
-        "llm_stream_chunk": "LLM 流式响应块",
-        "llm_stream_end": "LLM 流式响应结束",
-        
-        # 响应生命周期
-        "response_before": "响应生成前",
-        "response_after": "响应生成后",
-        
-        # 上下文生命周期
-        "context_reset_before": "上下文重置前",
-        "context_reset_after": "上下文重置后",
-        "summary_generated": "摘要生成后",
-        
-        # 子代理生命周期
-        "subagent_spawn": "子代理创建",
-        "subagent_start": "子代理开始执行",
-        "subagent_end": "子代理执行结束",
-        "subagent_error": "子代理执行错误",
-        
-        # Ralph Loop 生命周期
-        "ralph_iteration_start": "Ralph 迭代开始",
-        "ralph_iteration_end": "Ralph 迭代结束",
-        "ralph_completion_check": "Ralph 完成检查",
-        "ralph_context_reset": "Ralph 上下文重置",
-    }
-    
-    def __init__(self):
-        self._hooks: dict[str, list[tuple[int, Callable]]] = {
-            point: [] for point in self.HOOK_POINTS
-        }
-        self._hook_stats: dict[str, dict] = {}  # 执行统计
-    
+
     # === 注册 ===
-    
-    def register(
-        self,
-        hook_point: str,
-        callback: Callable,
-        priority: int = 0,
-        name: str = None,
-    ) -> str:
-        """注册钩子
-        
-        Args:
-            hook_point: 钩子节点名称
-            callback: 钩子回调函数 (接受 context 参数)
-            priority: 执行优先级 (数值越小越先执行)
-            name: 钩子名称 (用于标识)
-        
-        Returns:
-            hook_id: 钩子唯一标识
-        """
-        if hook_point not in self.HOOK_POINTS:
-            raise ValueError(f"Unknown hook point: {hook_point}")
-        
-        hook_id = name or f"{hook_point}_{len(self._hooks[hook_point])}"
-        
-        self._hooks[hook_point].append((priority, callback, hook_id))
-        self._hooks[hook_point].sort(key=lambda x: x[0])  # 按优先级排序
-        
-        self._hook_stats[hook_id] = {
-            "point": hook_point,
-            "priority": priority,
-            "total_calls": 0,
-            "success_calls": 0,
-            "failed_calls": 0,
-            "last_call_time": None,
-        }
-        
-        logger.info(f"Hook registered: {hook_id} at {hook_point} (priority={priority})")
-        return hook_id
-    
-    def unregister(self, hook_id: str) -> bool:
-        """注销钩子"""
-        for hook_point, hooks in self._hooks.items():
-            for i, (priority, callback, id_) in enumerate(hooks):
-                if id_ == hook_id:
-                    hooks.pop(i)
-                    logger.info(f"Hook unregistered: {hook_id}")
-                    return True
-        return False
-    
+    def register(hook_point, callback, priority=0, name=None) -> str
+    def unregister(hook_id) -> bool
+    def clear_hooks(hook_point=None) -> int
+
     # === 触发 ===
-    
-    async def trigger(self, hook_point: str, context: dict) -> dict:
-        """触发钩子
-        
-        Args:
-            hook_point: 钩子节点名称
-            context: 钩子上下文数据
-        
-        Returns:
-            执行报告
-        """
-        if hook_point not in self._hooks:
-            return {"status": "unknown_point", "hooks_executed": 0}
-        
-        hooks = self._hooks[hook_point]
-        report = {
-            "hook_point": hook_point,
-            "hooks_count": len(hooks),
-            "hooks_executed": 0,
-            "hooks_failed": 0,
-            "results": [],
-        }
-        
-        for priority, callback, hook_id in hooks:
-            start_time = time.time()
-            
-            try:
-                # 执行钩子
-                if asyncio.iscoroutinefunction(callback):
-                    result = await callback(context)
-                else:
-                    result = callback(context)
-                
-                # 更新统计
-                self._hook_stats[hook_id]["total_calls"] += 1
-                self._hook_stats[hook_id]["success_calls"] += 1
-                self._hook_stats[hook_id]["last_call_time"] = time.time()
-                
-                report["hooks_executed"] += 1
-                report["results"].append({
-                    "hook_id": hook_id,
-                    "status": "success",
-                    "duration_ms": (time.time() - start_time) * 1000,
-                    "result": result,
-                })
-                
-            except Exception as e:
-                # 钩子失败处理
-                self._hook_stats[hook_id]["total_calls"] += 1
-                self._hook_stats[hook_id]["failed_calls"] += 1
-                
-                report["hooks_failed"] += 1
-                report["results"].append({
-                    "hook_id": hook_id,
-                    "status": "failed",
-                    "duration_ms": (time.time() - start_time) * 1000,
-                    "error": str(e),
-                })
-                
-                logger.warning(f"Hook {hook_id} failed: {type(e).__name__}: {e}")
-        
-        return report
-    
+    async def trigger(hook_point, context, fail_fast=False) -> HookTriggerReport
+    def trigger_sync(hook_point, context) -> HookTriggerReport
+
     # === 查询 ===
-    
-    def list_hooks(self, hook_point: str = None) -> list[dict]:
-        """列出已注册钩子"""
-        if hook_point:
-            return [
-                {"hook_id": id_, "priority": pri, "callback": str(cb)}
-                for pri, cb, id_ in self._hooks.get(hook_point, [])
-            ]
-        
-        return [
-            {"hook_point": point, "hook_id": id_, "priority": pri}
-            for point, hooks in self._hooks.items()
-            for pri, cb, id_ in hooks
-        ]
-    
-    def get_hook_stats(self, hook_id: str) -> dict:
-        """获取钩子执行统计"""
-        return self._hook_stats.get(hook_id, {})
+    def list_hooks(hook_point=None) -> list[dict]
+    def get_hook_stats(hook_id) -> dict
+    def get_all_stats() -> dict
+    def get_hook_count(hook_point=None) -> int
+    def has_hook(hook_id) -> bool
 ```
 
-### 2. 内置钩子定义
+### 钩子节点定义
 
 ```python
-def register_builtin_hooks(registry: LifecycleHookRegistry) -> None:
-    """注册内置钩子"""
-    
-    # === 会话生命周期 ===
-    
-    @registry.register("session_start", priority=0)
-    async def load_memory_index(context: dict) -> None:
-        """加载 L1 记忆索引"""
-        agent = context.get("agent")
-        if agent:
-            index = agent.tools.execute("read_memory_index")
-            context["session"]["memory_index"] = index
-    
-    @registry.register("session_end", priority=0)
-    async def persist_session_state(context: dict) -> None:
-        """持久化会话状态"""
-        session = context.get("session")
-        if session:
-            session.persist_state()
-    
-    @registry.register("session_end", priority=1)
-    async def archive_to_l5(context: dict) -> None:
-        """归档到 L5"""
-        session = context.get("session")
-        archive_layer = context.get("archive_layer")
-        if session and archive_layer:
-            await archive_layer.archive_session(session)
-    
-    # === 工具执行生命周期 ===
-    
-    @registry.register("tool_call_before", priority=0)
-    def check_tool_permission(context: dict) -> bool:
-        """检查工具调用权限"""
-        tool_name = context.get("tool_name")
-        permission_set = context.get("permission_set")
-        
-        if permission_set and tool_name not in permission_set:
-            raise PermissionError(f"Tool {tool_name} not allowed in {permission_set}")
-        
-        return True
-    
-    @registry.register("tool_call_before", priority=1)
-    def log_tool_call(context: dict) -> None:
-        """记录工具调用"""
-        tool_name = context.get("tool_name")
-        tool_args = context.get("tool_args")
-        logger.info(f"Tool call: {tool_name} with args {tool_args}")
-    
-    @registry.register("tool_call_after", priority=0)
-    def validate_tool_result(context: dict) -> None:
-        """验证工具结果"""
-        result = context.get("result")
-        if isinstance(result, str) and "Error" in result:
-            logger.warning(f"Tool execution error: {result}")
-    
-    @registry.register("tool_call_after", priority=1)
-    def record_to_memory_graph(context: dict) -> None:
-        """记录到 Memory Graph"""
-        tool_name = context.get("tool_name")
-        result = context.get("result")
-        
-        if tool_name == "load_skill":
-            skill_name = context.get("tool_args", {}).get("name")
-            outcome = "success" if "Error" not in str(result) else "failed"
-            # record_skill_outcome(skill_name, outcome, ...)
-    
-    # === LLM 调用生命周期 ===
-    
-    @registry.register("llm_call_before", priority=0)
-    def apply_context_pruning(context: dict) -> None:
-        """应用上下文裁剪"""
-        messages = context.get("messages")
-        pruner = context.get("pruner")
-        task = context.get("current_task")
-        
-        if pruner and task:
-            context["pruned_messages"] = pruner.prune_for_task(messages, task)
-    
-    @registry.register("llm_call_after", priority=0)
-    def validate_llm_response(context: dict) -> None:
-        """验证 LLM 响应"""
-        response = context.get("response")
-        
-        if not response.get("choices"):
-            raise ValueError("Empty LLM response")
-    
-    # === 响应生命周期 ===
-    
-    @registry.register("response_after", priority=0)
-    async def generate_summary_if_needed(context: dict) -> None:
-        """生成摘要 (如需要)"""
-        session = context.get("session")
-        compressor = context.get("compressor")
-        
-        if compressor and session:
-            usage_ratio = session.get_context_usage_ratio()
-            if usage_ratio > 0.75:
-                await compressor.compress(session, session.context_window)
-    
-    @registry.register("response_after", priority=1)
-    def extract_user_feedback(context: dict) -> None:
-        """提取用户反馈"""
-        user_modeling = context.get("user_modeling")
-        interaction = context.get("interaction")
-        
-        if user_modeling and interaction:
-            user_modeling.observe_from_interaction(interaction)
-    
-    # === 上下文生命周期 ===
-    
-    @registry.register("context_reset_before", priority=0)
-    def extract_critical_context(context: dict) -> str:
-        """提取关键上下文"""
-        history = context.get("history")
-        return extract_critical_context(history)
-    
-    @registry.register("context_reset_after", priority=0)
-    def inject_preserved_context(context: dict) -> None:
-        """注入保留上下文"""
-        preserved = context.get("preserved_context")
-        history = context.get("history")
-        
-        if preserved:
-            history.append({
-                "role": "system",
-                "content": f"[状态摘要]\n{preserved}"
-            })
-    
-    # === Ralph Loop 生命周期 ===
-    
-    @registry.register("ralph_iteration_end", priority=0)
-    def persist_ralph_state(context: dict) -> None:
-        """持久化 Ralph 状态"""
-        ralph = context.get("ralph_loop")
-        response = context.get("response")
-        
-        if ralph:
-            ralph._persist_state(response)
-    
-    @registry.register("ralph_completion_check", priority=0)
-    def check_external_verification(context: dict) -> bool:
-        """外部验证检查"""
-        completion_type = context.get("completion_type")
-        criteria = context.get("completion_criteria")
-        
-        # 执行相应验证
-        return check_completion(completion_type, criteria)
+class HookPoint(str, Enum):
+    """钩子节点枚举"""
+
+    # 会话生命周期 (4个)
+    SESSION_START = "session_start"          # 会话开始
+    SESSION_END = "session_end"              # 会话结束
+    SESSION_PAUSE = "session_pause"          # 会话暂停
+    SESSION_RESUME = "session_resume"        # 会话恢复
+
+    # 工具执行生命周期 (3个)
+    TOOL_CALL_BEFORE = "tool_call_before"    # 工具调用前
+    TOOL_CALL_AFTER = "tool_call_after"      # 工具调用后
+    TOOL_CALL_ERROR = "tool_call_error"      # 工具调用错误
+
+    # LLM 调用生命周期 (5个)
+    LLM_CALL_BEFORE = "llm_call_before"      # LLM 调用前
+    LLM_CALL_AFTER = "llm_call_after"        # LLM 调用后
+    LLM_STREAM_START = "llm_stream_start"    # 流式开始
+    LLM_STREAM_CHUNK = "llm_stream_chunk"    # 流式块
+    LLM_STREAM_END = "llm_stream_end"        # 流式结束
+
+    # 响应生命周期 (2个)
+    RESPONSE_BEFORE = "response_before"      # 响应生成前
+    RESPONSE_AFTER = "response_after"        # 响应生成后
+
+    # 上下文生命周期 (3个)
+    CONTEXT_RESET_BEFORE = "context_reset_before"
+    CONTEXT_RESET_AFTER = "context_reset_after"
+    SUMMARY_GENERATED = "summary_generated"
+
+    # 子代理生命周期 (4个)
+    SUBAGENT_SPAWN = "subagent_spawn"
+    SUBAGENT_START = "subagent_start"
+    SUBAGENT_END = "subagent_end"
+    SUBAGENT_ERROR = "subagent_error"
+
+    # Ralph Loop 生命周期 (4个)
+    RALPH_ITERATION_START = "ralph_iteration_start"
+    RALPH_ITERATION_END = "ralph_iteration_end"
+    RALPH_COMPLETION_CHECK = "ralph_completion_check"
+    RALPH_CONTEXT_RESET = "ralph_context_reset"
 ```
 
-### 3. 集成到 Harness
+### 内置钩子实现
+
+| 钩子节点 | 钩子名称 | 功能 |
+|----------|----------|------|
+| `session_start` | `session_log_start` | 记录会话开始日志 |
+| `session_start` | `session_init_state` | 初始化会话状态 |
+| `session_end` | `session_log_end` | 记录会话结束日志 |
+| `session_end` | `session_persist_state` | 持久化会话状态 |
+| `tool_call_before` | `tool_permission_check` | 检查工具权限 |
+| `tool_call_before` | `tool_log_call` | 记录工具调用日志 |
+| `tool_call_before` | `tool_path_mapping` | Sandbox 路径映射 |
+| `tool_call_after` | `tool_validate_result` | 验证工具结果 |
+| `tool_call_after` | `tool_log_result` | 记录工具结果日志 |
+| `tool_call_error` | `tool_log_error` | 记录工具错误日志 |
+| `llm_call_before` | `llm_log_call` | 记录 LLM 调用日志 |
+| `llm_call_before` | `llm_context_check` | 检查上下文大小 |
+| `llm_call_after` | `llm_validate_response` | 验证 LLM 响应 |
+| `llm_call_after` | `llm_log_response` | 记录 LLM 响应日志 |
+| `response_before` | `response_log_prepare` | 记录响应准备日志 |
+| `response_after` | `response_update_state` | 更新响应状态 |
+| `response_after` | `response_check_completion` | 检查是否完成 |
+| `context_reset_before` | `context_log_reset` | 记录上下文重置 |
+| `context_reset_before` | `context_extract_critical` | 提取关键上下文 |
+| `summary_generated` | `summary_log` | 记录摘要生成 |
+| `subagent_spawn` | `subagent_log_spawn` | 记录子代理创建 |
+| `subagent_end` | `subagent_log_end` | 记录子代理结束 |
+| `ralph_iteration_end` | `ralph_persist_state` | 持久化 Ralph 状态 |
+
+---
+
+## Harness 集成
+
+### 钩子触发流程
 
 ```python
-class HarnessWithHooks:
-    """带生命周期钩子的 Harness"""
-    
-    def __init__(
-        self,
-        claude: ClaudeClient,
-        session: SessionEventStream,
-        sandbox: Sandbox,
-        hook_registry: LifecycleHookRegistry,
-    ):
-        self.claude = claude
-        self.session = session
-        self.sandbox = sandbox
-        self.hook_registry = hook_registry
-    
-    async def run_cycle(self) -> dict:
-        """执行一轮对话循环 (带钩子)"""
-        context = {
-            "session": self.session,
-            "claude": self.claude,
-            "sandbox": self.sandbox,
-        }
-        
-        # 1. 触发 llm_call_before
-        await self.hook_registry.trigger("llm_call_before", context)
-        
-        # 2. 构建上下文
-        messages = self._build_context_from_session()
-        context["messages"] = messages
-        
-        # 3. 触发 response_before
-        await self.hook_registry.trigger("response_before", context)
-        
-        # 4. 调用 LLM
-        response = await self.claude.reason(context.get("pruned_messages") or messages)
-        context["response"] = response
-        
-        # 5. 触发 llm_call_after
-        await self.hook_registry.trigger("llm_call_after", context)
-        
-        # 6. 记录响应
-        self.session.emit_event("llm_response", response)
-        
-        # 7. 如果有工具调用
-        if response.get("tool_calls"):
-            for tc in response["tool_calls"]:
-                tool_context = {
-                    **context,
-                    "tool_name": tc["function"]["name"],
-                    "tool_args": json.loads(tc["function"]["arguments"]),
-                    "tool_call_id": tc["id"],
-                }
-                
-                # 工具调用前钩子
-                await self.hook_registry.trigger("tool_call_before", tool_context)
-                
-                # 执行工具
-                result = await self.sandbox.execute_tool(tc)
-                tool_context["result"] = result
-                
-                # 工具调用后钩子
-                await self.hook_registry.trigger("tool_call_after", tool_context)
-                
-                self.session.emit_event("tool_result", {"id": tc["id"], "result": result})
-        
-        # 8. 触发 response_after
-        await self.hook_registry.trigger("response_after", context)
-        
-        return {"response": response, "continue": response.get("tool_calls") is not None}
-    
-    async def run_conversation(self, initial_prompt: str) -> str:
-        """执行完整对话"""
-        # 1. 会话开始钩子
-        start_context = {"session": self.session, "agent": self}
-        await self.hook_registry.trigger("session_start", start_context)
-        
-        # 记录初始输入
-        self.session.emit_event("user_input", {"content": initial_prompt})
-        
-        for iteration in range(MAX_ITERATIONS):
-            cycle_result = await self.run_cycle()
-            
-            if not cycle_result["continue"]:
-                break
-        
-        # 2. 会话结束钩子
-        end_context = {"session": self.session, "response": cycle_result["response"]}
-        await self.hook_registry.trigger("session_end", end_context)
-        
-        return cycle_result["response"]["choices"][0]["message"]["content"]
+class Harness:
+    """Harness 控制器 - 带生命周期钩子"""
+
+    def __init__(self, ..., hook_registry=None):
+        self._hook_registry = hook_registry
+        self._hook_reports = []
+
+    async def _trigger_hook(hook_point, context) -> HookTriggerReport:
+        """触发生命周期钩子"""
+        if not self._hook_registry:
+            return None
+        report = await self._hook_registry.trigger(hook_point, context)
+        self._hook_reports.append(report)
+        return report
+
+    async def run_cycle(priority) -> CycleResult:
+        """执行一轮对话循环（带钩子）"""
+        # 1. 构建 context
+        context = self._build_context_from_session()
+
+        # 2. llm_call_before 钩子
+        await self._trigger_hook(HookPoint.LLM_CALL_BEFORE, {...})
+
+        # 3. response_before 钩子
+        await self._trigger_hook(HookPoint.RESPONSE_BEFORE, {...})
+
+        # 4. LLM 推理
+        response = await self.llm_client.reason(context, tools)
+
+        # 5. llm_call_after 钩子
+        await self._trigger_hook(HookPoint.LLM_CALL_AFTER, {...})
+
+        # 6. 处理工具调用
+        if message.get("tool_calls"):
+            # 7. _route_tool_calls_with_hooks
+            results = await self._route_tool_calls_with_hooks(tool_calls)
+
+        # 8. response_after 钩子
+        await self._trigger_hook(HookPoint.RESPONSE_AFTER, {...})
+
+        return cycle_result
+
+    async def run_conversation(initial_prompt) -> str:
+        """执行完整对话（带钩子）"""
+        # 1. session_start 钩子
+        await self._trigger_hook(HookPoint.SESSION_START, {...})
+
+        # 2. 循环执行
+        try:
+            while iteration < self.max_iterations:
+                cycle_result = await self.run_cycle(priority)
+                if not cycle_result["continue_loop"]:
+                    break
+
+            # 3. session_end 钩子（成功）
+            await self._trigger_hook(HookPoint.SESSION_END, {...})
+            return final_response
+
+        except Exception as e:
+            # session_end 钩子（错误）
+            await self._trigger_hook(HookPoint.SESSION_END, {...})
+            raise
+
+    async def _execute_single_tool_with_hooks(tool_call) -> dict:
+        """执行单个工具（带钩子）"""
+        # 1. tool_call_before 钩子
+        await self._trigger_hook(HookPoint.TOOL_CALL_BEFORE, {...})
+
+        # 2. 执行工具
+        result = await self.sandbox.execute_tools([tool_call])
+
+        # 3. tool_call_after 钩子
+        await self._trigger_hook(HookPoint.TOOL_CALL_AFTER, {...})
+
+        return result
 ```
 
 ---
 
-## 实施步骤
+## AgentLoop 集成
 
-### Phase 1: 钩子注册体系 (2天)
+```python
+class AgentLoop:
+    """Agent 主循环 - 带生命周期钩子"""
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 1.1 | 实现 LifecycleHookRegistry 类 | register/unregister/trigger |
-| 1.2 | 实现钩子统计 | get_hook_stats |
-| 1.3 | 单元测试 | 钩子注册触发正确 |
+    def __init__(
+        self,
+        gateway,
+        ...
+        hook_registry=None,           # 可选注入钩子注册中心
+        enable_builtin_hooks=True,    # 默认启用内置钩子
+    ):
+        # === 生命周期钩子 ===
+        self._hook_registry = hook_registry or get_global_registry()
+        if enable_builtin_hooks and self._hook_registry.get_hook_count() == 0:
+            register_builtin_hooks(self._hook_registry)
 
-### Phase 2: 内置钩子实现 (3天)
+        # === 初始化 Harness（传递钩子）===
+        self.harness = Harness(
+            llm_client=self.llm_client,
+            session=self.session,
+            sandbox=self.sandbox,
+            hook_registry=self._hook_registry,
+        )
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 2.1 | 实现会话生命周期钩子 | session_start/end |
-| 2.2 | 实现工具执行钩子 | tool_call_before/after |
-| 2.3 | 实现响应钩子 | response_before/after |
-| 2.4 | 实现上下文钩子 | context_reset_before/after |
-| 2.5 | 集成测试 | 所有钩子正确触发 |
+    def get_hook_registry(self) -> LifecycleHookRegistry:
+        """获取钩子注册中心"""
+        return self._hook_registry
 
-### Phase 3: Harness 集成 (2天)
+    def get_hook_stats(self) -> dict:
+        """获取钩子执行统计"""
+        return self._hook_registry.get_all_stats()
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 3.1 | HarnessWithHooks 实现 | run_cycle 带钩子 |
-| 3.2 | 钩子上下文传递 | context 参数正确 |
-| 3.3 | backward compatibility | 现有 AgentLoop 兼容 |
+    def register_custom_hook(hook_point, callback, priority=100, name=None) -> str:
+        """注册自定义钩子"""
+        return self._hook_registry.register(hook_point, callback, priority, name)
+```
+
+---
+
+## 自定义钩子注册
+
+```python
+from src.lifecycle_hooks import HookPoint, LifecycleHookRegistry
+from src.agent_loop import AgentLoop
+
+# 方式 1: 通过 AgentLoop 注册
+agent = AgentLoop(gateway)
+agent.register_custom_hook(
+    HookPoint.TOOL_CALL_BEFORE,
+    my_custom_check,
+    priority=50,  # 在内置钩子之后执行
+    name="my_check"
+)
+
+# 方式 2: 直接操作注册中心
+registry = agent.get_hook_registry()
+registry.register(
+    HookPoint.RESPONSE_AFTER,
+    my_response_handler,
+    priority=0,
+    name="response_handler"
+)
+
+# 方式 3: 全局注册中心
+from src.lifecycle_hooks import get_global_registry
+from src.builtin_hooks import register_builtin_hooks
+
+registry = get_global_registry()
+register_builtin_hooks(registry)  # 注册内置钩子
+registry.register(HookPoint.SESSION_START, my_session_init, priority=-1)
+```
+
+---
+
+## 测试验证
+
+### 测试覆盖
+
+| 测试类 | 覆盖功能 |
+|--------|----------|
+| `TestLifecycleHookRegistryInit` | 初始化、钩子节点定义 |
+| `TestHookRegistration` | 注册、注销、优先级排序 |
+| `TestHookTrigger` | 同步/异步触发、失败处理 |
+| `TestHookStats` | 统计更新、成功率计算 |
+| `TestHookQueries` | 查询方法、列表、计数 |
+| `TestBuiltinHooks` | 内置钩子注册、执行验证 |
+| `TestGlobalRegistry` | 全局注册中心管理 |
+
+### 验证标准
+
+1. **注册/注销正确**: `register()` 返回 hook_id，`unregister()` 成功移除
+2. **优先级排序**: 钩子按 priority 升序执行
+3. **触发正确**: `trigger()` 返回完整执行报告
+4. **统计更新**: 成功/失败调用计数正确
+5. **失败处理**: 钩子失败不中断主流程
+6. **内置钩子**: 覆盖所有关键节点
 
 ---
 
@@ -524,53 +327,7 @@ class HarnessWithHooks:
 | **优先级管理** | 钩子按优先级有序执行 |
 | **执行统计** | 钩子执行次数/成功/失败统计 |
 | **失败处理** | 钩子失败不中断主流程 |
-
----
-
-## 测试计划
-
-```python
-def test_hook_registry():
-    registry = LifecycleHookRegistry()
-    
-    # 注册钩子
-    hook_id = registry.register("tool_call_before", lambda ctx: True, priority=0)
-    
-    # 触发钩子
-    report = await registry.trigger("tool_call_before", {"tool_name": "file_read"})
-    
-    assert report["hooks_executed"] == 1
-    assert report["hooks_failed"] == 0
-    
-    # 查询统计
-    stats = registry.get_hook_stats(hook_id)
-    assert stats["total_calls"] == 1
-    assert stats["success_calls"] == 1
-
-def test_builtin_hooks():
-    registry = LifecycleHookRegistry()
-    register_builtin_hooks(registry)
-    
-    # 验证内置钩子注册
-    hooks = registry.list_hooks()
-    
-    assert len(hooks) > 0
-    assert any(h["hook_point"] == "session_start" for h in hooks)
-    assert any(h["hook_point"] == "tool_call_before" for h in hooks)
-
-def test_harness_with_hooks():
-    registry = LifecycleHookRegistry()
-    register_builtin_hooks(registry)
-    
-    harness = HarnessWithHooks(claude, session, sandbox, registry)
-    
-    # 执行对话
-    result = await harness.run_conversation("hello")
-    
-    # 验证钩子触发
-    assert registry.get_hook_stats("session_start_0")["total_calls"] == 1
-    assert registry.get_hook_stats("session_end_0")["total_calls"] == 1
-```
+| **确定性执行** | 不依赖模型记忆，系统确保执行 |
 
 ---
 
@@ -578,4 +335,6 @@ def test_harness_with_hooks():
 
 - [01_session_event_stream_design.md](01_session_event_stream_design.md) - Session 事件流
 - [02_harness_sandbox_decoupling_design.md](02_harness_sandbox_decoupling_design.md) - Harness 集成
-- [03_memory_system_upgrade_design.md](03_memory_system_upgrade_design.md) - L5 归档钩子
+- [src/lifecycle_hooks.py](../src/lifecycle_hooks.py) - 钩子注册中心实现
+- [src/builtin_hooks.py](../src/builtin_hooks.py) - 内置钩子定义
+- [tests/test_lifecycle_hooks.py](../tests/test_lifecycle_hooks.py) - 测试文件
