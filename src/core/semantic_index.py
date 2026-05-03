@@ -196,7 +196,7 @@ class SemanticIndex:
         scores, indices = self.index.search(query_vec, k)
 
         results = []
-        for score, idx in zip(scores[0], indices[0]):
+        for score, idx in zip(scores[0], indices[0], strict=True):
             if idx >= 0 and idx < len(self.doc_ids):
                 results.append({
                     "doc_id": self.doc_ids[idx],

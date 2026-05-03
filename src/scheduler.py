@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from src.request_queue import RequestPriority
 from src.tools import ToolRegistry
+import contextlib
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -144,10 +145,8 @@ class TaskScheduler:
             logger.error(f"Failed to save tasks: {e}")
             # 清理临时文件
             if temp_file.exists():
-                try:
+                with contextlib.suppress(OSError):
                     temp_file.unlink()
-                except OSError:
-                    pass
             raise
 
         logger.info(f"Saved {len(self._tasks)} scheduled tasks")
@@ -192,10 +191,8 @@ class TaskScheduler:
 
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
 
         logger.info("Task scheduler stopped")
 

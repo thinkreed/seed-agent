@@ -466,10 +466,7 @@ class Sandbox:
 
     def _match_path_patterns(self, path: str, patterns: list[str]) -> bool:
         """检查路径是否匹配任一模式"""
-        for pattern in patterns:
-            if fnmatch.fnmatch(path, pattern):
-                return True
-        return False
+        return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
 
     # === 执行实现 ===
 

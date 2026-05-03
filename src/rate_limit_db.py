@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from src.rate_limiter import RollingWindowState, TokenBucketState
+import contextlib
 
 logger = logging.getLogger("seed_agent")
 
@@ -103,10 +104,8 @@ class RateLimitSQLite:
                     # 重连：使用类属性锁保护连接关闭，防止竞态条件
                     with self._close_lock:
                         if hasattr(self._local, "conn") and self._local.conn is not None:
-                            try:
+                            with contextlib.suppress(sqlite3.Error):
                                 self._local.conn.close()
-                            except sqlite3.Error:
-                                pass
                             self._local.conn = None
                     await asyncio.sleep(0.1 * (attempt + 1))  # 异步等待，不阻塞事件循环
 
@@ -375,9 +374,11 @@ class RateLimitSQLite:
     def __del__(self):
         """析构时确保连接关闭"""
         # __del__ 中不应抛出异常，静默关闭
-        try:
+        # S110/SIM105: __del__ 中不应调用 logger 或使用 contextlib.suppress
+        # 因为 Python 解释器可能已在关闭过程中
+        try:  # noqa: SIM105
             self.close()
-        except Exception:
+        except Exception:  # noqa: S110
             pass  # 静默忽略，避免 Python 解释器关闭时的警告
 
     async def aclose(self):

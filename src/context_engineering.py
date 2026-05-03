@@ -720,7 +720,7 @@ class IntelligentContextPruner:
 
         # 5. 保留高相关性消息
         pruned = []
-        for msg, score in zip(prunable, relevance_scores):
+        for msg, score in zip(prunable, relevance_scores, strict=True):
             if score > self._config.relevance_threshold:
                 pruned.append(msg)
 
@@ -728,7 +728,7 @@ class IntelligentContextPruner:
         if len(pruned) < self._config.min_preserve_count:
             # 按分数排序，保留最高的 min_preserve_count 条
             scored_msgs = sorted(
-                zip(prunable, relevance_scores),
+                zip(prunable, relevance_scores, strict=True),
                 key=lambda x: x[1],
                 reverse=True
             )
@@ -789,14 +789,14 @@ class IntelligentContextPruner:
 
         # 保留高相关性消息
         pruned = []
-        for msg, score in zip(prunable, semantic_scores):
+        for msg, score in zip(prunable, semantic_scores, strict=True):
             if score > self._config.relevance_threshold:
                 pruned.append(msg)
 
         # 最小保留保护
         if len(pruned) < self._config.min_preserve_count:
             scored_msgs = sorted(
-                zip(prunable, semantic_scores),
+                zip(prunable, semantic_scores, strict=True),
                 key=lambda x: x[1],
                 reverse=True
             )

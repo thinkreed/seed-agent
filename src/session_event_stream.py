@@ -417,10 +417,7 @@ class SessionEventStream:
         """
         last_summary = self.find_last_summary_marker()
 
-        if last_summary:
-            start_id = last_summary["id"] + 1
-        else:
-            start_id = 0
+        start_id = last_summary["id"] + 1 if last_summary else 0
 
         return self.get_events(start_id, event_types=event_types)
 
@@ -546,10 +543,7 @@ class SessionEventStream:
         ]
 
         # 使用边界标记后的起始 ID
-        if last_boundary:
-            start_id = last_boundary["id"] + 1
-        else:
-            start_id = 0
+        start_id = last_boundary["id"] + 1 if last_boundary else 0
 
         recent_events = self.get_events(start_id, event_types=context_event_types)
 

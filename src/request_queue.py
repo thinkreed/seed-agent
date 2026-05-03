@@ -12,6 +12,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Deque
+import contextlib
 
 # Auto-adjust thresholds
 _MAX_CRITICAL_DISPATCH_RATE = 50.0
@@ -369,18 +370,14 @@ class RequestQueue:
 
         if self._dispatcher_task:
             self._dispatcher_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._dispatcher_task
-            except asyncio.CancelledError:
-                pass
             self._dispatcher_task = None
 
         if self._adjust_task:
             self._adjust_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._adjust_task
-            except asyncio.CancelledError:
-                pass
             self._adjust_task = None
 
         logger.info("Request queue dispatcher stopped")
@@ -472,15 +469,11 @@ class RequestQueue:
 
             # 从队列中移除
             if ticket.priority == RequestPriority.CRITICAL:
-                try:
+                with contextlib.suppress(ValueError):
                     self._critical_queue.remove(ticket)
-                except ValueError:
-                    pass
             else:
-                try:
+                with contextlib.suppress(ValueError):
                     self._normal_queues[ticket.priority].remove(ticket)
-                except ValueError:
-                    pass
 
             # 取消 ticket
             ticket.cancel(reason)

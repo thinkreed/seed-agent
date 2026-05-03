@@ -119,10 +119,7 @@ def _is_path_in_allowed_dirs(resolved_path: str) -> bool:
 
     缓存大小 1024 覆盖高频访问路径，减少重复验证开销。
     """
-    for allowed in ALLOWED_DIRS:
-        if resolved_path.startswith(allowed):
-            return True
-    return False
+    return any(resolved_path.startswith(allowed) for allowed in ALLOWED_DIRS)
 
 
 def _validate_path_safety(path: str) -> tuple[bool, str]:
@@ -220,9 +217,8 @@ def _resolve_path(path: str) -> str:
     try:
         resolved_seed = str(seed_path.resolve())
         # 使用缓存检查
-        if resolved_seed.startswith(DEFAULT_WORK_DIR_RESOLVED) or resolved_seed.startswith(PROJECT_ROOT_RESOLVED):
-            if seed_path.exists():
-                return resolved_seed
+        if (resolved_seed.startswith(DEFAULT_WORK_DIR_RESOLVED) or resolved_seed.startswith(PROJECT_ROOT_RESOLVED)) and seed_path.exists():
+            return resolved_seed
     except Exception as e:
         logger.debug(f"Failed to resolve seed path '{path}': {e}")
 
@@ -230,9 +226,8 @@ def _resolve_path(path: str) -> str:
     project_path = PROJECT_ROOT / path
     try:
         resolved_project = str(project_path.resolve())
-        if resolved_project.startswith(PROJECT_ROOT_RESOLVED):
-            if project_path.exists():
-                return resolved_project
+        if resolved_project.startswith(PROJECT_ROOT_RESOLVED) and project_path.exists():
+            return resolved_project
     except Exception as e:
         logger.debug(f"Failed to resolve project path '{path}': {e}")
 
@@ -456,7 +451,7 @@ def _resolve_execution_cwd(cwd: str | None) -> str:
 def _build_command(code: str, language: str) -> list[str] | None:
     """Build subprocess command for given language."""
     for lang_prefix, (cmd_prefix, alias) in LANGUAGE_MAP.items():
-        if language == lang_prefix or language == alias:
+        if language in (lang_prefix, alias):
             return cmd_prefix + [code]
     if language in ("js", "node"):
         return ["node", "-e", code]

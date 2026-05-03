@@ -382,10 +382,10 @@ class UserModelingLayer:
         """标记观察已处理"""
         ids = [str(o["id"]) for o in observations]
         if ids:
-            # Use parameterized query to prevent SQL injection
+            # 使用参数化查询防止 SQL 注入，placeholders 只是占位符
             placeholders = ",".join("?" * len(ids))
             self._ensure_conn().execute(
-                f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",
+                f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",  # noqa: S608
                 ids
             )
             self._ensure_conn().commit()
@@ -417,18 +417,16 @@ class UserModelingLayer:
             # 查找现有偏好
             existing = self._get_preference_from_db(pref_key)
 
-            if existing:
-                # 检查是否矛盾
-                if self._is_conflicting(existing, pref_value, obs["context"]):
-                    conflicts.append({
-                        "preference_key": pref_key,
-                        "old_belief": existing,
-                        "new_evidence": pref_value,
-                        "confidence_old": existing.get("confidence", 0.8),
-                        "confidence_new": obs["confidence"],
-                        "context": obs["context"],
-                        "observation_id": obs["id"]
-                    })
+            if existing and self._is_conflicting(existing, pref_value, obs["context"]):
+                conflicts.append({
+                    "preference_key": pref_key,
+                    "old_belief": existing,
+                    "new_evidence": pref_value,
+                    "confidence_old": existing.get("confidence", 0.8),
+                    "confidence_new": obs["confidence"],
+                    "context": obs["context"],
+                    "observation_id": obs["id"]
+                })
 
         return conflicts
 
@@ -476,9 +474,8 @@ class UserModelingLayer:
         exceptions = existing.get("exceptions", {})
         if context:
             for exc_key, exc_value in exceptions.items():
-                if exc_key in context or context in exc_key:
-                    if new_value == exc_value.get("value"):
-                        return False  # 匹配例外，不矛盾
+                if (exc_key in context or context in exc_key) and new_value == exc_value.get("value"):
+                    return False  # 匹配例外，不矛盾
 
         # 新值不同，无匹配例外 -> 矛盾
         return True

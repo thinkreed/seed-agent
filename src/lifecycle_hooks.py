@@ -365,8 +365,8 @@ class LifecycleHookRegistry:
         Returns:
             是否成功注销
         """
-        for hook_point, hooks in self._hooks.items():
-            for i, (priority, callback, id_) in enumerate(hooks):
+        for _, hooks in self._hooks.items():
+            for i, (_, _, id_) in enumerate(hooks):
                 if id_ == hook_id:
                     hooks.pop(i)
                     if hook_id in self._hook_stats:
@@ -445,7 +445,7 @@ class LifecycleHookRegistry:
 
         start_time = time.time()
 
-        for priority, callback, hook_id in hooks:
+        for _, callback, hook_id in hooks:
             hook_start = time.time()
             stats = self._hook_stats.get(hook_id)
 
@@ -546,7 +546,7 @@ class LifecycleHookRegistry:
 
         start_time = time.time()
 
-        for priority, callback, hook_id in hooks:
+        for _, callback, hook_id in hooks:
             hook_start = time.time()
             stats = self._hook_stats.get(hook_id)
 

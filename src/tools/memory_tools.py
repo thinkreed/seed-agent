@@ -190,7 +190,7 @@ def search_memory(keyword: str, levels: list[str] | None = None) -> str:
     if not os.path.exists(MEMORY_ROOT):
         return "Memory root not found."
 
-    for root, dirs, files in os.walk(MEMORY_ROOT):
+    for root, _, files in os.walk(MEMORY_ROOT):
         if ".git" in root or "__pycache__" in root:
             continue
         for file in files:

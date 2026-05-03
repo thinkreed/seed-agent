@@ -173,7 +173,7 @@ class MultiBrainOneHandOrchestrator:
                     "issues": analysis.issues,
                     "suggestions": analysis.suggestions,
                 }
-                for agent, analysis in zip(self._agents, analyses)
+                for agent, analysis in zip(self._agents, analyses, strict=True)
             ],
             "sandbox_state": self.sandbox.get_status(),
             "timestamp": datetime.now().isoformat(),
@@ -772,7 +772,7 @@ class MultiBrainMultiHandOrchestrator:
         self._agents: list[AgentInstance] = []
         self._pair_ids: list[str] = []
 
-        for i, (llm_client, sandbox) in enumerate(self._pairs):
+        for _, (llm_client, sandbox) in enumerate(self._pairs):
             pair_id = str(uuid.uuid4())[:8]
             self._pair_ids.append(pair_id)
             self._agents.append(AgentInstance(
@@ -846,7 +846,7 @@ class MultiBrainMultiHandOrchestrator:
 
         # 3. 结果记录到 Session
         processed_results: list[dict[str, Any]] = []
-        for pair_id, result in zip(self._pair_ids, pair_results):
+        for pair_id, result in zip(self._pair_ids, pair_results, strict=True):
             if isinstance(result, Exception):
                 self.session.emit_event(EventType.ERROR_OCCURRED, {
                     "pair_id": pair_id,

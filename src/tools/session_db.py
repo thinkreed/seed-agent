@@ -832,7 +832,7 @@ class SessionDB:
 
             actual_id = row["session_id"]
             msg_count = row["message_count"]
-            summary = row["summary"] if "summary" in row.keys() else None
+            summary = row["summary"] if "summary" in row else None
 
             messages = self._ensure_conn().execute("""
                 SELECT role, content, tool_calls_json, tool_call_id
@@ -1187,10 +1187,11 @@ class SessionDB:
     def __del__(self):
         # __del__ 中不应抛出异常，静默关闭
         # 注意：在 __del__ 中调用 logger 或其他模块是不安全的
+        # S110/SIM105: __del__ 中不应使用 contextlib.suppress
         # 因为 Python 解释器可能已在关闭过程中
-        try:
+        try:  # noqa: SIM105
             self.close()
-        except Exception:
+        except Exception:  # noqa: S110
             pass  # 静默忽略，避免 Python 解释器关闭时的警告
 
 

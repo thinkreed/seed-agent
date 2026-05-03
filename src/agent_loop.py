@@ -528,25 +528,22 @@ class AgentLoop:
                         await self._maybe_summarize()
                         self._evaluate_and_record_skill_outcomes(final_success=True)
                         return final_result["content"]
-                    elif final_result["status"] == "cancelled":
+                    if final_result["status"] == "cancelled":
                         return f"[CANCELLED: {final_result['cancel_reason']}]"
-                    else:
-                        # 可能再次等待或其他状态
-                        return f"[{final_result['status']}]"
-                else:
-                    # 不阻塞，返回等待标记
-                    return "[AWAITING_USER_INPUT]"
+                    # 可能再次等待或其他状态
+                    return f"[{final_result['status']}]"
+                # 不阻塞，返回等待标记
+                return "[AWAITING_USER_INPUT]"
 
-            elif result["status"] == "cancelled":
+            if result["status"] == "cancelled":
                 return f"[CANCELLED: {result['cancel_reason']}]"
 
-            elif result["status"] == "completed":
+            if result["status"] == "completed":
                 await self._maybe_summarize()
                 self._evaluate_and_record_skill_outcomes(final_success=True)
                 return result["content"]
 
-            else:
-                return f"[{result['status']}]"
+            return f"[{result['status']}]"
 
         except MaxIterationsExceeded:
             logger.exception("Max iterations exceeded")

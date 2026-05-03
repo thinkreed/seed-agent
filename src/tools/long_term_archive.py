@@ -690,8 +690,9 @@ class LongTermArchiveLayer:
             already_deleted_ids = [row["archive_id"] for row in rows]
             if already_deleted_ids:
                 placeholders = ",".join("?" * len(already_deleted_ids))
+                # S608: 使用参数化查询，placeholders 只是占位符，值通过参数传递
                 additional_rows = self._ensure_conn().execute(
-                    f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
+                    f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",  # noqa: S608
                     (*already_deleted_ids, remaining_to_delete)
                 ).fetchall()
             else:
@@ -742,10 +743,7 @@ class LongTermArchiveLayer:
             """, (summary, latest_archive_id))
 
             # 更新 FTS 索引
-            if _HAS_JIEBA:
-                summary_tokens = " ".join(jieba.cut(summary))
-            else:
-                summary_tokens = summary
+            summary_tokens = " ".join(jieba.cut(summary)) if _HAS_JIEBA else summary
 
             self._ensure_conn().execute("""
                 UPDATE archives_fts SET summary = ? WHERE archive_id = ?

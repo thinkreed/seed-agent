@@ -74,7 +74,7 @@ def classify_error(error: Exception) -> tuple[ErrorType, ErrorSeverity]:
     error_class = type(error).__name__.lower()
 
     # 检查异常类型名称
-    for err_type, keywords, severity in _ERROR_TYPE_RULES:
+    for err_type, _, severity in _ERROR_TYPE_RULES:
         if err_type.value in error_class:
             return err_type, severity
 

@@ -76,6 +76,7 @@ from src.request_queue import (
     TurnTicket,
     TurnWaitTimeout,
 )
+import contextlib
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 
@@ -361,7 +362,7 @@ class LLMGateway:
     def _init_rate_limiting(self) -> None:
         """从配置初始化限流组件"""
         # 获取第一个有 rateLimit 配置的 provider
-        for provider_id, provider_cfg in self.config.models.items():
+        for _, provider_cfg in self.config.models.items():
             if provider_cfg.rateLimit:
                 self._rate_config = provider_cfg.rateLimit
                 break
@@ -489,10 +490,8 @@ class LLMGateway:
         """停止状态持久化循环"""
         if self._persistence_task:
             self._persistence_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._persistence_task
-            except asyncio.CancelledError:
-                pass
             self._persistence_task = None
 
             # 最后保存一次状态

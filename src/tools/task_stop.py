@@ -20,7 +20,6 @@ import logging
 from typing import Optional
 
 from src.background_task_registry import (
-    BackgroundTaskRegistry,
     TaskStatus,
     CANCEL_GRACE_SECONDS,
     get_background_task_registry,
@@ -46,11 +45,11 @@ def task_stop(task_id: str) -> str:
 
     if status == TaskStatus.COMPLETED:
         return f"Task '{task_id}' is already completed"
-    elif status == TaskStatus.FAILED:
+    if status == TaskStatus.FAILED:
         return f"Task '{task_id}' has already failed"
-    elif status == TaskStatus.CANCELLED:
+    if status == TaskStatus.CANCELLED:
         return f"Task '{task_id}' is already cancelled"
-    elif status == TaskStatus.TIMEOUT:
+    if status == TaskStatus.TIMEOUT:
         return f"Task '{task_id}' has already timed out"
 
     if status == TaskStatus.PENDING:
@@ -66,8 +65,7 @@ def task_stop(task_id: str) -> str:
             f"Task '{task_id}' cancellation initiated. "
             f"Will complete within {CANCEL_GRACE_SECONDS}s grace period."
         )
-    else:
-        return f"Failed to cancel task '{task_id}'"
+    return f"Failed to cancel task '{task_id}'"
 
 
 def task_status(task_id: str) -> str:

@@ -30,6 +30,7 @@ from src.ralph_state import (
     persist_state,
 )
 from src.session_event_stream import EventType
+import contextlib
 
 logger = logging.getLogger("seed_agent")
 
@@ -131,10 +132,8 @@ class AutonomousExplorer:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         logger.warning("Autonomous explorer stopped")
 
     async def _idle_monitor_loop(self):

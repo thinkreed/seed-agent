@@ -129,12 +129,12 @@ class TestBuildManifest:
     def test_empty_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             manifest = _build_manifest(Path(temp_dir))
-            # Empty directory produces MD5 of empty JSON object "{}"
-            assert len(manifest) == 32  # MD5 hash
+            # Empty directory produces SHA256 of empty JSON object "{}"
+            assert len(manifest) == 64  # SHA256 hash
 
     def test_manifest_with_skills(self, temp_skills_dir):
         manifest = _build_manifest(temp_skills_dir)
-        assert len(manifest) == 32  # MD5 hash length
+        assert len(manifest) == 64  # SHA256 hash length
 
     def test_manifest_changes_on_modify(self, temp_skills_dir):
         manifest1 = _build_manifest(temp_skills_dir)

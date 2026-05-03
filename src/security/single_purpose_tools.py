@@ -428,12 +428,10 @@ class SinglePurposeToolFactory:
 
         for name, config in SINGLE_PURPOSE_TOOLS.items():
             # 检查风险等级
-            if config.risk == SinglePurposeToolRisk.DANGEROUS:
-                if not self._allow_dangerous_tools:
-                    continue
-            elif config.risk == SinglePurposeToolRisk.RISKY:
-                if not self._allow_risky_tools:
-                    continue
+            if config.risk == SinglePurposeToolRisk.DANGEROUS and not self._allow_dangerous_tools:
+                continue
+            if config.risk == SinglePurposeToolRisk.RISKY and not self._allow_risky_tools:
+                continue
 
             # 检查 block_by_default
             if config.block_by_default and not self._allow_dangerous_tools:
@@ -635,7 +633,7 @@ class SinglePurposeToolFactory:
             results = []
             regex = re.compile(pattern, re.IGNORECASE)
 
-            for root, dirs, files in os.walk(path):
+            for root, _, files in os.walk(path):
                 for f in files:
                     if not fnmatch.fnmatch(f, file_pattern):
                         continue

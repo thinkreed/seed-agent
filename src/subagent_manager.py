@@ -250,7 +250,7 @@ class SubagentManager:
         results_list = await asyncio.gather(*tasks, return_exceptions=True)
 
         parallel_results: dict[str, SubagentResult] = {}
-        for task_id, raw_result in zip(task_ids, results_list):
+        for task_id, raw_result in zip(task_ids, results_list, strict=True):
             # asyncio.gather(return_exceptions=True) 返回 Union[SubagentResult, BaseException]
             if isinstance(raw_result, BaseException):
                 # 创建失败状态（加锁读取任务信息）

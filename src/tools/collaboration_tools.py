@@ -688,10 +688,14 @@ def register_message_handler(
     Args:
         session_id: 会话 ID
         message_type: 消息类型
-        handler_code: 处理函数代码（将被 eval）
+        handler_code: 处理函数代码（将被受限 eval 执行）
 
     Returns:
         注册结果
+
+    Security Note:
+        使用受限的 globals 来限制 eval 的能力，只允许基本类型和函数。
+        建议在生产环境中使用预定义的处理器注册机制。
     """
 
     with _session_lock:
@@ -700,10 +704,30 @@ def register_message_handler(
 
         message_bus = _message_buses[session_id]
 
-    # 安全警告：实际使用需要更安全的方式
+    # 安全限制：只允许基本类型和 lambda 表达式
+    # 注意：这是一个受限的 eval，只支持简单的 lambda 函数定义
+    # 例如: "lambda msg: print(f'Received: {msg}')"
+    safe_globals = {
+        "__builtins__": {
+            "print": print,
+            "True": True,
+            "False": False,
+            "None": None,
+            "str": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "list": list,
+            "dict": dict,
+            "len": len,
+        }
+    }
+
     try:
-        # 创建处理函数
-        handler = eval(handler_code)
+        # 创建处理函数（受限 eval）
+        handler = eval(handler_code, safe_globals, {})  # noqa: S307
+        if not callable(handler):
+            return "Error: handler_code must produce a callable function"
         message_bus.register_handler(message_type, handler)
         return f"Handler registered: type={message_type}"
     except Exception as e:

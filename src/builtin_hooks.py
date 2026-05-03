@@ -354,9 +354,8 @@ def _register_response_hooks(registry: LifecycleHookRegistry) -> None:
         harness = context.get("harness")
         metrics = context.get("metrics")
 
-        if harness and metrics:
-            if hasattr(harness, "_metrics"):
-                harness._metrics.append(metrics)
+        if harness and metrics and hasattr(harness, "_metrics"):
+            harness._metrics.append(metrics)
 
 
 # === 上下文钩子 ===

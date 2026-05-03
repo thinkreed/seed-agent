@@ -40,7 +40,8 @@ def build_manifest(skills_dir: Path) -> str:
                     "size": stat.st_size,
                 }
 
-    return hashlib.md5(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    # S324: 使用 sha256 替代 md5（缓存校验，不需要加密安全，但使用 sha256 更安全）
+    return hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
 
 
 def _convert_lists_to_sets_for_meta(skills_meta: dict) -> dict:
@@ -57,7 +58,7 @@ def _convert_lists_to_sets_for_meta(skills_meta: dict) -> dict:
     """
     set_fields = {"triggers_lower", "desc_words"}  # 需要转为 set 的字段名
 
-    for skill_name, meta in skills_meta.items():
+    for _, meta in skills_meta.items():
         for field in set_fields:
             if field in meta and isinstance(meta[field], list):
                 meta[field] = set(meta[field])

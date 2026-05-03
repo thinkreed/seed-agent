@@ -290,24 +290,21 @@ class SkillLoader:
 
         # 平台检查
         platforms = meta.get("platforms", [])
-        if platforms:
-            if not any(
-                p.lower() in self._platform.lower() or self._platform.lower() in p.lower()
-                for p in platforms
-            ):
-                return False
+        if platforms and not any(
+            p.lower() in self._platform.lower() or self._platform.lower() in p.lower()
+            for p in platforms
+        ):
+            return False
 
         # requires_tools 检查
         requires = meta.get("requires_tools", [])
-        if requires and available_tools is not None:
-            if not all(tool in available_tools for tool in requires):
-                return False
+        if requires and available_tools is not None and not all(tool in available_tools for tool in requires):
+            return False
 
         # fallback_for_tools 检查
         fallback = meta.get("fallback_for_tools", [])
-        if fallback and available_tools is not None:
-            if any(tool in available_tools for tool in fallback):
-                return False
+        if fallback and available_tools is not None and any(tool in available_tools for tool in fallback):
+            return False
 
         return True
 
