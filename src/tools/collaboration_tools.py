@@ -18,7 +18,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.collaboration import (
@@ -68,8 +68,8 @@ def create_collaboration_session(
     Returns:
         会话 ID 和创建状态
     """
-    from src.session_event_stream import SessionEventStream
     from src.collaboration import CollaborationMode
+    from src.session_event_stream import SessionEventStream
 
     session_id = session_id or f"collab_{int(asyncio.get_event_loop().time() * 1000) % 1000000}"
 
@@ -188,9 +188,9 @@ def setup_multi_brain_one_hand(
         设置结果
     """
     from src.client import LLMGateway
-    from src.llm_client import LLMClient
-    from src.sandbox import Sandbox, IsolationLevel
     from src.collaboration import MultiBrainOneHandOrchestrator
+    from src.llm_client import LLMClient
+    from src.sandbox import IsolationLevel, Sandbox
 
     with _session_lock:
         if session_id not in _collaboration_sessions:
@@ -344,8 +344,8 @@ def setup_one_brain_multi_hand(
         设置结果
     """
     from src.client import LLMGateway
-    from src.llm_client import LLMClient
     from src.collaboration import OneBrainMultiHandOrchestrator
+    from src.llm_client import LLMClient
 
     with _session_lock:
         if session_id not in _collaboration_sessions:
@@ -469,9 +469,9 @@ def setup_multi_brain_multi_hand(
         设置结果
     """
     from src.client import LLMGateway
+    from src.collaboration import InterAgentMessageBus, MultiBrainMultiHandOrchestrator
     from src.llm_client import LLMClient
-    from src.sandbox import Sandbox, IsolationLevel
-    from src.collaboration import MultiBrainMultiHandOrchestrator, InterAgentMessageBus
+    from src.sandbox import IsolationLevel, Sandbox
 
     with _session_lock:
         if session_id not in _collaboration_sessions:

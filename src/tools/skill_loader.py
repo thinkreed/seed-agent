@@ -253,7 +253,7 @@ class SkillLoader:
     def _parse_frontmatter(self, skill_file: Path) -> dict | None:
         """解析 SKILL.md 的 YAML frontmatter"""
         try:
-            with open(skill_file, "r", encoding="utf-8") as f:
+            with open(skill_file, encoding="utf-8") as f:
                 content = f.read()
             if not content.startswith("---"):
                 return None

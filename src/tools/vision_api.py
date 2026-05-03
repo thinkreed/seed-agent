@@ -43,10 +43,9 @@ def capture_window(hwnd=None) -> "Image.Image | None":
 
     try:
         img = ImageGrab.grab()
-        img = _resize_if_needed(img, MAX_PIXELS)
-        return img
-    except Exception as e:
-        logger.error(f"Capture failed: {e}")
+        return _resize_if_needed(img, MAX_PIXELS)
+    except OSError:
+        logger.exception("Screen capture failed")
         return None
 
 
@@ -61,10 +60,10 @@ def _resize_if_needed(img: "Image.Image", max_pixels: int) -> "Image.Image":
     return img
 
 
-def image_to_base64(img: "Image.Image", format: str = "PNG") -> str:
+def image_to_base64(img: "Image.Image", image_format: str = "PNG") -> str:
     """将图像转换为 Base64 字符串"""
     buffered = io.BytesIO()
-    img.save(buffered, format=format)
+    img.save(buffered, format=image_format)
     return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
 
@@ -130,9 +129,9 @@ async def analyze_image_async(
         logger.info(f"Vision analysis completed, content length: {len(content)}")
         return content
 
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         error_msg = f"Vision API call failed: {type(e).__name__}: {e}"
-        logger.error(error_msg)
+        logger.exception("Vision API call failed")
         return f"Error: {error_msg}"
 
 
@@ -143,7 +142,7 @@ def _load_image(image) -> tuple:
             return None, "Error: Pillow not installed"
         try:
             return Image.open(image), None
-        except Exception as e:
+        except (OSError, FileNotFoundError) as e:
             return None, f"Error loading image: {e}"
     return image, None
 
@@ -237,27 +236,27 @@ def ask_vision(
         return f"Error: Vision API call timed out ({timeout}s)"
     except ImportError as e:
         return f"Error: Missing dependency: {e}"
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         error_msg = f"Vision API error: {type(e).__name__}: {e}"
-        logger.error(error_msg, exc_info=True)
+        logger.exception("Vision API error")
         return error_msg
 
 
 def _run_vision_in_new_loop(gateway, model_id: str, messages: list, timeout: int) -> dict:
     """在独立线程中创建新事件循环执行视觉分析"""
     import asyncio
+
     from src.client import RequestPriority
 
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(
+        return loop.run_until_complete(
             gateway.chat_completion(
                 model_id=model_id, messages=messages,
                 priority=RequestPriority.HIGH, max_tokens=2048, timeout=timeout
             )
         )
-        return result
     finally:
         loop.close()
         asyncio.set_event_loop(None)

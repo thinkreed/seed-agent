@@ -688,13 +688,17 @@ class LongTermArchiveLayer:
             remaining_to_delete = to_delete - deleted_count
             # 排除已删除的，继续删除最旧的
             already_deleted_ids = [row["archive_id"] for row in rows]
-            additional_rows = self._ensure_conn().execute("""
-                SELECT archive_id FROM archives
-                WHERE archive_id NOT IN ({})
-                ORDER BY created_at ASC
-                LIMIT ?
-            """.format(",".join(["?"] * len(already_deleted_ids)) if already_deleted_ids else "''"),
-            (*already_deleted_ids, remaining_to_delete) if already_deleted_ids else (remaining_to_delete,)).fetchall()
+            if already_deleted_ids:
+                placeholders = ",".join("?" * len(already_deleted_ids))
+                additional_rows = self._ensure_conn().execute(
+                    f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
+                    (*already_deleted_ids, remaining_to_delete)
+                ).fetchall()
+            else:
+                additional_rows = self._ensure_conn().execute(
+                    "SELECT archive_id FROM archives ORDER BY created_at ASC LIMIT ?",
+                    (remaining_to_delete,)
+                ).fetchall()
             rows = list(rows) + list(additional_rows)
 
         for row in rows:

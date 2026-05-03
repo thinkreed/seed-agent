@@ -248,7 +248,7 @@ class SemanticIndex:
         idx.index = faiss.read_index(path)
 
         meta_path = path + ".meta"
-        with open(meta_path, "r") as f:
+        with open(meta_path) as f:
             meta = json.load(f)
 
         idx.dim = meta["dim"]

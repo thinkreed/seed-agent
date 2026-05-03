@@ -255,7 +255,7 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
         # 尝试多种编码
         for enc in ["utf-8", "gbk", "gb2312", "latin-1"]:
             try:
-                with open(resolved_path, "r", encoding=enc) as f:
+                with open(resolved_path, encoding=enc) as f:
                     content = f.readlines()
                 detected_encoding = enc
                 break
@@ -332,7 +332,7 @@ def file_edit(path: str, old_str: str, new_str: str, replace_all: bool = False) 
     try:
         resolved_path = _resolve_path(path)
 
-        with open(resolved_path, "r", encoding="utf-8") as f:
+        with open(resolved_path, encoding="utf-8") as f:
             content = f.read()
 
         if old_str not in content:

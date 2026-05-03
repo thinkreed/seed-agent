@@ -21,7 +21,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
@@ -299,7 +299,7 @@ class ProgressiveContextCompressor:
         if event_type == EventType.USER_INPUT.value:
             return {"role": "user", "content": data.get("content", "")}
 
-        elif event_type == EventType.LLM_RESPONSE.value:
+        if event_type == EventType.LLM_RESPONSE.value:
             msg: dict[str, Any] = {"role": "assistant"}
             content = data.get("content")
             if content:
@@ -308,7 +308,7 @@ class ProgressiveContextCompressor:
                 msg["tool_calls"] = data["tool_calls"]
             return msg
 
-        elif event_type == EventType.TOOL_RESULT.value:
+        if event_type == EventType.TOOL_RESULT.value:
             return {
                 "role": "tool",
                 "tool_call_id": data.get("tool_call_id"),
@@ -821,14 +821,14 @@ class IntelligentContextPruner:
         entities: list[str] = []
 
         # 1. 文件路径 (如 "src/agent_loop.py")
-        file_patterns = re.findall(r'[a-zA-Z_./]+\.[a-zA-Z]+', task)
+        file_patterns = re.findall(r"[a-zA-Z_./]+\.[a-zA-Z]+", task)
         for p in file_patterns:
             if "/" in p or "." in p and len(p) > 5:
                 entities.append(p)
 
         # 2. 函数/类名 (如 "AgentLoop", "_execute_tool")
         # 匹配 CamelCase 和 snake_case
-        code_patterns = re.findall(r'[A-Z][a-zA-Z0-9]*|[a-z_][a-z0-9_]*', task)
+        code_patterns = re.findall(r"[A-Z][a-zA-Z0-9]*|[a-z_][a-z0-9_]*", task)
         for p in code_patterns:
             if len(p) > 3 and p not in ["the", "for", "and", "with", "this", "that"]:
                 entities.append(p)
@@ -974,7 +974,7 @@ class IntelligentContextPruner:
         scores: list[float] = []
 
         # 提取数字分数
-        pattern = r'(\d+):\s*([\d.]+)'
+        pattern = r"(\d+):\s*([\d.]+)"
         matches = re.findall(pattern, result_text)
 
         # 按索引排序
@@ -1124,11 +1124,10 @@ class ContextEngineering:
             pruned_history = full_history
 
         # 3. 渐进式压缩（异步，支持 LLM 摘要）
-        compressed = await self._apply_compression_to_pruned_async(
+        return await self._apply_compression_to_pruned_async(
             pruned_history, context_window, system_prompt
         )
 
-        return compressed
 
     def _apply_compression_to_pruned(
         self,
@@ -1148,10 +1147,9 @@ class ContextEngineering:
 
         if usage_ratio < tier_2_threshold:
             return self._compressor._apply_tier_1_only(pruned_history)
-        elif usage_ratio < tier_3_threshold:
+        if usage_ratio < tier_3_threshold:
             return self._compressor._apply_tier_1_and_2(pruned_history)
-        else:
-            return self._compressor._apply_all_tiers(pruned_history)
+        return self._compressor._apply_all_tiers(pruned_history)
 
     async def _apply_compression_to_pruned_async(
         self,
@@ -1169,10 +1167,9 @@ class ContextEngineering:
 
         if usage_ratio < tier_2_threshold:
             return self._compressor._apply_tier_1_only(pruned_history)
-        elif usage_ratio < tier_3_threshold:
+        if usage_ratio < tier_3_threshold:
             return await self._compressor._apply_tier_1_and_2_async(pruned_history)
-        else:
-            return await self._compressor._apply_all_tiers_async(pruned_history)
+        return await self._compressor._apply_all_tiers_async(pruned_history)
 
     def get_compressor(self) -> ProgressiveContextCompressor:
         """获取压缩器实例"""

@@ -237,7 +237,7 @@ def load_config(config_path: str | None = None) -> FullConfig:
 
     # 读取配置文件
     try:
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         raise ValueError(

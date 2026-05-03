@@ -354,8 +354,7 @@ class SinglePurposeToolFactory:
 
             # 3. 执行操作
             try:
-                result = self._execute_tool(tool_name, validated_args)
-                return result
+                return self._execute_tool(tool_name, validated_args)
             except Exception as e:
                 logger.error(f"Tool {tool_name} failed: {e}")
                 return f"[ERROR] {tool_name} failed: {type(e).__name__}: {str(e)[:200]}"
@@ -539,7 +538,7 @@ class SinglePurposeToolFactory:
         max_lines = args.get("max_lines", 1000)
 
         try:
-            with open(path, "r", encoding=encoding) as f:
+            with open(path, encoding=encoding) as f:
                 lines = f.readlines()
 
             total_lines = len(lines)
@@ -578,19 +577,18 @@ class SinglePurposeToolFactory:
                     for f in files:
                         lines.append(f"  {f}")
                 return "\n".join(lines)
-            else:
-                items = os.listdir(path)
-                if not show_hidden:
-                    items = [i for i in items if not i.startswith(".")]
+            items = os.listdir(path)
+            if not show_hidden:
+                items = [i for i in items if not i.startswith(".")]
 
-                lines = []
-                for item in sorted(items):
-                    full_path = os.path.join(path, item)
-                    if os.path.isdir(full_path):
-                        lines.append(f"{item}/")
-                    else:
-                        lines.append(item)
-                return "\n".join(lines)
+            lines = []
+            for item in sorted(items):
+                full_path = os.path.join(path, item)
+                if os.path.isdir(full_path):
+                    lines.append(f"{item}/")
+                else:
+                    lines.append(item)
+            return "\n".join(lines)
 
         except FileNotFoundError:
             return f"[ERROR] Directory not found: {path}"
@@ -644,7 +642,7 @@ class SinglePurposeToolFactory:
 
                     file_path = os.path.join(root, f)
                     try:
-                        with open(file_path, "r", encoding="utf-8") as fp:
+                        with open(file_path, encoding="utf-8") as fp:
                             for i, line in enumerate(fp, 1):
                                 if regex.search(line):
                                     results.append(f"{file_path}:{i}:{line.strip()}")
@@ -828,8 +826,7 @@ class SinglePurposeToolFactory:
 
             if result.returncode == 0:
                 return f"[OK] Installed: {package}"
-            else:
-                return f"[ERROR] Install failed: {result.stderr}"
+            return f"[ERROR] Install failed: {result.stderr}"
 
         except subprocess.TimeoutExpired:
             return "[ERROR] Timeout (60s)"
@@ -894,8 +891,7 @@ class SinglePurposeToolFactory:
 
             if result.returncode == 0:
                 return f"[OK] Committed: {message}"
-            else:
-                return f"[ERROR] Commit failed: {result.stderr}"
+            return f"[ERROR] Commit failed: {result.stderr}"
 
         except FileNotFoundError:
             return "[ERROR] git not installed"
@@ -917,8 +913,7 @@ class SinglePurposeToolFactory:
 
             if result.returncode == 0:
                 return f"[OK] Pushed to {remote}"
-            else:
-                return f"[ERROR] Push failed: {result.stderr}"
+            return f"[ERROR] Push failed: {result.stderr}"
 
         except FileNotFoundError:
             return "[ERROR] git not installed"
@@ -937,8 +932,7 @@ class SinglePurposeToolFactory:
 
             if result.returncode == 0:
                 return f"[OK] Pulled from {remote}"
-            else:
-                return f"[ERROR] Pull failed: {result.stderr}"
+            return f"[ERROR] Pull failed: {result.stderr}"
 
         except FileNotFoundError:
             return "[ERROR] git not installed"
@@ -959,10 +953,9 @@ class SinglePurposeToolFactory:
 
             if action == "list":
                 return result.stdout
-            elif result.returncode == 0:
+            if result.returncode == 0:
                 return f"[OK] Branch {action}: {name}"
-            else:
-                return f"[ERROR] Branch {action} failed: {result.stderr}"
+            return f"[ERROR] Branch {action} failed: {result.stderr}"
 
         except FileNotFoundError:
             return "[ERROR] git not installed"

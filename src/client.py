@@ -29,7 +29,7 @@ import random
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
 
@@ -37,8 +37,8 @@ from src.models import FullConfig, ModelConfig, RateLimitConfig, load_config
 
 # 凭证安全模块（可选导入）
 try:
-    from src.security.credential_vault import CredentialVault, CredentialScope
     from src.security.credential_proxy import CredentialProxy
+    from src.security.credential_vault import CredentialScope, CredentialVault
     _CREDENTIAL_SECURITY_AVAILABLE = True
 except ImportError:
     CredentialVault = None  # type: ignore[misc,assignment]
@@ -513,7 +513,7 @@ class LLMGateway:
             except asyncio.CancelledError:
                 logger.info("Persistence loop cancelled")
                 break
-            except (OSError, IOError) as e:
+            except OSError as e:
                 # 文件系统错误（磁盘满、权限问题等）
                 logger.error(f"Persistence I/O error: {type(e).__name__}: {e}")
                 await asyncio.sleep(10.0)  # 更长等待避免频繁失败

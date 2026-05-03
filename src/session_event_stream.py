@@ -360,7 +360,7 @@ class SessionEventStream:
         try:
             with open(event_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(event, ensure_ascii=False) + "\n")
-        except IOError as e:
+        except OSError as e:
             logger.error(f"Failed to persist event: {type(e).__name__}: {e}")
 
     def _load_existing_events(self) -> None:
@@ -375,7 +375,7 @@ class SessionEventStream:
             return
 
         try:
-            with open(event_file, "r", encoding="utf-8") as f:
+            with open(event_file, encoding="utf-8") as f:
                 for line in f:
                     if not line.strip():
                         continue
@@ -396,7 +396,7 @@ class SessionEventStream:
             logger.info(
                 f"Loaded {len(self._events)} events for session {self.session_id}"
             )
-        except IOError as e:
+        except OSError as e:
             logger.warning(f"Failed to load events: {type(e).__name__}: {e}")
 
     # === 辅助方法 ===
@@ -500,7 +500,7 @@ class SessionEventStream:
         if event_type == EventType.USER_INPUT.value:
             return {"role": "user", "content": data.get("content", "")}
 
-        elif event_type == EventType.LLM_RESPONSE.value:
+        if event_type == EventType.LLM_RESPONSE.value:
             msg: dict[str, Any] = {"role": "assistant"}
             content = data.get("content")
             if content:
@@ -509,7 +509,7 @@ class SessionEventStream:
                 msg["tool_calls"] = data["tool_calls"]
             return msg
 
-        elif event_type == EventType.TOOL_RESULT.value:
+        if event_type == EventType.TOOL_RESULT.value:
             return {
                 "role": "tool",
                 "tool_call_id": data.get("tool_call_id"),

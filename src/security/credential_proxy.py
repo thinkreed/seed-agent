@@ -23,9 +23,9 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
-from src.security.credential_vault import CredentialVault, CredentialScope
+from src.security.credential_vault import CredentialScope, CredentialVault
 
 if TYPE_CHECKING:
     pass

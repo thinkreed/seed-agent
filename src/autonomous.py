@@ -15,14 +15,14 @@ import threading
 import time
 from collections.abc import Coroutine
 from pathlib import Path
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
 
 from src.ralph_state import (
-    RalphState,
     SEED_DIR,
+    RalphState,
     check_safety_limits,
     cleanup_state_file,
     extract_critical_context,
@@ -98,7 +98,7 @@ class AutonomousExplorer:
     def _load_sop(self) -> None:
         """加载自主探索 SOP"""
         if SOP_PATH.exists():
-            with open(SOP_PATH, "r", encoding="utf-8") as f:
+            with open(SOP_PATH, encoding="utf-8") as f:
                 self._sop_content = f.read()
             logger.info(f"Loaded autonomous SOP from {SOP_PATH}")
         else:
@@ -169,7 +169,7 @@ class AutonomousExplorer:
                         # 清除标志
                         COMPLETION_PROMISE_FILE.unlink()
                         return True
-                except IOError as e:
+                except OSError as e:
                     logger.warning(f"Failed to read/delete completion promise: {e}")
         return False
 
@@ -238,7 +238,7 @@ class AutonomousExplorer:
 
         # 匹配 SOP 部分
         sop_match = re.search(
-            r'(##?\s*自主探索\s*SOP.*?)(?=##?\s*|$)',
+            r"(##?\s*自主探索\s*SOP.*?)(?=##?\s*|$)",
             full_prompt,
             re.DOTALL | re.IGNORECASE
         )
@@ -250,7 +250,7 @@ class AutonomousExplorer:
 
         # 匹配任务指令部分
         task_match = re.search(
-            r'(##?\s*自主探索任务触发.*?)(?=请开始执行|$)',
+            r"(##?\s*自主探索任务触发.*?)(?=请开始执行|$)",
             full_prompt,
             re.DOTALL | re.IGNORECASE
         )
@@ -370,15 +370,14 @@ class AutonomousExplorer:
                     else:
                         self.on_explore_complete(response)
                 return response
-            else:
-                logger.warning("Autonomous exploration returned empty response")
+            logger.warning("Autonomous exploration returned empty response")
 
-                # 创建失败标记
-                self.agent.session.emit_event(EventType.SESSION_END, {
-                    "type": "autonomous_exploration",
-                    "reason": "empty_response"
-                })
-                return None
+            # 创建失败标记
+            self.agent.session.emit_event(EventType.SESSION_END, {
+                "type": "autonomous_exploration",
+                "reason": "empty_response"
+            })
+            return None
 
         except Exception as e:
             logger.exception(f"Autonomous exploration failed: {e}")
@@ -400,7 +399,7 @@ class AutonomousExplorer:
         """加载TODO文件内容"""
         todo_path = SEED_DIR / "TODO.md"
         if todo_path.exists():
-            with open(todo_path, "r", encoding="utf-8") as f:
+            with open(todo_path, encoding="utf-8") as f:
                 return f.read()
         return ""
 
@@ -426,8 +425,8 @@ class AutonomousExplorer:
             await self._reset_context_if_needed()
             try:
                 response = await self.agent.run(next_prompt)
-            except Exception as e:
-                logger.error(f"Agent execution failed at iteration {self._iteration_count}: {type(e).__name__}: {e}")
+            except (RuntimeError, OSError, ValueError, asyncio.CancelledError) as e:
+                logger.exception(f"Agent execution failed at iteration {self._iteration_count}")
                 response = f"Error: {e!s}"
             self._persist_state(response or "")
 
@@ -466,9 +465,8 @@ class AutonomousExplorer:
             if self._empty_response_count >= 3:
                 logger.warning("Too many empty responses, trying simplified prompt")
                 return "请报告当前状态"
-            else:
-                # 返回简化的继续提示，而不是完整的 SOP
-                return "继续执行自主探索任务，请报告进展"
+            # 返回简化的继续提示，而不是完整的 SOP
+            return "继续执行自主探索任务，请报告进展"
         return None
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:

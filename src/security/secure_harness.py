@@ -17,17 +17,17 @@
 """
 
 import logging
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from src.harness import Harness
-from src.security.credential_vault import CredentialVault, CredentialScope
-from src.security.credential_proxy import CredentialProxy
 from src.security.credential_isolated_sandbox import CredentialIsolatedSandbox
+from src.security.credential_proxy import CredentialProxy
+from src.security.credential_vault import CredentialScope, CredentialVault
 
 if TYPE_CHECKING:
     from src.llm_client import LLMClient
-    from src.session_event_stream import SessionEventStream
     from src.sandbox import Sandbox
+    from src.session_event_stream import SessionEventStream
 
 logger = logging.getLogger(__name__)
 

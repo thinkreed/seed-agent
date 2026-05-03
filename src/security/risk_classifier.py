@@ -417,12 +417,11 @@ class CommandRiskClassifier:
         """分数映射到风险等级"""
         if score < 0.3:
             return RiskLevel.SAFE
-        elif score < 0.6:
+        if score < 0.6:
             return RiskLevel.CAUTION
-        elif score < 1.2:
+        if score < 1.2:
             return RiskLevel.RISKY
-        else:
-            return RiskLevel.DANGEROUS
+        return RiskLevel.DANGEROUS
 
     def _record_classification(self, result: ClassificationResult) -> None:
         """记录分类历史"""

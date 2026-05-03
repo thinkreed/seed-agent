@@ -33,8 +33,8 @@ from src.observability import (
     StatusCode,
     get_tracer,
     is_observability_enabled,
-    record_llm_success,
     record_llm_span_error,
+    record_llm_success,
 )
 from src.request_queue import RequestPriority
 
@@ -345,11 +345,10 @@ class LLMClient:
 
         if success:
             span.set_status(StatusCode.OK)
-        else:
-            if error:
-                span.record_exception(error)
-                span.set_attribute("seed.error.message", str(error)[:500])
-                span.set_status(StatusCode.ERROR, str(error)[:200])
+        elif error:
+            span.record_exception(error)
+            span.set_attribute("seed.error.message", str(error)[:500])
+            span.set_status(StatusCode.ERROR, str(error)[:200])
         span.end()
 
 

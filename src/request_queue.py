@@ -423,9 +423,8 @@ class RequestQueue:
             if priority == RequestPriority.CRITICAL:
                 if self._critical_queue:
                     return self._critical_queue.popleft()
-            else:
-                if self._normal_queues[priority]:
-                    return self._normal_queues[priority].popleft()
+            elif self._normal_queues[priority]:
+                return self._normal_queues[priority].popleft()
         return None
 
     async def _signal_turn(self, ticket: TurnTicket):

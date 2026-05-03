@@ -229,7 +229,7 @@ class MemoryManager:
                     })
                     if len(results) >= limit:
                         break
-            except IOError:
+            except OSError:
                 continue
 
         return results
@@ -254,7 +254,7 @@ class MemoryManager:
                     })
                     if len(results) >= limit:
                         break
-            except IOError:
+            except OSError:
                 continue
 
         return results

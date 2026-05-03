@@ -382,8 +382,11 @@ class UserModelingLayer:
         """标记观察已处理"""
         ids = [str(o["id"]) for o in observations]
         if ids:
+            # Use parameterized query to prevent SQL injection
+            placeholders = ",".join("?" * len(ids))
             self._ensure_conn().execute(
-                f"UPDATE user_observations SET processed = 1 WHERE id IN ({','.join(ids)})"
+                f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",
+                ids
             )
             self._ensure_conn().commit()
 
@@ -519,7 +522,7 @@ class UserModelingLayer:
                 f"(置信度 {c['confidence_new']:.2f}, 上下文: {c['context'] or '无'})"
             )
 
-        prompt = f"""作为用户建模专家，分析以下矛盾并给出升级方案。
+        return f"""作为用户建模专家，分析以下矛盾并给出升级方案。
 
 矛盾列表:
 {chr(10).join(conflict_descs)}
@@ -542,7 +545,6 @@ class UserModelingLayer:
   ]
 }
 """
-        return prompt
 
     def _parse_resolution_response(
         self,
@@ -623,10 +625,9 @@ class UserModelingLayer:
                 elif obs.get("context"):
                     # 不同值但有上下文：添加例外
                     self._add_exception(pref_key, pref_value, obs["context"], obs["confidence"])
-                else:
-                    # 不同值无上下文：偏好升级（仅当置信度更高时）
-                    if obs["confidence"] > existing["confidence"]:
-                        self._upgrade_preference(pref_key, pref_value, obs["confidence"])
+                # 不同值无上下文：偏好升级（仅当置信度更高时）
+                elif obs["confidence"] > existing["confidence"]:
+                    self._upgrade_preference(pref_key, pref_value, obs["confidence"])
             else:
                 # 新偏好，直接设置
                 self._set_preference(pref_key, pref_value, obs["confidence"])

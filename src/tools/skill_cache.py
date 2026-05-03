@@ -83,7 +83,7 @@ def load_snapshot(skills_dir: Path) -> dict | None:
         if not SNAPSHOT_PATH.exists():
             return None
 
-        with open(SNAPSHOT_PATH, "r", encoding="utf-8") as f:
+        with open(SNAPSHOT_PATH, encoding="utf-8") as f:
             snapshot = json.load(f)
 
         # 检查 manifest 是否匹配

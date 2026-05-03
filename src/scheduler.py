@@ -113,7 +113,7 @@ class TaskScheduler:
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
         if TASKS_FILE.exists():
-            with open(TASKS_FILE, "r", encoding="utf-8") as f:
+            with open(TASKS_FILE, encoding="utf-8") as f:
                 data = json.load(f)
                 for task_data in data.get("tasks", []):
                     task = ScheduledTask.from_dict(task_data)

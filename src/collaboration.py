@@ -27,8 +27,8 @@ from enum import Enum
 from typing import Any, Callable
 
 from src.llm_client import LLMClient
-from src.sandbox import Sandbox, IsolationLevel
-from src.session_event_stream import SessionEventStream, EventType
+from src.sandbox import IsolationLevel, Sandbox
+from src.session_event_stream import EventType, SessionEventStream
 
 logger = logging.getLogger(__name__)
 
@@ -956,7 +956,7 @@ class MultiBrainMultiHandOrchestrator:
             for agent in self._agents if agent.id != session_state.get("current_pair_id")
         ]
 
-        context = [
+        return [
             {"role": "system", "content": "你是一个协作智能体，正在与其他智能体协同完成任务。"},
             {"role": "user", "content": f"""任务: {task}
 
@@ -967,7 +967,6 @@ class MultiBrainMultiHandOrchestrator:
 """}
         ]
 
-        return context
 
     async def _merge_from_session(self) -> dict[str, Any]:
         """从 Session 合并所有结果"""

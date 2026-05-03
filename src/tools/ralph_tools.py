@@ -183,35 +183,34 @@ def check_ralph_status(ralph_id: str | None = None) -> str:
 
         return result
 
-    else:
-        # 列出所有 Ralph Loops
-        configs = list(RALPH_STATE_DIR.glob("*_config.json"))
-        states = list(RALPH_STATE_DIR.glob("*_state.json"))
+    # 列出所有 Ralph Loops
+    configs = list(RALPH_STATE_DIR.glob("*_config.json"))
+    states = list(RALPH_STATE_DIR.glob("*_state.json"))
 
-        if not configs and not states:
-            return "No Ralph Loops found"
+    if not configs and not states:
+        return "No Ralph Loops found"
 
-        result = "Ralph Loops:\n"
+    result = "Ralph Loops:\n"
 
-        for config_file in configs:
-            try:
-                config = json.loads(config_file.read_text())
-                ralph_id = config.get("ralph_id", config_file.stem.replace("_config", ""))
-                state_file = RALPH_STATE_DIR / f"{ralph_id}_state.json"
+    for config_file in configs:
+        try:
+            config = json.loads(config_file.read_text())
+            ralph_id = config.get("ralph_id", config_file.stem.replace("_config", ""))
+            state_file = RALPH_STATE_DIR / f"{ralph_id}_state.json"
 
-                status = "pending"
-                iteration = "N/A"
+            status = "pending"
+            iteration = "N/A"
 
-                if state_file.exists():
-                    status = "running"
-                    state = json.loads(state_file.read_text())
-                    iteration = state.get("iteration", "N/A")
+            if state_file.exists():
+                status = "running"
+                state = json.loads(state_file.read_text())
+                iteration = state.get("iteration", "N/A")
 
-                result += f"- {ralph_id}: {status} (iteration: {iteration})\n"
-            except Exception as e:
-                result += f"- {config_file.stem}: error reading config ({e})\n"
+            result += f"- {ralph_id}: {status} (iteration: {iteration})\n"
+        except Exception as e:
+            result += f"- {config_file.stem}: error reading config ({e})\n"
 
-        return result
+    return result
 
 
 def stop_ralph_loop(ralph_id: str) -> str:

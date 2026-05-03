@@ -168,7 +168,7 @@ def _prepare_search_pattern(pattern: str, mode: str) -> bytes | None:
     """Convert pattern string to bytes based on mode."""
     if mode == "string":
         return pattern.encode("utf-8", errors="ignore")
-    elif mode == "hex":
+    if mode == "hex":
         try:
             return bytes.fromhex(pattern.replace(" ", ""))
         except ValueError:
@@ -259,9 +259,9 @@ def _region_type_name(type_: int) -> str:
     """获取内存区域类型名称"""
     if type_ == MEM_PRIVATE:
         return "PRIVATE"
-    elif type_ == MEM_MAPPED:
+    if type_ == MEM_MAPPED:
         return "MAPPED"
-    elif type_ == MEM_IMAGE:
+    if type_ == MEM_IMAGE:
         return "IMAGE"
     return f"UNKNOWN(0x{type_:X})"
 

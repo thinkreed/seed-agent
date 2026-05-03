@@ -63,20 +63,19 @@ def write_memory(level: str, content: str, title: str = "", metadata: str = "") 
                 f.write(f"\n## {title}\n")
                 f.write(content.strip() + "\n")
             return f"Updated L1 Index: {title}"
+        # L2 直接写入 content（已包含 YAML frontmatter）
+        # L3/L4 写入带标题的格式
+        if level == "L2":
+            # L2 写入 SKILL.md 格式（content 应已包含 frontmatter）
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content.strip() + "\n")
         else:
-            # L2 直接写入 content（已包含 YAML frontmatter）
-            # L3/L4 写入带标题的格式
-            if level == "L2":
-                # L2 写入 SKILL.md 格式（content 应已包含 frontmatter）
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(content.strip() + "\n")
-            else:
-                with open(path, "w", encoding="utf-8") as f:
-                    if metadata:
-                        f.write(f"<!-- {metadata} -->\n")
-                    f.write(f"# {title}\n")
-                    f.write(content.strip() + "\n")
-            return f"Saved {level} Memory: {os.path.basename(path)}"
+            with open(path, "w", encoding="utf-8") as f:
+                if metadata:
+                    f.write(f"<!-- {metadata} -->\n")
+                f.write(f"# {title}\n")
+                f.write(content.strip() + "\n")
+        return f"Saved {level} Memory: {os.path.basename(path)}"
     except PermissionError:
         return f"Error writing memory: Permission denied - {path}"
     except OSError as e:
@@ -169,7 +168,7 @@ def read_memory_index() -> str:
     if path is None or not os.path.exists(path):
         return "Memory index not found."
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return f.read()
     except Exception as e:
         return f"Error reading index: {e!s}"
@@ -211,7 +210,7 @@ def search_memory(keyword: str, levels: list[str] | None = None) -> str:
                 if lvl in levels:
                     try:
                         fpath = os.path.join(root, file)
-                        with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                        with open(fpath, encoding="utf-8", errors="ignore") as f:
                             if keyword.lower() in f.read().lower():
                                 results.append(f"[{lvl}] {file}")
                     except Exception as e:
@@ -228,7 +227,7 @@ def start_long_term_update(args, **kwargs):
     memory_md_path = os.path.join(os.path.dirname(__file__), "..", "..", "memory", "memory.md")
     sop_content = "[Error: Unable to load memory.md]"
     try:
-        with open(memory_md_path, "r", encoding="utf-8") as f:
+        with open(memory_md_path, encoding="utf-8") as f:
             sop_content = f.read()
     except Exception as e:
         sop_content = f"Error reading SOP: {e!s}"
@@ -359,7 +358,7 @@ def _load_session_history_jsonl(session_id: str) -> str:
         messages = []
         meta = {}
         summary = None
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             for line in f:
                 if not line.strip():
                     continue
@@ -403,7 +402,7 @@ def _list_sessions_jsonl(limit: int = 10) -> str:
             msg_count = 0
             created_at = "unknown"
             summary = None
-            with open(filepath, "r", encoding="utf-8") as fp:
+            with open(filepath, encoding="utf-8") as fp:
                 for line in fp:
                     if not line.strip():
                         continue
@@ -436,7 +435,7 @@ def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
         for f in files:
             filepath = os.path.join(SESSIONS_DIR, f)
             messages = []
-            with open(filepath, "r", encoding="utf-8") as fp:
+            with open(filepath, encoding="utf-8") as fp:
                 for line in fp:
                     if not line.strip():
                         continue
@@ -785,7 +784,7 @@ def _search_archives(keyword: str, limit: int = 20) -> str:
             output += f"- 会话: {r['session_id']}\n"
             output += f"- 摘要: {r['summary'][:100]}...\n"
             output += f"- 匹配片段: {r['matched_snippet'][:50]}...\n"
-            if r['key_findings']:
+            if r["key_findings"]:
                 output += f"- 关键发现: {r['key_findings'][0]}\n"
             output += f"- 时间: {r['timestamp']}\n"
 
@@ -819,14 +818,14 @@ def _get_archive_details(archive_id: str) -> str:
         output += f"- 事件数: {details['events_count']}\n"
         output += f"- 摘要: {details['summary']}\n"
 
-        if details['key_findings']:
+        if details["key_findings"]:
             output += "- 关键发现:\n"
-            for finding in details['key_findings']:
+            for finding in details["key_findings"]:
                 output += f"  * {finding}\n"
 
-        if details['events']:
+        if details["events"]:
             output += "- 事件概览 (前5个):\n"
-            for event in details['events'][:5]:
+            for event in details["events"][:5]:
                 output += f"  [{event['type']}] {str(event['data'])[:50]}...\n"
 
         return output
@@ -852,9 +851,9 @@ def _get_archive_stats() -> str:
         output += f"- 总事件数: {stats['total_events']}\n"
         output += f"- 平均事件数/归档: {stats['avg_events_per_archive']}\n"
 
-        if stats['recent_archives']:
+        if stats["recent_archives"]:
             output += "- 最近归档:\n"
-            for a in stats['recent_archives']:
+            for a in stats["recent_archives"]:
                 output += f"  [{a['archive_id']}] {a['events_count']} 事件, {a['created_at']}\n"
 
         return output

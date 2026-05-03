@@ -187,7 +187,7 @@ class CredentialVault:
         # 尝试加载已有密钥
         if key_path.exists():
             try:
-                with open(key_path, "r") as f:
+                with open(key_path) as f:
                     key = f.read().strip()
                 logger.info("Loaded existing vault encryption key")
                 return key
@@ -799,7 +799,7 @@ class CredentialVault:
             return
 
         try:
-            with open(credentials_file, "r") as f:
+            with open(credentials_file) as f:
                 data = json.load(f)
 
             for cred_id, record_data in data.items():
@@ -853,7 +853,7 @@ class CredentialVault:
             return
 
         try:
-            with open(audit_file, "r") as f:
+            with open(audit_file) as f:
                 for line in f:
                     try:
                         entry = json.loads(line.strip())

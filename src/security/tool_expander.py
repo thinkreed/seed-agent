@@ -318,9 +318,8 @@ class ProgressiveToolExpander:
         highest_candidate = max(candidate_tiers, key=lambda t: tier_order.index(t))
 
         # 不超过权限上限
-        final_tier = min(highest_candidate, max_tier, key=lambda t: tier_order.index(t))
+        return min(highest_candidate, max_tier, key=lambda t: tier_order.index(t))
 
-        return final_tier
 
     def _expand_to_tier(self, new_tier: ToolTier, context: dict[str, Any]) -> None:
         """扩展到新层级
