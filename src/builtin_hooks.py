@@ -168,10 +168,13 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
 
         if result is None:
             logger.warning(f"Tool {tool_name} returned None")
+            return
 
-        # 检查错误标识
-        if isinstance(result, str):
-            if result.startswith("Error:") or "error" in result.lower():
+        # 检查错误标识 - 只检查以 "Error:" 或 "Error " 开头的输出
+        # 避免 "error" 字样出现在正常内容中导致的误报
+        if isinstance(result, str) and result.strip():
+            result_stripped = result.strip()
+            if result_stripped.startswith("Error:") or result_stripped.startswith("Error "):
                 logger.warning(f"Tool {tool_name} returned error: {result[:100]}")
 
     @registry.register(HookPoint.TOOL_CALL_AFTER, priority=1, name="tool_log_result")
@@ -275,8 +278,8 @@ def _register_llm_hooks(registry: LifecycleHookRegistry) -> None:
         choices = response.get("choices", []) if response else []
         message = choices[0].get("message", {}) if choices else {}
 
-        content_preview = str(message.get("content", ""))[:50]
-        tool_calls_count = len(message.get("tool_calls", []))
+        content_preview = str(message.get("content") or "")[:50]
+        tool_calls_count = len(message.get("tool_calls") or [])
 
         logger.debug(
             f"LLM response: duration={duration_ms:.2f}ms, "

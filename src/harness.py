@@ -53,7 +53,7 @@ from src.observability import (
 from src.request_queue import RequestPriority
 from src.sandbox import Sandbox
 from src.session_event_stream import EventType, SessionEventStream
-from src.tools.utils import parse_tool_arguments
+from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -744,7 +744,7 @@ class Harness:
 
         # 使用统一函数解析参数
         tool_args = parse_tool_arguments(raw_args)
-        if not tool_args and raw_args:
+        if is_parse_failed(tool_args):
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",

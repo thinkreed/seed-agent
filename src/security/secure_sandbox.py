@@ -34,7 +34,7 @@ from src.security.tool_expander import (
     ProgressiveToolExpander,
     ToolTier,
 )
-from src.tools.utils import parse_tool_arguments
+from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ class SecureSandbox(Sandbox):
 
         # 使用统一函数解析参数
         tool_args = parse_tool_arguments(raw_args)
-        if not tool_args and raw_args:
+        if is_parse_failed(tool_args):
             return SecureExecutionResult(
                 tool_call_id=tool_call_id,
                 content="Error: Failed to parse arguments: invalid JSON",

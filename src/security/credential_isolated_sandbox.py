@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from src.sandbox import IsolationLevel
 from src.security.credential_proxy import CredentialProxy
 from src.security.secure_sandbox import SecureExecutionResult, SecureSandbox
-from src.tools.utils import parse_tool_arguments
+from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 if TYPE_CHECKING:
     pass
@@ -215,7 +215,7 @@ class CredentialIsolatedSandbox(SecureSandbox):
 
         # 使用统一函数解析参数
         tool_args = parse_tool_arguments(raw_args)
-        if not tool_args and raw_args:
+        if is_parse_failed(tool_args):
             return SecureExecutionResult(
                 tool_call_id=tool_call_id,
                 content="Error: Failed to parse arguments: invalid JSON",

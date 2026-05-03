@@ -6,43 +6,69 @@
 import asyncio
 import json
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# 解析失败标记 - 用于区分 "成功解析的空字典 {}" 和 "解析失败"
+PARSE_FAILED: dict[str, Any] = {"__parse_failed__": True}
 
-def parse_tool_arguments(raw_args: str | dict | None) -> dict:
+
+def parse_tool_arguments(raw_args: str | dict | None) -> dict[str, Any]:
     """鲁棒地解析工具参数
 
     Args:
         raw_args: 原始参数，可能是 JSON 字符串、字典或 None
 
     Returns:
-        dict: 解析后的参数字典（确保返回 dict 类型）
+        dict: 解析后的参数字典。如果解析失败，返回 PARSE_FAILED 标记字典。
 
     Examples:
         >>> parse_tool_arguments('{"path": "/tmp/file.txt"}')
         {'path': '/tmp/file.txt'}
+        >>> parse_tool_arguments('{}')
+        {}
         >>> parse_tool_arguments('')
         {}
         >>> parse_tool_arguments(None)
         {}
+        >>> parse_tool_arguments('invalid json')
+        {'__parse_failed__': True}
         >>> parse_tool_arguments('["invalid"]')  # 非 dict JSON
-        {}
+        {'__parse_failed__': True}
     """
     try:
         if isinstance(raw_args, str):
             raw_args = raw_args.strip()
-            if not raw_args:
+            if not raw_args or raw_args == "{}":
+                # 空字符串或空 JSON 对象 -> 空字典（合法）
                 return {}
             parsed = json.loads(raw_args)
             # 确保 JSON 解析结果是 dict 类型
-            return parsed if isinstance(parsed, dict) else {}
+            if isinstance(parsed, dict):
+                return parsed
+            # 非 dict JSON（如 list）视为失败
+            logger.warning(f"Invalid tool args (not a dict): {raw_args!r}")
+            return PARSE_FAILED
         if isinstance(raw_args, dict):
+            # 已经是 dict，直接返回（可能是 PARSE_FAILED 或其他）
             return raw_args
         return {}
     except (json.JSONDecodeError, TypeError, ValueError) as e:
-        logger.warning(f"Invalid tool args: {raw_args!r}, using empty dict. Error: {e}")
-        return {}
+        logger.warning(f"Invalid tool args: {raw_args!r}, parse failed. Error: {e}")
+        return PARSE_FAILED
+
+
+def is_parse_failed(args: dict[str, Any]) -> bool:
+    """检查参数是否为解析失败标记
+
+    Args:
+        args: 解析后的参数字典
+
+    Returns:
+        bool: True 表示解析失败
+    """
+    return args is PARSE_FAILED or args.get("__parse_failed__") is True
 
 
 def format_tool_error(error: Exception, tool_name: str = "unknown") -> str:

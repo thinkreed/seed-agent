@@ -50,8 +50,8 @@ class MemoryManager:
     _initialized: bool = False
     _lock: Any = None  # threading.Lock
 
-    def __new__(cls) -> "MemoryManager":
-        """单例模式"""
+    def __new__(cls, *args, **kwargs) -> "MemoryManager":
+        """单例模式 - 忽略构造参数"""
         import threading
 
         if cls._instance is None:
