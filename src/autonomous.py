@@ -99,9 +99,13 @@ class AutonomousExplorer:
     def _load_sop(self) -> None:
         """加载自主探索 SOP"""
         if SOP_PATH.exists():
-            with open(SOP_PATH, encoding="utf-8") as f:
-                self._sop_content = f.read()
-            logger.info(f"Loaded autonomous SOP from {SOP_PATH}")
+            try:
+                with open(SOP_PATH, encoding="utf-8") as f:
+                    self._sop_content = f.read()
+                logger.info(f"Loaded autonomous SOP from {SOP_PATH}")
+            except OSError as e:
+                logger.warning(f"Failed to read SOP file {SOP_PATH}: {e}")
+                self._sop_content = ""
         else:
             logger.warning(f"SOP file not found: {SOP_PATH}")
 
@@ -398,8 +402,11 @@ class AutonomousExplorer:
         """加载TODO文件内容"""
         todo_path = SEED_DIR / "TODO.md"
         if todo_path.exists():
-            with open(todo_path, encoding="utf-8") as f:
-                return f.read()
+            try:
+                with open(todo_path, encoding="utf-8") as f:
+                    return f.read()
+            except OSError as e:
+                logger.warning(f"Failed to read TODO file {todo_path}: {e}")
         return ""
 
     async def _run_ralph_loop(self) -> str | None:

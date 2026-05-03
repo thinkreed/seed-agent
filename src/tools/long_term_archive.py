@@ -35,11 +35,15 @@ try:
 except ImportError:
     _HAS_JIEBA = False
 
-# 导入 session_db 的分词缓存函数
-from src.tools.session_db import tokenize_for_fts5
-
 # 数据库路径
 ARCHIVE_DB_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "archives.db"
+
+
+# 导入 session_db 的分词缓存函数（延迟导入避免循环依赖）
+def _get_tokenize_func():
+    """延迟获取分词函数，避免模块加载时的循环依赖"""
+    from src.tools.session_db import tokenize_for_fts5
+    return tokenize_for_fts5
 
 
 class LongTermArchiveLayer:
@@ -263,9 +267,10 @@ class LongTermArchiveLayer:
         key_findings_text = " ".join(key_findings)
 
         # 使用 tokenize_for_fts5 进行分词预处理（带缓存）
-        summary = tokenize_for_fts5(summary)
-        key_findings_text = tokenize_for_fts5(key_findings_text)
-        event_content = tokenize_for_fts5(event_content)
+        tokenize = _get_tokenize_func()
+        summary = tokenize(summary)
+        key_findings_text = tokenize(key_findings_text)
+        event_content = tokenize(event_content)
 
         self._ensure_conn().execute("""
             INSERT INTO archives_fts
@@ -485,7 +490,8 @@ class LongTermArchiveLayer:
             query = query[:200]
 
         # 使用 tokenize_for_fts5 进行分词（带缓存）
-        query = tokenize_for_fts5(query)
+        tokenize = _get_tokenize_func()
+        query = tokenize(query)
 
         # 移除 FTS5 特殊字符
         special_chars = '"():*^#&|-!~'
