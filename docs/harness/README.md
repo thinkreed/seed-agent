@@ -1,8 +1,9 @@
 # Harness Engineering 架构优化设计索引
 
-> **版本**: v1.0  
-> **创建日期**: 2026-05-03  
-> **状态**: 设计阶段 - 待讨论确认
+> **版本**: v2.0
+> **创建日期**: 2026-05-03
+> **更新日期**: 2026-05-03
+> **状态**: 部分已落地实现
 
 ---
 
@@ -14,16 +15,16 @@
 
 ## 优化点清单
 
-| 序号 | 优化点 | 设计文档 | 优先级 | 依赖 |
-|------|--------|----------|--------|------|
-| 01 | **Session 不可变事件流** | [01_session_event_stream_design.md](01_session_event_stream_design.md) | 高 | 无 |
-| 02 | **Harness/Sandbox 三件套解耦** | [02_harness_sandbox_decoupling_design.md](02_harness_sandbox_decoupling_design.md) | 高 | 01 |
-| 03 | **记忆系统升级 (L4 用户建模 + L5 工作日志)** | [03_memory_system_upgrade_design.md](03_memory_system_upgrade_design.md) | 中 | 01 |
-| 04 | **渐进式上下文压缩 + 智能裁剪** | [04_context_engineering_design.md](04_context_engineering_design.md) | 中 | 01 |
-| 05 | **确定性生命周期钩子体系** | [05_lifecycle_hooks_design.md](05_lifecycle_hooks_design.md) | 中 | 01, 02 |
-| 06 | **多智能体协作模式** | [06_multi_agent_collaboration_design.md](06_multi_agent_collaboration_design.md) | 低 | 02 |
-| 07 | **工具权限与命令风险分类** | [07_tool_permission_risk_design.md](07_tool_permission_risk_design.md) | 中 | 02 |
-| 08 | **凭证安全架构 (Vault + Proxy)** | [08_credential_security_design.md](08_credential_security_design.md) | 高 | 02 |
+| 序号 | 优化点 | 设计文档 | 优先级 | 依赖 | 状态 |
+|------|--------|----------|--------|------|------|
+| 01 | **Session 不可变事件流** | [01_session_event_stream_design.md](01_session_event_stream_design.md) | 高 | 无 | ✅ 已完成 |
+| 02 | **Harness/Sandbox 三件套解耦** | [02_harness_sandbox_decoupling_design.md](02_harness_sandbox_decoupling_design.md) | 高 | 01 | ✅ 已完成 |
+| 03 | **记忆系统升级 (L4 用户建模 + L5 工作日志)** | [03_memory_system_upgrade_design.md](03_memory_system_upgrade_design.md) | 中 | 01 | 设计阶段 |
+| 04 | **渐进式上下文压缩 + 智能裁剪** | [04_context_engineering_design.md](04_context_engineering_design.md) | 中 | 01 | 设计阶段 |
+| 05 | **确定性生命周期钩子体系** | [05_lifecycle_hooks_design.md](05_lifecycle_hooks_design.md) | 中 | 01, 02 | ✅ 已完成 |
+| 06 | **多智能体协作模式** | [06_multi_agent_collaboration_design.md](06_multi_agent_collaboration_design.md) | 低 | 02 | 设计阶段 |
+| 07 | **工具权限与命令风险分类** | [07_tool_permission_risk_design.md](07_tool_permission_risk_design.md) | 中 | 02 | ✅ 已完成 |
+| 08 | **凭证安全架构 (Vault + Proxy)** | [08_credential_security_design.md](08_credential_security_design.md) | 高 | 02 | 设计阶段 |
 
 ---
 
