@@ -210,7 +210,7 @@ class SubagentInstance:
     - 执行状态
     """
 
-    MAX_SUBAGENT_ITERATIONS = 15  # Subagent 默认迭代上限较低
+    MAX_SUBAGENT_ITERATIONS = 100  # Subagent 默认迭代上限较低
 
     def __init__(
         self,
