@@ -30,6 +30,7 @@
 │       驱动运行循环 → 调用 LLM API → 路由工具调用               │
 │                    本身无状态                                 │
 │                 可随时创建、销毁、替换                          │
+│         支持 Ask User 等待和取消信号                           │
 └─────────────────────────────────────────────────────────────┘
                             │ 工具执行路由
                             ▼
@@ -42,6 +43,43 @@
 ```
 
 **关键性能优化**: 解耦后，大脑(推理)从容器(Sandbox)分离，首Token延迟降低 **60-90%**
+
+#### Ask User 与取消机制（新增）
+
+基于 qwen-code 的 askUserQuestion.ts 和 background-tasks.ts 设计：
+
+| 组件 | 文件 | 功能 |
+|------|------|------|
+| **AbortSignal** | `src/abort_signal.py` | 取消信号：传播取消状态，监听器机制 |
+| **AskUserTypes** | `src/tools/ask_user_types.py` | Ask User 数据类型：问题、选项、响应 |
+| **BackgroundTaskRegistry** | `src/background_task_registry.py` | 后台任务注册表：生命周期管理、取消控制 |
+| **TaskStop** | `src/tools/task_stop.py` | TaskStop 工具：停止后台任务 |
+
+核心特性：
+- **真正的等待机制**：ask_user 返回等待标记，Harness 检测后暂停循环
+- **用户响应注入**：外部注入响应后恢复执行
+- **AbortSignal 传播**：取消信号在执行点检查，支持优雅取消
+- **Ctrl+C 处理**：单次取消执行，双次（2秒内）退出程序
+- **优雅关闭**：保存会话状态、清理资源、5秒超时保护
+
+使用示例：
+```python
+# Ask User 使用
+async for chunk in agent.stream_run(user_input):
+    if chunk["type"] == "awaiting_user_input":
+        # 显示问题，收集用户响应
+        response = collect_user_response(chunk["request"])
+        agent.inject_user_input(response)
+
+# 取消执行
+agent.cancel_current_execution()
+
+# 外部注入响应
+agent.inject_user_input(AskUserResult(
+    request_id="abc123",
+    responses=[UserResponse(question_id="0", selected=["Yes"])],
+))
+```
 
 #### 其他核心组件
 

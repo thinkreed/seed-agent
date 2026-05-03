@@ -1441,7 +1441,44 @@ agent.inject_user_input(AskUserResult(
 
 ## 文档版本
 
-- **版本**: 1.0
+- **版本**: 2.0
 - **日期**: 2026-05-03
 - **作者**: Seed Agent Team
-- **状态**: 设计完成，待实施
+- **状态**: 已实现
+
+## 实现状态
+
+本设计文档已完全实现，包括：
+
+### 已创建的新文件
+| 文件 | 功能 | 状态 |
+|------|------|------|
+| `src/abort_signal.py` | AbortSignal/AbortController 实现 | ✅ 完成 |
+| `src/background_task_registry.py` | 后台任务注册表 | ✅ 完成 |
+| `src/tools/ask_user_types.py` | Ask User 数据类型定义 | ✅ 完成 |
+| `src/tools/task_stop.py` | TaskStop 工具实现 | ✅ 完成 |
+| `tests/test_abort_signal.py` | AbortSignal 测试 | ✅ 完成 |
+| `tests/test_ask_user_types.py` | Ask User 类型测试 | ✅ 完成 |
+| `tests/test_background_task_registry.py` | 后台任务注册表测试 | ✅ 完成 |
+
+### 已修改的文件
+| 文件 | 改动 | 状态 |
+|------|------|------|
+| `src/session_event_stream.py` | EventType 扩展（用户交互事件、执行控制事件、后台任务事件） | ✅ 完成 |
+| `src/lifecycle_hooks.py` | HookPoint 扩展（Ask User、执行控制、后台任务、关闭生命周期） | ✅ 完成 |
+| `src/tools/builtin_tools.py` | ask_user 改造（真正的等待机制） | ✅ 完成 |
+| `src/harness.py` | 等待状态检测、取消支持、resume_with_user_response | ✅ 完成 |
+| `src/agent_loop.py` | AbortController、inject_user_input、cancel_current_execution | ✅ 完成 |
+| `main.py` | 信号处理、Ctrl+C 双击退出、用户响应处理 | ✅ 完成 |
+| `tests/test_builtin_tools.py` | ask_user 测试更新 | ✅ 完成 |
+
+### 核心功能
+| 功能 | 状态 |
+|------|------|
+| Ask User 真正等待机制 | ✅ 完成 |
+| 用户响应注入 | ✅ 完成 |
+| AbortSignal 取消信号 | ✅ 完成 |
+| Ctrl+C 单次取消/双次退出 | ✅ 完成 |
+| 后台任务管理 | ✅ 完成 |
+| 优雅关闭 | ✅ 完成 |
+| 生命周期钩子扩展 | ✅ 完成 |

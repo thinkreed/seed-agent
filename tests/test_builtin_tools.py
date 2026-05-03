@@ -434,18 +434,51 @@ class TestAskUser(unittest.TestCase):
 
     def test_simple_question(self):
         """简单问题"""
+        from tools.ask_user_types import reset_ask_user_state
+        reset_ask_user_state()
+        
         result = ask_user("Are you sure?")
-        self.assertIn("[ASK_USER]", result)
+        self.assertIn("[AWAITING_USER_INPUT]", result)
         self.assertIn("Are you sure?", result)
-        self.assertIn("[Waiting for user response]", result)
+        self.assertIn("request_id=", result)
 
     def test_with_options(self):
         """带选项的问题"""
+        from tools.ask_user_types import reset_ask_user_state
+        reset_ask_user_state()
+        
         result = ask_user("Choose:", options=["A", "B", "C"])
         self.assertIn("Options:", result)
         self.assertIn("A", result)
         self.assertIn("B", result)
         self.assertIn("C", result)
+
+    def test_with_header(self):
+        """带标题的问题"""
+        from tools.ask_user_types import reset_ask_user_state
+        reset_ask_user_state()
+        
+        result = ask_user("Long question text here", header="Short")
+        self.assertIn("[AWAITING_USER_INPUT]", result)
+
+    def test_multi_select(self):
+        """多选问题"""
+        from tools.ask_user_types import reset_ask_user_state
+        reset_ask_user_state()
+        
+        result = ask_user("Select files:", options=["A", "B"], multi_select=True)
+        self.assertIn("[Multi-select enabled]", result)
+
+    def test_sets_pending_request(self):
+        """设置等待请求"""
+        from tools.ask_user_types import get_ask_user_state, reset_ask_user_state
+        reset_ask_user_state()
+        
+        result = ask_user("Test question?")
+        
+        state = get_ask_user_state()
+        self.assertIsNotNone(state.pending_request)
+        self.assertTrue(state.is_waiting())
 
 
 class TestRunDiagnosis(unittest.TestCase):

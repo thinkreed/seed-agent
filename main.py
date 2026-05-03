@@ -508,6 +508,7 @@ async def main(args=None):
             return
 
         # 交互模式：启动自主探索监控和定时任务调度
+        explorer = AutonomousExplorer(agent, on_explore_complete=on_autonomous_complete)
         await explorer.start()
         await agent.scheduler.start()
 
