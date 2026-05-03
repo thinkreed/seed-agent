@@ -557,8 +557,14 @@ class Sandbox:
         try:
             import docker
         except ImportError:
-            logger.warning("Docker not installed, falling back to process execution")
-            return await self._execute_in_process(tool_name, args)
+            logger.warning(
+                f"Docker not installed, falling back to process execution for {tool_name}. "
+                "WARNING: Isolation level degraded from CONTAINER to PROCESS."
+            )
+            return (
+                f"[FALLBACK] Docker unavailable, executed in PROCESS isolation.\n"
+                f"Result:\n{await self._execute_in_process(tool_name, args)}"
+            )
 
         client = docker.from_env()
 
@@ -583,9 +589,17 @@ class Sandbox:
                 container.decode() if isinstance(container, bytes) else str(container)
             )
         except Exception as e:
-            logger.error(f"Container execution failed: {e}")
-            # 降级到进程执行
-            return await self._execute_in_process(tool_name, args)
+            logger.error(
+                f"Container execution failed for {tool_name}: {type(e).__name__}: {e}. "
+                "Falling back to PROCESS isolation."
+            )
+            # 降级到进程执行，但明确通知调用方
+            return (
+                f"[FALLBACK] Container execution failed ({type(e).__name__}), "
+                f"executed in PROCESS isolation.\n"
+                f"Original error: {str(e)[:200]}\n"
+                f"Result:\n{await self._execute_in_process(tool_name, args)}"
+            )
 
     # === 输出处理 ===
 
