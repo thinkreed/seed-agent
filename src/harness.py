@@ -58,7 +58,7 @@ from src.tools.utils import is_parse_failed, parse_tool_arguments
 logger = logging.getLogger(__name__)
 
 # 最大迭代次数（安全上限）
-MAX_ITERATIONS = 30
+MAX_ITERATIONS = 100
 
 # OpenTelemetry 状态
 _OBSERVABILITY_ENABLED = is_observability_enabled()
