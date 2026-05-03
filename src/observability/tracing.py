@@ -17,7 +17,7 @@ Span 层级:
 
 import asyncio
 import functools
-from typing import Any, Callable, Coroutine, TypeVar, overload
+from typing import Any, Callable, Coroutine, TypeVar
 
 from opentelemetry import context
 from opentelemetry.trace import Span, StatusCode
