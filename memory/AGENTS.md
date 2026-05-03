@@ -4,9 +4,9 @@ This module provides the memory management system for the Seed Agent, enabling p
 
 ---
 
-## Memory Hierarchy (L1-L4)
+## Memory Hierarchy (L1-L5)
 
-The memory system is organized into four distinct layers, each with a specific purpose and constraints:
+The memory system is organized into five distinct layers, each with a specific purpose and constraints:
 
 ### L1 (Index) - notes.md
 
@@ -63,30 +63,79 @@ General-purpose knowledge base extracted from frequently-used SOPs.
 
 ---
 
-### L4 (Raw) - raw directory
+### L4 (User Modeling) - SQLite Database
 
-Raw archive layer for session history and execution logs.
+**NEW:** 黑格尔辩证式用户建模层 (Hegelian Dialectical User Modeling)
 
-**Purpose:** Complete original data for traceability and review.
+**Purpose:** Building progressive understanding of the user through observation, conflict detection, and model evolution.
 
-**Storage:** **SQLite+FTS5 Database** (replacing JSONL format)
+**Core Philosophy:**
+> 不是一次判断就定终身，允许用户改变、允许情况复杂，通过不断观察、思考、调整，越来越懂真实的用户
 
-**Database Location:** `~/.seed/memory/raw/sessions.db`
+**Key Features:**
+- **辩证式进化**: Upgrade rather than overwrite preferences
+- **例外处理**: Allow exceptions for complex situations
+- **置信度管理**: Track confidence levels for each preference
+- **上下文感知**: Context-based preference retrieval
 
-**Features:**
-- **Chinese Full-Text Search**: jieba tokenization for Chinese content
-- **FTS5 Virtual Table**: Efficient keyword matching with prefix support
-- **WAL Mode**: Concurrent read/write access
-- **Metadata Tracking**: Session summaries, message counts, timestamps
+**Database Location:** `~/.seed/memory/user_modeling.db`
 
 **Schema:**
-- `session_messages`: Main message table
-- `session_messages_fts`: FTS5 virtual table for search
-- `sessions_meta`: Session metadata with summaries
+- `user_profiles`: Preference storage with exceptions
+- `user_observations`: Observation records queue
+- `dialectical_history`: Evolution history tracking
 
-**Tools provided:** save_session_history, load_session_history, list_sessions, search_history (via `session_db.py`)
+**Tools provided:**
+- `observe_user_preference`: Record preference evidence
+- `get_user_preference`: Retrieve preference with context
+- `get_user_profile_summary`: Full profile summary
+- `update_user_model`: Trigger dialectical update
+- `list_user_preferences`: List all preferences
 
-**Usage:** Full-text search across session history, session recovery, and traceability.
+**Example Evolution:**
+```
+Old: "用户偏好美式咖啡"
+New Evidence: "用户点了拿铁" (context: "周三下午")
+Conflict Detected: Old vs New
+Resolution: Exception case
+Upgrade: {
+  "usual": "美式",
+  "exceptions": {"周三下午": "拿铁"}
+}
+```
+
+---
+
+### L5 (Work Archive) - SQLite + FTS5
+
+**NEW:** 长期工作日志层 (Long-term Archive Layer)
+
+**Purpose:** Permanent storage of session events with LLM-generated summaries, enabling cross-session knowledge retrieval.
+
+**Key Features:**
+- **LLM 自动摘要**: Generate concise summaries after each session
+- **FTS5 全文检索**: Chinese full-text search with jieba tokenization
+- **关键发现提取**: Extract key findings from conversations
+- **跨会话搜索**: Search across all archived sessions
+
+**Database Location:** `~/.seed/memory/archives.db`
+
+**Schema:**
+- `archives`: Archive metadata with summaries
+- `archive_events`: Detailed event storage
+- `archives_fts`: FTS5 virtual table for search
+
+**Tools provided:**
+- `archive_session_events`: Archive session to long-term storage
+- `search_archives`: FTS5 search across archives
+- `get_archive_details`: Retrieve full archive details
+- `get_archive_stats`: Archive statistics
+
+**Summary Generation Process:**
+1. Extract events from session
+2. LLM generates 1-2 sentence core conclusion
+3. Extract 3-5 key findings
+4. Store with FTS5 indexing
 
 ---
 
@@ -108,11 +157,11 @@ This is the primary reference for memory operations and hierarchy management.
 
 The Auto-Dream (Memory Consolidation) SOP document. Defines:
 
-- Core positioning of each layer
-- ROI (Return on Investment) assessment model for memories
+- Core positioning of each layer (L1-L5)
+- ROI assessment model for memories
 - High-ROI retention items per layer
 - Low-ROI items to remove
-- Four-question verification method for memory entries
+- Five-question verification method for memory entries
 - Standard memory consolidation workflow
 - Mandatory redline constraints
 
@@ -122,50 +171,156 @@ The Auto-Dream (Memory Consolidation) SOP document. Defines:
 
 The memory system is integrated into the agent via `memory_tools.py`, providing the following functions:
 
-### write_memory
+### L1-L3 Tools
+
+#### write_memory
 
 Writes content to a specific memory level.
 
 **Parameters:**
-- `level`: L1, L2, L3, or L4
-- `content`: Memory content (for L2, must be SKILL.md format with YAML frontmatter)
+- `level`: L1, L2, L3, or L4 (legacy file-based)
+- `content`: Memory content
 - `title`: Memory title or skill name
-- `metadata`: Optional metadata (source, date, etc.)
+- `metadata`: Optional metadata
 
-**Validation:**
-- L1: Max 200 chars, no subsections or code blocks
-- L2: Must follow Open Agent Skills format with required YAML frontmatter
+#### read_memory_index
 
----
+Reads the global memory index (L1 notes.md).
 
-### read_memory_index
+#### search_memory
 
-Reads the global memory index (L1 notes.md) to find available SOPs or knowledge.
-
-**Returns:** Complete content of notes.md
+Searches memory across L1-L3 by keyword.
 
 ---
 
-### search_memory
+### L4 User Modeling Tools
 
-Searches memory across specified levels by keyword.
+#### observe_user_preference
+
+Records a preference observation with optional context.
+
+**Parameters:**
+- `key`: Preference key (e.g., "coffee", "work_style")
+- `value`: Preference value
+- `context`: Optional context for exceptions
+- `confidence`: Confidence level (0.0-1.0)
+
+**Example:**
+```python
+observe_user_preference("coffee", "美式", confidence=0.9)
+observe_user_preference("coffee", "拿铁", context="周三下午", confidence=0.85)
+```
+
+#### get_user_preference
+
+Retrieves preference with context-aware exception handling.
+
+**Parameters:**
+- `key`: Preference key
+- `context`: Optional current context
+
+**Returns:**
+```python
+{
+    "value": "拿铁",
+    "reason": "例外情况: 周三下午",
+    "confidence": 0.85
+}
+```
+
+#### get_user_profile_summary
+
+Returns full user profile with all preferences and exceptions.
+
+#### update_user_model
+
+Triggers dialectical update (async operation hint in sync context).
+
+#### list_user_preferences
+
+Lists all stored preferences with their exceptions.
+
+---
+
+### L5 Archive Tools
+
+#### archive_session_events
+
+Archives session events to long-term storage (async operation hint).
+
+**Parameters:**
+- `session_id`: Session identifier
+- `events_json`: JSON array of events
+- `metadata_json`: Optional metadata
+
+#### search_archives
+
+FTS5 full-text search across all archives.
 
 **Parameters:**
 - `keyword`: Search keyword
-- `levels`: Levels to search (default: L1, L2, L3)
+- `limit`: Maximum results
 
-**Returns:** List of matching files with their level indicators
+**Returns:**
+```python
+[
+    {
+        "archive_id": "archive_xxx",
+        "session_id": "session_xxx",
+        "summary": "核心结论摘要...",
+        "matched_snippet": "匹配片段...",
+        "key_findings": ["发现1", "发现2"],
+        "timestamp": "2026-05-03..."
+    }
+]
+```
+
+#### get_archive_details
+
+Retrieves full archive with events.
+
+#### get_archive_stats
+
+Returns archive statistics (counts, averages, recent archives).
+
+#### get_memory_hierarchy
+
+Returns summary of all five layers (L1-L5).
 
 ---
 
-### Session History Tools (L4)
+### Session History Tools (L4 Legacy)
 
 Additional tools for raw session data management via SQLite+FTS5:
 
-- **save_session_history**: Saves conversation history to SQLite with jieba tokenization for FTS5 indexing
-- **load_session_history**: Loads specific session data from database
-- **list_sessions**: Lists recent sessions with metadata from `sessions_meta` table
-- **search_history**: FTS5 full-text search with Chinese support (jieba tokenization)
+- **save_session_history**: Saves conversation history
+- **load_session_history**: Loads specific session
+- **list_sessions**: Lists recent sessions
+- **search_history**: FTS5 search with Chinese support
+
+---
+
+## Memory Manager
+
+The unified `MemoryManager` class (in `src/memory_manager.py`) manages all five layers:
+
+```python
+from src.memory_manager import get_memory_manager
+
+manager = get_memory_manager(llm_gateway)
+
+# Cross-layer search
+results = manager.search_all_levels("重构", levels=["L3", "L5"])
+
+# User observation
+manager.observe_preference("coffee", "美式", confidence=0.9)
+
+# Get preference with context
+pref = manager.get_user_preference("coffee", "周三下午")
+
+# Archive session
+archive_id = await manager.archive_session(session_id, events)
+```
 
 ---
 
@@ -179,37 +334,22 @@ Configured in `scheduler.py` as a built-in task:
 
 - **Task ID:** autodream
 - **Interval:** 12 hours (43,200 seconds)
-- **Prompt:** "执行 autodream 记忆整理 SOP：分层逐查、ROI评估、低ROI清理、补全高价值项"
+- **Prompt:** "执行 autodream 记忆整理 SOP"
 
 ### Memory Consolidation Workflow
 
-The auto-dream process follows the standard memory consolidation workflow defined in `auto_dream.md`:
+The auto-dream process follows the standard workflow defined in `auto_dream.md`:
 
-1. **Pre-completion check**: Current task must be completed first; no memory writing before task completion
-
-2. **Layer-by-layer inspection**: Check each layer in sequence (L1 -> L2 -> L3 -> L4), marking entry types: redline/trigger_word/routing/detail/redundant
-
-3. **Low-ROI cleanup**: Remove low-value entries, verify L2/L3 coverage before deleting
-
-4. **High-value item supplementation**: Add missing high-ROI trigger words and routing indices based on recent failures and lessons learned
-
-5. **Layer compliance verification:**
-   - L1 (notes): Minimal entries, no redundant descriptions
-   - L2 (skills): Only verified SOPs, no speculation or common knowledge
-   - L3 (knowledge): Only distilled universal knowledge
-   - L4 (raw): Only data with traceability value
-
-6. **Final confirmation**: Verify memory completeness, ensure inter-layer associations are intact
+1. **Pre-completion check**: Task must be completed first
+2. **Layer-by-layer inspection**: Check L1 → L2 → L3 → L4 → L5
+3. **Low-ROI cleanup**: Remove low-value entries
+4. **High-value supplementation**: Add missing high-ROI items
+5. **Layer compliance verification**
+6. **Final confirmation**: Verify inter-layer associations
 
 ### ROI Assessment
 
-Memory retention is evaluated using the formula:
-
 **ROI = (Error Probability × Operation Cost) / Memory Storage Cost**
-
-- L1: Each word incurs call cost; prioritize high-error-tolerance, high-value minimal entries
-- L2/L3: Core metric is reuse frequency; higher reuse = more worth retaining
-- L4: Only retain raw data with review value; no review value = clean up
 
 ---
 
@@ -218,13 +358,19 @@ Memory retention is evaluated using the formula:
 The memory system follows a unidirectional flow:
 
 ```
+L5 (archives) → 归档摘要 → L3 (knowledge)
+                    ↓
+L4 (user_modeling) → 用户偏好洞察
+                    ↓
 L4 (raw/sessions) → L2 (skills) → L3 (knowledge)
        ↓                    ↓             ↓
        └──────────────── L1 (notes) ←─────┘
                     (index synchronization)
 ```
 
-1. Task execution logs raw data to L4
-2. Validated processes are saved as SOPs to L2
-3. SOPs reused 3+ times get distilled to L3 knowledge
-4. L1 index is synchronized throughout to maintain global accessibility
+1. Session events archived to L5 with LLM summary
+2. User observations stored in L4 for dialectical modeling
+3. Raw session data logged to L4 (legacy)
+4. Validated processes saved as SOPs to L2
+5. SOPs reused 3+ times distilled to L3 knowledge
+6. L1 index synchronized throughout

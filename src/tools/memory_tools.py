@@ -261,6 +261,18 @@ def register_memory_tools(registry: ToolRegistry) -> None:
     registry.register("get_skill_stats", _get_skill_stats)
     registry.register("list_banned_skills", _list_banned_skills)
     registry.register("get_top_skills", _get_top_skills)
+    # L4 用户建模工具 - 黑格尔辩证式进化
+    registry.register("observe_user_preference", _observe_user_preference)
+    registry.register("get_user_preference", _get_user_preference)
+    registry.register("get_user_profile_summary", _get_user_profile_summary)
+    registry.register("update_user_model", _update_user_model)
+    registry.register("list_user_preferences", _list_user_preferences)
+    # L5 工作日志工具 - 长期归档 + LLM摘要
+    registry.register("archive_session_events", _archive_session_events)
+    registry.register("search_archives", _search_archives)
+    registry.register("get_archive_details", _get_archive_details)
+    registry.register("get_archive_stats", _get_archive_stats)
+    registry.register("get_memory_hierarchy", _get_memory_hierarchy)
 
 
 # ==================== 对话历史持久化 (L4 Raw - SQLite + FTS5) ====================
@@ -574,3 +586,295 @@ def _get_top_skills(limit: int = 10) -> str:
         return output
     except ImportError:
         return "Error: session_db module not available"
+
+
+# ==================== L4 用户建模工具 (黑格尔辩证式进化) ====================
+
+def _observe_user_preference(
+    key: str,
+    value: str,
+    context: str | None = None,
+    confidence: float = 0.8
+) -> str:
+    """
+    观察用户偏好证据
+
+    Args:
+        key: 偏好键 (如 "coffee", "work_style")
+        value: 偏好值
+        context: 观察上下文 (如 "周三下午")
+        confidence: 置信度 (0.0-1.0)
+
+    Returns:
+        观察记录状态
+
+    Example:
+        observe_user_preference("coffee", "美式", confidence=0.9)
+        observe_user_preference("coffee", "拿铁", context="周三下午", confidence=0.85)
+    """
+    try:
+        from src.tools.user_modeling import UserModelingLayer
+        user_model = UserModelingLayer()
+        return user_model.observe(
+            evidence_type="preference",
+            data={"key": key, "value": value},
+            context=context,
+            confidence=confidence
+        )
+    except ImportError:
+        return "Error: user_modeling module not available"
+    except Exception as e:
+        return f"Error observing preference: {type(e).__name__}: {str(e)[:100]}"
+
+def _get_user_preference(key: str, context: str | None = None) -> str:
+    """
+    获取用户偏好（基于上下文）
+
+    Args:
+        key: 偏好键
+        context: 当前上下文 (用于检查例外情况)
+
+    Returns:
+        基于上下文的偏好值和推理说明
+
+    Example:
+        get_user_preference("coffee") -> "美式 (常规偏好)"
+        get_user_preference("coffee", "周三下午") -> "拿铁 (例外情况: 周三下午)"
+    """
+    try:
+        from src.tools.user_modeling import UserModelingLayer
+        user_model = UserModelingLayer()
+        result = user_model.get_user_preference(key, context)
+
+        output = f"用户偏好 '{key}':\n"
+        output += f"- 值: {result['value']}\n"
+        output += f"- 原因: {result['reason']}\n"
+        output += f"- 置信度: {result['confidence']:.2f}\n"
+        return output
+    except ImportError:
+        return "Error: user_modeling module not available"
+    except Exception as e:
+        return f"Error getting preference: {type(e).__name__}: {str(e)[:100]}"
+
+def _get_user_profile_summary() -> str:
+    """
+    获取用户画像完整摘要
+
+    Returns:
+        所有偏好的摘要，包括例外情况
+
+    Example:
+        用户画像摘要:
+        - coffee: 平时 美式, 例外情况 周三下午: 拿铁
+        - work_style: 深度工作模式
+    """
+    try:
+        from src.tools.user_modeling import UserModelingLayer
+        user_model = UserModelingLayer()
+        return user_model.get_user_profile_summary()
+    except ImportError:
+        return "Error: user_modeling module not available"
+    except Exception as e:
+        return f"Error getting profile: {type(e).__name__}: {str(e)[:100]}"
+
+def _update_user_model() -> str:
+    """
+    触发用户模型辩证式更新
+
+    注意: 此函数为异步操作，在同步环境中返回提示信息
+
+    Returns:
+        更新提示信息 (实际更新需要在异步环境中执行)
+    """
+    return ("提示: 用户模型辩证式更新需要异步执行。\n"
+            "请使用 MemoryManager.update_user_model() 在异步环境中调用。\n"
+            "流程: 检测矛盾 -> 内部推理 -> 升级模型 (不覆盖)")
+
+def _list_user_preferences() -> str:
+    """
+    列出所有用户偏好
+
+    Returns:
+        所有偏好的键值列表
+    """
+    try:
+        from src.tools.user_modeling import UserModelingLayer
+        user_model = UserModelingLayer()
+        preferences = user_model.get_all_preferences()
+
+        if not preferences:
+            return "无用户偏好记录"
+
+        output = "用户偏好列表:\n"
+        for key, pref_data in preferences.items():
+            usual = pref_data.get("usual", "未知")
+            exceptions = pref_data.get("exceptions", {})
+            confidence = pref_data.get("confidence", 0.0)
+
+            output += f"\n- {key}: {usual} (置信度 {confidence:.2f})\n"
+            if exceptions:
+                for exc_key, exc_val in exceptions.items():
+                    if exc_key != "previously":
+                        output += f"  例外 [{exc_key}]: {exc_val.get('value', '未知')}\n"
+
+        return output
+    except ImportError:
+        return "Error: user_modeling module not available"
+    except Exception as e:
+        return f"Error listing preferences: {type(e).__name__}: {str(e)[:100]}"
+
+
+# ==================== L5 工作日志工具 (长期归档 + LLM摘要) ====================
+
+def _archive_session_events(
+    session_id: str,
+    events_json: str,
+    metadata_json: str | None = None
+) -> str:
+    """
+    归档会话事件到长期存储
+
+    注意: 此函数为异步操作，在同步环境中返回提示信息
+
+    Args:
+        session_id: 会话 ID
+        events_json: JSON 格式的事件列表
+        metadata_json: JSON 格式的元数据
+
+    Returns:
+        归档提示信息 (实际归档需要在异步环境中执行)
+    """
+    try:
+        import json
+        events = json.loads(events_json) if events_json else []
+
+        if not events:
+            return "Error: No events to archive"
+
+        return (f"提示: 会话归档需要异步执行。\n"
+                f"请使用 MemoryManager.archive_session() 在异步环境中调用。\n"
+                f"会话 ID: {session_id}, 事件数: {len(events)}")
+    except json.JSONDecodeError as e:
+        return f"Error parsing JSON: {type(e).__name__}: {str(e)[:100]}"
+
+def _search_archives(keyword: str, limit: int = 20) -> str:
+    """
+    搜索归档内容 (FTS5 全文检索)
+
+    Args:
+        keyword: 搜索关键词
+        limit: 结果限制
+
+    Returns:
+        匹配的归档列表，包含摘要和关键发现
+
+    Example:
+        search_archives("重构") -> 返回包含"重构"关键词的归档
+    """
+    try:
+        from src.tools.long_term_archive import LongTermArchiveLayer
+        archive = LongTermArchiveLayer()
+        results = archive.search_with_context(keyword, limit)
+
+        if not results:
+            return f"未找到匹配 '{keyword}' 的归档"
+
+        output = f"找到 {len(results)} 个匹配 '{keyword}' 的归档:\n"
+        for r in results:
+            output += f"\n[{r['archive_id']}]\n"
+            output += f"- 会话: {r['session_id']}\n"
+            output += f"- 摘要: {r['summary'][:100]}...\n"
+            output += f"- 匹配片段: {r['matched_snippet'][:50]}...\n"
+            if r['key_findings']:
+                output += f"- 关键发现: {r['key_findings'][0]}\n"
+            output += f"- 时间: {r['timestamp']}\n"
+
+        return output
+    except ImportError:
+        return "Error: long_term_archive module not available"
+    except Exception as e:
+        return f"Error searching archives: {type(e).__name__}: {str(e)[:100]}"
+
+def _get_archive_details(archive_id: str) -> str:
+    """
+    获取归档详情
+
+    Args:
+        archive_id: 归档 ID
+
+    Returns:
+        归档完整信息，包括摘要、关键发现和事件列表
+    """
+    try:
+        from src.tools.long_term_archive import LongTermArchiveLayer
+        archive = LongTermArchiveLayer()
+        details = archive.get_archive(archive_id)
+
+        if not details:
+            return f"归档不存在: {archive_id}"
+
+        output = f"归档详情: {archive_id}\n"
+        output += f"- 会话 ID: {details['session_id']}\n"
+        output += f"- 创建时间: {details['created_at']}\n"
+        output += f"- 事件数: {details['events_count']}\n"
+        output += f"- 摘要: {details['summary']}\n"
+
+        if details['key_findings']:
+            output += "- 关键发现:\n"
+            for finding in details['key_findings']:
+                output += f"  * {finding}\n"
+
+        if details['events']:
+            output += "- 事件概览 (前5个):\n"
+            for event in details['events'][:5]:
+                output += f"  [{event['type']}] {str(event['data'])[:50]}...\n"
+
+        return output
+    except ImportError:
+        return "Error: long_term_archive module not available"
+    except Exception as e:
+        return f"Error getting archive: {type(e).__name__}: {str(e)[:100]}"
+
+def _get_archive_stats() -> str:
+    """
+    获取归档统计信息
+
+    Returns:
+        归档总数、事件总数、平均事件数、最近归档列表
+    """
+    try:
+        from src.tools.long_term_archive import LongTermArchiveLayer
+        archive = LongTermArchiveLayer()
+        stats = archive.get_archive_stats()
+
+        output = "L5 归档统计:\n"
+        output += f"- 总归档数: {stats['total_archives']}\n"
+        output += f"- 总事件数: {stats['total_events']}\n"
+        output += f"- 平均事件数/归档: {stats['avg_events_per_archive']}\n"
+
+        if stats['recent_archives']:
+            output += "- 最近归档:\n"
+            for a in stats['recent_archives']:
+                output += f"  [{a['archive_id']}] {a['events_count']} 事件, {a['created_at']}\n"
+
+        return output
+    except ImportError:
+        return "Error: long_term_archive module not available"
+    except Exception as e:
+        return f"Error getting stats: {type(e).__name__}: {str(e)[:100]}"
+
+def _get_memory_hierarchy() -> str:
+    """
+    获取五层记忆架构摘要
+
+    Returns:
+        L1-L5 各层的统计信息
+    """
+    try:
+        from src.memory_manager import get_memory_manager
+        manager = get_memory_manager()
+        return manager.get_memory_hierarchy_summary()
+    except ImportError:
+        return "Error: memory_manager module not available"
+    except Exception as e:
+        return f"Error getting hierarchy: {type(e).__name__}: {str(e)[:100]}"

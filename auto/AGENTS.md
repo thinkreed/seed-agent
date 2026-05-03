@@ -4,6 +4,8 @@ This module enables the agent to perform autonomous exploration tasks when idle.
 
 The autonomous exploration framework is designed around two core principles: execution viability and evolutionary沉淀 (knowledge accumulation/refinement). The agent continuously evaluates opportunities for task execution and knowledge building, ensuring productive use of idle time while advancing its capabilities.
 
+---
+
 ## Ralph Loop Integration
 
 The AutonomousExplorer is now enhanced with Ralph Loop mechanisms for long-cycle deterministic task execution:
@@ -36,7 +38,37 @@ Maximum iteration and duration protection:
 - **Max Duration**: 8 hours (configurable via `RALPH_MAX_DURATION`)
 - Automatic exit with status report when limits reached
 
-# Trigger Conditions
+---
+
+## Memory System Integration (L1-L5)
+
+The autonomous exploration leverages the five-layer memory architecture:
+
+### L1 (Index) - Quick Reference
+- Trigger word routing for SOP selection
+- Fast lookup of available skills and knowledge
+
+### L2 (Skills) - Execution SOPs
+- Procedural guides for common operations
+- Skill selection based on task requirements
+
+### L3 (Knowledge) - Patterns & Principles
+- Cross-task insights for decision making
+- Historical patterns for optimization
+
+### L4 (User Modeling) - Preference Awareness
+- **NEW**: Dialectical user understanding
+- Context-aware preference retrieval
+- Example: Use `get_user_preference("output_format")` to adapt response style
+
+### L5 (Work Archive) - Historical Context
+- **NEW**: Cross-session knowledge retrieval
+- Search past sessions for relevant solutions
+- Example: Use `search_archives("similar_issue")` to find precedent
+
+---
+
+## Trigger Conditions
 
 The autonomous exploration activates when specific conditions are met:
 
@@ -46,7 +78,9 @@ The autonomous exploration activates when specific conditions are met:
 
 **Activity Recording**: User activities reset the idle timer via the record_activity() method. This ensures the autonomous mode only engages during genuine idle periods.
 
-# SOP Workflow
+---
+
+## SOP Workflow
 
 The autonomous exploration follows a structured workflow:
 
@@ -57,7 +91,7 @@ The system first examines the TODO.md file in the seed directory to determine wh
 **2. Execute or Enter Planning Mode**
 
 - **If TODO exists**: The agent enters execution mode, processing each TODO item sequentially. Before execution, the agent performs reasoning within <thinking> tags to plan the approach.
-  
+
 - **If no TODO exists**: The agent enters planning mode, which involves:
   - Critically reviewing history.md and working memory to identify low-value operations
   - Reflecting on optimization opportunities
@@ -74,7 +108,60 @@ Every task is evaluated using the formula:
 
 This ensures that only tasks with practical execution potential and meaningful knowledge accumulation are pursued.
 
-# Key Principles
+---
+
+## Long-term Strategic Tasks (STR)
+
+The autonomous exploration includes four mandatory long-term tasks that are executed every round:
+
+### STR-01: External Knowledge Integration
+- Source: `E:\projects\wiki\`
+- Goal: Extract and migrate useful patterns to seed-agent
+- Strategy: One document per round, output PR/Skill/L3 knowledge
+
+### STR-02: Capability Expansion
+- Source: `E:\projects\GenericAgent\memory\`
+- Goal: Absorb automation SOPs and tools
+- Strategy: One file per round, convert to L2 Skills
+
+### STR-03: Skill Gene Compression
+- Source: `~/.seed/memory/skills/`
+- Goal: Compress Skills to Gene format (signals + strategy + constraints + validation)
+- Strategy: One file per round, reduce token count by 50%+
+
+### STR-04: Memory System Maintenance
+- Source: `~/.seed/memory/` (L1-L5)
+- Goal: Execute Auto-Dream cleanup strategy
+- Strategy: Check L1 index, L4 preferences, L5 archives per round
+
+---
+
+## Memory Tools Usage
+
+### During Execution
+```python
+# Observe user preference when detected
+observe_user_preference("work_style", "deep_focus", confidence=0.8)
+
+# Search historical solutions
+search_archives("similar_bug", limit=5)
+
+# Get context-aware preference
+format_pref = get_user_preference("output_format", "code_review")
+```
+
+### After Completion
+```python
+# Trigger experience refinement
+start_long_term_update()
+
+# Get full hierarchy summary
+get_memory_hierarchy()
+```
+
+---
+
+## Key Principles
 
 The autonomous exploration adheres to these foundational principles:
 
@@ -84,12 +171,16 @@ The autonomous exploration adheres to these foundational principles:
 
 **Evolution Focus (重沉淀)**: After task completion, working memory must be updated. When conditions are met, the agent must call experience refinement tools before concluding.
 
+**User Modeling (懂用户)**: Use L4 tools to observe and adapt to user preferences over time.
+
 **Failure Escalation Protocol**: When encountering failures:
 1. First attempt: Retry the operation
 2. Second attempt: Probe for root causes and adjust strategy
 3. Third attempt: Switch approach or consult the user
 
-# Integration
+---
+
+## Integration
 
 The autonomous exploration module is integrated into the agent system as follows:
 
@@ -112,19 +203,22 @@ The autonomous exploration module is integrated into the agent system as follows
 
 **SOP Document Loading**: The SOP is loaded from `auto/自主探索 SOP.md` during initialization. This document contains the complete guidelines for autonomous task execution.
 
-**Prompt Construction**: The system builds comprehensive prompts that combine:
-- Base system prompt from the agent
-- Skills prompt from the skill loader
-- Full SOP content
-- Current TODO status and task instructions
+**Memory Manager Integration**: Uses `src/memory_manager.py` for unified L1-L5 management.
 
-# Files in this Module
+---
+
+## Files in this Module
 
 | File | Description |
 |------|-------------|
 | 自主探索 SOP.md | The autonomous exploration SOP document (Chinese filename) - contains detailed workflow, principles, and guidelines |
 | src/autonomous.py | Implementation of the AutonomousExplorer class with Ralph Loop integration |
+| src/memory_manager.py | Unified memory manager for L1-L5 |
+| src/tools/user_modeling.py | L4 user modeling layer (dialectical evolution) |
+| src/tools/long_term_archive.py | L5 archive layer (LLM summaries + FTS5) |
 | src/ralph_loop.py | Ralph Loop implementation for long-cycle deterministic task execution |
-| src/tools/ralph_tools.py | Tools for Ralph Loop management (start, stop, status check, completion markers) |
+| src/tools/ralph_tools.py | Tools for Ralph Loop management |
 | docs/long_cycle_loop_enhancement_design.md | Ralph Loop design documentation |
 | docs/ralph_loop.md | Ralph Loop concept documentation |
+| memory/AGENTS.md | Memory system documentation (L1-L5) |
+| memory/auto_dream.md | Auto-Dream SOP for memory consolidation |
