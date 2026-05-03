@@ -17,6 +17,7 @@
 """
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from src.lifecycle_hooks import HookPoint, LifecycleHookRegistry
@@ -501,7 +502,7 @@ def _register_ralph_hooks(registry: LifecycleHookRegistry) -> None:
 def register_custom_hook(
     registry: LifecycleHookRegistry,
     hook_point: HookPoint,
-    callback: callable,
+    callback: Callable[..., Any],
     priority: int = 100,
     name: str | None = None,
 ) -> str:
@@ -517,7 +518,9 @@ def register_custom_hook(
     Returns:
         hook_id: 钩子唯一标识
     """
-    return registry.register(hook_point, callback, priority=priority, name=name)
+    result = registry.register(hook_point, callback, priority=priority, name=name)
+    # 当直接传入 callback 时，返回的是 str (hook_id)
+    return result if isinstance(result, str) else callback.__name__
 
 
 def create_hook_context(**kwargs) -> dict[str, Any]:

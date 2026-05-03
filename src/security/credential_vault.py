@@ -221,18 +221,18 @@ class CredentialVault:
         """
         try:
             from cryptography.fernet import Fernet
-            key = Fernet.generate_key()
-            return key.decode()
+            key_bytes: bytes = Fernet.generate_key()
+            return key_bytes.decode()
         except ImportError:
             # 如果 cryptography 不可用，使用 base64 编码的随机字节
             import secrets
             random_bytes = secrets.token_bytes(32)
-            key = base64.urlsafe_b64encode(random_bytes).decode()
+            key_str: str = base64.urlsafe_b64encode(random_bytes).decode()
             logger.warning(
                 "cryptography package not available, using fallback key generation. "
                 "Install cryptography for proper encryption: pip install cryptography"
             )
-            return key
+            return key_str
 
     def _init_vault(self) -> None:
         """初始化保险库

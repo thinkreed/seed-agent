@@ -120,7 +120,9 @@ class MultiBrainOneHandOrchestrator:
                 perspective=perspective,
             ))
 
-        self._perspectives = perspectives or [a.perspective for a in self._agents]
+        self._perspectives: list[str] = perspectives or [
+            a.perspective for a in self._agents if a.perspective is not None
+        ]
         logger.info(
             f"MultiBrainOneHandOrchestrator initialized: "
             f"brains={len(llm_clients)}, perspectives={self._perspectives}"

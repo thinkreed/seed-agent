@@ -98,7 +98,7 @@ class CredentialProxy:
     """
 
     # Provider 配置
-    PROVIDER_CONFIGS = {
+    PROVIDER_CONFIGS: dict[str, dict[str, str | None]] = {
         "openai": {
             "base_url": None,
             "client_class": "AsyncOpenAI",

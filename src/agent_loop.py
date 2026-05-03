@@ -28,7 +28,7 @@ Session 宠物哲学：
 
 import logging
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 import tiktoken
@@ -248,7 +248,7 @@ class AgentLoop:
 
         # 2. Sandbox (工作台) - 根据 enable_secure_sandbox 选择类型
         if self._enable_secure_sandbox:
-            self.sandbox = SecureSandbox(
+            self.sandbox: Sandbox = SecureSandbox(
                 isolation_level=isolation_level,
                 workspace_path=None,
                 user_permission_level=self._user_permission_level,
@@ -682,7 +682,7 @@ class AgentLoop:
     def register_custom_hook(
         self,
         hook_point: str,
-        callback: callable,
+        callback: Callable[..., Any],
         priority: int = 100,
         name: str | None = None,
     ) -> str | None:
@@ -700,9 +700,12 @@ class AgentLoop:
         if self._hook_registry:
             from src.lifecycle_hooks import HookPoint
             # 尝试转换字符串为 HookPoint
+            point: HookPoint | str
             try:
                 point = HookPoint(hook_point)
             except ValueError:
                 point = hook_point
-            return self._hook_registry.register(point, callback, priority=priority, name=name)
+            result = self._hook_registry.register(point, callback, priority=priority, name=name)
+            # register 返回 str | Callable，直接调用时返回 str
+            return result if isinstance(result, str) else None
         return None

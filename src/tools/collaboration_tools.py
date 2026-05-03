@@ -21,12 +21,9 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.client import LLMGateway
     from src.collaboration import (
         MultiBrainOneHandOrchestrator,
         OneBrainMultiHandOrchestrator,
-        MultiBrainMultiHandOrchestrator,
-        InterAgentMessageBus,
     )
 
 logger = logging.getLogger(__name__)
@@ -40,18 +37,18 @@ _message_buses: dict[str, Any] = {}
 _session_lock = threading.Lock()
 
 # 后台任务集合
-_background_tasks: set[asyncio.Task[None]] = set()
+_background_tasks: set[asyncio.Task[Any]] = set()
 _MAX_BACKGROUND_TASKS = 50
 
 
-def _add_background_task(task: asyncio.Task[None]) -> None:
+def _add_background_task(task: asyncio.Task[Any]) -> None:
     """安全添加后台任务"""
     if len(_background_tasks) >= _MAX_BACKGROUND_TASKS:
         done_tasks = [t for t in _background_tasks if t.done()]
         for t in done_tasks:
             _background_tasks.discard(t)
     _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(lambda t: _background_tasks.discard(t))
 
 
 # === 会话管理工具 ===
@@ -199,14 +196,16 @@ def setup_multi_brain_one_hand(
         if session_id not in _collaboration_sessions:
             return f"Error: Session {session_id} not found"
 
-        session_data = _collaboration_sessions[session_id]
+        _collaboration_sessions[session_id]
 
     # 创建 Sandbox
     sandbox_config = sandbox_config or {}
+    fs_root = sandbox_config.get("file_system_root")
+    ws_path = sandbox_config.get("workspace_path")
     sandbox = Sandbox(
         isolation_level=IsolationLevel(sandbox_config.get("isolation_level", "process")),
-        file_system_root=Path(sandbox_config.get("file_system_root")) if sandbox_config.get("file_system_root") else None,
-        workspace_path=Path(sandbox_config.get("workspace_path")) if sandbox_config.get("workspace_path") else None,
+        file_system_root=Path(fs_root) if isinstance(fs_root, (str, Path)) else None,
+        workspace_path=Path(ws_path) if isinstance(ws_path, (str, Path)) else None,
     )
 
     # 创建 LLMClient
@@ -263,11 +262,11 @@ def multi_angle_analysis(
         orchestrator = _orchestrators[session_id]
 
     if not isinstance(orchestrator, MultiBrainOneHandOrchestrator):
-        return f"Error: Wrong orchestrator type for multi_angle_analysis"
+        return "Error: Wrong orchestrator type for multi_angle_analysis"
 
     # 尝试异步执行
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         task = asyncio.create_task(_run_multi_angle_analysis_async(orchestrator, target))
         _add_background_task(task)
         return f"Multi-angle analysis started for: {target[:100]}\nUse 'get_collaboration_status' to check progress."
@@ -306,15 +305,15 @@ def collaborative_improve(
         orchestrator = _orchestrators[session_id]
 
     if not isinstance(orchestrator, MultiBrainOneHandOrchestrator):
-        return f"Error: Wrong orchestrator type for collaborative_improve"
+        return "Error: Wrong orchestrator type for collaborative_improve"
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         task = asyncio.create_task(_run_collaborative_improve_async(orchestrator, target))
         _add_background_task(task)
         return f"Collaborative improvement started for: {target[:100]}"
     except RuntimeError:
-        return f"Improvement requires async context. Use in AgentLoop."
+        return "Improvement requires async context. Use in AgentLoop."
 
 
 async def _run_collaborative_improve_async(
@@ -401,15 +400,15 @@ def cross_environment_execute(
         orchestrator = _orchestrators[session_id]
 
     if not isinstance(orchestrator, OneBrainMultiHandOrchestrator):
-        return f"Error: Wrong orchestrator type for cross_environment_execute"
+        return "Error: Wrong orchestrator type for cross_environment_execute"
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         task_coro = asyncio.create_task(_run_cross_environment_async(orchestrator, task))
         _add_background_task(task_coro)
         return f"Cross-environment execution started: {task[:100]}"
     except RuntimeError:
-        return f"Execution requires async context. Use in AgentLoop."
+        return "Execution requires async context. Use in AgentLoop."
 
 
 async def _run_cross_environment_async(
@@ -442,15 +441,15 @@ def cross_environment_test(
         orchestrator = _orchestrators[session_id]
 
     if not isinstance(orchestrator, OneBrainMultiHandOrchestrator):
-        return f"Error: Wrong orchestrator type for cross_environment_test"
+        return "Error: Wrong orchestrator type for cross_environment_test"
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         task = asyncio.create_task(orchestrator.cross_environment_test(test_code))
         _add_background_task(task)
-        return f"Cross-environment test started"
+        return "Cross-environment test started"
     except RuntimeError:
-        return f"Test requires async context. Use in AgentLoop."
+        return "Test requires async context. Use in AgentLoop."
 
 
 # === 多脑多手模式工具 ===
@@ -552,18 +551,20 @@ def coordinated_task(
         orchestrator = _orchestrators[session_id]
 
     if not isinstance(orchestrator, MultiBrainMultiHandOrchestrator):
-        return f"Error: Wrong orchestrator type for coordinated_task"
+        return "Error: Wrong orchestrator type for coordinated_task"
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         if enable_dynamic_assignment:
-            task_coro = asyncio.create_task(orchestrator.dynamic_task_assignment(task))
+            bg_task: asyncio.Task[Any] = asyncio.create_task(
+                orchestrator.dynamic_task_assignment(task)
+            )
         else:
-            task_coro = asyncio.create_task(orchestrator.coordinated_execution(task))
-        _add_background_task(task_coro)
+            bg_task = asyncio.create_task(orchestrator.coordinated_execution(task))
+        _add_background_task(bg_task)
         return f"Coordinated task started: {task[:100]}\nDynamic assignment: {enable_dynamic_assignment}"
     except RuntimeError:
-        return f"Task requires async context. Use in AgentLoop."
+        return "Task requires async context. Use in AgentLoop."
 
 
 # === 消息传递工具 ===
@@ -587,7 +588,6 @@ def send_agent_message(
     Returns:
         发送结果
     """
-    from src.collaboration import InterAgentMessageBus
 
     with _session_lock:
         if session_id not in _message_buses:
@@ -596,14 +596,14 @@ def send_agent_message(
         message_bus = _message_buses[session_id]
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         task = asyncio.create_task(
             message_bus.send_message(from_agent, to_agent, message_type, content)
         )
         _add_background_task(task)
         return f"Message sent: {from_agent} -> {to_agent}\nType: {message_type}"
     except RuntimeError:
-        return f"Message sending requires async context. Use in AgentLoop."
+        return "Message sending requires async context. Use in AgentLoop."
 
 
 def broadcast_message(
@@ -625,7 +625,6 @@ def broadcast_message(
     Returns:
         广播结果
     """
-    from src.collaboration import InterAgentMessageBus
 
     with _session_lock:
         if session_id not in _message_buses:
@@ -634,14 +633,14 @@ def broadcast_message(
         message_bus = _message_buses[session_id]
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         task = asyncio.create_task(
             message_bus.broadcast(from_agent, message_type, content, exclude_self)
         )
         _add_background_task(task)
         return f"Message broadcast from: {from_agent}\nType: {message_type}"
     except RuntimeError:
-        return f"Broadcast requires async context. Use in AgentLoop."
+        return "Broadcast requires async context. Use in AgentLoop."
 
 
 def receive_agent_messages(
@@ -659,7 +658,6 @@ def receive_agent_messages(
     Returns:
         消息列表
     """
-    from src.collaboration import InterAgentMessageBus
 
     with _session_lock:
         if session_id not in _message_buses:
@@ -668,7 +666,7 @@ def receive_agent_messages(
         message_bus = _message_buses[session_id]
 
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         task = asyncio.create_task(
             message_bus.receive_messages(agent_id, message_types)
         )
@@ -695,7 +693,6 @@ def register_message_handler(
     Returns:
         注册结果
     """
-    from src.collaboration import InterAgentMessageBus
 
     with _session_lock:
         if session_id not in _message_buses:

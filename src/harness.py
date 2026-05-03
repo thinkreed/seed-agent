@@ -43,7 +43,6 @@ from src.lifecycle_hooks import HookPoint, LifecycleHookRegistry, HookTriggerRep
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
-    from src.context_engineering import CompressionConfig, PruningConfig
 from src.observability import (
     SPAN_TOOL_PREFIX,
     StatusCode,

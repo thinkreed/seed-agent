@@ -19,7 +19,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, overload
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +218,26 @@ class LifecycleHookRegistry:
         logger.info("LifecycleHookRegistry initialized")
 
     # === 注册 ===
+
+    @overload
+    def register(
+        self,
+        hook_point: HookPoint | str,
+        callback: None = None,
+        priority: int = 0,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> Callable[[Callable], Callable]: ...
+
+    @overload
+    def register(
+        self,
+        hook_point: HookPoint | str,
+        callback: Callable,
+        priority: int = 0,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> str: ...
 
     def register(
         self,

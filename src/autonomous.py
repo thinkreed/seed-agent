@@ -369,7 +369,7 @@ class AutonomousExplorer:
             else:
                 self.on_explore_complete(result)
 
-    async def _handle_response(self, response: str | None) -> str:
+    async def _handle_response(self, response: str | None) -> str | None:
         """处理agent响应并返回下一轮的 prompt
 
         不再直接修改 history，而是返回合适的 prompt 供下一轮 run() 使用。

@@ -326,7 +326,7 @@ class CredentialIsolatedSandbox(SecureSandbox):
                 cwd=str(self._workspace_path),
             )
 
-            stdout, stderr = await proc.communicate(timeout=30.0)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
 
             if proc.returncode != 0:
                 error_msg = stderr.decode() if stderr else "Unknown error"
@@ -634,7 +634,7 @@ class CredentialIsolatedSandbox(SecureSandbox):
                 env=self._create_isolated_environment(),
             )
 
-            stdout, stderr = await proc.communicate(timeout=5.0)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             result = stdout.decode().strip()
 
             # 验证结果

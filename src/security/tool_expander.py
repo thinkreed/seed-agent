@@ -14,6 +14,7 @@
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -474,7 +475,7 @@ class ProgressiveToolExpander:
 
         return stats
 
-    def register_tool_callback(self, callback: callable) -> None:
+    def register_tool_callback(self, callback: Callable[[str], None]) -> None:
         """注册工具扩展回调函数
 
         当工具层级扩展时，回调函数会被调用以注册新工具

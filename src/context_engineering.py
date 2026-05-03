@@ -917,6 +917,9 @@ class IntelligentContextPruner:
         # 构建批量提示
         batch_prompt = self._build_batch_relevance_prompt(history, task)
 
+        # 类型断言：调用此方法前已检查 gateway 和 model_id
+        assert self._gateway is not None and self._model_id is not None
+
         try:
             response = await self._gateway.chat_completion(
                 self._model_id,
