@@ -275,10 +275,58 @@ class SessionEventStream:
 
         return self.emit_event(EventType.SUMMARY_MARKER, marker_data)
 
+    def create_context_reset_marker(
+        self,
+        iteration: int,
+        preserved_context: str | None = None
+    ) -> int:
+        """创建上下文重置标记 (Ralph Loop 使用)
+
+        此标记用于指示上下文重置点，build_context_for_llm 会识别此标记
+        并只返回重置点之后的事件。
+
+        Args:
+            iteration: 当前迭代次数
+            preserved_context: 保留的关键上下文
+
+        Returns:
+            重置标记事件 ID
+        """
+        marker_data: dict[str, Any] = {
+            "iteration": iteration,
+            "preserved_context": preserved_context,
+            "created_at": time.time()
+        }
+
+        return self.emit_event(EventType.CONTEXT_RESET, marker_data)
+
     def find_last_summary_marker(self) -> dict[str, Any] | None:
         """找到最近的摘要标记"""
         for event in reversed(self._events):
             if event["type"] == EventType.SUMMARY_MARKER.value:
+                return event
+        return None
+
+    def find_last_reset_marker(self) -> dict[str, Any] | None:
+        """找到最近的上下文重置标记"""
+        for event in reversed(self._events):
+            if event["type"] == EventType.CONTEXT_RESET.value:
+                return event
+        return None
+
+    def find_last_boundary_marker(self) -> dict[str, Any] | None:
+        """找到最近的边界标记（摘要或上下文重置）
+
+        用于确定构建上下文时的起始点。
+
+        Returns:
+            最近的边界标记事件，或 None
+        """
+        for event in reversed(self._events):
+            if event["type"] in (
+                EventType.SUMMARY_MARKER.value,
+                EventType.CONTEXT_RESET.value
+            ):
                 return event
         return None
 
@@ -377,7 +425,7 @@ class SessionEventStream:
     ) -> list[dict[str, Any]]:
         """从事件流构建 LLM 上下文
 
-        关键: 使用摘要标记而非截断历史
+        关键: 使用边界标记（摘要或上下文重置）而非截断历史
 
         Args:
             system_prompt: 系统提示
@@ -392,25 +440,45 @@ class SessionEventStream:
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
-        # 2. 找到最近的摘要标记
-        last_summary = self.find_last_summary_marker()
+        # 2. 找到最近的边界标记（摘要或上下文重置）
+        last_boundary = self.find_last_boundary_marker()
 
-        # 3. 添加摘要作为上下文
-        if last_summary:
-            summary_content = last_summary["data"].get("summary", "")
-            messages.append({
-                "role": "user",
-                "content": f"[历史摘要]\n{summary_content}"
-            })
+        # 3. 根据标记类型添加上下文
+        if last_boundary:
+            event_type = last_boundary["type"]
+            data = last_boundary["data"]
 
-        # 4. 获取摘要点后的事件
+            if event_type == EventType.SUMMARY_MARKER.value:
+                # 摘要标记：添加摘要作为上下文
+                summary_content = data.get("summary", "")
+                messages.append({
+                    "role": "user",
+                    "content": f"[历史摘要]\n{summary_content}"
+                })
+            elif event_type == EventType.CONTEXT_RESET.value:
+                # 上下文重置标记：添加保留的上下文
+                preserved = data.get("preserved_context")
+                iteration = data.get("iteration", 0)
+                if preserved:
+                    messages.append({
+                        "role": "system",
+                        "content": f"[迭代 {iteration} 状态摘要]\n{preserved}"
+                    })
+
+        # 4. 获取边界点后的事件
         context_event_types: list[str | EventType] = [
             EventType.USER_INPUT,
             EventType.LLM_RESPONSE,
             EventType.TOOL_RESULT
         ]
 
-        recent_events = self.get_events_since_last_summary(context_event_types)
+        # 使用边界标记后的起始 ID
+        if last_boundary:
+            start_id = last_boundary["id"] + 1
+        else:
+            start_id = 0
+
+        recent_events = self.get_events(start_id, event_types=context_event_types)
 
         # 5. 应用上下文窗口限制
         if max_recent_events and len(recent_events) > max_recent_events:

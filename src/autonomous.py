@@ -27,7 +27,6 @@ from src.ralph_state import (
     extract_critical_context,
     load_or_init_state,
     persist_state,
-    reset_context,
 )
 
 logger = logging.getLogger("seed_agent")
@@ -166,22 +165,29 @@ class AutonomousExplorer:
         return extract_critical_context(self.agent.history)
 
     async def _reset_context_if_needed(self) -> str | None:
-        """条件性重置上下文（防止上下文漂移，使用共享模块）"""
+        """条件性重置上下文（防止上下文漂移）
+
+        使用 SessionEventStream 的上下文重置标记，而不是直接清空 history。
+        这样确保所有状态变更都通过 Session 正确记录。
+        """
         if not CONTEXT_RESET_ENABLED:
+            return None
+
+        # 仅在指定间隔执行
+        if self._iteration_count % CONTEXT_RESET_INTERVAL != 0:
             return None
 
         # 提取关键上下文
         preserved = extract_critical_context(self.agent.history)
 
-        # 使用共享模块执行重置
-        did_reset = reset_context(
-            history=self.agent.history,
+        # 通过 Session 创建上下文重置标记
+        self.agent.session.create_context_reset_marker(
             iteration=self._iteration_count,
-            reset_interval=CONTEXT_RESET_INTERVAL,
-            preserved_context=preserved,
+            preserved_context=preserved
         )
 
-        return preserved if did_reset else None
+        logger.info(f"Context reset marker created at iteration {self._iteration_count}")
+        return preserved
 
     def _persist_state(self, response: str = ""):
         """持久化当前状态（使用共享模块）"""
@@ -271,6 +277,8 @@ class AutonomousExplorer:
     async def _run_ralph_loop(self) -> str | None:
         """执行Ralph Loop主循环"""
         response: str | None = None  # Initialize before loop to avoid UnboundLocalError
+        next_prompt: str = "继续执行自主探索任务"  # 初始 prompt
+
         while True:
             self._iteration_count += 1
 
@@ -287,7 +295,7 @@ class AutonomousExplorer:
 
             await self._reset_context_if_needed()
             try:
-                response = await self.agent.run("继续执行自主探索任务")
+                response = await self.agent.run(next_prompt)
             except Exception as e:
                 logger.error(f"Agent execution failed at iteration {self._iteration_count}: {type(e).__name__}: {e}")
                 response = f"Error: {e!s}"
@@ -298,7 +306,8 @@ class AutonomousExplorer:
                 self._cleanup_state()
                 break
 
-            await self._handle_response(response)
+            # 获取下一轮的 prompt（如果有）
+            next_prompt = await self._handle_response(response) or "继续执行自主探索任务"
             await asyncio.sleep(2)
 
         return response
@@ -311,18 +320,26 @@ class AutonomousExplorer:
             else:
                 self.on_explore_complete(result)
 
-    async def _handle_response(self, response: str | None):
-        """处理agent响应"""
+    async def _handle_response(self, response: str | None) -> str:
+        """处理agent响应并返回下一轮的 prompt
+
+        不再直接修改 history，而是返回合适的 prompt 供下一轮 run() 使用。
+        这样所有用户输入都通过 SessionEventStream 正确记录。
+
+        Returns:
+            下一轮执行的 prompt，或者 None 表示不继续
+        """
         if not response:
             self._empty_response_count += 1
             logger.warning(f"Empty response at iteration {self._iteration_count} "
                            f"(count: {self._empty_response_count})")
             if self._empty_response_count >= 3:
                 logger.warning("Too many empty responses, trying simplified prompt")
-                self.agent.history.append({"role": "user", "content": "请报告当前状态"})
+                return "请报告当前状态"
             else:
-                prompt = self._sop_content or ""
-                self.agent.history.append({"role": "user", "content": prompt})
+                # 返回简化的继续提示，而不是完整的 SOP
+                return "继续执行自主探索任务，请报告进展"
+        return None
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
         """构建自主探索 prompt（包含完整 system prompt + skills + SOP + Memory Graph 选择）"""

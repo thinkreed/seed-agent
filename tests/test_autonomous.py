@@ -479,29 +479,30 @@ class TestResponseHandling(unittest.TestCase):
         """测试第一次空响应"""
         self.explorer._empty_response_count = 0
         import asyncio
-        asyncio.run(self.explorer._handle_response(None))
+        result = asyncio.run(self.explorer._handle_response(None))
         self.assertEqual(self.explorer._empty_response_count, 1)
+        # 新版本返回 prompt 字符串
+        self.assertIsNotNone(result)
+        self.assertIn("继续执行自主探索任务", result)
 
     def test_handle_empty_response_third(self):
         """测试第三次空响应触发简化 prompt"""
         self.explorer._empty_response_count = 2
-        # 使用 MagicMock 来跟踪 append 调用
-        self.mock_agent.history = MagicMock()
-        self.explorer.agent = self.mock_agent
         import asyncio
-        asyncio.run(self.explorer._handle_response(None))
+        result = asyncio.run(self.explorer._handle_response(None))
         self.assertEqual(self.explorer._empty_response_count, 3)
-        # 检查是否调用了 append
-        self.mock_agent.history.append.assert_called_once()
-        call_args = self.mock_agent.history.append.call_args
-        self.assertIn("请报告当前状态", str(call_args))
+        # 新版本返回 prompt 字符串而不是修改 history
+        self.assertIsNotNone(result)
+        self.assertIn("请报告当前状态", result)
 
     def test_handle_nonempty_response(self):
         """测试非空响应"""
         self.explorer._empty_response_count = 1
         import asyncio
-        asyncio.run(self.explorer._handle_response("Some response"))
+        result = asyncio.run(self.explorer._handle_response("Some response"))
         self.assertEqual(self.explorer._empty_response_count, 1)  # 不应增加
+        # 非空响应返回 None
+        self.assertIsNone(result)
 
 
 if __name__ == '__main__':
