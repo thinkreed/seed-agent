@@ -60,6 +60,35 @@
 | **RateLimiter** | `src/rate_limiter.py` | 双重限流：TokenBucket + RollingWindow |
 | **RateLimitSQLite** | `src/rate_limit_db.py` | 限流状态持久化（SQLite+WAL） |
 | **RequestQueue** | `src/request_queue.py` | 请求队列：TurnTicket模式、优先级调度 |
+| **Collaboration** | `src/collaboration.py` | 多智能体协作：三种协作模式、Session协调、消息总线 |
+
+### 多智能体协作模式
+
+基于 Harness Engineering "三件套解耦架构" 设计的三种协作模式：
+
+| 模式 | 描述 | 适用场景 |
+|------|------|----------|
+| **多脑一手** | 多个 Claude 共享一个 Sandbox | 多角度分析同一份代码 (安全审查 + 性能优化) |
+| **一脑多手** | 一个 Claude 控制多个 Sandbox | 在不同环境执行任务 (Python + Node.js) |
+| **多脑多手** | 多个 Claude 各有 Sandbox，通过 Session 协调 | 最复杂的多步骤任务 |
+
+核心组件：
+| 组件 | 文件 | 功能 |
+|------|------|------|
+| **MultiBrainOneHandOrchestrator** | `src/collaboration.py` | 多脑一手编排器：多角度分析、协作改进 |
+| **OneBrainMultiHandOrchestrator** | `src/collaboration.py` | 一脑多手编排器：跨环境执行、跨环境测试 |
+| **MultiBrainMultiHandOrchestrator** | `src/collaboration.py` | 多脑多手编排器：Session协调、动态任务分配 |
+| **InterAgentMessageBus** | `src/collaboration.py` | 智能体间消息总线：发送/接收/广播消息 |
+
+协作工具：
+- `create_collaboration_session(mode)` - 创建协作会话
+- `multi_angle_analysis(target)` - 多角度分析（多脑一手）
+- `cross_environment_execute(task)` - 跨环境执行（一脑多手）
+- `coordinated_task(task)` - 协调任务（多脑多手）
+- `send_agent_message(to, type, content)` - 发送消息
+- `broadcast_message(type, content)` - 广播消息
+
+详细设计：[docs/harness/06_multi_agent_collaboration_design.md](docs/harness/06_multi_agent_collaboration_design.md)
 
 ### 工具系统
 
@@ -71,6 +100,7 @@
 | **ralph_tools** | `src/tools/ralph_tools.py` | Ralph Loop管理：启动/状态检查/完成标记 |
 | **subagent_tools** | `src/tools/subagent_tools.py` | Subagent管理：创建/等待/聚合/终止 |
 | **session_db** | `src/tools/session_db.py` | SQLite+FTS5会话存储（jieba中文分词） |
+| **collaboration_tools** | `src/tools/collaboration_tools.py` | 多智能体协作工具：会话管理、三种模式操作、消息传递 |
 
 ### Ralph Loop 机制
 

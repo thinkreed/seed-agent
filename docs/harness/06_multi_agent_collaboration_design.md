@@ -1,32 +1,45 @@
 # 优化点 06: 多智能体协作模式
 
-> **版本**: v1.0  
-> **创建日期**: 2026-05-03  
-> **优先级**: 低  
-> **依赖**: 02_harness_sandbox_decoupling_design  
+> **版本**: v2.0 (已落地实现)
+> **创建日期**: 2026-05-03
+> **实现日期**: 2026-05-03
+> **优先级**: 低
+> **依赖**: 02_harness_sandbox_decoupling_design
+> **状态**: ✅ 已完成
 > **参考来源**: Harness Engineering "多智能体协作模式"
 
 ---
 
-## 问题分析
+## 实现状态
 
-### Harness Engineering 多智能体协作模式
+### ✅ 已完成模块
 
-得益于三件套解耦，自然支持多种协作模式：
-
-| 模式 | 描述 | 适用场景 |
+| 模块 | 文件 | 实现状态 |
 |------|------|----------|
-| **多脑一手** | 多个 Claude 实例共享一个 Sandbox | 多角度分析同一份代码 (安全审查 + 性能优化) |
-| **一脑多手** | 一个 Claude 控制多个 Sandbox | 在不同环境执行任务 (Python + Node.js) |
-| **多脑多手** | 多个 Claude 各有 Sandbox，通过共享 Session 协调 | 最复杂的多步骤任务 |
+| **MultiBrainOneHandOrchestrator** | `src/collaboration.py` | ✅ 已实现 |
+| **OneBrainMultiHandOrchestrator** | `src/collaboration.py` | ✅ 已实现 |
+| **MultiBrainMultiHandOrchestrator** | `src/collaboration.py` | ✅ 已实现 |
+| **InterAgentMessageBus** | `src/collaboration.py` | ✅ 已实现 |
+| **协作工具集** | `src/tools/collaboration_tools.py` | ✅ 已实现 |
+| **测试** | `tests/test_collaboration.py` | ✅ 已更新 |
 
-**关键架构**:
+### 关键变更
+
+1. **重写设计**: 不兼容旧 Subagent 设计，全新协作架构
+2. **三种模式完整实现**: 多脑一手、一脑多手、多脑多手
+3. **Session 协调**: 使用 SessionEventStream 作为协调中心
+4. **消息总线**: InterAgentMessageBus 支持智能体间通信
+
+---
+
+## 落地架构
+
+### 多脑一手模式
 
 ```
-多脑一手模式:
 ┌───────────┐  ┌───────────┐
-│ Claude 1  │  │ Claude 2  │  ← 多个大脑
-│ (安全审查) │  │ (性能优化) │
+│ LLMClient │  │ LLMClient │  ← 多个大脑
+│(安全审查) │  │(性能优化) │
 └─────┬─────┘  └─────┬─────┘
       │              │
       └──────┬───────┘
@@ -35,10 +48,18 @@
     ┌─────────────────┐
     │   Shared Sandbox │  ← 共享工作台
     └─────────────────┘
+```
 
-一脑多手模式:
+**实现**:
+- `MultiBrainOneHandOrchestrator` 管理多个 LLMClient + 一个共享 Sandbox
+- `analyze_from_multiple_angles()` 多角度分析
+- `collaborative_improve()` 融合建议并执行改进
+
+### 一脑多手模式
+
+```
 ┌─────────────────┐
-│    Claude       │  ← 单个大脑
+│    LLMClient    │  ← 单个大脑
 │   (主控制器)     │
 └─────┬─────┬─────┘
       │     │
@@ -47,10 +68,18 @@
 │ Sandbox │  │ Sandbox │  ← 多个工作台
 │ (Python)│  │ (Node.js)│
 └─────────┘  └─────────┘
+```
 
-多脑多手模式:
+**实现**:
+- `OneBrainMultiHandOrchestrator` 管理一个 LLMClient + 多个 Sandbox
+- `execute_in_multiple_environments()` 跨环境执行
+- `cross_environment_test()` 跨环境测试
+
+### 多脑多手模式 + Session 协调
+
+```
 ┌───────────┐        ┌───────────┐
-│ Claude 1  │        │ Claude 2  │
+│ LLMClient │        │ LLMClient │
 └─────┬─────┘        └─────┬─────┘
       │                    │
       ▼                    ▼
@@ -62,484 +91,127 @@
              │
              ▼
     ┌─────────────────┐
-    │  Shared Session │  ← 共享协调中心
+    │ SessionEventStream │  ← 共享协调中心
+    │ + MessageBus     │
     └─────────────────┘
 ```
 
-### seed-agent 当前 Subagent 机制
-
-**已实现**:
-
-| 能力 | 实现位置 | 描述 |
-|------|----------|------|
-| SubagentInstance | `subagent.py` | 独立上下文子代理 |
-| SubagentManager | `subagent_manager.py` | 并行执行调度 (最大 3 个) |
-| RalphSubagentOrchestrator | `subagent_manager.py` | Plan→Implement→Review 流程 |
-
-**当前模式**:
-
-```python
-# 一脑多手 (部分支持)
-class SubagentManager:
-    async def run_parallel(self, task_ids: list[str]) -> dict[str, SubagentResult]:
-        """并行执行多个子代理"""
-        tasks = [self.run_subagent(task_id) for task_id in task_ids]
-        results = await asyncio.gather(*tasks)
-        return results
-```
-
-**问题**:
-- ❌ 无共享 Sandbox 模式 (多脑一手)
-- ❌ 无共享 Session 协调 (多脑多手)
-- ❌ Subagent 间无通信机制
-- ❌ 无动态任务分配
-- ❌ 无协作进度同步
+**实现**:
+- `MultiBrainMultiHandOrchestrator` 管理多个 (LLMClient, Sandbox) 组合
+- `coordinated_execution()` Session 协调执行
+- `dynamic_task_assignment()` 动态任务分配
+- `InterAgentMessageBus` 智能体间消息传递
 
 ---
 
-## 设计方案
+## 实现细节
 
-### 1. 多脑一手模式
+### MultiBrainOneHandOrchestrator
 
 ```python
 class MultiBrainOneHandOrchestrator:
     """多脑一手: 多个 Claude 共享一个 Sandbox"""
-    
+
     def __init__(
         self,
         sandbox: Sandbox,
-        num_brains: int = 2,
-        claude_configs: list[dict] = None,
+        llm_clients: list[LLMClient],
+        perspectives: list[str] | None = None,
     ):
         self.sandbox = sandbox  # 共享工作台
-        
-        # 创建多个 Claude 大脑
-        if claude_configs:
-            self.brains = [
-                ClaudeClient(LLMGateway(cfg["gateway"]), cfg["model_id"])
-                for cfg in claude_configs
-            ]
-        else:
-            self.brains = [
-                ClaudeClient(LLMGateway(DEFAULT_GATEWAY), DEFAULT_MODEL)
-                for _ in range(num_brains)
-            ]
-        
-        self._perspectives: list[str] = []  # 分析视角
-    
-    def register_perspective(self, brain_index: int, perspective: str) -> None:
-        """为 Claude 注册分析视角
-        
-        Args:
-            brain_index: 大脑索引
-            perspective: 分析视角 (如 "security", "performance", "readability")
-        """
-        self._perspectives.append(perspective)
-    
+        self.llm_clients = llm_clients  # 多个大脑
+        self._perspectives = perspectives or ["perspective_0", ...]
+
     async def analyze_from_multiple_angles(self, target: str) -> dict:
         """多角度分析
-        
-        Args:
-            target: 分析目标 (文件路径、代码片段等)
-        
-        Returns:
-            多角度分析结果
+
+        1. 共享 Sandbox 读取目标
+        2. 每个 Claude 从不同视角分析（并行）
+        3. 返回多角度分析结果
         """
-        # 1. 共享 Sandbox 读取目标
-        target_content = await self.sandbox.execute_tool({
-            "function": {"name": "file_read", "arguments": json.dumps({"path": target})}
-        })
-        
-        # 2. 每个 Claude 从不同视角分析
-        analyses = await asyncio.gather(
-            *[self._analyze_with_perspective(brain, perspective, target_content)
-              for brain, perspective in zip(self.brains, self._perspectives)]
-        )
-        
-        # 3. 结果聚合
-        return {
-            "target": target,
-            "analyses": [
-                {"perspective": perspective, "result": analysis}
-                for perspective, analysis in zip(self._perspectives, analyses)
-            ],
-            "sandbox_state": self.sandbox.get_state(),
-        }
-    
-    async def _analyze_with_perspective(
-        self,
-        brain: ClaudeClient,
-        perspective: str,
-        content: str,
-    ) -> str:
-        """从特定视角分析"""
-        prompt = f"""请从 {perspective} 视角分析以下代码:
 
-```
-{content}
-```
-
-分析要点:
-1. {perspective} 相关问题
-2. 潜在风险
-3. 改进建议
-"""
-        
-        response = await brain.reason([{"role": "user", "content": prompt}])
-        return response["choices"][0]["message"]["content"]
-    
-    async def collaborative_improve(self, target: str) -> str:
+    async def collaborative_improve(self, target: str) -> dict:
         """协作改进
-        
-        流程:
+
         1. 多角度分析
-        2. 融合改进建议
+        2. 融合改进建议（由主 Claude 决断）
         3. 共享 Sandbox 执行改进
         """
-        # 1. 多角度分析
-        analysis_result = await self.analyze_from_multiple_angles(target)
-        
-        # 2. 融合改进建议 (由主 Claude 决断)
-        merged_suggestions = await self._merge_suggestions(analysis_result)
-        
-        # 3. 共享 Sandbox 执行改进
-        improvement_result = await self.sandbox.execute_tool({
-            "function": {"name": "file_edit", "arguments": json.dumps({
-                "path": target,
-                "old_str": merged_suggestions["old"],
-                "new_str": merged_suggestions["new"],
-            })}
-        })
-        
-        return improvement_result
 ```
 
-### 2. 一脑多手模式
+### OneBrainMultiHandOrchestrator
 
 ```python
 class OneBrainMultiHandOrchestrator:
     """一脑多手: 一个 Claude 控制多个 Sandbox"""
-    
+
     def __init__(
         self,
-        brain: ClaudeClient,
+        llm_client: LLMClient,
         sandbox_configs: list[dict],
+        labels: list[str] | None = None,
     ):
-        self.brain = brain  # 单个大脑
-        
-        # 创建多个工作台
-        self.sandboxes: list[Sandbox] = [
-            Sandbox(**config) for config in sandbox_configs
-        ]
-        
-        self._sandbox_labels: dict[int, str] = {}  # 工作台标签
-    
-    def label_sandbox(self, index: int, label: str) -> None:
-        """为 Sandbox 标签
-        
-        Args:
-            index: Sandbox 索引
-            label: 标签 (如 "python_env", "node_env", "browser")
-        """
-        self._sandbox_labels[index] = label
-    
+        self.llm_client = llm_client  # 单个大脑
+        self.sandboxes: list[Sandbox] = [...]  # 多个工作台
+        self._sandbox_labels: dict[int, str] = {...}  # 工作台标签
+
     async def execute_in_multiple_environments(self, task: str) -> dict:
-        """在不同环境执行任务
-        
-        Args:
-            task: 任务描述
-        
-        Returns:
-            各环境执行结果
+        """跨环境执行
+
+        1. 大脑规划各环境任务
+        2. 分发到各 Sandbox 执行
+        3. 大脑聚合结果
         """
-        # 1. 大脑规划 (决定各环境任务)
-        plan = await self._plan_for_multi_hand(task)
-        
-        # 2. 分发到各 Sandbox
-        results = {}
-        
-        for sandbox_idx, sandbox_tasks in plan.items():
-            sandbox = self.sandboxes[sandbox_idx]
-            label = self._sandbox_labels.get(sandbox_idx, f"sandbox_{sandbox_idx}")
-            
-            # 执行该 Sandbox 的任务
-            sandbox_results = await self._execute_sandbox_tasks(sandbox, sandbox_tasks)
-            results[label] = sandbox_results
-        
-        # 3. 大脑聚合结果
-        aggregated = await self._aggregate_results(results)
-        
-        return {
-            "plan": plan,
-            "execution_results": results,
-            "aggregated_result": aggregated,
-        }
-    
-    async def _plan_for_multi_hand(self, task: str) -> dict[int, list[dict]]:
-        """大脑规划多环境任务分配"""
-        sandbox_descriptions = [
-            self._sandbox_labels.get(i, f"Sandbox {i}: {self.sandboxes[i].isolation_level}")
-            for i in range(len(self.sandboxes))
-        ]
-        
-        prompt = f"""请为以下任务规划多环境执行方案:
 
-任务: {task}
-
-可用环境:
-{chr(10).join(sandbox_descriptions)}
-
-规划格式:
-环境 0: [任务列表]
-环境 1: [任务列表]
-...
-"""
-        
-        response = await self.brain.reason([{"role": "user", "content": prompt}])
-        plan_text = response["choices"][0]["message"]["content"]
-        
-        # 解析规划
-        return self._parse_plan(plan_text)
-    
-    async def _execute_sandbox_tasks(self, sandbox: Sandbox, tasks: list[dict]) -> list[str]:
-        """执行 Sandbox 任务列表"""
-        results = []
-        
-        for task in tasks:
-            result = await sandbox.execute_tool({
-                "function": {
-                    "name": task["tool"],
-                    "arguments": json.dumps(task["args"])
-                }
-            })
-            results.append(result)
-        
-        return results
-    
-    async def cross_environment_test(self, code_path: str) -> dict:
+    async def cross_environment_test(self, test_code: str) -> dict:
         """跨环境测试
-        
-        在 Python 和 Node.js 环境同时测试代码
+
+        在 Python 和 Node.js 等多环境同时测试
         """
-        # 1. 规划测试方案
-        test_plan = await self._plan_cross_env_test(code_path)
-        
-        # 2. Python Sandbox 执行 Python 测试
-        python_results = await self.sandboxes[0].execute_tool({
-            "function": {
-                "name": "code_as_policy",
-                "arguments": json.dumps({
-                    "code": test_plan["python_test"],
-                    "language": "python"
-                })
-            }
-        })
-        
-        # 3. Node.js Sandbox 执行 JS 测试
-        node_results = await self.sandboxes[1].execute_tool({
-            "function": {
-                "name": "code_as_policy",
-                "arguments": json.dumps({
-                    "code": test_plan["node_test"],
-                    "language": "javascript"
-                })
-            }
-        })
-        
-        return {
-            "python_test": python_results,
-            "node_test": node_results,
-            "cross_env_valid": "PASS" in python_results and "PASS" in node_results,
-        }
 ```
 
-### 3. 多脑多手模式 + Session 共享协调
+### MultiBrainMultiHandOrchestrator
 
 ```python
 class MultiBrainMultiHandOrchestrator:
     """多脑多手: 多个 Claude + 多个 Sandbox + Session 协调"""
-    
+
     def __init__(
         self,
-        brain_sandbox_pairs: list[tuple[ClaudeClient, Sandbox]],
-        shared_session: SessionEventStream,
+        session: SessionEventStream,
+        agent_sandbox_pairs: list[tuple[LLMClient, Sandbox]],
+        message_bus: InterAgentMessageBus | None = None,
     ):
-        self._pairs = brain_sandbox_pairs
-        self.shared_session = shared_session  # 共享协调中心
-        
-        self._pair_ids: list[str] = []
-        self._task_assignments: dict[str, list[dict]] = {}
-    
-    def register_pair(self, brain: ClaudeClient, sandbox: Sandbox, pair_id: str = None) -> str:
-        """注册 Claude + Sandbox 组合"""
-        pair_id = pair_id or str(uuid.uuid4())[:8]
-        self._pairs.append((brain, sandbox))
-        self._pair_ids.append(pair_id)
-        return pair_id
-    
-    async def coordinated_execution(self, task: str) -> dict:
+        self.session = session  # 共享协调中心
+        self._pairs = agent_sandbox_pairs
+        self._message_bus = message_bus
+
+    async def coordinated_execution(self, task: str) -> CoordinationResult:
         """协调执行
-        
-        流程:
+
         1. Session 记录任务
-        2. 各组合独立执行
+        2. 各组合独立执行（并行）
         3. 结果记录到 Session
         4. Session 协调合并
         """
-        # 1. Session 记录任务
-        self.shared_session.emit_event("multi_agent_task", {
-            "task": task,
-            "pairs": self._pair_ids,
-        })
-        
-        # 2. 各组合独立执行
-        pair_results = await asyncio.gather(
-            *[self._execute_pair(brain, sandbox, task, pair_id)
-              for brain, sandbox, pair_id in zip(
-                  [p[0] for p in self._pairs],
-                  [p[1] for p in self._pairs],
-                  self._pair_ids
-              )]
-        )
-        
-        # 3. 结果记录到 Session
-        for pair_id, result in zip(self._pair_ids, pair_results):
-            self.shared_session.emit_event("pair_result", {
-                "pair_id": pair_id,
-                "result": result,
-            })
-        
-        # 4. Session 协调合并
-        merged = await self._merge_from_session()
-        
-        return {
-            "task": task,
-            "pair_results": pair_results,
-            "merged_result": merged,
-            "session_events": self.shared_session.get_events(),
-        }
-    
-    async def _execute_pair(
-        self,
-        brain: ClaudeClient,
-        sandbox: Sandbox,
-        task: str,
-        pair_id: str,
-    ) -> dict:
-        """单个组合执行"""
-        # 1. 从 Session 获取当前状态
-        session_state = self.shared_session.replay_to_state(
-            self.shared_session._event_counter
-        )
-        
-        # 2. 构建上下文 (包含其他组合的进度)
-        context = self._build_pair_context(task, session_state)
-        
-        # 3. Claude 推理
-        response = await brain.reason(context)
-        
-        # 4. Sandbox 执行工具
-        results = []
-        if response.get("tool_calls"):
-            for tc in response["tool_calls"]:
-                result = await sandbox.execute_tool(tc)
-                results.append(result)
-        
-        return {
-            "pair_id": pair_id,
-            "response": response,
-            "tool_results": results,
-        }
-    
-    async def _merge_from_session(self) -> dict:
-        """从 Session 合并所有结果"""
-        # 获取所有 pair_result 事件
-        pair_events = [
-            e for e in self.shared_session.get_events()
-            if e["type"] == "pair_result"
-        ]
-        
-        # 合并逻辑
-        merged = {
-            "total_pairs": len(pair_events),
-            "successful_pairs": sum(1 for e in pair_events if "error" not in e["data"]["result"]),
-            "results": [e["data"]["result"] for e in pair_events],
-        }
-        
-        return merged
-    
-    # === 动态任务分配 ===
-    
+
     async def dynamic_task_assignment(self, task: str) -> dict:
         """动态任务分配
-        
+
         根据执行进度动态调整任务分配
         """
-        # 1. 初始分配
-        initial_assignments = await self._initial_assignment(task)
-        
-        # 2. 执行监控
-        for iteration in range(MAX_DYNAMIC_ITERATIONS):
-            # 执行当前分配
-            results = await self._execute_assignments(initial_assignments)
-            
-            # 检查完成状态
-            completed_pairs = self._check_completion(results)
-            
-            if len(completed_pairs) == len(self._pairs):
-                break
-            
-            # 3. 动态重分配
-            remaining_task = self._extract_remaining_task(results)
-            new_assignments = await self._reassign_tasks(remaining_task, completed_pairs)
-            
-            initial_assignments = new_assignments
-        
-        return {
-            "initial_assignments": initial_assignments,
-            "final_results": results,
-            "iterations": iteration,
-        }
-    
-    async def _reassign_tasks(
-        self,
-        remaining_task: str,
-        completed_pairs: list[str],
-    ) -> dict[str, list[dict]]:
-        """重新分配任务给未完成的组合"""
-        active_pairs = [pid for pid in self._pair_ids if pid not in completed_pairs]
-        
-        # 使用 Session 中已完成的结果辅助决策
-        completed_results = [
-            e["data"]["result"]
-            for e in self.shared_session.get_events()
-            if e["type"] == "pair_result" and e["data"]["pair_id"] in completed_pairs
-        ]
-        
-        # 新分配
-        assignments = {}
-        for pair_id in active_pairs:
-            assignments[pair_id] = [{"task": remaining_task, "context": completed_results}]
-        
-        return assignments
 ```
 
-### 4. 协作通信机制
+### InterAgentMessageBus
 
 ```python
 class InterAgentMessageBus:
     """智能体间消息传递总线"""
-    
+
     def __init__(self, session: SessionEventStream):
         self.session = session
         self._message_handlers: dict[str, list[Callable]] = {}
-    
-    def register_handler(self, message_type: str, handler: Callable) -> None:
-        """注册消息处理器"""
-        if message_type not in self._message_handlers:
-            self._message_handlers[message_type] = []
-        self._message_handlers[message_type].append(handler)
-    
+
     async def send_message(
         self,
         from_agent: str,
@@ -547,85 +219,89 @@ class InterAgentMessageBus:
         message_type: str,
         content: dict,
     ) -> int:
-        """发送消息
-        
-        Args:
-            from_agent: 发送方 ID
-            to_agent: 接收方 ID
-            message_type: 消息类型
-            content: 消息内容
-        
-        Returns:
-            message_id
-        """
-        message_id = self.session.emit_event("inter_agent_message", {
-            "from": from_agent,
-            "to": to_agent,
-            "type": message_type,
-            "content": content,
-            "timestamp": time.time(),
-        })
-        
-        return message_id
-    
+        """发送消息（记录到 Session）"""
+
     async def receive_messages(self, agent_id: str) -> list[dict]:
-        """接收消息
-        
-        Args:
-            agent_id: 接收方 ID
-        
-        Returns:
-            消息列表
-        """
-        # 从 Session 筛选消息
-        messages = [
-            e["data"]
-            for e in self.session.get_events()
-            if e["type"] == "inter_agent_message" and e["data"]["to"] == agent_id
-        ]
-        
-        # 处理消息
-        for msg in messages:
-            handlers = self._message_handlers.get(msg["type"], [])
-            for handler in handlers:
-                await handler(msg)
-        
-        return messages
-    
-    async def broadcast(self, from_agent: str, message_type: str, content: dict) -> None:
+        """接收消息（从 Session 筛选）"""
+
+    async def broadcast(
+        self,
+        from_agent: str,
+        message_type: str,
+        content: dict,
+    ) -> list[int]:
         """广播消息"""
-        for pair_id in self._pair_ids:
-            await self.send_message(from_agent, pair_id, message_type, content)
 ```
 
 ---
 
-## 实施步骤
+## 协作工具集
 
-### Phase 1: 多脑一手模式 (3天)
+### 会话管理工具
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 1.1 | 实现 MultiBrainOneHandOrchestrator | 共享 Sandbox 正确 |
-| 1.2 | 实现多角度分析 | analyze_from_multiple_angles |
-| 1.3 | 实现协作改进 | collaborative_improve |
+| 工具 | 功能 |
+|------|------|
+| `create_collaboration_session` | 创建协作会话 |
+| `get_collaboration_status` | 获取协作状态 |
+| `destroy_collaboration_session` | 销毁协作会话 |
 
-### Phase 2: 一脑多手模式 (3天)
+### 多脑一手模式工具
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 2.1 | 实现 OneBrainMultiHandOrchestrator | 多 Sandbox 正确 |
-| 2.2 | 实现任务分配 | plan_for_multi_hand |
-| 2.3 | 实现跨环境测试 | cross_environment_test |
+| 工具 | 功能 |
+|------|------|
+| `setup_multi_brain_one_hand` | 设置多脑一手编排器 |
+| `multi_angle_analysis` | 多角度分析 |
+| `collaborative_improve` | 协作改进 |
 
-### Phase 3: 多脑多手 + Session 协调 (5天)
+### 一脑多手模式工具
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 3.1 | 实现 MultiBrainMultiHandOrchestrator | Session 协调正确 |
-| 3.2 | 实现消息总线 | InterAgentMessageBus |
-| 3.3 | 实现动态任务分配 | dynamic_task_assignment |
-| 3.4 | 集成测试 | 三种模式协作正确 |
+| 工具 | 功能 |
+|------|------|
+| `setup_one_brain_multi_hand` | 设置一脑多手编排器 |
+| `cross_environment_execute` | 跨环境执行 |
+| `cross_environment_test` | 跨环境测试 |
+
+### 多脑多手模式工具
+
+| 工具 | 功能 |
+|------|------|
+| `setup_multi_brain_multi_hand` | 设置多脑多手编排器 |
+| `coordinated_task` | 协调任务 |
+
+### 消息传递工具
+
+| 工具 | 功能 |
+|------|------|
+| `send_agent_message` | 发送智能体消息 |
+| `broadcast_message` | 广播消息 |
+| `receive_agent_messages` | 接收消息 |
+| `register_message_handler` | 注册处理器 |
+
+---
+
+## 测试验证
+
+### 测试覆盖
+
+| 测试类 | 覆盖内容 |
+|----------|----------|
+| `TestCollaborationMode` | 协作模式枚举 |
+| `TestAgentInstance` | 智能体实例 |
+| `TestAnalysisResult` | 分析结果 |
+| `TestMultiBrainOneHandOrchestrator` | 多脑一手编排器 |
+| `TestOneBrainMultiHandOrchestrator` | 一脑多手编排器 |
+| `TestMultiBrainMultiHandOrchestrator` | 多脑多手编排器 |
+| `TestInterAgentMessageBus` | 消息总线 |
+| `TestCollaborationTools` | 协作工具函数 |
+| `TestIntegration` | 集成测试 |
+
+### 验证标准
+
+1. **多脑一手**: 多角度分析返回正确数量结果
+2. **一脑多手**: 跨环境执行覆盖所有 Sandbox
+3. **多脑多手**: Session 协调正确记录和合并
+4. **消息总线**: 发送、接收、广播正确工作
+5. **工具函数**: 会话创建、状态查询、销毁正确
 
 ---
 
@@ -641,47 +317,98 @@ class InterAgentMessageBus:
 
 ---
 
-## 测试计划
+## 使用示例
+
+### 多脑一手：多角度代码分析
 
 ```python
-def test_multi_brain_one_hand():
-    sandbox = Sandbox(isolation_level="process")
-    orchestrator = MultiBrainOneHandOrchestrator(sandbox, num_brains=2)
-    
-    orchestrator.register_perspective(0, "security")
-    orchestrator.register_perspective(1, "performance")
-    
-    # 多角度分析
-    result = await orchestrator.analyze_from_multiple_angles("src/agent_loop.py")
-    
-    assert len(result["analyses"]) == 2
-    assert result["analyses"][0]["perspective"] == "security"
+from src.collaboration import MultiBrainOneHandOrchestrator
+from src.llm_client import LLMClient
+from src.sandbox import Sandbox
 
-def test_one_brain_multi_hand():
-    brain = ClaudeClient(LLMGateway(config), model_id)
-    orchestrator = OneBrainMultiHandOrchestrator(brain, [
-        {"isolation_level": "process", "label": "python"},
-        {"isolation_level": "process", "label": "node"},
-    ])
-    
-    # 跨环境执行
-    result = await orchestrator.execute_in_multiple_environments("测试 API 兼容性")
-    
-    assert "python" in result["execution_results"]
-    assert "node" in result["execution_results"]
+# 创建共享 Sandbox
+sandbox = Sandbox(isolation_level=IsolationLevel.PROCESS)
 
-def test_multi_brain_multi_hand():
-    session = SessionEventStream("test", Path("/tmp/test"))
-    orchestrator = MultiBrainMultiHandOrchestrator([], session)
-    
-    orchestrator.register_pair(claude1, sandbox1, "pair_1")
-    orchestrator.register_pair(claude2, sandbox2, "pair_2")
-    
-    # 协调执行
-    result = await orchestrator.coordinated_execution("实现用户认证")
-    
-    assert len(result["pair_results"]) == 2
-    assert result["merged_result"]["total_pairs"] == 2
+# 创建多个大脑（不同模型）
+security_client = LLMClient(gateway, "security/model")
+performance_client = LLMClient(gateway, "performance/model")
+
+# 创建编排器
+orchestrator = MultiBrainOneHandOrchestrator(
+    sandbox=sandbox,
+    llm_clients=[security_client, performance_client],
+    perspectives=["security", "performance"],
+)
+
+# 多角度分析
+result = await orchestrator.analyze_from_multiple_angles("src/agent_loop.py")
+
+# 协作改进
+improve_result = await orchestrator.collaborative_improve("src/agent_loop.py")
+```
+
+### 一脑多手：跨环境测试
+
+```python
+from src.collaboration import OneBrainMultiHandOrchestrator
+
+# 创建编排器
+orchestrator = OneBrainMultiHandOrchestrator(
+    llm_client=main_client,
+    sandbox_configs=[
+        {"isolation_level": "process"},  # Python
+        {"isolation_level": "process"},  # Node.js
+    ],
+    labels=["python_env", "node_env"],
+)
+
+# 跨环境执行
+result = await orchestrator.execute_in_multiple_environments(
+    "Test API compatibility across environments"
+)
+
+# 跨环境测试
+test_result = await orchestrator.cross_environment_test(test_code)
+```
+
+### 多脑多手：协调复杂任务
+
+```python
+from src.collaboration import MultiBrainMultiHandOrchestrator, InterAgentMessageBus
+from src.session_event_stream import SessionEventStream
+
+# 创建 Session
+session = SessionEventStream("complex-task-session")
+
+# 创建消息总线
+message_bus = InterAgentMessageBus(session)
+message_bus.set_pair_ids(["pair-1", "pair-2"])
+
+# 创建编排器
+orchestrator = MultiBrainMultiHandOrchestrator(
+    session=session,
+    agent_sandbox_pairs=[
+        (client1, sandbox1),
+        (client2, sandbox2),
+    ],
+    message_bus=message_bus,
+)
+
+# 协调执行
+result = await orchestrator.coordinated_execution(
+    "Implement user authentication module"
+)
+
+# 动态任务分配
+dynamic_result = await orchestrator.dynamic_task_assignment(
+    "Complex multi-step task"
+)
+
+# 发送消息
+await message_bus.send_message("pair-1", "pair-2", "sync", {"progress": 50})
+
+# 广播消息
+await message_bus.broadcast("pair-1", "status_update", {"status": "completed"})
 ```
 
 ---
@@ -690,3 +417,5 @@ def test_multi_brain_multi_hand():
 
 - [02_harness_sandbox_decoupling_design.md](02_harness_sandbox_decoupling_design.md) - Sandbox 隔离
 - [01_session_event_stream_design.md](01_session_event_stream_design.md) - Session 协调中心
+- [src/collaboration.py](../src/collaboration.py) - 协作模块实现
+- [src/tools/collaboration_tools.py](../src/tools/collaboration_tools.py) - 协作工具集
