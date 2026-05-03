@@ -9,21 +9,34 @@ Harness (控制器) 模块
 
 核心职责：
 1. 执行对话循环 (run_cycle)
-2. 从 Session 构建上下文
+2. 从 Session 构建上下文（无状态关键）
 3. 调用 LLMClient 推理
 4. 路由工具调用到 Sandbox
 5. 记录事件到 Session
 
-使用方式：
-    harness = Harness(llm_client, session, sandbox)
-    result = await harness.run_conversation("用户输入")
+性能优化：
+- 大脑(LLMClient)从容器(Sandbox)分离
+- 首Token延迟降低 60-90%
 """
 
+import asyncio
+import json
 import logging
+import time
 from collections.abc import AsyncGenerator
-from typing import Any, TypedDict
+from typing import Any, TYPE_CHECKING, TypedDict
 
 from src.llm_client import LLMClient
+
+if TYPE_CHECKING:
+    from src.client import LLMGateway
+from src.observability import (
+    SPAN_TOOL_PREFIX,
+    StatusCode,
+    get_tracer,
+    is_observability_enabled,
+    set_tool_span_attributes,
+)
 from src.request_queue import RequestPriority
 from src.sandbox import Sandbox
 from src.session_event_stream import EventType, SessionEventStream
@@ -33,11 +46,22 @@ logger = logging.getLogger(__name__)
 # 最大迭代次数（安全上限）
 MAX_ITERATIONS = 30
 
+# OpenTelemetry 状态
+_OBSERVABILITY_ENABLED = is_observability_enabled()
+
+try:
+    from opentelemetry.trace import Span
+    _SPAN_TYPE_AVAILABLE = True
+except ImportError:
+    Span = None  # type: ignore[misc,assignment]
+    _SPAN_TYPE_AVAILABLE = False
+
 
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数"""
     def __init__(self, iterations: int) -> None:
         super().__init__(f"Harness exceeded maximum iterations ({iterations})")
+        self.iterations = iterations
 
 
 class CycleResult(TypedDict):
@@ -45,6 +69,14 @@ class CycleResult(TypedDict):
     response: dict[str, Any]
     tool_results: list[dict[str, Any]] | None
     continue_loop: bool
+
+
+class ToolExecutionMetrics(TypedDict):
+    """工具执行指标"""
+    tool_name: str
+    duration_ms: float
+    success: bool
+    error: str | None
 
 
 class Harness:
@@ -59,7 +91,7 @@ class Harness:
     关键特性：
     - 可替换：随时创建/销毁不影响 Session
     - 无状态：所有状态存储在 Session 中
-    - 可观测：完整的事件流追踪
+    - 可观测：完整的事件流追踪 + OpenTelemetry
     """
 
     def __init__(
@@ -85,9 +117,12 @@ class Harness:
         self.max_iterations = max_iterations
         self.system_prompt = system_prompt
 
+        # 执行指标
+        self._metrics: list[ToolExecutionMetrics] = []
+
         logger.info(
             f"Harness initialized: session={session.session_id}, "
-            f"max_iterations={max_iterations}"
+            f"max_iterations={max_iterations}, tools={len(sandbox.get_tool_schemas())}"
         )
 
     # === 核心循环 ===
@@ -99,8 +134,8 @@ class Harness:
         """执行一轮对话循环
 
         核心流程：
-        1. 从 Session 拉取上下文
-        2. 调用 Claude 推理
+        1. 从 Session 拉取上下文（无状态关键）
+        2. 调用 LLM 推理
         3. 记录响应到 Session
         4. 如有工具调用，路由到 Sandbox 执行
         5. 记录工具结果到 Session
@@ -110,9 +145,6 @@ class Harness:
 
         Returns:
             CycleResult: 循环结果
-                - response: LLM 响应
-                - tool_results: 工具执行结果 (如有)
-                - continue_loop: 是否继续循环
         """
         # 1. 从 Session 构建上下文（关键：无状态）
         context = self._build_context_from_session()
@@ -218,7 +250,12 @@ class Harness:
             priority: 请求优先级
 
         Yields:
-            流式响应 chunk
+            流式响应 chunk:
+                - {"type": "chunk", "content": "..."} - 文本片段
+                - {"type": "tool_start", "tool_name": "..."} - 工具开始
+                - {"type": "tool_end", "result": "..."} - 工具结束
+                - {"type": "final", "content": "..."} - 最终响应
+                - {"type": "error", "content": "..."} - 错误
         """
         # 记录初始输入
         self.session.emit_event(EventType.USER_INPUT, {"content": initial_prompt})
@@ -247,6 +284,13 @@ class Harness:
                 tc_list = delta.get("tool_calls")
                 if tc_list:
                     self._process_tool_delta(tc_list, tool_calls_accumulator)
+                    # 发送工具开始通知
+                    for tc in tc_list:
+                        if tc.get("function", {}).get("name"):
+                            yield {
+                                "type": "tool_start",
+                                "tool_name": tc["function"]["name"]
+                            }
 
             # 累积工具调用
             tool_calls = (
@@ -271,6 +315,7 @@ class Harness:
                         "tool_call_id": result["tool_call_id"],
                         "content": result["content"]
                     })
+                    yield {"type": "tool_end", "result": result["content"]}
             else:
                 self.session.record_session_end("completed")
                 yield {"type": "final", "content": full_content}
@@ -289,7 +334,6 @@ class Harness:
         Returns:
             messages 格式的上下文
         """
-        # 使用 SessionEventStream 的上下文构建方法
         return self.session.build_context_for_llm(system_prompt=self.system_prompt)
 
     def _get_events_since_last_summary(self) -> list[dict[str, Any]]:
@@ -321,9 +365,130 @@ class Harness:
                 "arguments": tc.get("function", {}).get("arguments")
             })
 
-        # 路由到 Sandbox 执行
-        results = await self.sandbox.execute_tools(tool_calls)
+        # 并发执行工具调用
+        results = await self._execute_tools_parallel(tool_calls)
+
         return results
+
+    async def _execute_tools_parallel(
+        self,
+        tool_calls: list[dict]
+    ) -> list[dict[str, Any]]:
+        """并发执行工具调用
+
+        Args:
+            tool_calls: 工具调用列表
+
+        Returns:
+            工具执行结果列表
+        """
+        # 检查并发写冲突
+        conflict_result = self._check_write_conflicts(tool_calls)
+        if conflict_result:
+            return conflict_result
+
+        # 并发执行
+        results = await asyncio.gather(
+            *[self._execute_single_tool_with_metrics(tc) for tc in tool_calls],
+            return_exceptions=True
+        )
+
+        processed_results: list[dict[str, Any]] = []
+        for i, result in enumerate(results):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+
+            if isinstance(result, BaseException):
+                tool_name = tool_calls[i].get("function", {}).get("name", "unknown")
+                logger.error(f"Tool {tool_name} failed: {type(result).__name__}: {result}")
+                processed_results.append({
+                    "tool_call_id": tool_calls[i].get("id", "unknown"),
+                    "role": "tool",
+                    "content": f"Error: {type(result).__name__}: {str(result)[:200]}"
+                })
+            elif isinstance(result, dict):
+                processed_results.append(result)
+            else:
+                logger.warning(f"Unexpected result type: {type(result).__name__}")
+                processed_results.append({
+                    "tool_call_id": tool_calls[i].get("id", "unknown"),
+                    "role": "tool",
+                    "content": "Error: Unexpected result type"
+                })
+
+        return processed_results
+
+    def _check_write_conflicts(self, tool_calls: list[dict]) -> list[dict] | None:
+        """检查并发写冲突"""
+        write_tools = {"file_write", "file_edit"}
+        seen_paths: dict[str, str] = {}
+
+        for tc in tool_calls:
+            if tc["function"]["name"] in write_tools:
+                try:
+                    args = json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
+                    path = args.get("path", "")
+                    if path:
+                        if path in seen_paths:
+                            logger.warning(f"Concurrent write conflict: {path}")
+                            return [
+                                {"role": "tool", "tool_call_id": tc["id"],
+                                 "content": f"Error: Concurrent write conflict on '{path}'"}
+                                for tc in tool_calls
+                            ]
+                        seen_paths[path] = tc["id"]
+                except Exception as e:
+                    logger.debug(f"Failed to parse tool args: {e}")
+        return None
+
+    async def _execute_single_tool_with_metrics(
+        self,
+        tool_call: dict
+    ) -> dict[str, Any]:
+        """执行单个工具并记录指标"""
+        tool_name = tool_call.get("function", {}).get("name", "unknown")
+        start_time = time.time()
+
+        # OpenTelemetry Span
+        span = self._start_tool_span(tool_name, {})
+
+        try:
+            result = await self.sandbox.execute_tools([tool_call])
+            duration_ms = (time.time() - start_time) * 1000
+
+            # 记录指标
+            self._metrics.append({
+                "tool_name": tool_name,
+                "duration_ms": duration_ms,
+                "success": True,
+                "error": None
+            })
+
+            self._finish_tool_span(span, start_time, success=True)
+
+            return result[0] if result else {
+                "tool_call_id": tool_call.get("id"),
+                "role": "tool",
+                "content": "Error: No result returned"
+            }
+
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+
+            self._metrics.append({
+                "tool_name": tool_name,
+                "duration_ms": duration_ms,
+                "success": False,
+                "error": str(e)[:200]
+            })
+
+            self._finish_tool_span(span, start_time, success=False, error=e)
+
+            return {
+                "tool_call_id": tool_call.get("id"),
+                "role": "tool",
+                "content": f"Error: {type(e).__name__}: {str(e)[:200]}"
+            }
 
     # === 流式处理辅助 ===
 
@@ -348,6 +513,40 @@ class Harness:
             if func.get("arguments"):
                 acc["function"]["arguments"] += func["arguments"]
 
+    # === OpenTelemetry ===
+
+    def _start_tool_span(self, tool_name: str, tool_args: dict) -> "Span | None":
+        """创建工具 Span"""
+        tracer = get_tracer()
+        if not (tracer and _OBSERVABILITY_ENABLED):
+            return None
+
+        span = tracer.start_span(f"{SPAN_TOOL_PREFIX}{tool_name}")
+        set_tool_span_attributes(span, tool_name, file_path=tool_args.get("path", ""))
+        return span
+
+    def _finish_tool_span(
+        self,
+        span: "Span | None",
+        start_time: float,
+        success: bool,
+        error: Exception | None = None
+    ) -> None:
+        """完成 Span"""
+        if not span:
+            return
+
+        duration_ms = (time.time() - start_time) * 1000
+        if success:
+            span.set_attribute("seed.tool.duration_ms", duration_ms)
+            span.set_status(StatusCode.OK)
+        else:
+            if error:
+                span.record_exception(error)
+                span.set_attribute("seed.error.message", str(error)[:500])
+                span.set_status(StatusCode.ERROR, str(error)[:200])
+        span.end()
+
     # === 状态恢复 ===
 
     def replay_to_event(self, target_event_id: int) -> dict[str, Any]:
@@ -368,6 +567,14 @@ class Harness:
         """获取事件总数"""
         return self.session.get_event_count()
 
+    def get_metrics(self) -> list[ToolExecutionMetrics]:
+        """获取工具执行指标"""
+        return self._metrics.copy()
+
+    def clear_metrics(self) -> None:
+        """清空指标"""
+        self._metrics.clear()
+
     def get_status(self) -> dict[str, Any]:
         """获取 Harness 状态"""
         return {
@@ -376,7 +583,8 @@ class Harness:
             "max_iterations": self.max_iterations,
             "llm_model": self.llm_client.model_id,
             "sandbox_isolation": self.sandbox.isolation_level.value,
-            "tools_registered": len(self.sandbox.get_tool_schemas())
+            "tools_registered": len(self.sandbox.get_tool_schemas()),
+            "metrics_count": len(self._metrics)
         }
 
 
@@ -384,13 +592,15 @@ class HarnessManager:
     """Harness 管理器 - 支持多实例
 
     用于管理多个 Harness 实例，支持：
-    - 创建新 Harness
+    - 创建新 Harness（牲畜可替换）
     - 销毁 Harness
     - 多实例协作
+    - 状态持久化
 
     使用场景：
     - 多用户并发对话
     - 多任务并行执行
+    - 容错恢复
     """
 
     def __init__(self, gateway_config_path: str):
@@ -402,8 +612,16 @@ class HarnessManager:
         self._gateway_config_path = gateway_config_path
         self._harnesses: dict[str, Harness] = {}
         self._sandboxes: dict[str, Sandbox] = {}
+        self._gateway: "LLMGateway | None" = None
 
         logger.info("HarnessManager initialized")
+
+    def _ensure_gateway(self) -> "LLMGateway":
+        """确保 Gateway 已创建"""
+        if not self._gateway:
+            from src.client import LLMGateway
+            self._gateway = LLMGateway(self._gateway_config_path)
+        return self._gateway
 
     def create_harness(
         self,
@@ -425,10 +643,7 @@ class HarnessManager:
         Returns:
             Harness 实例
         """
-        from src.client import LLMGateway
-
-        # 创建 Gateway（共享）
-        gateway = LLMGateway(self._gateway_config_path)
+        gateway = self._ensure_gateway()
 
         # 创建 LLMClient
         llm_client = LLMClient(gateway, model_id)
@@ -451,7 +666,7 @@ class HarnessManager:
         self._harnesses[harness_id] = harness
         self._sandboxes[harness_id] = sandbox
 
-        logger.info(f"Harness created: id={harness_id}")
+        logger.info(f"Harness created: id={harness_id}, model={model_id}")
         return harness
 
     def get_harness(self, harness_id: str) -> Harness | None:
@@ -496,3 +711,28 @@ class HarnessManager:
         for harness_id in list(self._harnesses.keys()):
             self.destroy_harness(harness_id)
         logger.info("All harnesses destroyed")
+
+    def get_total_metrics(self) -> dict[str, Any]:
+        """获取所有 Harness 的总指标"""
+        total_tools = 0
+        total_success = 0
+        total_failed = 0
+        total_duration_ms = 0.0
+
+        for harness in self._harnesses.values():
+            metrics = harness.get_metrics()
+            total_tools += len(metrics)
+            for m in metrics:
+                if m["success"]:
+                    total_success += 1
+                else:
+                    total_failed += 1
+                total_duration_ms += m["duration_ms"]
+
+        return {
+            "total_tool_calls": total_tools,
+            "successful_calls": total_success,
+            "failed_calls": total_failed,
+            "total_duration_ms": total_duration_ms,
+            "average_duration_ms": total_duration_ms / total_tools if total_tools > 0 else 0
+        }

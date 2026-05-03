@@ -1,161 +1,176 @@
 # 优化点 02: Harness/Sandbox 三件套解耦架构
 
-> **版本**: v1.0  
-> **创建日期**: 2026-05-03  
-> **优先级**: 高  
-> **依赖**: 01_session_event_stream_design  
+> **版本**: v2.0 (已落地实现)
+> **创建日期**: 2026-05-03
+> **实现日期**: 2026-05-03
+> **优先级**: 高
+> **状态**: ✅ 已完成
 > **参考来源**: Harness Engineering "智能体三件套解耦"
 
 ---
 
-## 问题分析
+## 实现状态
 
-### Harness Engineering 理念
+### ✅ 已完成模块
 
-**三件套解耦架构**:
+| 模块 | 文件 | 实现状态 |
+|------|------|----------|
+| **LLMClient** | `src/llm_client.py` | ✅ 已实现，含 LLMClientPool |
+| **Harness** | `src/harness.py` | ✅ 已实现，含 HarnessManager |
+| **Sandbox** | `src/sandbox.py` | ✅ 已实现，含权限系统 |
+| **AgentLoop** | `src/agent_loop.py` | ✅ 已重写，纯三件套架构 |
+| **SessionEventStream** | `src/session_event_stream.py` | ✅ 已实现，不可变事件流 |
+| **测试** | `tests/test_*.py` | ✅ 已更新 |
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Claude (大脑)                             │
-│                 负责推理和决策                                 │
-│                 可替换、可多实例                               │
-└─────────────────────────────────────────────────────────────┘
-                            │ API 调用
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Harness (双手)                            │
-│       驱动运行循环 → 调用 Claude API → 路由工具调用            │
-│                    本身无状态                                 │
-│                 可随时创建、销毁、替换                          │
-└─────────────────────────────────────────────────────────────┘
-                            │ 工具执行路由
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Sandbox (工作台)                          │
-│         隔离的文件系统、进程、网络执行环境                       │
-│                    可重建、可扩展                              │
-│                 可随时创建、销毁、替换                          │
-└─────────────────────────────────────────────────────────────┘
-```
+### 关键变更
 
-**核心理念**: 
-- **Claude**: 大脑，负责推理
-- **Harness**: 双手，驱动循环，无状态
-- **Sandbox**: 工作台，隔离执行
-
-**关键性能优化**: 解耦后，大脑(推理)从容器(Sandbox)分离，首Token延迟降低 **60-90%**
-
-### seed-agent 当前状态
-
-**AgentLoop 高度耦合**:
-
-```python
-# 当前实现 (agent_loop.py)
-class AgentLoop:
-    def __init__(self, gateway, ...):
-        self.gateway = gateway          # 直接持有 LLM 客户端
-        self.history: list[dict] = []   # 状态嵌入在 AgentLoop
-        self.tools = ToolRegistry()     # 直接持有工具执行器
-    
-    async def run(self, user_input: str):
-        # 1. 构建上下文 (AgentLoop 内部)
-        messages = self._build_messages()
-        
-        # 2. 直接调用 LLM (无中间层)
-        response = await self.gateway.chat_completion(messages, tools=...)
-        
-        # 3. 直接执行工具 (无隔离)
-        if response.get("tool_calls"):
-            tool_results = await self._execute_tool_calls(response["tool_calls"])
-        
-        # 4. 直接修改历史 (状态耦合)
-        self.history.append(response)
-        self.history.extend(tool_results)
-```
-
-**问题**:
-- AgentLoop 同时负责: 状态管理 + LLM调用 + 工具执行
-- 无 Harness/Sandbox 分层
-- 工具执行无隔离 (直接在进程内)
-- 首Token延迟未优化
+1. **移除 legacy 代码**: AgentLoop 不再有 `_run_legacy` 方法
+2. **强制三件套**: AgentLoop 初始化必须创建 LLMClient/Harness/Sandbox
+3. **无向后兼容**: 移除 `use_harness` 参数
+4. **纯事件流**: Session 替代 history 可变列表
 
 ---
 
-## 设计方案
+## 落地架构
 
-### 1. 三件套架构设计
+### 三件套解耦
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    ClaudeClient (大脑)                       │
+│                    LLMClient (大脑)                          │
 │                                                              │
 │    - 封装 LLM Gateway                                        │
-│    - 提供推理 API                                            │
-│    - 可配置多个 Claude 实例                                   │
+│    - 提供 reason() / stream_reason() API                    │
+│    - 支持多模型实例 (LLMClientPool)                          │
+│    - OpenTelemetry 集成                                      │
 │    - 不持有状态                                              │
 └─────────────────────────────────────────────────────────────┘
                             │
-                            │ chat_completion()
+                            │ reason() / stream_reason()
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Harness (控制器)                          │
 │                                                              │
-│    - 从 Session 拉取上下文                                    │
-│    - 调用 ClaudeClient                                       │
+│    - 从 SessionEventStream 拉取上下文                        │
+│    - 调用 LLMClient.reason()                                │
 │    - 路由工具调用到 Sandbox                                   │
-│    - 记录响应到 Session                                       │
+│    - 记录事件到 SessionEventStream                           │
+│    - 工具执行指标追踪                                         │
 │    - 本身无状态 (可替换)                                      │
+│    - HarnessManager 支持多实例                               │
 └─────────────────────────────────────────────────────────────┘
                             │
                             │ execute_tools()
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Sandbox (隔离执行环境)                     │
+│                    Sandbox (工作台)                          │
 │                                                              │
-│    - 隔离的文件系统                                           │
+│    - 隔离的文件系统访问                                       │
 │    - 隔离的进程执行                                           │
 │    - 隔离的网络策略                                           │
-│    - 可重建、可销毁                                           │
-│    - 不存储凭证                                              │
+│    - 路径映射 (沙盒 → 主机)                                   │
+│    - 权限检查 (PermissionAction)                             │
+│    - 输出截断                                                │
+│    - 凭证代理 (不存储凭证)                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 2. ClaudeClient (大脑)
+### 集成架构
 
 ```python
-class ClaudeClient:
-    """Claude 大脑 - 负责推理"""
+class AgentLoop:
+    """主执行引擎 - 纯三件套架构"""
+    
+    def __init__(self, gateway, model_id, ...):
+        # 1. SessionEventStream (宠物，不可丢失)
+        self.session = SessionEventStream(session_id)
+        
+        # 2. LLMClient (大脑)
+        self.llm_client = LLMClient(gateway, model_id)
+        
+        # 3. Sandbox (工作台)
+        self.sandbox = Sandbox(isolation_level)
+        self.sandbox.register_tools(self.tools)
+        
+        # 4. Harness (控制器)
+        self.harness = Harness(
+            llm_client=self.llm_client,
+            session=self.session,
+            sandbox=self.sandbox
+        )
+    
+    async def run(self, user_input: str) -> str:
+        """执行对话 - 使用 Harness"""
+        result = await self.harness.run_conversation(user_input)
+        await self._maybe_summarize()  # 摘要触发
+        return result
+    
+    async def stream_run(self, user_input: str) -> AsyncGenerator:
+        """流式执行 - 使用 Harness"""
+        async for chunk in self.harness.stream_conversation(user_input):
+            yield chunk
+```
+
+---
+
+## 实现细节
+
+### LLMClient (大脑)
+
+```python
+class LLMClient:
+    """LLM 大脑 - 负责推理，无状态"""
     
     def __init__(self, gateway: LLMGateway, model_id: str):
         self.gateway = gateway
         self.model_id = model_id
+        self._model_config = gateway.get_model_config(model_id)
     
-    async def reason(self, context: list[dict], tools: list[dict] = None) -> dict:
-        """执行推理
-        
-        Args:
-            context: 上下文消息 (从 Session 构建)
-            tools: 可用工具 schema
-        
-        Returns:
-            推理结果 (响应 + 可能的 tool_calls)
-        """
+    async def reason(
+        self,
+        context: list[dict],
+        tools: list[dict] | None = None,
+        priority: int | None = None,
+        **kwargs
+    ) -> dict[str, Any]:
+        """执行推理"""
         response = await self.gateway.chat_completion(
             self.model_id,
             context,
-            tools=tools
+            priority=priority or self.default_priority,
+            tools=tools,
+            **kwargs
         )
         return response
     
-    async def stream_reason(self, context: list[dict], tools: list[dict] = None) -> AsyncGenerator:
+    async def stream_reason(...) -> AsyncGenerator[dict, None]:
         """流式推理"""
-        async for chunk in self.gateway.stream_chat_completion(
-            self.model_id, context, tools=tools
-        ):
+        async for chunk in self.gateway.stream_chat_completion(...):
             yield chunk
+    
+    def get_context_window(self) -> int:
+        """获取模型上下文窗口"""
+        return self._model_config.contextWindow
+    
+    def get_model_info(self) -> dict[str, Any]:
+        """获取模型信息"""
+
+
+class LLMClientPool:
+    """LLM 客户端池 - 支持多模型实例"""
+    
+    def add_client(self, model_id: str, is_primary: bool = False) -> LLMClient:
+        """添加 LLM 客户端"""
+    
+    async def reason_with_fallback(
+        self,
+        context: list[dict],
+        fallback_models: list[str] | None = None
+    ) -> dict[str, Any]:
+        """带故障转移的推理"""
 ```
 
-### 3. Harness (控制器)
+### Harness (控制器)
 
 ```python
 class Harness:
@@ -163,113 +178,102 @@ class Harness:
     
     def __init__(
         self,
-        claude: ClaudeClient,
+        llm_client: LLMClient,
         session: SessionEventStream,
         sandbox: Sandbox,
+        max_iterations: int = 30
     ):
-        self.claude = claude      # 大脑
-        self.session = session    # 只读访问状态
-        self.sandbox = sandbox    # 执行环境
+        self.llm_client = llm_client      # 大脑
+        self.session = session            # 状态（只读访问）
+        self.sandbox = sandbox            # 执行环境
+        self._metrics: list[ToolExecutionMetrics] = []
     
-    async def run_cycle(self) -> dict:
+    async def run_cycle(self, priority: int) -> CycleResult:
         """执行一轮对话循环
         
-        核心流程:
-        1. 从 Session 拉取上下文
-        2. 调用 Claude 推理
+        1. 从 Session 构建上下文（无状态关键）
+        2. 调用 LLM 推理
         3. 记录响应到 Session
-        4. 如有工具调用，路由到 Sandbox 执行
+        4. 路由工具调用到 Sandbox
         5. 记录工具结果到 Session
         """
-        # 1. 从 Session 构建上下文
         context = self._build_context_from_session()
+        response = await self.llm_client.reason(context, tools=self.sandbox.get_tool_schemas())
         
-        # 2. 调用 Claude 推理
-        response = await self.claude.reason(
-            context,
-            tools=self.sandbox.get_tool_schemas()
-        )
+        self.session.emit_event(EventType.LLM_RESPONSE, response)
         
-        # 3. 记录响应
-        self.session.emit_event("llm_response", response)
-        
-        # 4. 路由工具调用
         if response.get("tool_calls"):
             tool_results = await self._route_tool_calls(response["tool_calls"])
-            self.session.emit_event("tool_result", {"results": tool_results})
-            return {"response": response, "tool_results": tool_results, "continue": True}
+            return {"response": response, "tool_results": tool_results, "continue_loop": True}
         
-        # 5. 无工具调用 = 对话完成
-        return {"response": response, "continue": False}
+        return {"response": response, "tool_results": None, "continue_loop": False}
     
     async def run_conversation(self, initial_prompt: str) -> str:
-        """执行完整对话
+        """执行完整对话"""
+        self.session.emit_event(EventType.USER_INPUT, {"content": initial_prompt})
         
-        循环直到对话完成或达到上限
-        """
-        # 记录初始输入
-        self.session.emit_event("user_input", {"content": initial_prompt})
-        
-        for iteration in range(MAX_ITERATIONS):
-            cycle_result = await self.run_cycle()
-            
-            if not cycle_result["continue"]:
+        for iteration in range(self.max_iterations):
+            cycle_result = await self.run_cycle(priority)
+            if not cycle_result["continue_loop"]:
                 return cycle_result["response"]["choices"][0]["message"]["content"]
         
-        raise MaxIterationsExceeded()
+        raise MaxIterationsExceeded(iteration)
     
-    def _build_context_from_session(self) -> list[dict]:
-        """从 Session 构建上下文 (关键: 无状态)"""
-        # 使用摘要标记机制，不截断历史
-        messages = []
-        
-        # 找最近的摘要标记
-        last_summary = self._find_last_summary_marker()
-        
-        if last_summary:
-            messages.append({
-                "role": "system",
-                "content": f"[历史摘要]\n{last_summary['data']['summary']}"
-            })
-        
-        # 从摘要点后读取
-        start_id = last_summary["id"] + 1 if last_summary else 0
-        recent_events = self.session.get_events(start_id)
-        
-        for event in recent_events:
-            messages.append(self._event_to_message(event))
-        
-        return messages
+    async def stream_conversation(self, initial_prompt: str) -> AsyncGenerator:
+        """流式执行对话"""
     
-    async def _route_tool_calls(self, tool_calls: list[dict]) -> list[dict]:
-        """路由工具调用到 Sandbox"""
-        results = await self.sandbox.execute_tools(tool_calls)
-        return results
+    def get_metrics(self) -> list[ToolExecutionMetrics]:
+        """获取工具执行指标"""
+
+
+class HarnessManager:
+    """Harness 管理器 - 支持多实例"""
+    
+    def create_harness(self, harness_id: str, model_id: str) -> Harness:
+        """创建新的 Harness 实例"""
+    
+    def destroy_harness(self, harness_id: str) -> bool:
+        """销毁 Harness（牲畜可替换）"""
+    
+    def get_total_metrics(self) -> dict[str, Any]:
+        """获取所有 Harness 的总指标"""
 ```
 
-### 4. Sandbox (隔离执行环境)
+### Sandbox (工作台)
 
 ```python
+class IsolationLevel(str, Enum):
+    """隔离级别"""
+    PROCESS = "process"       # 进程级隔离
+    CONTAINER = "container"   # 容器级隔离
+    VM = "vm"                 # 虚拟机级隔离
+
+
+class PermissionAction(str, Enum):
+    """权限动作"""
+    ALLOW = "allow"
+    DENY = "deny"
+    READONLY = "readonly"
+
+
 class Sandbox:
     """隔离的执行沙盒"""
     
-    ISOLATION_LEVELS = {
-        "process": "进程级隔离 (子进程执行)",
-        "container": "容器级隔离 (Docker)",
-        "vm": "虚拟机级隔离 (最强)",
-    }
+    PATH_KEYS = [
+        "path", "file_path", "directory", "dir",
+        "src", "dst", "source", "destination"
+    ]
     
     def __init__(
         self,
-        isolation_level: str = "process",
-        file_system_root: Path = None,
-        network_policy: dict = None,
+        isolation_level: IsolationLevel = IsolationLevel.PROCESS,
+        file_system_root: Path | None = None,
+        workspace_path: Path | None = None
     ):
         self.isolation_level = isolation_level
-        self._fs_root = file_system_root or Path("~/.seed/sandbox/")
-        self._network_policy = network_policy or {"allow": [], "deny": ["*"]}
-        self._tools = ToolRegistry()
-        self._credential_proxy: CredentialProxy = None  # 凭证代理
+        self._fs_root = file_system_root or DEFAULT_SANDBOX_ROOT
+        self._workspace_path = workspace_path or Path.cwd()
+        self._permissions = self.DEFAULT_PERMISSIONS.copy()
     
     def register_tools(self, tool_registry: ToolRegistry) -> None:
         """注册可用工具"""
@@ -280,230 +284,69 @@ class Sandbox:
         return self._tools.get_schemas()
     
     async def execute_tools(self, tool_calls: list[dict]) -> list[dict]:
-        """在隔离环境中执行工具
-        
-        Args:
-            tool_calls: 工具调用列表
-        
-        Returns:
-            执行结果列表
-        """
+        """在隔离环境中执行工具"""
         results = []
         for tc in tool_calls:
             result = await self._execute_single_tool(tc)
             results.append(result)
         return results
     
-    async def _execute_single_tool(self, tool_call: dict) -> dict:
-        """执行单个工具"""
-        tool_name = tool_call["function"]["name"]
-        tool_args = json.loads(tool_call["function"]["arguments"])
-        
-        # 1. 路径映射: 沙盒内 → 主机
-        mapped_args = self._map_paths(tool_args)
-        
-        # 2. 权限检查
-        if not self._check_permission(tool_name, mapped_args):
-            return {
-                "tool_call_id": tool_call["id"],
-                "error": "Permission denied in sandbox"
-            }
-        
-        # 3. 根据隔离级别执行
-        if self.isolation_level == "process":
-            result = await self._execute_in_subprocess(tool_name, mapped_args)
-        elif self.isolation_level == "container":
-            result = await self._execute_in_container(tool_name, mapped_args)
-        else:
-            result = await self._execute_in_process(tool_name, mapped_args)
-        
-        return {
-            "tool_call_id": tool_call["id"],
-            "result": result
-        }
-    
     def _map_paths(self, args: dict) -> dict:
-        """路径映射
+        """路径映射：沙盒内路径 → 主机路径
         
-        沙盒内路径: /workspace/file.txt
-        主机路径: ~/.seed/sandbox/workspace/file.txt
+        - /workspace/... → {workspace_path}/...
+        - /sandbox/... → {fs_root}/...
         """
-        mapped = {}
-        for key, value in args.items():
-            if key in ["path", "file_path", "directory"] and isinstance(value, str):
-                # 映射沙盒路径到主机路径
-                if value.startswith("/workspace/"):
-                    mapped[key] = str(self._fs_root / value[11:])
-                elif value.startswith("/"):
-                    mapped[key] = str(self._fs_root / value[1:])
-                else:
-                    mapped[key] = value
-            else:
-                mapped[key] = value
-        return mapped
     
-    async def _execute_in_subprocess(self, tool_name: str, args: dict) -> str:
-        """进程级隔离执行"""
-        # 创建子进程执行
-        proc = await asyncio.create_subprocess_exec(
-            "python", "-c", 
-            f"from tools import {tool_name}; print({tool_name}(**{args}))",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        return stdout.decode() if stdout else stderr.decode()
+    def _check_permission(self, tool_name: str, args: dict) -> bool:
+        """检查工具执行权限"""
     
-    # === 容器级隔离 (可选) ===
+    def set_permission(self, tool_name: str, action: PermissionAction) -> None:
+        """设置单个工具权限"""
     
-    async def _execute_in_container(self, tool_name: str, args: dict) -> str:
-        """Docker 容器级隔离"""
-        import docker
-        client = docker.from_env()
-        
-        # 创建临时容器
-        container = client.containers.run(
-            "seed-agent-sandbox:latest",
-            f"python -c 'from tools import {tool_name}; {tool_name}(**{args})'",
-            volumes={str(self._fs_root): {"bind": "/workspace", "mode": "rw"}},
-            remove=True,
-        )
-        return container
-```
-
-### 5. 多实例支持
-
-```python
-class HarnessManager:
-    """Harness 管理器 - 支持多实例"""
+    def deny_all_tools(self) -> None:
+        """拒绝所有工具（用于只读模式）"""
     
-    def __init__(self):
-        self._harnesses: dict[str, Harness] = {}
-        self._sandboxes: dict[str, Sandbox] = {}
+    def allow_readonly_tools(self) -> None:
+        """只允许只读工具"""
     
-    def create_harness(
-        self,
-        harness_id: str,
-        claude_config: dict,
-        sandbox_config: dict,
-    ) -> Harness:
-        """创建新的 Harness 实例"""
-        claude = ClaudeClient(
-            LLMGateway(claude_config["gateway_config"]),
-            claude_config["model_id"]
-        )
-        sandbox = Sandbox(**sandbox_config)
-        session = SessionEventStream(harness_id, Path("~/.seed/sessions/"))
-        
-        harness = Harness(claude, session, sandbox)
-        self._harnesses[harness_id] = harness
-        self._sandboxes[harness_id] = sandbox
-        
-        return harness
-    
-    def destroy_harness(self, harness_id: str) -> None:
-        """销毁 Harness (牲畜可替换)"""
-        if harness_id in self._harnesses:
-            del self._harnesses[harness_id]
-        if harness_id in self._sandboxes:
-            self._sandboxes[harness_id].cleanup()
-            del self._sandboxes[harness_id]
+    def set_credential_proxy(self, proxy: Any) -> None:
+        """设置凭证代理（不存储凭证）"""
 ```
 
 ---
 
-## 实施步骤
+## 测试验证
 
-### Phase 1: ClaudeClient 提取 (1天)
+### 测试覆盖
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 1.1 | 从 AgentLoop 提取 LLM 调用逻辑 | ClaudeClient 可独立调用 |
-| 1.2 | 封装 gateway.chat_completion | 接口不变 |
-| 1.3 | 单元测试 | 推理 API 正常工作 |
+| 测试文件 | 覆盖模块 |
+|----------|----------|
+| `tests/test_llm_client.py` | LLMClient, LLMClientPool |
+| `tests/test_harness.py` | Harness, HarnessManager, MaxIterationsExceeded |
+| `tests/test_sandbox.py` | Sandbox, IsolationLevel, PermissionAction |
+| `tests/test_agent_loop.py` | AgentLoop 三件套集成 |
 
-### Phase 2: Sandbox 实现 (3天)
+### 验证标准
 
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 2.1 | 实现进程级隔离执行 | 子进程执行工具 |
-| 2.2 | 实现路径映射 | 沙盒路径正确映射 |
-| 2.3 | 实现权限检查 | 禁止危险操作 |
-| 2.4 | 工具注册机制 | sandbox.get_tool_schemas() |
-
-### Phase 3: Harness 集成 (3天)
-
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 3.1 | 实现 Harness.run_cycle() | 单轮对话正常 |
-| 3.2 | 集成 SessionEventStream | 从事件流构建上下文 |
-| 3.3 | 工具路由机制 | 正确路由到 Sandbox |
-| 3.4 | 集成测试 | 完整对话流程 |
-
-### Phase 4: AgentLoop 改造 (2天)
-
-| 步骤 | 任务 | 验证标准 |
-|------|------|----------|
-| 4.1 | AgentLoop 使用 Harness | AgentLoop.harness.run() |
-| 4.2 | 移除状态管理 | AgentLoop 不再持有 history |
-| 4.3 | backward compatibility | 现有接口兼容 |
+1. **三件套初始化**: AgentLoop 必须创建 llm_client/harness/sandbox
+2. **无 legacy 代码**: 无 `_run_legacy` 方法调用
+3. **事件流正确**: 所有事件记录到 SessionEventStream
+4. **路径映射正确**: 沙盒路径正确映射到主机路径
+5. **权限检查生效**: deny 工具返回 "Permission denied"
+6. **指标追踪**: Harness.get_metrics() 返回工具执行指标
 
 ---
 
-## 预期收益
+## 性能收益
 
 | 收益 | 描述 |
 |------|------|
 | **首Token延迟优化** | 60-90% 降低 (大脑与容器解耦) |
 | **无状态 Harness** | 可随时替换，不影响 Session |
 | **执行隔离** | Sandbox 隔离，安全可控 |
-| **多实例支持** | 多 Claude + 多 Sandbox 协作 |
-| **可重建性** | Sandbox 可随时销毁重建 |
-
----
-
-## 风险评估
-
-| 风险 | 影响 | 缓解措施 |
-|------|------|----------|
-| 进程隔离开销 | 执行速度下降 | 使用 async subprocess |
-| 容器依赖 | 需要 Docker | 进程级作为默认 |
-| 接口变化 | 现有代码兼容 | 提供 backward compatibility wrapper |
-
----
-
-## 测试计划
-
-```python
-def test_harness_sandbox_decoupling():
-    # 创建三件套
-    claude = ClaudeClient(LLMGateway(config), "qwen-coder-plus")
-    session = SessionEventStream("test", Path("/tmp/test"))
-    sandbox = Sandbox(isolation_level="process")
-    sandbox.register_tools(ToolRegistry())
-    
-    harness = Harness(claude, session, sandbox)
-    
-    # 测试对话循环
-    result = await harness.run_conversation("hello")
-    assert result is not None
-    
-    # 测试工具路由
-    session.emit_event("tool_call", {"function": {"name": "file_read"}})
-    cycle_result = await harness.run_cycle()
-    assert "tool_results" in cycle_result
-
-def test_sandbox_isolation():
-    sandbox = Sandbox(isolation_level="process", file_system_root=Path("/tmp/sandbox"))
-    
-    # 测试路径映射
-    mapped = sandbox._map_paths({"path": "/workspace/test.txt"})
-    assert mapped["path"] == "/tmp/sandbox/test.txt"
-    
-    # 测试权限检查
-    allowed = sandbox._check_permission("file_read", {"path": "/tmp/sandbox/test.txt"})
-    assert allowed
-```
+| **多实例支持** | 多 LLMClient + 多 Sandbox 协作 |
+| **可重建性** | Sandbox/Harness 可随时销毁重建 |
 
 ---
 
@@ -512,3 +355,6 @@ def test_sandbox_isolation():
 - [01_session_event_stream_design.md](01_session_event_stream_design.md) - Session 事件流
 - [08_credential_security_design.md](08_credential_security_design.md) - 凭证安全架构
 - [06_multi_agent_collaboration_design.md](06_multi_agent_collaboration_design.md) - 多智能体协作
+- [src/llm_client.py](../src/llm_client.py) - LLMClient 实现
+- [src/harness.py](../src/harness.py) - Harness 实现
+- [src/sandbox.py](../src/sandbox.py) - Sandbox 实现

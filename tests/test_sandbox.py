@@ -1,5 +1,5 @@
 """
-Tests for src/sandbox.py
+Tests for src/sandbox.py - 三件套工作台
 
 Coverage targets:
 - Sandbox initialization
@@ -8,6 +8,8 @@ Coverage targets:
 - Tool execution (execute_tools)
 - Permission management (set_permission, get_permissions)
 - Isolation levels
+- Output truncation
+- Credential proxy
 """
 
 import os
@@ -23,6 +25,8 @@ from sandbox import (
     IsolationLevel,
     PermissionAction,
     SandboxPermission,
+    ExecutionResult,
+    DEFAULT_SANDBOX_ROOT,
 )
 
 
@@ -56,7 +60,7 @@ class TestSandboxInit:
         sandbox = Sandbox()
 
         assert sandbox.isolation_level == IsolationLevel.PROCESS
-        assert sandbox._fs_root.name == "sandbox"
+        assert sandbox._fs_root == DEFAULT_SANDBOX_ROOT
         assert sandbox._network_policy == {"allow": ["*"], "deny": []}
 
     def test_init_custom_isolation(self):
@@ -83,6 +87,13 @@ class TestSandboxInit:
         sandbox = Sandbox(file_system_root=sandbox_path)
 
         assert sandbox_path.exists()
+
+    def test_init_custom_network_policy(self):
+        """Test initialization with custom network policy"""
+        policy = {"allow": ["localhost"], "deny": ["*"]}
+        sandbox = Sandbox(network_policy=policy)
+
+        assert sandbox._network_policy == policy
 
 
 class TestPathMapping:
@@ -131,6 +142,16 @@ class TestPathMapping:
         assert mapped["other"] == "value"
         assert mapped["nested"]["path"] == str(Path("/workspace/nested.txt"))
 
+    def test_map_paths_list(self):
+        """Test mapping paths in list"""
+        sandbox = Sandbox(workspace_path=Path("/workspace"))
+
+        args = {"paths": ["/workspace/a.txt", "/workspace/b.txt"]}
+        mapped = sandbox._map_paths(args)
+
+        # List should be processed but path keys are specific
+        assert isinstance(mapped["paths"], list)
+
     def test_reverse_map_workspace_path(self):
         """Test reverse mapping workspace path"""
         sandbox = Sandbox(workspace_path=Path("/home/user/project"))
@@ -145,6 +166,13 @@ class TestPathMapping:
         reversed_path = sandbox.reverse_map_path(str(Path("/home/user/.seed/sandbox/data.txt")))
         assert reversed_path == "/sandbox/data.txt"
 
+    def test_reverse_map_external_path(self):
+        """Test reverse mapping external path"""
+        sandbox = Sandbox(workspace_path=Path("/workspace"))
+
+        reversed_path = sandbox.reverse_map_path("/external/path.txt")
+        assert reversed_path == "/external/path.txt"
+
 
 class TestPermissionChecking:
     """Test Sandbox permission checking"""
@@ -153,16 +181,14 @@ class TestPermissionChecking:
         """Test default permissions allow known tools"""
         sandbox = Sandbox()
 
-        # Known tools should be allowed
         assert sandbox._check_permission("file_read", {"path": "/test"})
         assert sandbox._check_permission("file_write", {"path": "/test"})
         assert sandbox._check_permission("run_shell_command", {"path": "/test"})
 
     def test_unknown_tool_allowed_by_default(self):
-        """Test unknown tools are allowed by default (backward compatible)"""
+        """Test unknown tools are allowed by default"""
         sandbox = Sandbox()
 
-        # Unknown tool should be allowed
         assert sandbox._check_permission("unknown_tool", {})
 
     def test_permission_deny(self):
@@ -187,6 +213,30 @@ class TestPermissionChecking:
         perms = sandbox.get_permissions()
         assert "test_tool" in perms
         assert perms["test_tool"]["action"] == "deny"
+
+    def test_permission_with_path_patterns(self):
+        """Test permission with path patterns"""
+        sandbox = Sandbox()
+        sandbox.set_permission(
+            "file_read",
+            PermissionAction.ALLOW,
+            path_patterns=["/workspace/*"]
+        )
+
+        assert sandbox._check_permission("file_read", {"path": "/workspace/test.txt"})
+        assert not sandbox._check_permission("file_read", {"path": "/other/test.txt"})
+
+    def test_permission_max_output_size(self):
+        """Test permission max_output_size"""
+        sandbox = Sandbox()
+        sandbox.set_permission(
+            "test_tool",
+            PermissionAction.ALLOW,
+            max_output_size=500
+        )
+
+        perm = sandbox._permissions["test_tool"]
+        assert perm.max_output_size == 500
 
 
 class TestToolExecution:
@@ -248,7 +298,6 @@ class TestToolExecution:
 
         results = await sandbox.execute_tools([tool_call])
 
-        # Verify tool was called with mapped path
         assert len(results) == 1
 
     @pytest.mark.asyncio
@@ -286,6 +335,25 @@ class TestToolExecution:
         results = await sandbox.execute_tools([tool_call])
 
         assert "Error" in results[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_exception(self):
+        """Test executing tool that raises exception"""
+        sandbox = Sandbox()
+        registry = MockToolRegistry()
+        registry._tools["test_tool"] = AsyncMock(side_effect=Exception("Tool error"))
+        sandbox.register_tools(registry)
+
+        tool_call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "test_tool", "arguments": "{}"}
+        }
+
+        results = await sandbox.execute_tools([tool_call])
+
+        assert "Error" in results[0]["content"]
+        assert "Tool error" in results[0]["content"]
 
 
 class TestToolRegistry:
@@ -366,6 +434,7 @@ class TestSandboxStatus:
         assert status["isolation_level"] == "process"
         assert "tools_registered" in status
         assert "network_policy" in status
+        assert "permissions_count" in status
 
     def test_cleanup(self):
         """Test sandbox cleanup"""
@@ -418,3 +487,88 @@ class TestOutputTruncation:
 
         assert len(truncated) < len(large_output)
         assert "truncated" in truncated
+
+    def test_truncate_with_custom_max_size(self):
+        """Test truncation with custom max_output_size"""
+        sandbox = Sandbox()
+        sandbox.set_permission("test_tool", PermissionAction.ALLOW, max_output_size=100)
+
+        output = "x" * 200
+        truncated = sandbox._truncate_output(output, "test_tool")
+
+        assert len(truncated) < 200
+
+
+class TestExecutionResult:
+    """Test ExecutionResult class"""
+
+    def test_execution_result_success(self):
+        """Test successful execution result"""
+        result = ExecutionResult(
+            tool_call_id="call_1",
+            content="success result",
+            success=True,
+            duration_ms=100.0
+        )
+
+        assert result.tool_call_id == "call_1"
+        assert result.success is True
+        assert result.duration_ms == 100.0
+
+    def test_execution_result_to_dict(self):
+        """Test ExecutionResult.to_dict"""
+        result = ExecutionResult(
+            tool_call_id="call_1",
+            content="result",
+            success=True
+        )
+
+        d = result.to_dict()
+
+        assert d["tool_call_id"] == "call_1"
+        assert d["role"] == "tool"
+        assert d["content"] == "result"
+
+
+class TestCredentialProxy:
+    """Test credential proxy"""
+
+    def test_set_credential_proxy(self):
+        """Test setting credential proxy"""
+        sandbox = Sandbox()
+        proxy = MagicMock()
+        proxy.get_credential = MagicMock(return_value="secret")
+
+        sandbox.set_credential_proxy(proxy)
+
+        assert sandbox._credential_proxy == proxy
+
+    def test_get_credential_with_proxy(self):
+        """Test getting credential through proxy"""
+        sandbox = Sandbox()
+        proxy = MagicMock()
+        proxy.get_credential = MagicMock(return_value="secret")
+        sandbox.set_credential_proxy(proxy)
+
+        cred = sandbox.get_credential("api_key")
+
+        assert cred == "secret"
+        proxy.get_credential.assert_called_once_with("api_key")
+
+    def test_get_credential_without_proxy(self):
+        """Test getting credential without proxy"""
+        sandbox = Sandbox()
+
+        cred = sandbox.get_credential("api_key")
+
+        assert cred is None
+
+
+class TestPathKeys:
+    """Test PATH_KEYS constant"""
+
+    def test_path_keys_defined(self):
+        """Test PATH_KEYS is defined"""
+        assert len(Sandbox.PATH_KEYS) > 0
+        assert "path" in Sandbox.PATH_KEYS
+        assert "file_path" in Sandbox.PATH_KEYS

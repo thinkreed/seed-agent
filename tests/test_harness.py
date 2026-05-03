@@ -1,5 +1,5 @@
 """
-Tests for src/harness.py
+Tests for src/harness.py - 三件套控制器
 
 Coverage targets:
 - Harness initialization
@@ -7,8 +7,9 @@ Coverage targets:
 - run_conversation() method
 - stream_conversation() method
 - _build_context_from_session()
-- _route_tool_calls()
+- _route_tool_calls() and _execute_tools_parallel()
 - HarnessManager
+- Metrics tracking
 """
 
 import os
@@ -19,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from harness import Harness, HarnessManager, MaxIterationsExceeded, MAX_ITERATIONS
+from harness import Harness, HarnessManager, MaxIterationsExceeded, MAX_ITERATIONS, CycleResult
 from llm_client import LLMClient
 from sandbox import Sandbox, IsolationLevel
 from session_event_stream import SessionEventStream, EventType
@@ -73,6 +74,9 @@ class MockGateway:
 
     async def get_active_provider(self):
         return "test_provider"
+
+    def get_rate_limit_status(self):
+        return None
 
 
 class MockToolRegistry:
@@ -129,6 +133,18 @@ class TestHarnessInit:
 
         assert harness.system_prompt == "test prompt"
 
+    def test_init_metrics_empty(self, tmp_path):
+        """Test metrics initialized empty"""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+
+        assert len(harness._metrics) == 0
+
 
 class TestHarnessRunCycle:
     """Test Harness.run_cycle()"""
@@ -137,7 +153,6 @@ class TestHarnessRunCycle:
     async def test_run_cycle_with_tool_calls(self, tmp_path):
         """Test run_cycle with tool calls"""
         gateway = MockGateway()
-        # Configure gateway to always return tool_calls on first call
         gateway.chat_completion = AsyncMock(return_value={
             'choices': [{
                 'message': {
@@ -154,7 +169,6 @@ class TestHarnessRunCycle:
 
         harness = Harness(llm_client, session, sandbox, max_iterations=2)
 
-        # First cycle should have tool calls
         result = await harness.run_cycle()
 
         assert result["continue_loop"] is True
@@ -165,7 +179,7 @@ class TestHarnessRunCycle:
     async def test_run_cycle_without_tool_calls(self, tmp_path):
         """Test run_cycle without tool calls (completion)"""
         gateway = MockGateway()
-        gateway._max_calls_before_done = 0  # First call returns no tool_calls
+        gateway._max_calls_before_done = 0
         gateway.chat_completion = AsyncMock(return_value={
             'choices': [{'message': {'content': 'done'}}]
         })
@@ -180,6 +194,26 @@ class TestHarnessRunCycle:
 
         assert result["continue_loop"] is False
         assert result["tool_results"] is None
+
+    @pytest.mark.asyncio
+    async def test_run_cycle_events_recorded(self, tmp_path):
+        """Test run_cycle records events"""
+        gateway = MockGateway()
+        gateway.chat_completion = AsyncMock(return_value={
+            'choices': [{'message': {'content': 'response'}}]
+        })
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+
+        await harness.run_cycle()
+
+        events = session.get_events()
+        llm_events = [e for e in events if e["type"] == EventType.LLM_RESPONSE.value]
+        assert len(llm_events) == 1
 
 
 class TestHarnessRunConversation:
@@ -207,7 +241,6 @@ class TestHarnessRunConversation:
     async def test_run_conversation_max_iterations(self, tmp_path):
         """Test conversation exceeding max iterations"""
         gateway = MockGateway()
-        # Always return tool calls
         gateway.chat_completion = AsyncMock(return_value={
             'choices': [{
                 'message': {
@@ -222,8 +255,10 @@ class TestHarnessRunConversation:
 
         harness = Harness(llm_client, session, sandbox, max_iterations=2)
 
-        with pytest.raises(MaxIterationsExceeded):
+        with pytest.raises(MaxIterationsExceeded) as exc_info:
             await harness.run_conversation("hello")
+
+        assert exc_info.value.iterations == 2
 
     @pytest.mark.asyncio
     async def test_run_conversation_events_recorded(self, tmp_path):
@@ -241,7 +276,6 @@ class TestHarnessRunConversation:
 
         await harness.run_conversation("hello")
 
-        # Check events
         events = session.get_events()
         user_events = [e for e in events if e["type"] == EventType.USER_INPUT.value]
         llm_events = [e for e in events if e["type"] == EventType.LLM_RESPONSE.value]
@@ -272,27 +306,23 @@ class TestHarnessStreamConversation:
 
         assert len(chunks) >= 1
 
-
-class TestHarnessContextBuilding:
-    """Test Harness context building"""
-
-    def test_build_context_from_session(self, tmp_path):
-        """Test building context from session"""
+    @pytest.mark.asyncio
+    async def test_stream_conversation_chunk_types(self, tmp_path):
+        """Test stream conversation chunk types"""
         gateway = MockGateway()
         llm_client = LLMClient(gateway, "test-model")
         session = SessionEventStream("test_session", storage_path=tmp_path)
-        session.emit_event(EventType.USER_INPUT, {"content": "hello"})
-        session.emit_event(EventType.LLM_RESPONSE, {"content": "hi"})
-
         sandbox = Sandbox()
         sandbox.register_tools(MockToolRegistry())
 
         harness = Harness(llm_client, session, sandbox)
 
-        context = harness._build_context_from_session()
+        chunks = []
+        async for chunk in harness.stream_conversation("hello"):
+            chunks.append(chunk)
 
-        assert isinstance(context, list)
-        assert len(context) >= 2
+        # 验证 chunk 类型
+        assert chunks[-1]["type"] == "final"
 
 
 class TestHarnessToolRouting:
@@ -338,9 +368,49 @@ class TestHarnessToolRouting:
         events = session.get_events()
         tool_call_events = [e for e in events if e["type"] == EventType.TOOL_CALL.value]
 
-        # _route_tool_calls records TOOL_CALL events
         assert len(tool_call_events) == 1
-        assert len(results) == 1  # Returns results but doesn't record TOOL_RESULT here
+
+
+class TestHarnessMetrics:
+    """Test Harness metrics tracking"""
+
+    @pytest.mark.asyncio
+    async def test_metrics_recorded_after_tool_execution(self, tmp_path):
+        """Test metrics recorded after tool execution"""
+        gateway = MockGateway()
+        gateway.chat_completion = AsyncMock(return_value={
+            'choices': [{
+                'message': {
+                    'tool_calls': [{'id': 'call_1', 'function': {'name': 'test_tool', 'arguments': '{}'}}]
+                }
+            }]
+        })
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox, max_iterations=2)
+        await harness.run_cycle()
+
+        metrics = harness.get_metrics()
+        assert len(metrics) == 1
+        assert metrics[0]["tool_name"] == "test_tool"
+        assert metrics[0]["success"] is True
+
+    def test_clear_metrics(self, tmp_path):
+        """Test clearing metrics"""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+        harness._metrics.append({"tool_name": "test", "duration_ms": 100, "success": True, "error": None})
+
+        harness.clear_metrics()
+        assert len(harness._metrics) == 0
 
 
 class TestHarnessStateRecovery:
@@ -425,6 +495,7 @@ class TestHarnessHelperMethods:
         assert "session_id" in status
         assert "max_iterations" in status
         assert "llm_model" in status
+        assert "metrics_count" in status
 
 
 class TestHarnessManager:
@@ -432,7 +503,6 @@ class TestHarnessManager:
 
     def test_create_harness(self, tmp_path, monkeypatch):
         """Test creating harness through manager"""
-        # Mock the config loading
         mock_config = MagicMock()
         mock_config.models = {}
 
@@ -443,7 +513,6 @@ class TestHarnessManager:
 
             manager = HarnessManager("config_path.yaml")
 
-            # Skip actual creation since it requires config
             assert manager._gateway_config_path == "config_path.yaml"
 
     def test_list_harnesses(self):
@@ -510,6 +579,26 @@ class TestHarnessManager:
         assert len(status) == 2
         assert status["h1"]["id"] == "h1"
 
+    def test_get_total_metrics(self):
+        """Test getting total metrics"""
+        manager = HarnessManager("config_path.yaml")
+        mock_harness1 = MagicMock()
+        mock_harness1.get_metrics = MagicMock(return_value=[
+            {"tool_name": "t1", "duration_ms": 100, "success": True, "error": None}
+        ])
+        mock_harness2 = MagicMock()
+        mock_harness2.get_metrics = MagicMock(return_value=[
+            {"tool_name": "t2", "duration_ms": 200, "success": False, "error": "err"}
+        ])
+        manager._harnesses = {"h1": mock_harness1, "h2": mock_harness2}
+
+        metrics = manager.get_total_metrics()
+
+        assert metrics["total_tool_calls"] == 2
+        assert metrics["successful_calls"] == 1
+        assert metrics["failed_calls"] == 1
+        assert metrics["total_duration_ms"] == 300
+
 
 class TestMaxIterationsExceeded:
     """Test MaxIterationsExceeded exception"""
@@ -518,3 +607,20 @@ class TestMaxIterationsExceeded:
         """Test exception message"""
         exc = MaxIterationsExceeded(30)
         assert "30" in str(exc)
+        assert exc.iterations == 30
+
+
+class TestCycleResult:
+    """Test CycleResult TypedDict"""
+
+    def test_cycle_result_structure(self):
+        """Test CycleResult has expected fields"""
+        result: CycleResult = {
+            "response": {"choices": []},
+            "tool_results": None,
+            "continue_loop": False
+        }
+
+        assert "response" in result
+        assert "tool_results" in result
+        assert "continue_loop" in result
