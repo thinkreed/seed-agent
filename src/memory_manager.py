@@ -204,7 +204,7 @@ class MemoryManager:
 
     def _search_l2(self, keyword: str, limit: int) -> list[dict[str, Any]]:
         """搜索 L2 技能"""
-        results = []
+        results: list[dict[str, Any]] = []
         if not self._l2_path.exists():
             return results
 
@@ -236,7 +236,7 @@ class MemoryManager:
 
     def _search_l3(self, keyword: str, limit: int) -> list[dict[str, Any]]:
         """搜索 L3 知识"""
-        results = []
+        results: list[dict[str, Any]] = []
         if not self._l3_path.exists():
             return results
 

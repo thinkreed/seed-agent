@@ -404,7 +404,7 @@ class SessionEventStream:
             })
 
         # 4. 获取摘要点后的事件
-        context_event_types = [
+        context_event_types: list[str | EventType] = [
             EventType.USER_INPUT,
             EventType.LLM_RESPONSE,
             EventType.TOOL_RESULT
