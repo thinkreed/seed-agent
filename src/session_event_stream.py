@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 # 默认存储路径
 DEFAULT_STORAGE_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "events"
 
+# 事件清理配置
+MAX_IN_MEMORY_EVENTS = 10000  # 内存中最大事件数
+MAX_EVENT_AGE_DAYS = 30       # 事件最大保留天数
+
 
 class EventType(str, Enum):
     """事件类型枚举"""
@@ -147,6 +151,59 @@ class SessionEventStream:
             events = [e for e in events if e["type"] in type_values]
 
         return events
+
+    def cleanup_old_events(
+        self,
+        max_age_days: int | None = None,
+        max_count: int | None = None,
+        keep_summary_markers: bool = True
+    ) -> int:
+        """清理旧事件，防止内存无限增长
+
+        Args:
+            max_age_days: 最大保留天数，默认使用 MAX_EVENT_AGE_DAYS
+            max_count: 最大保留数量，默认使用 MAX_IN_MEMORY_EVENTS
+            keep_summary_markers: 是否保留摘要标记事件
+
+        Returns:
+            int: 清理的事件数量
+        """
+        max_age_days = max_age_days or MAX_EVENT_AGE_DAYS
+        max_count = max_count or MAX_IN_MEMORY_EVENTS
+
+        if len(self._events) <= max_count:
+            return 0
+
+        cutoff_time = time.time() - (max_age_days * 24 * 3600)
+        original_count = len(self._events)
+
+        # 保留摘要标记和最近事件
+        summary_marker_ids = set()
+        if keep_summary_markers:
+            for e in self._events:
+                if e.get("type") == EventType.SUMMARY_MARKER.value:
+                    summary_marker_ids.add(e["id"])
+
+        # 过滤：保留摘要标记 + 最近事件 + 未过期事件
+        new_events = []
+        for e in self._events:
+            keep = (
+                e["id"] in summary_marker_ids or
+                e.get("timestamp", 0) >= cutoff_time or
+                e["id"] > self._event_counter - max_count // 2  # 保留最近一半
+            )
+            if keep:
+                new_events.append(e)
+
+        self._events = new_events
+        cleaned_count = original_count - len(self._events)
+
+        if cleaned_count > 0:
+            logger.info(
+                f"Cleaned up {cleaned_count} old events for session {self.session_id}"
+            )
+
+        return cleaned_count
 
     # === 恢复能力 ===
 
