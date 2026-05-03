@@ -1,10 +1,32 @@
 # 优化点 03: 记忆系统升级 (L4 用户建模 + L5 工作日志)
 
-> **版本**: v1.0  
-> **创建日期**: 2026-05-03  
-> **优先级**: 中  
-> **依赖**: 01_session_event_stream_design  
+> **版本**: v2.0 (已落地实现)
+> **创建日期**: 2026-05-03
+> **实现日期**: 2026-05-03
+> **优先级**: 中
+> **状态**: ✅ 已完成
+> **依赖**: 01_session_event_stream_design
 > **参考来源**: Harness Engineering "五层记忆架构"
+
+---
+
+## 实现状态
+
+### ✅ 已完成模块
+
+| 模块 | 文件 | 实现状态 |
+|------|------|----------|
+| **UserModelingLayer** | `src/tools/user_modeling.py` | ✅ 已实现，含辩证式进化 |
+| **LongTermArchiveLayer** | `src/tools/long_term_archive.py` | ✅ 已实现，含 FTS5 + LLM 摘要 |
+| **测试** | `tests/test_user_modeling.py`, `tests/test_long_term_archive.py` | ✅ 已实现 |
+
+### 关键特性验证
+
+- ✅ L4 用户建模：观察 → 矛盾检测 → 内部推理 → 升级模型
+- ✅ L5 工作日志：FTS5 全文检索 + LLM 自动摘要
+- ✅ 升级而非覆盖：保留例外情况和复杂偏好
+- ✅ jieba 中文分词支持
+- ✅ 跨会话知识检索
 
 ---
 

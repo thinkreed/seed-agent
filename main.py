@@ -58,6 +58,16 @@ from agent_loop import AgentLoop  # noqa: E402
 from client import LLMGateway  # noqa: E402
 from autonomous import AutonomousExplorer  # noqa: E402
 
+# 凭证安全模块
+try:
+    from security.credential_vault import CredentialVault  # noqa: E402
+    from security.credential_proxy import CredentialProxy  # noqa: E402
+    _CREDENTIAL_SECURITY_AVAILABLE = True
+except ImportError:
+    CredentialVault = None  # type: ignore[misc,assignment]
+    CredentialProxy = None  # type: ignore[misc,assignment]
+    _CREDENTIAL_SECURITY_AVAILABLE = False
+
 
 def on_autonomous_complete(response: str):
     """自主探索完成回调"""
@@ -127,8 +137,21 @@ async def main(args=None):
             logger.warning("Pre-start diagnosis skipped")
 
     try:
+        # 初始化凭证安全组件（如果可用）
+        vault = None
+        credential_proxy = None
+        if _CREDENTIAL_SECURITY_AVAILABLE:
+            try:
+                vault = CredentialVault(auto_generate_key=True)
+                credential_proxy = CredentialProxy(vault)
+                logger.info("CredentialVault initialized for secure API key storage")
+            except Exception as e:
+                logger.warning(f"Failed to initialize CredentialVault: {e}")
+                vault = None
+                credential_proxy = None
+
         # 初始化网关和 Agent
-        gateway = LLMGateway(config_path)
+        gateway = LLMGateway(config_path, vault=vault, credential_proxy=credential_proxy)
         agent = AgentLoop(gateway=gateway, system_prompt=system_prompt)
 
         # One-shot chat mode：不启动自主探索

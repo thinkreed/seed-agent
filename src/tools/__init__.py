@@ -36,7 +36,7 @@ class ToolRegistry:
             schema: 工具的 JSON Schema 描述(用于 function calling)
         """
         self._tools[name] = func
-        self._tool_schemas[name] = schema or self._infer_schema(func)
+        self._tool_schemas[name] = schema or self._infer_schema(func, name)
 
     def get_tool(self, name: str) -> Callable:
         """获取工具函数"""
@@ -111,9 +111,14 @@ class ToolRegistry:
         }
         return type_map.get(ann, {"type": "string"})
 
-    def _infer_schema(self, func: Callable) -> dict:
-        """从函数签名推断 JSON Schema"""
+    def _infer_schema(self, func: Callable, name: str | None = None) -> dict:
+        """从函数签名推断 JSON Schema
 
+        Args:
+            func: 工具函数
+            name: 工具名称（优先使用此名称而非 func.__name__）
+        """
+        tool_name = name or func.__name__
         sig = inspect.signature(func)
         params = sig.parameters
 
@@ -144,8 +149,8 @@ class ToolRegistry:
         return {
             "type": "function",
             "function": {
-                "name": func.__name__,
-                "description": (func.__doc__ or f"Execute {func.__name__}").strip(),
+                "name": tool_name,
+                "description": (func.__doc__ or f"Execute {tool_name}").strip(),
                 "parameters": {
                     "type": "object",
                     "properties": properties,

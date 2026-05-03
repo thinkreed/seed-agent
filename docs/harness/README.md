@@ -1,9 +1,9 @@
 # Harness Engineering 架构优化设计索引
 
-> **版本**: v2.0
+> **版本**: v2.1
 > **创建日期**: 2026-05-03
 > **更新日期**: 2026-05-03
-> **状态**: 部分已落地实现
+> **状态**: ✅ 全部已落地实现
 
 ---
 
@@ -19,12 +19,12 @@
 |------|--------|----------|--------|------|------|
 | 01 | **Session 不可变事件流** | [01_session_event_stream_design.md](01_session_event_stream_design.md) | 高 | 无 | ✅ 已完成 |
 | 02 | **Harness/Sandbox 三件套解耦** | [02_harness_sandbox_decoupling_design.md](02_harness_sandbox_decoupling_design.md) | 高 | 01 | ✅ 已完成 |
-| 03 | **记忆系统升级 (L4 用户建模 + L5 工作日志)** | [03_memory_system_upgrade_design.md](03_memory_system_upgrade_design.md) | 中 | 01 | 设计阶段 |
-| 04 | **渐进式上下文压缩 + 智能裁剪** | [04_context_engineering_design.md](04_context_engineering_design.md) | 中 | 01 | 设计阶段 |
+| 03 | **记忆系统升级 (L4 用户建模 + L5 工作日志)** | [03_memory_system_upgrade_design.md](03_memory_system_upgrade_design.md) | 中 | 01 | ✅ 已完成 |
+| 04 | **渐进式上下文压缩 + 智能裁剪** | [04_context_engineering_design.md](04_context_engineering_design.md) | 中 | 01 | ✅ 已完成 |
 | 05 | **确定性生命周期钩子体系** | [05_lifecycle_hooks_design.md](05_lifecycle_hooks_design.md) | 中 | 01, 02 | ✅ 已完成 |
-| 06 | **多智能体协作模式** | [06_multi_agent_collaboration_design.md](06_multi_agent_collaboration_design.md) | 低 | 02 | 设计阶段 |
+| 06 | **多智能体协作模式** | [06_multi_agent_collaboration_design.md](06_multi_agent_collaboration_design.md) | 低 | 02 | ✅ 已完成 |
 | 07 | **工具权限与命令风险分类** | [07_tool_permission_risk_design.md](07_tool_permission_risk_design.md) | 中 | 02 | ✅ 已完成 |
-| 08 | **凭证安全架构 (Vault + Proxy)** | [08_credential_security_design.md](08_credential_security_design.md) | 高 | 02 | 设计阶段 |
+| 08 | **凭证安全架构 (Vault + Proxy)** | [08_credential_security_design.md](08_credential_security_design.md) | 高 | 02 | ✅ 已完成 |
 
 ---
 
@@ -176,4 +176,6 @@
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| v2.1 | 2026-05-03 | 更新状态表：03/04/06/08 已完成实现，全部 8 个优化点落地 |
+| v2.0 | 2026-05-03 | 更新状态表：01/02/05/07 已完成实现 |
 | v1.0 | 2026-05-03 | 初始版本，8个独立设计文档 |

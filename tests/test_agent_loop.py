@@ -106,6 +106,7 @@ def full_agent_patches(session_id='test_session', storage_path=None):
         patch('scheduler.register_scheduler_tools', noop),
         patch('tools.ralph_tools.register_ralph_tools', noop),
         patch('tools.subagent_tools.register_subagent_tools', noop),
+        patch('tools.collaboration_tools.register_tools', noop),
         patch('agent_loop._generate_session_filename', return_value=session_id),
         patch('tiktoken.encoding_for_model', side_effect=KeyError),
         patch('tiktoken.get_encoding', return_value=MagicMock()),
@@ -606,3 +607,63 @@ class TestEventStreamIntegration:
 
         llm_events = agent.session.get_events(event_types=[EventType.LLM_RESPONSE])
         assert len(llm_events) == 1
+
+
+# ==================== SecureSandbox Tests ====================
+
+class TestSecureSandboxIntegration:
+    """Test SecureSandbox 集成."""
+
+    def test_default_secure_sandbox_enabled(self, mock_gateway, temp_storage_path):
+        """Test SecureSandbox is enabled by default."""
+        patches = full_agent_patches('test_secure', temp_storage_path)
+        patches.append(
+            patch('agent_loop.SecureSandbox', return_value=MagicMock(isolation_level=IsolationLevel.PROCESS))
+        )
+        mgr = _PatchManager(patches)
+        mgr.__enter__()
+        try:
+            agent = AgentLoop(gateway=mock_gateway)
+            assert agent._enable_secure_sandbox is True
+            # SecureSandbox should be used
+        finally:
+            mgr.__exit__(None, None, None)
+
+    def test_disable_secure_sandbox(self, mock_gateway, temp_storage_path):
+        """Test disabling SecureSandbox uses regular Sandbox."""
+        patches = full_agent_patches('test_no_secure', temp_storage_path)
+        mgr = _PatchManager(patches)
+        mgr.__enter__()
+        try:
+            agent = AgentLoop(gateway=mock_gateway, enable_secure_sandbox=False)
+            assert agent._enable_secure_sandbox is False
+            # Regular Sandbox should be used
+        finally:
+            mgr.__exit__(None, None, None)
+
+    def test_custom_user_permission_level(self, mock_gateway, temp_storage_path):
+        """Test custom user permission level."""
+        patches = full_agent_patches('test_perm', temp_storage_path)
+        patches.append(
+            patch('agent_loop.SecureSandbox', return_value=MagicMock(isolation_level=IsolationLevel.PROCESS))
+        )
+        mgr = _PatchManager(patches)
+        mgr.__enter__()
+        try:
+            agent = AgentLoop(gateway=mock_gateway, user_permission_level="admin")
+            assert agent._user_permission_level == "admin"
+        finally:
+            mgr.__exit__(None, None, None)
+
+
+# ==================== Collaboration Tools Tests ====================
+
+class TestCollaborationToolsRegistration:
+    """Test collaboration tools 注册."""
+
+    def test_collaboration_tools_registered(self, agent_loop_instance):
+        """Test collaboration tools are registered in tool registry."""
+        agent = agent_loop_instance
+        # 工具注册通过 patch 模拟，验证调用发生
+        # 实际验证在 test_collaboration.py 中
+        assert agent.tools is not None

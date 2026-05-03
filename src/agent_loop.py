@@ -42,6 +42,7 @@ from src.context_engineering import (
 from src.harness import Harness, MaxIterationsExceeded
 from src.llm_client import LLMClient
 from src.sandbox import IsolationLevel, Sandbox
+from src.security.secure_sandbox import SecureSandbox
 from src.session_event_stream import EventType, SessionEventStream
 from src.subagent_manager import SubagentManager
 from src.tools import ToolRegistry
@@ -55,6 +56,7 @@ from src.tools.memory_tools import (
 from src.tools.ralph_tools import register_ralph_tools
 from src.tools.skill_loader import SkillLoader, register_skill_tools
 from src.tools.subagent_tools import init_subagent_manager, register_subagent_tools
+from src.tools.collaboration_tools import register_tools as register_collaboration_tools
 from src.scheduler import TaskScheduler, register_scheduler_tools
 from src.request_queue import RequestPriority
 
@@ -129,6 +131,8 @@ class AgentLoop:
         enable_pruning: bool = True,
         hook_registry: LifecycleHookRegistry | None = None,
         enable_builtin_hooks: bool = True,
+        enable_secure_sandbox: bool = True,
+        user_permission_level: str = "normal",
     ):
         """初始化 AgentLoop
 
@@ -159,7 +163,9 @@ class AgentLoop:
             "max_iterations": self.max_iterations,
             "summary_interval": self.summary_interval,
             "isolation_level": isolation_level.value,
-            "enable_pruning": enable_pruning
+            "enable_pruning": enable_pruning,
+            "enable_secure_sandbox": enable_secure_sandbox,
+            "user_permission_level": user_permission_level
         })
 
         # === 内部状态 ===
@@ -175,6 +181,10 @@ class AgentLoop:
         self._compression_config = compression_config
         self._pruning_config = pruning_config
         self._enable_pruning = enable_pruning
+
+        # === 安全沙盒配置 ===
+        self._enable_secure_sandbox = enable_secure_sandbox
+        self._user_permission_level = user_permission_level
 
         # === 生命周期钩子 ===
         self._hook_registry = hook_registry or get_global_registry()
@@ -203,6 +213,7 @@ class AgentLoop:
         register_scheduler_tools(self.tools)
         register_ralph_tools(self.tools)
         register_subagent_tools(self.tools)
+        register_collaboration_tools(self.tools)
 
         self.skill_loader = SkillLoader()
         self._available_tools: set[str] = set()
@@ -235,11 +246,20 @@ class AgentLoop:
             model_id=self.model_id
         )
 
-        # 2. Sandbox (工作台)
-        self.sandbox = Sandbox(
-            isolation_level=isolation_level,
-            workspace_path=None
-        )
+        # 2. Sandbox (工作台) - 根据 enable_secure_sandbox 选择类型
+        if self._enable_secure_sandbox:
+            self.sandbox = SecureSandbox(
+                isolation_level=isolation_level,
+                workspace_path=None,
+                user_permission_level=self._user_permission_level,
+                enable_progressive_expansion=True,
+                enable_single_purpose_tools=True,
+            )
+        else:
+            self.sandbox = Sandbox(
+                isolation_level=isolation_level,
+                workspace_path=None
+            )
         self.sandbox.register_tools(self.tools)
 
         # 3. Harness (控制器) - 不传递 context_engineering，稍后初始化
@@ -257,7 +277,9 @@ class AgentLoop:
         logger.info(
             f"AgentLoop trio initialized: model={self.model_id}, "
             f"isolation={isolation_level.value}, tools={len(self.tools._tools)}, "
-            f"hooks={self._hook_registry.get_hook_count()}"
+            f"hooks={self._hook_registry.get_hook_count()}, "
+            f"secure_sandbox={self._enable_secure_sandbox}, "
+            f"user_level={self._user_permission_level}"
         )
 
     def _setup_context_engineering(self) -> None:
