@@ -16,7 +16,6 @@ Usage:
 
 import json
 import math
-import pickle
 from collections import Counter
 from pathlib import Path
 
@@ -232,11 +231,18 @@ class SemanticIndex:
             "doc_count": self.encoder._doc_count,
         }
 
-        # Save SVD model if exists
+        # Save SVD model parameters (not pickle, for security)
+        # Only store numpy arrays which are safe to load
         if self.svd is not None:
-            svd_path = save_path + ".svd.pkl"
-            with open(svd_path, "wb") as f:
-                pickle.dump(self.svd, f)
+            svd_path = save_path + ".svd.npz"
+            np.savez(
+                svd_path,
+                components=self.svd.components_,
+                explained_variance=self.svd.explained_variance_,
+                explained_variance_ratio=self.svd.explained_variance_ratio_,
+                singular_values=self.svd.singular_values_,
+                n_components=self.svd.n_components,
+            )
             meta["has_svd"] = True
 
         with open(meta_path, "w") as f:
@@ -264,11 +270,24 @@ class SemanticIndex:
         idx.encoder._doc_count = meta["doc_count"]
         idx._built = True
 
-        # Load SVD model if exists
+        # Load SVD model parameters (safe npz format instead of pickle)
         if meta.get("has_svd"):
-            svd_path = path + ".svd.pkl"
-            with open(svd_path, "rb") as f:
-                idx.svd = pickle.load(f)
+            svd_path = path + ".svd.npz"
+            try:
+                svd_data = np.load(svd_path, allow_pickle=False)
+                from sklearn.decomposition import TruncatedSVD
+
+                n_components = int(svd_data["n_components"])
+                svd_model = TruncatedSVD(n_components=n_components, random_state=42)
+                # Manually set fitted attributes
+                svd_model.components_ = svd_data["components"]
+                svd_model.explained_variance_ = svd_data["explained_variance"]
+                svd_model.explained_variance_ratio_ = svd_data["explained_variance_ratio"]
+                svd_model.singular_values_ = svd_data["singular_values"]
+                idx.svd = svd_model
+            except (OSError, KeyError, ValueError):
+                # If SVD load fails, continue without SVD
+                idx.svd = None
 
         return idx
 
