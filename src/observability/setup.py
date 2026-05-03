@@ -12,11 +12,14 @@ OpenTelemetry SDK 初始化模块
 - 使用 BatchSpanProcessor 批量发送 traces（生产环境推荐）
 - 使用 PeriodicExportingMetricReader 定期发送 metrics
 - 批量参数: 队列大小 2048, 每 5秒发送, 每批最大 512 spans
+- Endpoint 不可达时自动降级为 noop，避免重复错误日志
 """
 
 import logging
 import os
 import threading
+import urllib.request
+import urllib.error
 
 # 类型注解使用内置类型
 from opentelemetry import metrics, trace
@@ -31,6 +34,52 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
 logger = logging.getLogger(__name__)
+
+# Endpoint 健康检查缓存（避免重复检查）
+_endpoint_health_cache: dict[str, bool] = {}
+_endpoint_health_cache_lock = threading.Lock()
+_ENDPOINT_CHECK_TIMEOUT = 2.0  # 健康检查超时时间（秒）
+
+
+def _check_endpoint_health(endpoint: str) -> bool:
+    """检查 OTLP endpoint 是否可达
+
+    使用简单的 HTTP GET 请求检测 collector 是否运行。
+    OpenTelemetry Collector 通常在根路径返回 404 或 200，
+    只要能建立连接就认为可达。
+
+    Args:
+        endpoint: OTLP HTTP endpoint URL
+
+    Returns:
+        True 表示可达，False 表示不可达
+    """
+    with _endpoint_health_cache_lock:
+        if endpoint in _endpoint_health_cache:
+            return _endpoint_health_cache[endpoint]
+
+    try:
+        # 使用 HEAD 请求（更快）
+        url = endpoint.rstrip("/")
+        req = urllib.request.Request(url, method="HEAD")
+        urllib.request.urlopen(req, timeout=_ENDPOINT_CHECK_TIMEOUT)
+        # 任何响应（包括 404）都表示 collector 运行
+        with _endpoint_health_cache_lock:
+            _endpoint_health_cache[endpoint] = True
+        return True
+    except urllib.error.URLError:
+        # 连接失败（collector 未运行）
+        logger.info(f"OTLP endpoint {endpoint} not reachable, using noop providers")
+        with _endpoint_health_cache_lock:
+            _endpoint_health_cache[endpoint] = False
+        return False
+    except Exception as e:
+        # 其他错误（超时等）
+        logger.debug(f"Endpoint health check failed: {e}")
+        with _endpoint_health_cache_lock:
+            _endpoint_health_cache[endpoint] = False
+        return False
+
 
 # 全局状态（线程锁保护）
 _tracer: trace.Tracer | None = None
@@ -85,6 +134,20 @@ def setup_observability(
         # 确保 endpoint 不为 None
         if endpoint is None:
             endpoint = "http://localhost:4318"
+
+        # 检查 endpoint 可达性
+        endpoint_reachable = _check_endpoint_health(endpoint)
+
+        if not endpoint_reachable:
+            # Endpoint 不可达，使用 noop providers
+            _tracer = trace.NoOpTracer()
+            _meter = metrics.NoOpMeter(service_name)
+            _initialized = True
+            logger.info(
+                f"OTLP endpoint {endpoint} not available, "
+                "observability disabled (no collector running)"
+            )
+            return _tracer, _meter
 
         # 确保路径正确
         trace_endpoint = endpoint.rstrip("/") + "/v1/traces"

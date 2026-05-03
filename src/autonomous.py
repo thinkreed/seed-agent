@@ -11,6 +11,7 @@
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from collections.abc import Coroutine
@@ -553,10 +554,21 @@ class AutonomousExplorer:
 """
                     logger.info(f"Memory Graph selected skill: {best_skill}")
 
-        # 构建 SOP 内容
+        # 构建 SOP 内容（替换 ~ 路径为实际路径）
+        # 将 SOP 中的 ~/.seed 替换为实际的 SEED_DIR 绝对路径
+        sop_content_expanded = self._sop_content or ""
+        if sop_content_expanded:
+            seed_dir_str = str(SEED_DIR)
+            # 替换所有 ~/.seed 相关路径
+            sop_content_expanded = sop_content_expanded.replace("~/.seed", seed_dir_str)
+            sop_content_expanded = sop_content_expanded.replace("~\\seed", seed_dir_str)
+            # 替换 ~ 为用户主目录
+            home_dir = os.path.expanduser("~")
+            sop_content_expanded = sop_content_expanded.replace("~", home_dir)
+
         sop_prompt = f"""## 自主探索 SOP
 
-{self._sop_content}
+{sop_content_expanded}
 
 """
 
@@ -601,6 +613,9 @@ class AutonomousExplorer:
 
     def _build_task_instruction(self, todo_content: str, has_todo: bool) -> str:
         """构建任务指令部分"""
+        # 获取 SEED_DIR 的绝对路径（用于明确告知 LLM）
+        seed_dir_absolute = str(SEED_DIR)
+
         prompt_parts = [
             "# 自主探索任务触发",
             "",
@@ -608,6 +623,15 @@ class AutonomousExplorer:
             "",
             "## 当前状态",
             f"- TODO状态: {'有待执行任务' if has_todo else '无TODO，进入规划模式'}",
+            f"- 工作目录: {seed_dir_absolute}",
+            "",
+            "## 重要路径说明（使用绝对路径）",
+            f"- 记忆目录: {os.path.join(seed_dir_absolute, 'memory')}",
+            f"- Skills目录: {os.path.join(seed_dir_absolute, 'memory', 'skills')}",
+            f"- TODO文件: {os.path.join(seed_dir_absolute, 'TODO.md')}",
+            f"- 日志目录: {os.path.join(seed_dir_absolute, 'logs')}",
+            "",
+            "**关键提示**: 所有文件操作必须使用上述绝对路径，不要使用相对路径如 `.seed` 或 `~/.seed`。",
             "",
         ]
 

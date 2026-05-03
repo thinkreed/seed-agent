@@ -483,6 +483,7 @@ class SkillLoader:
         - Prompt Injection 检测
         - 符号链接逃逸检测
         - Context Fencing: 添加围栏标签明确标识技能内容边界
+        - 路径展开: ~/.seed 替换为实际的 SEED_DIR
         """
         # 检查缓存 (线程安全)
         with self._lock:
@@ -514,6 +515,19 @@ class SkillLoader:
         symlink_check = validate_skill_structure(skill_dir)
         if symlink_check:
             return f"[Security Error] {symlink_check}"
+
+        # 路径展开：将 ~/.seed 替换为实际的 SEED_DIR 绝对路径
+        # 这对于 Windows 系统特别重要，因为 LLM 可能误解 ~ 为项目目录
+        try:
+            from src.ralph_state import SEED_DIR
+            seed_dir_str = str(SEED_DIR)
+            content = content.replace("~/.seed", seed_dir_str)
+            content = content.replace("~\\seed", seed_dir_str)
+            # 展开 ~ 为用户主目录
+            home_dir = os.path.expanduser("~")
+            content = content.replace("~", home_dir)
+        except ImportError:
+            pass  # 如果无法导入 SEED_DIR，保持原路径
 
         # Context Fencing
         fenced_content = f"<skill_content name='{name}'>\n{content}\n</skill_content>"
@@ -735,6 +749,17 @@ class SkillLoader:
             content = skill_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             return None
+
+        # 路径展开：将 ~/.seed 替换为实际的 SEED_DIR 绝对路径
+        try:
+            from src.ralph_state import SEED_DIR
+            seed_dir_str = str(SEED_DIR)
+            content = content.replace("~/.seed", seed_dir_str)
+            content = content.replace("~\\seed", seed_dir_str)
+            home_dir = os.path.expanduser("~")
+            content = content.replace("~", home_dir)
+        except ImportError:
+            pass
 
         gene_fields = self._extract_gene_fields(content)
         if not gene_fields:

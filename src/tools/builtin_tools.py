@@ -250,6 +250,10 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
 def _resolve_path(path: str) -> str:
     """解析路径，相对路径默认从 .seed 目录解析（含路径遍历防护）"""
 
+    # 先展开 ~ 为用户主目录
+    if path.startswith("~"):
+        path = os.path.expanduser(path)
+
     # 安全验证
     is_safe, error = _validate_path_safety(path)
     if not is_safe:
