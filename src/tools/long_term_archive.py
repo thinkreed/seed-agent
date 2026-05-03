@@ -81,7 +81,8 @@ class LongTermArchiveLayer:
     def _init_db(self) -> None:
         """初始化数据库连接和 Schema"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path)
+        # 单例模式允许跨线程访问，使用 check_same_thread=False
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
         # 性能优化 PRAGMA
@@ -652,8 +653,8 @@ class LongTermArchiveLayer:
         """清理旧归档
 
         Args:
-            max_age_days: 最大保留天数
-            keep_count: 最少保留数量
+            max_age_days: 最大保留天数（超过此天数的归档优先删除）
+            keep_count: 最少保留数量（即使超过天数也保留此数量）
 
         Returns:
             清理的归档数量
@@ -673,7 +674,7 @@ class LongTermArchiveLayer:
         # 计算需要删除的数量
         to_delete = total - keep_count
 
-        # 删除最旧的归档
+        # 优先删除超过天数的旧归档
         rows = self._ensure_conn().execute("""
             SELECT archive_id FROM archives
             WHERE created_at < ?
@@ -681,13 +682,26 @@ class LongTermArchiveLayer:
             LIMIT ?
         """, (cutoff_str, to_delete)).fetchall()
 
-        deleted_count = 0
+        # 如果删除数量不足，继续删除最旧的归档（确保保留 keep_count）
+        deleted_count = len(rows)
+        if deleted_count < to_delete:
+            remaining_to_delete = to_delete - deleted_count
+            # 排除已删除的，继续删除最旧的
+            already_deleted_ids = [row["archive_id"] for row in rows]
+            additional_rows = self._ensure_conn().execute("""
+                SELECT archive_id FROM archives
+                WHERE archive_id NOT IN ({})
+                ORDER BY created_at ASC
+                LIMIT ?
+            """.format(",".join(["?"] * len(already_deleted_ids)) if already_deleted_ids else "''"),
+            (*already_deleted_ids, remaining_to_delete) if already_deleted_ids else (remaining_to_delete,)).fetchall()
+            rows = list(rows) + list(additional_rows)
+
         for row in rows:
             self.delete_archive(row["archive_id"])
-            deleted_count += 1
 
-        logger.info(f"Cleaned up {deleted_count} old archives")
-        return deleted_count
+        logger.info(f"Cleaned up {len(rows)} old archives")
+        return len(rows)
 
     # === 摘要标记同步 ===
 

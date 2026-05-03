@@ -72,7 +72,8 @@ class UserModelingLayer:
     def _init_db(self) -> None:
         """初始化数据库连接和 Schema"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        self.conn = sqlite3.connect(self.db_path)
+        # 单例模式允许跨线程访问，使用 check_same_thread=False
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
         # 性能优化 PRAGMA
@@ -354,12 +355,12 @@ class UserModelingLayer:
         }
 
     def _get_unprocessed_observations(self, limit: int = 50) -> list[dict[str, Any]]:
-        """获取未处理的观察记录"""
+        """获取未处理的观察记录（按时间升序，先添加的先处理）"""
         rows = self._ensure_conn().execute("""
             SELECT id, observation_type, observation_data, context, confidence, timestamp
             FROM user_observations
             WHERE processed = 0
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             LIMIT ?
         """, (limit,)).fetchall()
 
@@ -592,7 +593,14 @@ class UserModelingLayer:
         return {"resolutions": resolutions}
 
     async def _reinforce_model(self, observations: list[dict[str, Any]]) -> None:
-        """强化现有模型（无矛盾时）"""
+        """强化现有模型（无矛盾时）
+
+        处理规则：
+        - 新偏好（无 existing）：直接设置
+        - 相同值（与 existing.usual 相同）：强化置信度
+        - 不同值但有上下文：添加例外
+        - 不同值无上下文：视为偏好升级（较高置信度时）
+        """
         for obs in observations:
             if obs["type"] != "preference":
                 continue
@@ -606,9 +614,19 @@ class UserModelingLayer:
             existing = self._get_preference_from_db(pref_key)
 
             if existing:
-                # 强化置信度
-                new_confidence = min(1.0, existing["confidence"] + 0.05)
-                self._update_preference_confidence(pref_key, new_confidence)
+                usual = existing.get("usual", existing.get("value"))
+
+                if pref_value == usual:
+                    # 相同值：强化置信度
+                    new_confidence = min(1.0, existing["confidence"] + 0.05)
+                    self._update_preference_confidence(pref_key, new_confidence)
+                elif obs.get("context"):
+                    # 不同值但有上下文：添加例外
+                    self._add_exception(pref_key, pref_value, obs["context"], obs["confidence"])
+                else:
+                    # 不同值无上下文：偏好升级（仅当置信度更高时）
+                    if obs["confidence"] > existing["confidence"]:
+                        self._upgrade_preference(pref_key, pref_value, obs["confidence"])
             else:
                 # 新偏好，直接设置
                 self._set_preference(pref_key, pref_value, obs["confidence"])
@@ -740,6 +758,50 @@ class UserModelingLayer:
             WHERE preference_key = ?
         """, (new_confidence, datetime.now().isoformat(), key))
         self._ensure_conn().commit()
+
+    def _add_exception(self, key: str, value: str, context: str, confidence: float) -> None:
+        """添加例外情况"""
+        existing = self._get_preference_from_db(key)
+        if not existing:
+            return
+
+        exceptions = existing.get("exceptions", {})
+        when_key = context[:50]
+        exceptions[when_key] = {
+            "value": value,
+            "when": context,
+            "confidence": confidence
+        }
+
+        pref_data = {
+            "usual": existing.get("usual", existing.get("value")),
+            "exceptions": exceptions,
+            "confidence": existing["confidence"],
+            "last_updated": datetime.now().isoformat()
+        }
+        self._save_preference(key, pref_data)
+
+    def _upgrade_preference(self, key: str, new_value: str, new_confidence: float) -> None:
+        """升级偏好值（保留旧值作为历史例外）"""
+        existing = self._get_preference_from_db(key)
+        if not existing:
+            return
+
+        exceptions = existing.get("exceptions", {})
+        old_usual = existing.get("usual", existing.get("value"))
+        exceptions["previously"] = {
+            "value": old_usual,
+            "when": "升级前的偏好值",
+            "confidence": existing["confidence"]
+        }
+
+        pref_data = {
+            "usual": new_value,
+            "exceptions": exceptions,
+            "confidence": new_confidence,
+            "last_updated": datetime.now().isoformat()
+        }
+        self._save_preference(key, pref_data)
 
     def _record_dialectical_history(
         self,
