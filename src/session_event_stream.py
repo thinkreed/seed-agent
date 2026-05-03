@@ -423,15 +423,41 @@ class SessionEventStream:
 
     # === 持久化 ===
 
-    def _persist_event(self, event: dict[str, Any]) -> None:
-        """持久化单个事件 (JSONL 格式)"""
+    def _persist_event(self, event: dict[str, Any], max_retries: int = 3) -> None:
+        """持久化单个事件 (JSONL 格式)，带重试机制
+
+        Args:
+            event: 事件数据
+            max_retries: 最大重试次数（默认3次）
+
+        Raises:
+            OSError: 重试失败后抛出异常，让调用方决定处理策略
+        """
         event_file = self._storage_path / f"{self.session_id}.jsonl"
 
-        try:
-            with open(event_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(event, ensure_ascii=False) + "\n")
-        except OSError as e:
-            logger.error(f"Failed to persist event: {type(e).__name__}: {e}")
+        last_error: OSError | None = None
+        for attempt in range(max_retries):
+            try:
+                with open(event_file, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(event, ensure_ascii=False) + "\n")
+                return  # 成功写入，直接返回
+            except OSError as e:
+                last_error = e
+                logger.warning(
+                    f"Failed to persist event (attempt {attempt + 1}/{max_retries}): "
+                    f"{type(e).__name__}: {e}"
+                )
+                if attempt < max_retries - 1:
+                    # 等待后重试（指数退避）
+                    time.sleep(0.1 * (attempt + 1))
+
+        # 所有重试失败后抛出异常
+        if last_error:
+            logger.error(
+                f"Failed to persist event after {max_retries} retries: "
+                f"{type(last_error).__name__}: {last_error}"
+            )
+            raise last_error
 
     def _load_existing_events(self) -> None:
         """加载已存在的事件"""

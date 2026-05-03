@@ -6,10 +6,13 @@
 
 import hashlib
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # 缓存路径配置
 CACHE_DIR = Path(os.path.expanduser("~")) / ".seed" / "cache"
@@ -90,14 +93,20 @@ def load_snapshot(skills_dir: Path) -> dict | None:
         # 检查 manifest 是否匹配
         current_manifest = build_manifest(skills_dir)
         if snapshot.get("manifest") != current_manifest:
+            logger.debug("Skill cache snapshot expired (manifest mismatch)")
             return None  # 文件已变更，快照失效
 
         # 转换特定字段为 set（用于 O(1) 查找）
         if "skills" in snapshot:
             snapshot["skills"] = _convert_lists_to_sets_for_meta(snapshot["skills"])
 
+        logger.debug(f"Skill cache snapshot loaded: {len(snapshot.get('skills', {}))} skills")
         return snapshot
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError as e:
+        logger.warning(f"Failed to parse skill cache snapshot: {type(e).__name__}: {e}")
+        return None
+    except OSError as e:
+        logger.warning(f"Failed to load skill cache snapshot: {type(e).__name__}: {e}")
         return None
 
 
@@ -154,8 +163,10 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, SNAPSHOT_PATH)
-    except OSError:
-        pass
+
+        logger.debug(f"Skill cache snapshot saved: {len(skills_meta)} skills")
+    except OSError as e:
+        logger.warning(f"Failed to save skill cache snapshot: {type(e).__name__}: {e}")
 
 
 def clear_snapshot() -> None:
@@ -163,5 +174,6 @@ def clear_snapshot() -> None:
     try:
         if SNAPSHOT_PATH.exists():
             SNAPSHOT_PATH.unlink()
-    except OSError:
-        pass
+            logger.debug("Skill cache snapshot cleared")
+    except OSError as e:
+        logger.warning(f"Failed to clear skill cache snapshot: {type(e).__name__}: {e}")

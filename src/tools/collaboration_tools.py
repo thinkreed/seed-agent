@@ -18,7 +18,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from src.collaboration import (
@@ -681,22 +681,35 @@ def receive_agent_messages(
 def register_message_handler(
     session_id: str,
     message_type: str,
-    handler_code: str,
+    handler_name: str,
 ) -> str:
     """注册消息处理器
 
     Args:
         session_id: 会话 ID
         message_type: 消息类型
-        handler_code: 处理函数代码（将被受限 eval 执行）
+        handler_name: 预定义处理器名称（不再支持自定义代码）
 
     Returns:
         注册结果
 
     Security Note:
-        使用受限的 globals 来限制 eval 的能力，只允许基本类型和函数。
-        建议在生产环境中使用预定义的处理器注册机制。
+        已移除 eval 方案，改为预定义处理器注册机制。
+        可用处理器：
+        - "log": 打印消息日志
+        - "count": 统计消息数量
+        - "echo": 返回消息内容
     """
+    # 预定义处理器（安全替代 eval 方案）
+    predefined_handlers: dict[str, Callable[[dict], None]] = {
+        "log": lambda msg: logger.info(f"Message received: {msg.get('type', 'unknown')} - {msg.get('content', '')[:100]}"),
+        "count": lambda msg: None,  # 仅计数，由 message_bus 内部实现
+        "echo": lambda msg: print(f"[Message] {msg.get('type', 'unknown')}: {msg.get('content', '')}"),
+    }
+
+    if handler_name not in predefined_handlers:
+        available = list(predefined_handlers.keys())
+        return f"Error: Unknown handler '{handler_name}'. Available handlers: {available}"
 
     with _session_lock:
         if session_id not in _message_buses:
@@ -704,34 +717,12 @@ def register_message_handler(
 
         message_bus = _message_buses[session_id]
 
-    # 安全限制：只允许基本类型和 lambda 表达式
-    # 注意：这是一个受限的 eval，只支持简单的 lambda 函数定义
-    # 例如: "lambda msg: print(f'Received: {msg}')"
-    safe_globals = {
-        "__builtins__": {
-            "print": print,
-            "True": True,
-            "False": False,
-            "None": None,
-            "str": str,
-            "int": int,
-            "float": float,
-            "bool": bool,
-            "list": list,
-            "dict": dict,
-            "len": len,
-        }
-    }
-
     try:
-        # 创建处理函数（受限 eval）
-        handler = eval(handler_code, safe_globals, {})  # noqa: S307
-        if not callable(handler):
-            return "Error: handler_code must produce a callable function"
+        handler = predefined_handlers[handler_name]
         message_bus.register_handler(message_type, handler)
-        return f"Handler registered: type={message_type}"
+        return f"Handler registered: type={message_type}, handler={handler_name}"
     except Exception as e:
-        return f"Error registering handler: {e}"
+        return f"Error registering handler: {type(e).__name__}: {e}"
 
 
 # === 工具注册 ===

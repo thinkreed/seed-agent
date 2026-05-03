@@ -174,15 +174,29 @@ class CommandRiskClassifier:
         },
         "dangerous_commands": {
             "code_patterns": [
-                "rm -rf", "rm -r", "rmdir", "del /s",
-                "sudo", "su", "chmod 777", "chown",
-                "mkfs", "dd if=", "fdisk",
-                "wget", "curl -o", "nc ", "netcat",
-                "kill -9", "pkill", "killall",
-                "format", "shutdown", "reboot",
-                "> /dev/", "mv /*",
-                "Remove-Item", "Delete-Item",
-                "Format-Volume", "Stop-Process -Force",
+                # 文件删除
+                "rm -rf", "rm -r", "rm -fr", "rmdir", "del /s", "del /q",
+                "Remove-Item", "Delete-Item", "rm\\t", "rm\\x09",  # 制表符绕过
+                # 权限修改
+                "sudo", "su", "chmod 777", "chmod 666", "chown",
+                # 系统操作
+                "mkfs", "dd if=", "fdisk", "format", "shutdown", "reboot",
+                # 网络操作
+                "wget", "curl -o", "nc ", "netcat", "telnet",
+                # 进程控制
+                "kill -9", "pkill", "killall", "Stop-Process -Force",
+                # Shell 特殊操作
+                "> /dev/", "mv /*", ":(){ :|:& };:",  # Fork bomb
+                # Windows 危险命令
+                "Format-Volume", "Stop-Process", "Remove-Item -Recurse",
+                # Python 危险代码
+                "eval(", "exec(", "__import__", "import os", "import subprocess",
+                "os.system", "os.popen", "subprocess.call", "subprocess.run",
+                "shell=True",  # subprocess shell=True
+                # Bash 变量展开绕过
+                "$(", "${", "`",  # 命令替换
+                # 编码绕过尝试
+                "\\x", "\\u", "base64", "hex",
             ],
             "risk_boost": 1.5,
             "description": "危险命令模式",

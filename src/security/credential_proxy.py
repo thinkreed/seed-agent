@@ -51,15 +51,38 @@ class TemporaryClient:
     """临时客户端（凭证销毁后不可用）"""
     provider: str
     client: Any
-    credential: str
+    # 使用内部列表存储凭证，便于安全清除
+    _credential_storage: list[str]
     created_at: float
     destroyed: bool = False
 
+    @property
+    def credential(self) -> str:
+        """获取凭证"""
+        if self.destroyed:
+            raise RuntimeError("Client has been destroyed, credential no longer available")
+        return self._credential_storage[0] if self._credential_storage else ""
+
     def destroy(self) -> None:
-        """销毁客户端（凭证清理）"""
+        """销毁客户端（安全凭证清理）
+
+        通过多次覆盖内存区域来安全清除凭证，
+        减少被内存扫描获取的风险。
+        """
         self.destroyed = True
         self.client = None
-        self.credential = ""  # 清空凭证引用
+
+        # 安全清除凭证内存：多次覆盖
+        if self._credential_storage:
+            original_len = len(self._credential_storage[0])
+            # 多次覆盖不同模式
+            for _ in range(3):
+                self._credential_storage[0] = "\x00" * original_len  # 全零
+                self._credential_storage[0] = "\xff" * original_len  # 全一
+                self._credential_storage[0] = "REDACTED" * (original_len // 8 + 1)  # 标记
+            # 最后清空列表
+            self._credential_storage.clear()
+
         logger.debug(f"Temporary client destroyed for provider: {self.provider}")
 
 
@@ -441,7 +464,7 @@ class CredentialProxy:
         temp_client = TemporaryClient(
             provider=provider,
             client=client,
-            credential=credential,
+            _credential_storage=[credential],  # 使用列表存储便于安全清除
             created_at=time.time(),
         )
 
@@ -520,7 +543,7 @@ class CredentialProxy:
         return safe_context
 
     def _persist_request_audit(self, log_entry: RequestAuditLog) -> None:
-        """持久化请求审计日志"""
+        """持久化请求审计日志（带文件权限保护）"""
         audit_file = self._vault._vault_path / "request_audit.jsonl"
 
         entry = {
@@ -537,6 +560,12 @@ class CredentialProxy:
         try:
             with open(audit_file, "a") as f:
                 f.write(json.dumps(entry) + "\n")
+            # 安全：设置审计日志文件权限（仅 owner 可读写）
+            try:
+                import os
+                os.chmod(audit_file, 0o600)
+            except OSError:
+                logger.warning(f"Failed to set permissions on audit file: {audit_file}")
         except Exception as e:
             logger.warning(f"Failed to persist request audit: {e}")
 

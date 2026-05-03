@@ -94,7 +94,7 @@ def record_llm_span_error(span: Span, error: Exception) -> str:
     return error_type
 
 
-def create_task_with_context(coro: Coroutine[Any, Any, Any], ctx: context.Context | None = None) -> asyncio.Task:
+def create_task_with_context(coro: Coroutine[Any, Any, T], ctx: context.Context | None = None) -> asyncio.Task[T]:
     """
     创建继承 OTel context 的 asyncio task
 
@@ -109,9 +109,19 @@ def create_task_with_context(coro: Coroutine[Any, Any, Any], ctx: context.Contex
     """
     if ctx is None:
         ctx = context.get_current()
-    # 注意：opentelemetry.context.Context 与 contextvars.Context 类型不同
-    # 但 asyncio.create_task 接受 opentelemetry 的 context
-    return asyncio.create_task(coro)  # type: ignore[arg-type]
+
+    # 使用 context.attach/detach 正确传播 context
+    # 这是 OpenTelemetry 推荐的方式
+    token = context.attach(ctx)
+    try:
+        task = asyncio.create_task(coro)
+        # 任务创建后，context 已被继承，可以安全 detach
+        context.detach(token)
+        return task
+    except Exception:
+        # 异常时也要 detach
+        context.detach(token)
+        raise
 
 
 def start_span(

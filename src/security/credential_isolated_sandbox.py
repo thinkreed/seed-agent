@@ -288,6 +288,7 @@ class CredentialIsolatedSandbox(SecureSandbox):
         """进程级隔离执行（无凭证环境）
 
         创建隔离的子进程环境，移除所有敏感环境变量。
+        使用临时文件传递参数，避免 f-string 代码注入风险。
 
         Args:
             tool_name: 工具名称
@@ -296,6 +297,8 @@ class CredentialIsolatedSandbox(SecureSandbox):
         Returns:
             执行结果
         """
+        import tempfile
+
         # 创建隔离环境（移除敏感环境变量）
         isolated_env = self._create_isolated_environment()
 
@@ -308,15 +311,30 @@ class CredentialIsolatedSandbox(SecureSandbox):
             )
             return "[BLOCKED] Credential access attempt detected in sandbox"
 
-        # 构建执行命令
-        args_json = json.dumps(args)
+        # 安全：使用临时文件传递参数，而非 f-string 嵌入
+        # 避免 args_json 包含特殊字符导致的代码注入
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as args_file:
+            json.dump(args, args_file)
+            args_file_path = args_file.name
 
-        # 创建子进程（无凭证环境）
         try:
+            # 安全的执行脚本（参数从文件读取）
+            safe_script = f'''
+import json
+import sys
+args_file = sys.argv[1]
+with open(args_file) as f:
+    args = json.load(f)
+from src.tools.builtin_tools import {tool_name}
+result = {tool_name}(**args)
+print(result)
+'''
+
+            # 创建子进程（无凭证环境）
             proc = await asyncio.create_subprocess_exec(
-                "python", "-c",
-                f"import json; from src.tools.builtin_tools import {tool_name}; "
-                f"result = {tool_name}(**json.loads('{args_json}')); print(result)",
+                "python", "-c", safe_script, args_file_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=isolated_env,  # 无凭证环境
@@ -324,6 +342,12 @@ class CredentialIsolatedSandbox(SecureSandbox):
             )
 
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+
+            # 清理临时文件
+            try:
+                os.unlink(args_file_path)
+            except OSError:
+                pass
 
             if proc.returncode != 0:
                 error_msg = stderr.decode() if stderr else "Unknown error"
@@ -336,8 +360,18 @@ class CredentialIsolatedSandbox(SecureSandbox):
             return self._sanitize_output(result)
 
         except asyncio.TimeoutError:
+            # 清理临时文件
+            try:
+                os.unlink(args_file_path)
+            except OSError:
+                pass
             raise RuntimeError("Subprocess execution timeout")
         except Exception as e:
+            # 清理临时文件
+            try:
+                os.unlink(args_file_path)
+            except OSError:
+                pass
             raise RuntimeError(f"Subprocess execution failed: {type(e).__name__}")
 
     async def _execute_in_isolated_container(

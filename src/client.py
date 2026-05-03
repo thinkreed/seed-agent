@@ -134,7 +134,11 @@ def _resolve_api_key(
                     requester_id="llm_gateway_init",
                 )
         except Exception as e:
-            logger.warning(f"Failed to get credential from vault for {provider}: {e}")
+            # Vault 获取失败时抛出异常，而非静默继续
+            # 避免空 API key 被传递给客户端导致后续请求全部失败
+            raise RuntimeError(
+                f"Failed to get credential from vault for {provider}: {type(e).__name__}: {e}"
+            ) from e
 
     # 环境变量引用
     if api_key.startswith("${") and api_key.endswith("}"):

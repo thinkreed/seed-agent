@@ -588,7 +588,7 @@ class CredentialVault:
             加密后的字符串（Base64 编码）
 
         Raises:
-            RuntimeError: 加密密钥未设置
+            RuntimeError: 加密密钥未设置或 cryptography 包未安装
         """
         if not self._encryption_key:
             raise RuntimeError("Encryption key not set")
@@ -599,12 +599,13 @@ class CredentialVault:
             fernet = Fernet(self._encryption_key.encode())
             encrypted = fernet.encrypt(value.encode())
             return base64.b64encode(encrypted).decode()
-        except ImportError:
-            # Fallback: 使用简单的 base64 编码（不安全，仅用于测试）
-            logger.warning(
-                "cryptography not available, using base64 fallback (NOT SECURE)"
-            )
-            return base64.b64encode(value.encode()).decode()
+        except ImportError as e:
+            # 安全：不再使用 base64 fallback，强制要求 cryptography
+            raise RuntimeError(
+                "cryptography package is required for credential encryption. "
+                "Install with: pip install cryptography. "
+                "Base64 encoding is NOT encryption and must not be used for credentials."
+            ) from e
 
     def _decrypt(self, encrypted_value: str) -> str:
         """解密凭证
@@ -616,7 +617,7 @@ class CredentialVault:
             原始凭证值
 
         Raises:
-            RuntimeError: 加密密钥未设置
+            RuntimeError: 加密密钥未设置或 cryptography 包未安装
             ValueError: 解密失败
         """
         if not self._encryption_key:
@@ -629,13 +630,15 @@ class CredentialVault:
             decoded = base64.b64decode(encrypted_value.encode())
             decrypted = fernet.decrypt(decoded)
             return decrypted.decode()
-        except ImportError:
-            # Fallback: base64 解码
-            logger.warning("cryptography not available, using base64 fallback")
-            return base64.b64decode(encrypted_value.encode()).decode()
+        except ImportError as e:
+            # 安全：不再使用 base64 fallback，强制要求 cryptography
+            raise RuntimeError(
+                "cryptography package is required for credential decryption. "
+                "Install with: pip install cryptography"
+            ) from e
         except Exception as e:
             logger.error(f"Failed to decrypt credential: {e}")
-            raise ValueError(f"Decryption failed: {type(e).__name__}")
+            raise ValueError(f"Decryption failed: {type(e).__name__}") from e
 
     # === 审计日志 ===
 
