@@ -123,7 +123,7 @@ class AgentLoop:
         gateway: LLMGateway,
         model_id: str | None = None,
         system_prompt: str | None = None,
-        max_iterations: int = 30,
+        max_iterations: int = 100,
         summary_interval: int = 10,
         session_id: str | None = None,
         isolation_level: IsolationLevel = IsolationLevel.PROCESS,
