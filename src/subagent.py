@@ -40,10 +40,11 @@ logger = logging.getLogger(__name__)
 
 class SubagentType(Enum):
     """Subagent 类型枚举"""
-    EXPLORE = "explore"      # 只读探索：搜索文件、阅读代码
-    REVIEW = "review"       # 审查验证：只读 + 代码执行
-    IMPLEMENT = "implement" # 实现执行：全权限
-    PLAN = "plan"           # 规划分析：只读 + 记忆写入
+
+    EXPLORE = "explore"  # 只读探索：搜索文件、阅读代码
+    REVIEW = "review"  # 审查验证：只读 + 代码执行
+    IMPLEMENT = "implement"  # 实现执行：全权限
+    PLAN = "plan"  # 规划分析：只读 + 记忆写入
 
 
 def _get_subagent_type_key(subagent_type: SubagentType | str) -> str:
@@ -63,6 +64,7 @@ def _get_subagent_type_key(subagent_type: SubagentType | str) -> str:
 # 使用共享配置模块
 try:
     from src.shared_config import get_subagent_timeout_config
+
     _timeout_config = get_subagent_timeout_config()
     _default_timeouts = {
         "explore": _timeout_config.explore,
@@ -143,7 +145,6 @@ SUBAGENT_SYSTEM_PROMPTS: dict[str, str] = {
 - 你只能读取文件，不能修改任何内容
 - 完成后提供简洁的发现摘要
 - 不要输出冗长的原始文件内容，只输出关键发现""",
-
     "review": """你是一个审查型子代理 (Review Subagent)。
 
 你的职责是：
@@ -155,7 +156,6 @@ SUBAGENT_SYSTEM_PROMPTS: dict[str, str] = {
 - 你只能读取文件和执行代码
 - 不能修改任何文件
 - 完成后提供结构化的审查报告""",
-
     "implement": """你是一个实现型子代理 (Implement Subagent)。
 
 你的职责是：
@@ -169,7 +169,6 @@ SUBAGENT_SYSTEM_PROMPTS: dict[str, str] = {
 - 记忆系统访问
 
 完成后提供简洁的实现总结。""",
-
     "plan": """你是一个规划型子代理 (Plan Subagent)。
 
 你的职责是：
@@ -187,6 +186,7 @@ SUBAGENT_SYSTEM_PROMPTS: dict[str, str] = {
 @dataclass
 class SubagentState:
     """Subagent 状态"""
+
     id: str
     subagent_type: SubagentType
     status: str  # "pending", "running", "completed", "failed", "timeout"
@@ -238,7 +238,9 @@ class SubagentInstance:
         self.subagent_type = subagent_type
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
-        self.timeout = timeout or DEFAULT_TIMEOUTS.get(_get_subagent_type_key(subagent_type), 300)
+        self.timeout = timeout or DEFAULT_TIMEOUTS.get(
+            _get_subagent_type_key(subagent_type), 300
+        )
 
         # 独立的对话历史
         self.history: list[dict] = []
@@ -257,6 +259,7 @@ class SubagentInstance:
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         from src.shared_config import get_primary_model
+
         return get_primary_model(self.gateway)
 
     def _setup_tools(self, custom_tools: set[str] | None = None):
@@ -274,6 +277,7 @@ class SubagentInstance:
         # 注册所有工具（后续会过滤）
         from src.tools.builtin_tools import register_builtin_tools
         from src.tools.memory_tools import register_memory_tools
+
         register_builtin_tools(self.tools)
         register_memory_tools(self.tools)
 
@@ -284,11 +288,11 @@ class SubagentInstance:
         """只保留允许的工具（一次性重建，避免逐个删除的低效操作）"""
         # 一次性重建字典，只保留允许的工具
         self.tools._tools = {
-            name: tool for name, tool in self.tools._tools.items()
-            if name in allowed
+            name: tool for name, tool in self.tools._tools.items() if name in allowed
         }
         self.tools._tool_schemas = {
-            name: schema for name, schema in self.tools._tool_schemas.items()
+            name: schema
+            for name, schema in self.tools._tool_schemas.items()
             if name in allowed
         }
 
@@ -308,22 +312,22 @@ class SubagentInstance:
 
             try:
                 result = await self.tools.execute(tool_name, **tool_args)
-                results.append({
-                    "role": "tool",
-                    "tool_call_id": tool_id,
-                    "content": str(result)
-                })
+                results.append(
+                    {"role": "tool", "tool_call_id": tool_id, "content": str(result)}
+                )
             except Exception as e:
                 error_type = type(e).__name__
                 full_error_msg = str(e)  # 保留完整错误信息
                 truncated_msg = full_error_msg[:200]  # 截断用于返回给 LLM
                 # 记录完整错误到日志（便于调试）
                 logger.error(f"Tool {tool_name} failed: {error_type}: {full_error_msg}")
-                results.append({
-                    "role": "tool",
-                    "tool_call_id": tool_id,
-                    "content": f"Error in {tool_name}: {error_type} - {truncated_msg}"
-                })
+                results.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_id,
+                        "content": f"Error in {tool_name}: {error_type} - {truncated_msg}",
+                    }
+                )
 
         return results
 
@@ -365,15 +369,12 @@ class SubagentInstance:
                 span,
                 subagent_type=self.subagent_type.value,
                 task_id=task_id,
-                status="running"
+                status="running",
             )
 
         try:
             # 超时执行
-            result = await asyncio.wait_for(
-                self._run_loop(),
-                timeout=self.timeout
-            )
+            result = await asyncio.wait_for(self._run_loop(), timeout=self.timeout)
             self.state.status = "completed"
             self.state.result = result
 
@@ -418,7 +419,9 @@ class SubagentInstance:
         """主执行循环"""
         # 确保 state 已初始化（由 run() 方法设置）
         if self.state is None:
-            raise RuntimeError("SubagentState must be initialized before _run_loop. Call run() first.")
+            raise RuntimeError(
+                "SubagentState must be initialized before _run_loop. Call run() first."
+            )
 
         iteration = 0
 
@@ -428,9 +431,7 @@ class SubagentInstance:
 
             messages = self._build_messages()
             response = await self.gateway.chat_completion(
-                self.model_id,
-                messages,
-                tools=self.tools.get_schemas()
+                self.model_id, messages, tools=self.tools.get_schemas()
             )
 
             choice = response["choices"][0]
@@ -444,7 +445,9 @@ class SubagentInstance:
                 # 无工具调用 = 完成
                 return message.get("content", "")
 
-        raise RuntimeError(f"Subagent exceeded maximum iterations ({self.max_iterations})")
+        raise RuntimeError(
+            f"Subagent exceeded maximum iterations ({self.max_iterations})"
+        )
 
 
 class SubagentResult:
@@ -486,6 +489,7 @@ class SubagentResult:
             "iterations": self.state.iterations,
             "duration": (
                 (self.state.completed_at - self.state.started_at).total_seconds()
-                if self.state.completed_at and self.state.started_at else None
+                if self.state.completed_at and self.state.started_at
+                else None
             ),
         }

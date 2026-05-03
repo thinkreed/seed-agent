@@ -81,6 +81,7 @@ class TFIDFEncoder:
     def _tokenize(text: str) -> list[str]:
         """Simple tokenization: lowercase, split on non-alphanumeric."""
         import re
+
         return re.findall(r"[a-z0-9]+", text.lower())
 
 
@@ -98,7 +99,7 @@ class SemanticIndex:
         self.index_path = index_path
         self.encoder = TFIDFEncoder()
         self.index = None  # FAISS index
-        self.svd = None    # SVD model for dimensionality reduction
+        self.svd = None  # SVD model for dimensionality reduction
         self.doc_ids: list[str] = []
         self._built = False
         self._effective_dim: int = 0
@@ -147,6 +148,7 @@ class SemanticIndex:
         else:
             # Project to target dimension using SVD
             from sklearn.decomposition import TruncatedSVD
+
             n_samples = all_vectors.shape[0]
             # SVD components must be < min(raw_dim, n_samples)
             n_components = min(self.dim, raw_dim - 1, n_samples - 1)
@@ -190,7 +192,7 @@ class SemanticIndex:
                 padded[:, :raw_dim] = query_vec
                 query_vec = padded
             else:
-                query_vec = query_vec[:, :self.index.d]
+                query_vec = query_vec[:, : self.index.d]
 
         k = min(top_k, len(self.doc_ids))
         scores, indices = self.index.search(query_vec, k)
@@ -198,11 +200,13 @@ class SemanticIndex:
         results = []
         for score, idx in zip(scores[0], indices[0], strict=True):
             if idx >= 0 and idx < len(self.doc_ids):
-                results.append({
-                    "doc_id": self.doc_ids[idx],
-                    "score": float(score),
-                    "rank": len(results) + 1
-                })
+                results.append(
+                    {
+                        "doc_id": self.doc_ids[idx],
+                        "score": float(score),
+                        "rank": len(results) + 1,
+                    }
+                )
         return results
 
     def save(self, path: str | None = None) -> str:
@@ -214,6 +218,7 @@ class SemanticIndex:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
 
         import faiss
+
         faiss.write_index(self.index, save_path)
 
         # Save metadata + SVD model

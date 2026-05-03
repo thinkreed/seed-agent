@@ -25,6 +25,7 @@ T = TypeVar("T")
 @dataclass
 class RateLimitState:
     """完整的限流状态"""
+
     timestamp: float
     tokens_available: float = 100.0
     last_refill_time: float = 0.0
@@ -61,9 +62,7 @@ class RateLimitSQLite:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             try:
                 self._local.conn = sqlite3.connect(
-                    str(self._db_path),
-                    check_same_thread=False,
-                    timeout=10.0
+                    str(self._db_path), check_same_thread=False, timeout=10.0
                 )
                 # 启用 WAL 模式
                 self._local.conn.execute("PRAGMA journal_mode=WAL")
@@ -103,7 +102,10 @@ class RateLimitSQLite:
                     )
                     # 重连：使用类属性锁保护连接关闭，防止竞态条件
                     with self._close_lock:
-                        if hasattr(self._local, "conn") and self._local.conn is not None:
+                        if (
+                            hasattr(self._local, "conn")
+                            and self._local.conn is not None
+                        ):
                             with contextlib.suppress(sqlite3.Error):
                                 self._local.conn.close()
                             self._local.conn = None
@@ -131,12 +133,15 @@ class RateLimitSQLite:
         """)
 
         # 初始化默认行
-        conn.execute("""
+        conn.execute(
+            """
             INSERT OR IGNORE INTO rate_limit_state (
                 id, window_requests, tokens_available, 
                 last_refill_time, total_requests, updated_at
             ) VALUES (1, '[]', 100.0, ?, 0, ?)
-        """, (time.time(), time.time()))
+        """,
+            (time.time(), time.time()),
+        )
 
         # 请求历史表（用于审计）
         conn.execute("""
@@ -176,7 +181,8 @@ class RateLimitSQLite:
                 # 清理过期请求（超过 5 小时）
                 now = time.time()
                 window_requests = [
-                    t for t in window_requests
+                    t
+                    for t in window_requests
                     if now - t < 18000  # 5 小时
                 ]
 
@@ -185,7 +191,7 @@ class RateLimitSQLite:
                     tokens_available=row[1],
                     last_refill_time=row[2],
                     requests_in_window=window_requests,
-                    total_requests_lifetime=row[3]
+                    total_requests_lifetime=row[3],
                 )
 
             return RateLimitState(timestamp=time.time())
@@ -193,9 +199,11 @@ class RateLimitSQLite:
     async def save_state(self, state: RateLimitState) -> None:
         """保存状态（带重试）"""
         async with self._lock:
+
             def _save():
                 conn = self._get_conn()
-                conn.execute("""
+                conn.execute(
+                    """
                     UPDATE rate_limit_state SET
                         window_requests = ?,
                         tokens_available = ?,
@@ -203,13 +211,15 @@ class RateLimitSQLite:
                         total_requests = ?,
                         updated_at = ?
                     WHERE id = 1
-                """, (
-                    json.dumps(state.requests_in_window),
-                    state.tokens_available,
-                    state.last_refill_time,
-                    state.total_requests_lifetime,
-                    time.time()
-                ))
+                """,
+                    (
+                        json.dumps(state.requests_in_window),
+                        state.tokens_available,
+                        state.last_refill_time,
+                        state.total_requests_lifetime,
+                        time.time(),
+                    ),
+                )
                 conn.commit()
 
             await self._retry_db_operation_async(_save)
@@ -217,19 +227,19 @@ class RateLimitSQLite:
     async def save_bucket_state(self, bucket_state: TokenBucketState) -> None:
         """保存 Token Bucket 状态（带重试）"""
         async with self._lock:
+
             def _save():
                 conn = self._get_conn()
-                conn.execute("""
+                conn.execute(
+                    """
                     UPDATE rate_limit_state SET
                         tokens_available = ?,
                         last_refill_time = ?,
                         updated_at = ?
                     WHERE id = 1
-                """, (
-                    bucket_state.tokens,
-                    bucket_state.last_refill_time,
-                    time.time()
-                ))
+                """,
+                    (bucket_state.tokens, bucket_state.last_refill_time, time.time()),
+                )
                 conn.commit()
 
             await self._retry_db_operation_async(_save)
@@ -237,19 +247,23 @@ class RateLimitSQLite:
     async def save_window_state(self, window_state: RollingWindowState) -> None:
         """保存滚动窗口状态（带重试）"""
         async with self._lock:
+
             def _save():
                 conn = self._get_conn()
-                conn.execute("""
+                conn.execute(
+                    """
                     UPDATE rate_limit_state SET
                         window_requests = ?,
                         total_requests = ?,
                         updated_at = ?
                     WHERE id = 1
-                """, (
-                    json.dumps(window_state.requests),
-                    window_state.total_requests_lifetime,
-                    time.time()
-                ))
+                """,
+                    (
+                        json.dumps(window_state.requests),
+                        window_state.total_requests_lifetime,
+                        time.time(),
+                    ),
+                )
                 conn.commit()
 
             await self._retry_db_operation_async(_save)
@@ -260,23 +274,26 @@ class RateLimitSQLite:
         priority: str,
         duration: float | None = None,
         success: bool = True,
-        error_message: str | None = None
+        error_message: str | None = None,
     ) -> None:
         """记录请求历史"""
         async with self._lock:
             conn = self._get_conn()
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO request_history (
                     request_id, timestamp, priority, duration, success, error_message
                 ) VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                request_id,
-                time.time(),
-                priority,
-                duration,
-                1 if success else 0,
-                error_message
-            ))
+            """,
+                (
+                    request_id,
+                    time.time(),
+                    priority,
+                    duration,
+                    1 if success else 0,
+                    error_message,
+                ),
+            )
             conn.commit()
 
     async def cleanup_old_history(self, max_age: float = 86400.0) -> int:
@@ -291,9 +308,12 @@ class RateLimitSQLite:
         async with self._lock:
             conn = self._get_conn()
             cutoff = time.time() - max_age
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 DELETE FROM request_history WHERE timestamp < ?
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             deleted = cursor.rowcount
             conn.commit()
             return deleted
@@ -302,12 +322,15 @@ class RateLimitSQLite:
         """获取最近的请求历史"""
         async with self._lock:
             conn = self._get_conn()
-            cursor = conn.execute("""
+            cursor = conn.execute(
+                """
                 SELECT request_id, timestamp, priority, duration, success, error_message
                 FROM request_history
                 ORDER BY timestamp DESC
                 LIMIT ?
-            """, (limit,))
+            """,
+                (limit,),
+            )
             rows = cursor.fetchall()
 
             return [
@@ -317,7 +340,7 @@ class RateLimitSQLite:
                     "priority": row[2],
                     "duration": row[3],
                     "success": bool(row[4]),
-                    "error_message": row[5]
+                    "error_message": row[5],
                 }
                 for row in rows
             ]
@@ -360,7 +383,9 @@ class RateLimitSQLite:
                 "total_requests": total_requests,
                 "successful_requests": successful_requests,
                 "failed_requests": total_requests - successful_requests,
-                "success_rate": successful_requests / total_requests if total_requests > 0 else 1.0,
+                "success_rate": successful_requests / total_requests
+                if total_requests > 0
+                else 1.0,
                 "avg_duration": avg_duration,
                 "recent_errors": recent_errors,
             }

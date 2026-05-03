@@ -27,7 +27,9 @@ class ToolRegistry:
         self._tools: dict[str, Callable] = {}
         self._tool_schemas: dict[str, dict] = {}
 
-    def register(self, name: str, func: Callable[..., Any], schema: dict[str, Any] | None = None) -> None:
+    def register(
+        self, name: str, func: Callable[..., Any], schema: dict[str, Any] | None = None
+    ) -> None:
         """注册工具
 
         Args:
@@ -59,11 +61,19 @@ class ToolRegistry:
     def _parse_docstring(doc: str | None) -> dict[str, str]:
         """解析 docstring 获取参数描述"""
         import re
+
         param_descriptions: dict[str, str] = {}
         if not doc:
             return param_descriptions
 
-        skip_headers: set[str] = {"args", "returns", "raises", "yields", "note", "example"}
+        skip_headers: set[str] = {
+            "args",
+            "returns",
+            "raises",
+            "yields",
+            "note",
+            "example",
+        }
         for line in doc.split("\n"):
             line = line.strip()
             if not line or line.endswith(":"):
@@ -154,7 +164,7 @@ class ToolRegistry:
                 "parameters": {
                     "type": "object",
                     "properties": properties,
-                    "required": required
-                }
-            }
+                    "required": required,
+                },
+            },
         }

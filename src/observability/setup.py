@@ -61,7 +61,9 @@ def setup_observability(
 
     # 双重检查锁定模式：避免每次调用都获取锁
     if _initialized:
-        logger.warning("Observability already initialized, returning existing instances")
+        logger.warning(
+            "Observability already initialized, returning existing instances"
+        )
         return _tracer, _meter
 
     with _init_lock:
@@ -78,8 +80,7 @@ def setup_observability(
 
         # OTLP HTTP endpoint
         endpoint = otlp_endpoint or os.getenv(
-            "OTEL_EXPORTER_OTLP_ENDPOINT",
-            "http://localhost:4318"
+            "OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"
         )
         # 确保 endpoint 不为 None
         if endpoint is None:
@@ -90,21 +91,23 @@ def setup_observability(
         metric_endpoint = endpoint.rstrip("/") + "/v1/metrics"
 
         # Resource 配置
-        resource = Resource.create({
-            SERVICE_NAME: service_name,
-            SERVICE_VERSION: "1.0.0",
-            "deployment.environment": os.getenv("DEPLOYMENT_ENV", "local"),
-        })
+        resource = Resource.create(
+            {
+                SERVICE_NAME: service_name,
+                SERVICE_VERSION: "1.0.0",
+                "deployment.environment": os.getenv("DEPLOYMENT_ENV", "local"),
+            }
+        )
 
         # Traces - 使用 BatchSpanProcessor 批量发送（生产环境推荐）
         _trace_provider = TracerProvider(resource=resource)
         _trace_provider.add_span_processor(
             BatchSpanProcessor(
                 OTLPSpanExporter(endpoint=trace_endpoint),
-                max_queue_size=2048,           # 最大队列大小
-                schedule_delay_millis=5000,    # 5秒批量发送一次
-                export_timeout_millis=30000,   # 导出超时 30秒
-                max_export_batch_size=512,     # 每批最大 512 个 span
+                max_queue_size=2048,  # 最大队列大小
+                schedule_delay_millis=5000,  # 5秒批量发送一次
+                export_timeout_millis=30000,  # 导出超时 30秒
+                max_export_batch_size=512,  # 每批最大 512 个 span
             )
         )
         trace.set_tracer_provider(_trace_provider)

@@ -2,6 +2,7 @@
 Vision API Helper - 视觉识别基础模块
 支持: 窗口截图, 图像编码, 调用多模态大模型 (Claude/OpenAI/DashScope)
 """
+
 import base64
 import io
 import logging
@@ -10,6 +11,7 @@ from pathlib import Path
 
 try:
     from PIL import Image, ImageGrab
+
     HAS_PIL = True
 except ImportError:
     HAS_PIL = False
@@ -71,7 +73,7 @@ async def analyze_image_async(
     image: "Image.Image",
     prompt: str,
     model_id: str | None = None,
-    config_path: str | None = None
+    config_path: str | None = None,
 ) -> str:
     """
     异步分析图像 - 通过 LLMGateway 调用多模态模型
@@ -97,19 +99,17 @@ async def analyze_image_async(
                     "type": "image_url",
                     "image_url": {
                         "url": f"data:image/png;base64,{b64_img}",
-                        "detail": "auto"
-                    }
+                        "detail": "auto",
+                    },
                 },
-                {
-                    "type": "text",
-                    "text": prompt
-                }
-            ]
+                {"type": "text", "text": prompt},
+            ],
         }
     ]
 
     cfg_path = config_path or DEFAULT_CONFIG_PATH
     import asyncio
+
     if not await asyncio.to_thread(Path(cfg_path).exists):
         return f"Error: Config file not found at {cfg_path}"
 
@@ -123,7 +123,7 @@ async def analyze_image_async(
             model_id=target_model,
             messages=messages,
             priority=RequestPriority.HIGH,
-            max_tokens=2048
+            max_tokens=2048,
         )
 
         content = result.get("content", "")
@@ -155,13 +155,21 @@ def _resolve_vision_model(backend: str) -> str:
 
 def _build_vision_messages(b64_img: str, prompt: str) -> list:
     """Build OpenAI-compatible multimodal messages."""
-    return [{
-        "role": "user",
-        "content": [
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}", "detail": "auto"}},
-            {"type": "text", "text": prompt}
-        ]
-    }]
+    return [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{b64_img}",
+                        "detail": "auto",
+                    },
+                },
+                {"type": "text", "text": prompt},
+            ],
+        }
+    ]
 
 
 def ask_vision(
@@ -169,7 +177,7 @@ def ask_vision(
     prompt: str = "Describe this image",
     backend: str = "claude",
     timeout: int = 60,
-    max_pixels: int = 1_440_000
+    max_pixels: int = 1_440_000,
 ) -> str:
     """
     同步视觉分析包装器 (适用于 Skill 调用)
@@ -212,10 +220,10 @@ def ask_vision(
             asyncio.get_running_loop()  # 检测是否在异步环境中
             # 已在异步环境中：使用线程池执行避免阻塞当前循环
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(
-                    _run_vision_in_new_loop,
-                    gateway, model_id, messages, timeout
+                    _run_vision_in_new_loop, gateway, model_id, messages, timeout
                 )
                 result = future.result(timeout=timeout + 5)  # 额外 5 秒缓冲
                 return result.get("content", "No content returned")
@@ -225,8 +233,11 @@ def ask_vision(
             try:
                 result = loop.run_until_complete(
                     gateway.chat_completion(
-                        model_id=model_id, messages=messages,
-                        priority=RequestPriority.HIGH, max_tokens=2048, timeout=timeout
+                        model_id=model_id,
+                        messages=messages,
+                        priority=RequestPriority.HIGH,
+                        max_tokens=2048,
+                        timeout=timeout,
                     )
                 )
                 return result.get("content", "No content returned")
@@ -243,7 +254,9 @@ def ask_vision(
         return error_msg
 
 
-def _run_vision_in_new_loop(gateway, model_id: str, messages: list, timeout: int) -> dict:
+def _run_vision_in_new_loop(
+    gateway, model_id: str, messages: list, timeout: int
+) -> dict:
     """在独立线程中创建新事件循环执行视觉分析"""
     import asyncio
 
@@ -254,8 +267,11 @@ def _run_vision_in_new_loop(gateway, model_id: str, messages: list, timeout: int
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(
             gateway.chat_completion(
-                model_id=model_id, messages=messages,
-                priority=RequestPriority.HIGH, max_tokens=2048, timeout=timeout
+                model_id=model_id,
+                messages=messages,
+                priority=RequestPriority.HIGH,
+                max_tokens=2048,
+                timeout=timeout,
             )
         )
     finally:

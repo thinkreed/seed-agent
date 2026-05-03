@@ -57,6 +57,7 @@ def register_builtin_hooks(registry: LifecycleHookRegistry) -> None:
 
 # === 会话生命周期钩子 ===
 
+
 def _register_session_hooks(registry: LifecycleHookRegistry) -> None:
     """注册会话生命周期钩子"""
 
@@ -83,7 +84,9 @@ def _register_session_hooks(registry: LifecycleHookRegistry) -> None:
         session_id = context.get("session_id", "unknown")
         reason = context.get("reason", "normal")
         event_count = context.get("event_count", 0)
-        logger.info(f"Session ended: {session_id}, reason={reason}, events={event_count}")
+        logger.info(
+            f"Session ended: {session_id}, reason={reason}, events={event_count}"
+        )
 
     @registry.register(HookPoint.SESSION_END, priority=1, name="session_persist_state")
     def session_persist_state(context: dict[str, Any]) -> None:
@@ -108,10 +111,13 @@ def _register_session_hooks(registry: LifecycleHookRegistry) -> None:
 
 # === 工具执行钩子 ===
 
+
 def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
     """注册工具执行钩子"""
 
-    @registry.register(HookPoint.TOOL_CALL_BEFORE, priority=0, name="tool_permission_check")
+    @registry.register(
+        HookPoint.TOOL_CALL_BEFORE, priority=0, name="tool_permission_check"
+    )
     def tool_permission_check(context: dict[str, Any]) -> bool:
         """检查工具调用权限"""
         tool_name = context.get("tool_name")
@@ -136,9 +142,7 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
                 allowed = True
 
             if not allowed:
-                raise PermissionError(
-                    f"Tool '{tool_name}' not in permission set"
-                )
+                raise PermissionError(f"Tool '{tool_name}' not in permission set")
 
         return True
 
@@ -160,7 +164,9 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
             mapped_args = sandbox._map_paths(tool_args)
             context["mapped_args"] = mapped_args
 
-    @registry.register(HookPoint.TOOL_CALL_AFTER, priority=0, name="tool_validate_result")
+    @registry.register(
+        HookPoint.TOOL_CALL_AFTER, priority=0, name="tool_validate_result"
+    )
     def tool_validate_result(context: dict[str, Any]) -> None:
         """验证工具结果"""
         result = context.get("result")
@@ -174,7 +180,9 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
         # 避免 "error" 字样出现在正常内容中导致的误报
         if isinstance(result, str) and result.strip():
             result_stripped = result.strip()
-            if result_stripped.startswith("Error:") or result_stripped.startswith("Error "):
+            if result_stripped.startswith("Error:") or result_stripped.startswith(
+                "Error "
+            ):
                 logger.warning(f"Tool {tool_name} returned error: {result[:100]}")
 
     @registry.register(HookPoint.TOOL_CALL_AFTER, priority=1, name="tool_log_result")
@@ -186,7 +194,9 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
 
         # 截断结果日志
         result_str = str(result)[:200] if result else "None"
-        logger.debug(f"Tool result: {tool_name}, duration={duration_ms:.2f}ms, result={result_str}")
+        logger.debug(
+            f"Tool result: {tool_name}, duration={duration_ms:.2f}ms, result={result_str}"
+        )
 
     @registry.register(HookPoint.TOOL_CALL_ERROR, priority=0, name="tool_log_error")
     def tool_log_error(context: dict[str, Any]) -> None:
@@ -197,7 +207,9 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
 
         logger.error(f"Tool error: {tool_name}, args={tool_args}, error={error}")
 
-    @registry.register(HookPoint.TOOL_CALL_ERROR, priority=1, name="tool_record_failure")
+    @registry.register(
+        HookPoint.TOOL_CALL_ERROR, priority=1, name="tool_record_failure"
+    )
     def tool_record_failure(context: dict[str, Any]) -> None:
         """记录工具失败统计"""
         session = context.get("session")
@@ -205,14 +217,18 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
         error = context.get("error", "")
 
         if session and hasattr(session, "emit_event"):
-            session.emit_event("error_occurred", {
-                "error_type": "tool_execution",
-                "tool_name": tool_name,
-                "error_message": error[:500],
-            })
+            session.emit_event(
+                "error_occurred",
+                {
+                    "error_type": "tool_execution",
+                    "tool_name": tool_name,
+                    "error_message": error[:500],
+                },
+            )
 
 
 # === LLM 调用钩子 ===
+
 
 def _register_llm_hooks(registry: LifecycleHookRegistry) -> None:
     """注册 LLM 调用钩子"""
@@ -249,7 +265,9 @@ def _register_llm_hooks(registry: LifecycleHookRegistry) -> None:
             )
             context["context_near_limit"] = True
 
-    @registry.register(HookPoint.LLM_CALL_AFTER, priority=0, name="llm_validate_response")
+    @registry.register(
+        HookPoint.LLM_CALL_AFTER, priority=0, name="llm_validate_response"
+    )
     def llm_validate_response(context: dict[str, Any]) -> None:
         """验证 LLM 响应"""
         response = context.get("response")
@@ -286,13 +304,17 @@ def _register_llm_hooks(registry: LifecycleHookRegistry) -> None:
             f"content={content_preview}..., tool_calls={tool_calls_count}"
         )
 
-    @registry.register(HookPoint.LLM_STREAM_START, priority=0, name="llm_log_stream_start")
+    @registry.register(
+        HookPoint.LLM_STREAM_START, priority=0, name="llm_log_stream_start"
+    )
     def llm_log_stream_start(context: dict[str, Any]) -> None:
         """记录流式响应开始"""
         model_id = context.get("model_id", "unknown")
         logger.debug(f"LLM stream started: model={model_id}")
 
-    @registry.register(HookPoint.LLM_STREAM_CHUNK, priority=0, name="llm_accumulate_chunk")
+    @registry.register(
+        HookPoint.LLM_STREAM_CHUNK, priority=0, name="llm_accumulate_chunk"
+    )
     def llm_accumulate_chunk(context: dict[str, Any]) -> None:
         """累积流式响应块"""
         chunk = context.get("chunk")
@@ -311,17 +333,19 @@ def _register_llm_hooks(registry: LifecycleHookRegistry) -> None:
         total_chunks = context.get("total_chunks", 0)
 
         logger.debug(
-            f"LLM stream ended: duration={duration_ms:.2f}ms, "
-            f"chunks={total_chunks}"
+            f"LLM stream ended: duration={duration_ms:.2f}ms, chunks={total_chunks}"
         )
 
 
 # === 响应钩子 ===
 
+
 def _register_response_hooks(registry: LifecycleHookRegistry) -> None:
     """注册响应钩子"""
 
-    @registry.register(HookPoint.RESPONSE_BEFORE, priority=0, name="response_log_prepare")
+    @registry.register(
+        HookPoint.RESPONSE_BEFORE, priority=0, name="response_log_prepare"
+    )
     def response_log_prepare(context: dict[str, Any]) -> None:
         """记录响应准备"""
         iteration = context.get("iteration", 0)
@@ -329,7 +353,9 @@ def _register_response_hooks(registry: LifecycleHookRegistry) -> None:
 
         logger.debug(f"Preparing response: iteration={iteration}/{max_iterations}")
 
-    @registry.register(HookPoint.RESPONSE_AFTER, priority=0, name="response_update_state")
+    @registry.register(
+        HookPoint.RESPONSE_AFTER, priority=0, name="response_update_state"
+    )
     def response_update_state(context: dict[str, Any]) -> None:
         """更新响应状态"""
         session = context.get("session")
@@ -338,7 +364,9 @@ def _register_response_hooks(registry: LifecycleHookRegistry) -> None:
         if session and response:
             context["last_response"] = response
 
-    @registry.register(HookPoint.RESPONSE_AFTER, priority=1, name="response_check_completion")
+    @registry.register(
+        HookPoint.RESPONSE_AFTER, priority=1, name="response_check_completion"
+    )
     def response_check_completion(context: dict[str, Any]) -> None:
         """检查是否完成"""
         response = context.get("response")
@@ -348,7 +376,9 @@ def _register_response_hooks(registry: LifecycleHookRegistry) -> None:
         has_tool_calls = message.get("tool_calls") is not None
         context["should_continue"] = has_tool_calls
 
-    @registry.register(HookPoint.RESPONSE_AFTER, priority=2, name="response_metrics_update")
+    @registry.register(
+        HookPoint.RESPONSE_AFTER, priority=2, name="response_metrics_update"
+    )
     def response_metrics_update(context: dict[str, Any]) -> None:
         """更新响应指标"""
         harness = context.get("harness")
@@ -360,10 +390,13 @@ def _register_response_hooks(registry: LifecycleHookRegistry) -> None:
 
 # === 上下文钩子 ===
 
+
 def _register_context_hooks(registry: LifecycleHookRegistry) -> None:
     """注册上下文钩子"""
 
-    @registry.register(HookPoint.CONTEXT_RESET_BEFORE, priority=0, name="context_log_reset")
+    @registry.register(
+        HookPoint.CONTEXT_RESET_BEFORE, priority=0, name="context_log_reset"
+    )
     def context_log_reset(context: dict[str, Any]) -> None:
         """记录上下文重置"""
         reason = context.get("reason", "unknown")
@@ -371,7 +404,9 @@ def _register_context_hooks(registry: LifecycleHookRegistry) -> None:
 
         logger.info(f"Context reset: reason={reason}, events={event_count}")
 
-    @registry.register(HookPoint.CONTEXT_RESET_BEFORE, priority=1, name="context_extract_critical")
+    @registry.register(
+        HookPoint.CONTEXT_RESET_BEFORE, priority=1, name="context_extract_critical"
+    )
     def context_extract_critical(context: dict[str, Any]) -> None:
         """提取关键上下文"""
         history = context.get("history", [])
@@ -380,7 +415,9 @@ def _register_context_hooks(registry: LifecycleHookRegistry) -> None:
         critical_messages = history[-5:] if len(history) > 5 else history
         context["critical_context"] = critical_messages
 
-    @registry.register(HookPoint.CONTEXT_RESET_AFTER, priority=0, name="context_inject_preserved")
+    @registry.register(
+        HookPoint.CONTEXT_RESET_AFTER, priority=0, name="context_inject_preserved"
+    )
     def context_inject_preserved(context: dict[str, Any]) -> None:
         """注入保留上下文"""
         preserved = context.get("preserved_context")
@@ -388,10 +425,7 @@ def _register_context_hooks(registry: LifecycleHookRegistry) -> None:
 
         if preserved and history is not None:
             # 添加状态摘要作为系统消息
-            history.append({
-                "role": "system",
-                "content": f"[状态摘要]\n{preserved}"
-            })
+            history.append({"role": "system", "content": f"[状态摘要]\n{preserved}"})
 
     @registry.register(HookPoint.SUMMARY_GENERATED, priority=0, name="summary_log")
     def summary_log(context: dict[str, Any]) -> None:
@@ -416,6 +450,7 @@ def _register_context_hooks(registry: LifecycleHookRegistry) -> None:
 
 
 # === 子代理钩子 ===
+
 
 def _register_subagent_hooks(registry: LifecycleHookRegistry) -> None:
     """注册子代理钩子"""
@@ -462,10 +497,13 @@ def _register_subagent_hooks(registry: LifecycleHookRegistry) -> None:
 
 # === Ralph Loop 钩子 ===
 
+
 def _register_ralph_hooks(registry: LifecycleHookRegistry) -> None:
     """注册 Ralph Loop 钩子"""
 
-    @registry.register(HookPoint.RALPH_ITERATION_START, priority=0, name="ralph_log_iteration")
+    @registry.register(
+        HookPoint.RALPH_ITERATION_START, priority=0, name="ralph_log_iteration"
+    )
     def ralph_log_iteration(context: dict[str, Any]) -> None:
         """记录 Ralph 迭代开始"""
         iteration = context.get("iteration", 0)
@@ -473,7 +511,9 @@ def _register_ralph_hooks(registry: LifecycleHookRegistry) -> None:
 
         logger.debug(f"Ralph iteration: {iteration}/{max_iterations}")
 
-    @registry.register(HookPoint.RALPH_ITERATION_END, priority=0, name="ralph_persist_state")
+    @registry.register(
+        HookPoint.RALPH_ITERATION_END, priority=0, name="ralph_persist_state"
+    )
     def ralph_persist_state(context: dict[str, Any]) -> None:
         """持久化 Ralph 状态"""
         ralph = context.get("ralph_loop")
@@ -482,15 +522,21 @@ def _register_ralph_hooks(registry: LifecycleHookRegistry) -> None:
         if ralph and hasattr(ralph, "_persist_state"):
             ralph._persist_state(response)
 
-    @registry.register(HookPoint.RALPH_COMPLETION_CHECK, priority=0, name="ralph_log_check")
+    @registry.register(
+        HookPoint.RALPH_COMPLETION_CHECK, priority=0, name="ralph_log_check"
+    )
     def ralph_log_check(context: dict[str, Any]) -> None:
         """记录 Ralph 完成检查"""
         completion_type = context.get("completion_type", "unknown")
         criteria = context.get("completion_criteria", {})
 
-        logger.debug(f"Ralph completion check: type={completion_type}, criteria={criteria}")
+        logger.debug(
+            f"Ralph completion check: type={completion_type}, criteria={criteria}"
+        )
 
-    @registry.register(HookPoint.RALPH_CONTEXT_RESET, priority=0, name="ralph_log_reset")
+    @registry.register(
+        HookPoint.RALPH_CONTEXT_RESET, priority=0, name="ralph_log_reset"
+    )
     def ralph_log_reset(context: dict[str, Any]) -> None:
         """记录 Ralph 上下文重置"""
         iteration = context.get("iteration", 0)
@@ -500,6 +546,7 @@ def _register_ralph_hooks(registry: LifecycleHookRegistry) -> None:
 
 
 # === 自定义钩子注册辅助 ===
+
 
 def register_custom_hook(
     registry: LifecycleHookRegistry,

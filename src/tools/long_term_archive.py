@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import jieba
+
     _HAS_JIEBA = True
 except ImportError:
     _HAS_JIEBA = False
@@ -43,6 +44,7 @@ ARCHIVE_DB_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "archives
 def _get_tokenize_func():
     """延迟获取分词函数，避免模块加载时的循环依赖"""
     from src.tools.session_db import tokenize_for_fts5
+
     return tokenize_for_fts5
 
 
@@ -73,7 +75,9 @@ class LongTermArchiveLayer:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, db_path: str | Path | None = None, llm_gateway: "LLMGateway | None" = None):
+    def __init__(
+        self, db_path: str | Path | None = None, llm_gateway: "LLMGateway | None" = None
+    ):
         with LongTermArchiveLayer._lock:
             if LongTermArchiveLayer._initialized:
                 return
@@ -136,8 +140,12 @@ class LongTermArchiveLayer:
                 metadata TEXT
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_archives_session ON archives(session_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_archives_created ON archives(created_at)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_archives_session ON archives(session_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_archives_created ON archives(created_at)"
+        )
 
         # 事件详情表
         cursor.execute("""
@@ -151,8 +159,12 @@ class LongTermArchiveLayer:
                 FOREIGN KEY (archive_id) REFERENCES archives(archive_id)
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_archive ON archive_events(archive_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON archive_events(event_type)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_events_archive ON archive_events(archive_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_events_type ON archive_events(event_type)"
+        )
 
         # FTS5 全文索引虚拟表
         # tokenize='unicode61 remove_diacritics 2' 支持中文
@@ -176,7 +188,7 @@ class LongTermArchiveLayer:
         self,
         session_id: str,
         events: list[dict[str, Any]],
-        metadata: dict[str, Any] | None = None
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """归档会话
 
@@ -207,12 +219,22 @@ class LongTermArchiveLayer:
         key_findings_json = json.dumps(key_findings, ensure_ascii=False)
         metadata_json = json.dumps(metadata or {}, ensure_ascii=False)
 
-        self._ensure_conn().execute("""
+        self._ensure_conn().execute(
+            """
             INSERT INTO archives
                 (archive_id, session_id, summary, key_findings, events_count, created_at, metadata)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (archive_id, session_id, summary, key_findings_json,
-              len(events), created_at, metadata_json))
+        """,
+            (
+                archive_id,
+                session_id,
+                summary,
+                key_findings_json,
+                len(events),
+                created_at,
+                metadata_json,
+            ),
+        )
 
         # 3. 存储事件详情
         self._store_events(archive_id, events)
@@ -226,9 +248,7 @@ class LongTermArchiveLayer:
         return archive_id
 
     async def archive_from_event_stream(
-        self,
-        event_stream: Any,
-        metadata: dict[str, Any] | None = None
+        self, event_stream: Any, metadata: dict[str, Any] | None = None
     ) -> str:
         """从 SessionEventStream 归档
 
@@ -246,12 +266,20 @@ class LongTermArchiveLayer:
         """存储事件详情"""
         for event in events:
             event_data_json = json.dumps(event.get("data", {}), ensure_ascii=False)
-            self._ensure_conn().execute("""
+            self._ensure_conn().execute(
+                """
                 INSERT INTO archive_events
                     (archive_id, event_id, event_type, event_data, timestamp)
                 VALUES (?, ?, ?, ?, ?)
-            """, (archive_id, event.get("id", 0), event.get("type", "unknown"),
-                  event_data_json, event.get("timestamp", 0)))
+            """,
+                (
+                    archive_id,
+                    event.get("id", 0),
+                    event.get("type", "unknown"),
+                    event_data_json,
+                    event.get("timestamp", 0),
+                ),
+            )
 
     def _update_fts_index(
         self,
@@ -259,7 +287,7 @@ class LongTermArchiveLayer:
         session_id: str,
         summary: str,
         key_findings: list[str],
-        events: list[dict[str, Any]]
+        events: list[dict[str, Any]],
     ) -> None:
         """更新 FTS5 索引"""
         # 构建事件内容文本
@@ -272,11 +300,14 @@ class LongTermArchiveLayer:
         key_findings_text = tokenize(key_findings_text)
         event_content = tokenize(event_content)
 
-        self._ensure_conn().execute("""
+        self._ensure_conn().execute(
+            """
             INSERT INTO archives_fts
                 (archive_id, session_id, summary, key_findings, event_content)
             VALUES (?, ?, ?, ?, ?)
-        """, (archive_id, session_id, summary, key_findings_text, event_content))
+        """,
+            (archive_id, session_id, summary, key_findings_text, event_content),
+        )
 
     def _build_event_content_for_fts(self, events: list[dict[str, Any]]) -> str:
         """构建事件内容文本用于 FTS"""
@@ -322,10 +353,14 @@ class LongTermArchiveLayer:
             result = await self._llm_gateway.chat_completion(
                 model_id="openai/gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
-                priority=2  # HIGH
+                priority=2,  # HIGH
             )
 
-            return result.get("choices", [{}])[0].get("message", {}).get("content", "摘要生成失败")
+            return (
+                result.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "摘要生成失败")
+            )
         except Exception as e:
             logger.warning(f"LLM summary failed: {type(e).__name__}: {e}")
             return self._simple_summary(events)
@@ -365,10 +400,12 @@ class LongTermArchiveLayer:
             result = await self._llm_gateway.chat_completion(
                 model_id="openai/gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
-                priority=2  # HIGH
+                priority=2,  # HIGH
             )
 
-            response = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            response = (
+                result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
             findings = [line.strip() for line in response.split("\n") if line.strip()]
             return findings[:5]
         except Exception as e:
@@ -419,7 +456,9 @@ class LongTermArchiveLayer:
 
     # === 搜索 ===
 
-    def search_with_context(self, keyword: str, limit: int = 20) -> list[dict[str, Any]]:
+    def search_with_context(
+        self, keyword: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
         """语义搜索 + 摘要提取
 
         Args:
@@ -443,7 +482,10 @@ class LongTermArchiveLayer:
             return []
 
         try:
-            rows = self._ensure_conn().execute("""
+            rows = (
+                self._ensure_conn()
+                .execute(
+                    """
                 SELECT
                     a.archive_id,
                     a.session_id,
@@ -456,7 +498,11 @@ class LongTermArchiveLayer:
                 WHERE archives_fts MATCH ?
                 ORDER BY a.created_at DESC
                 LIMIT ?
-            """, (fts_query, limit)).fetchall()
+            """,
+                    (fts_query, limit),
+                )
+                .fetchall()
+            )
 
             results = []
             for row in rows:
@@ -465,15 +511,17 @@ class LongTermArchiveLayer:
                     row["matched_content"] or "", keyword
                 )
 
-                results.append({
-                    "archive_id": row["archive_id"],
-                    "session_id": row["session_id"],
-                    "summary": row["summary"],
-                    "matched_snippet": matched_snippet,
-                    "key_findings": key_findings,
-                    "timestamp": row["created_at"],
-                    "relevance_score": 1.0  # FTS5 不返回分数
-                })
+                results.append(
+                    {
+                        "archive_id": row["archive_id"],
+                        "session_id": row["session_id"],
+                        "summary": row["summary"],
+                        "matched_snippet": matched_snippet,
+                        "key_findings": key_findings,
+                        "timestamp": row["created_at"],
+                        "relevance_score": 1.0,  # FTS5 不返回分数
+                    }
+                )
 
             return results
         except sqlite3.Error as e:
@@ -522,10 +570,7 @@ class LongTermArchiveLayer:
         return content[:100]
 
     def search_by_time_range(
-        self,
-        start_time: str,
-        end_time: str,
-        limit: int = 50
+        self, start_time: str, end_time: str, limit: int = 50
     ) -> list[dict[str, Any]]:
         """时间范围搜索
 
@@ -537,54 +582,79 @@ class LongTermArchiveLayer:
         Returns:
             归档列表
         """
-        rows = self._ensure_conn().execute("""
+        rows = (
+            self._ensure_conn()
+            .execute(
+                """
             SELECT archive_id, session_id, summary, key_findings, created_at, events_count
             FROM archives
             WHERE created_at >= ? AND created_at <= ?
             ORDER BY created_at DESC
             LIMIT ?
-        """, (start_time, end_time, limit)).fetchall()
+        """,
+                (start_time, end_time, limit),
+            )
+            .fetchall()
+        )
 
         results = []
         for row in rows:
-            results.append({
-                "archive_id": row["archive_id"],
-                "session_id": row["session_id"],
-                "summary": row["summary"],
-                "key_findings": json.loads(row["key_findings"] or "[]"),
-                "timestamp": row["created_at"],
-                "events_count": row["events_count"]
-            })
+            results.append(
+                {
+                    "archive_id": row["archive_id"],
+                    "session_id": row["session_id"],
+                    "summary": row["summary"],
+                    "key_findings": json.loads(row["key_findings"] or "[]"),
+                    "timestamp": row["created_at"],
+                    "events_count": row["events_count"],
+                }
+            )
 
         return results
 
     def get_archive(self, archive_id: str) -> dict[str, Any] | None:
         """获取完整归档"""
-        row = self._ensure_conn().execute("""
+        row = (
+            self._ensure_conn()
+            .execute(
+                """
             SELECT archive_id, session_id, summary, key_findings, created_at, events_count, metadata
             FROM archives
             WHERE archive_id = ?
-        """, (archive_id,)).fetchone()
+        """,
+                (archive_id,),
+            )
+            .fetchone()
+        )
 
         if not row:
             return None
 
         # 获取事件详情
-        event_rows = self._ensure_conn().execute("""
+        event_rows = (
+            self._ensure_conn()
+            .execute(
+                """
             SELECT event_id, event_type, event_data, timestamp
             FROM archive_events
             WHERE archive_id = ?
             ORDER BY event_id
-        """, (archive_id,)).fetchall()
+        """,
+                (archive_id,),
+            )
+            .fetchall()
+        )
 
         events = []
         for er in event_rows:
-            events.append({
-                "id": er["event_id"],
-                "type": er["event_type"],
-                "data": json.loads(er["event_data"] or "{}"),
-                "timestamp": er["timestamp"]
-            })
+            events.append(
+                {
+                    "id": er["event_id"],
+                    "type": er["event_type"],
+                    "data": json.loads(er["event_data"] or "{}"),
+                    "timestamp": er["timestamp"],
+                }
+            )
 
         return {
             "archive_id": row["archive_id"],
@@ -594,17 +664,24 @@ class LongTermArchiveLayer:
             "created_at": row["created_at"],
             "events_count": row["events_count"],
             "metadata": json.loads(row["metadata"] or "{}"),
-            "events": events
+            "events": events,
         }
 
     def get_archives_by_session(self, session_id: str) -> list[dict[str, Any]]:
         """获取会话的所有归档"""
-        rows = self._ensure_conn().execute("""
+        rows = (
+            self._ensure_conn()
+            .execute(
+                """
             SELECT archive_id, session_id, summary, created_at, events_count
             FROM archives
             WHERE session_id = ?
             ORDER BY created_at DESC
-        """, (session_id,)).fetchall()
+        """,
+                (session_id,),
+            )
+            .fetchall()
+        )
 
         return [dict(row) for row in rows]
 
@@ -612,30 +689,43 @@ class LongTermArchiveLayer:
 
     def get_archive_stats(self) -> dict[str, Any]:
         """获取归档统计"""
-        total_archives = self._ensure_conn().execute(
-            "SELECT COUNT(*) as count FROM archives"
-        ).fetchone()["count"]
+        total_archives = (
+            self._ensure_conn()
+            .execute("SELECT COUNT(*) as count FROM archives")
+            .fetchone()["count"]
+        )
 
-        total_events = self._ensure_conn().execute(
-            "SELECT COUNT(*) as count FROM archive_events"
-        ).fetchone()["count"]
+        total_events = (
+            self._ensure_conn()
+            .execute("SELECT COUNT(*) as count FROM archive_events")
+            .fetchone()["count"]
+        )
 
-        avg_events = self._ensure_conn().execute("""
+        avg_events = (
+            self._ensure_conn()
+            .execute("""
             SELECT AVG(events_count) as avg FROM archives WHERE events_count > 0
-        """).fetchone()["avg"] or 0
+        """)
+            .fetchone()["avg"]
+            or 0
+        )
 
-        recent_archives = self._ensure_conn().execute("""
+        recent_archives = (
+            self._ensure_conn()
+            .execute("""
             SELECT archive_id, session_id, summary, created_at, events_count
             FROM archives
             ORDER BY created_at DESC
             LIMIT 5
-        """).fetchall()
+        """)
+            .fetchall()
+        )
 
         return {
             "total_archives": total_archives,
             "total_events": total_events,
             "avg_events_per_archive": round(avg_events, 2),
-            "recent_archives": [dict(row) for row in recent_archives]
+            "recent_archives": [dict(row) for row in recent_archives],
         }
 
     def delete_archive(self, archive_id: str) -> str:
@@ -658,7 +748,9 @@ class LongTermArchiveLayer:
         self._ensure_conn().commit()
         return f"Archive deleted: {archive_id}"
 
-    def cleanup_old_archives(self, max_age_days: int = 90, keep_count: int = 100) -> int:
+    def cleanup_old_archives(
+        self, max_age_days: int = 90, keep_count: int = 100
+    ) -> int:
         """清理旧归档
 
         Args:
@@ -669,13 +761,16 @@ class LongTermArchiveLayer:
             清理的归档数量
         """
         import datetime as dt_module
+
         cutoff_date = dt_module.datetime.now() - dt_module.timedelta(days=max_age_days)
         cutoff_str = cutoff_date.isoformat()
 
         # 检查总数
-        total = self._ensure_conn().execute(
-            "SELECT COUNT(*) as count FROM archives"
-        ).fetchone()["count"]
+        total = (
+            self._ensure_conn()
+            .execute("SELECT COUNT(*) as count FROM archives")
+            .fetchone()["count"]
+        )
 
         if total <= keep_count:
             return 0
@@ -684,12 +779,19 @@ class LongTermArchiveLayer:
         to_delete = total - keep_count
 
         # 优先删除超过天数的旧归档
-        rows = self._ensure_conn().execute("""
+        rows = (
+            self._ensure_conn()
+            .execute(
+                """
             SELECT archive_id FROM archives
             WHERE created_at < ?
             ORDER BY created_at ASC
             LIMIT ?
-        """, (cutoff_str, to_delete)).fetchall()
+        """,
+                (cutoff_str, to_delete),
+            )
+            .fetchall()
+        )
 
         # 如果删除数量不足，继续删除最旧的归档（确保保留 keep_count）
         deleted_count = len(rows)
@@ -700,15 +802,23 @@ class LongTermArchiveLayer:
             if already_deleted_ids:
                 placeholders = ",".join("?" * len(already_deleted_ids))
                 # S608: 使用参数化查询，placeholders 只是占位符，值通过参数传递
-                additional_rows = self._ensure_conn().execute(
-                    f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",  # noqa: S608
-                    (*already_deleted_ids, remaining_to_delete)
-                ).fetchall()
+                additional_rows = (
+                    self._ensure_conn()
+                    .execute(
+                        f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",  # noqa: S608
+                        (*already_deleted_ids, remaining_to_delete),
+                    )
+                    .fetchall()
+                )
             else:
-                additional_rows = self._ensure_conn().execute(
-                    "SELECT archive_id FROM archives ORDER BY created_at ASC LIMIT ?",
-                    (remaining_to_delete,)
-                ).fetchall()
+                additional_rows = (
+                    self._ensure_conn()
+                    .execute(
+                        "SELECT archive_id FROM archives ORDER BY created_at ASC LIMIT ?",
+                        (remaining_to_delete,),
+                    )
+                    .fetchall()
+                )
             rows = list(rows) + list(additional_rows)
 
         for row in rows:
@@ -747,16 +857,22 @@ class LongTermArchiveLayer:
         if archives:
             # 更新最近归档的摘要
             latest_archive_id = archives[0]["archive_id"]
-            self._ensure_conn().execute("""
+            self._ensure_conn().execute(
+                """
                 UPDATE archives SET summary = ? WHERE archive_id = ?
-            """, (summary, latest_archive_id))
+            """,
+                (summary, latest_archive_id),
+            )
 
             # 更新 FTS 索引
             summary_tokens = " ".join(jieba.cut(summary)) if _HAS_JIEBA else summary
 
-            self._ensure_conn().execute("""
+            self._ensure_conn().execute(
+                """
                 UPDATE archives_fts SET summary = ? WHERE archive_id = ?
-            """, (summary_tokens, latest_archive_id))
+            """,
+                (summary_tokens, latest_archive_id),
+            )
 
             self._ensure_conn().commit()
             return f"Summary synced for archive: {latest_archive_id}"

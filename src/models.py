@@ -37,6 +37,7 @@ class RateLimitConfig(BaseModel):
     - rolling_window: 滚动窗口（如百炼 5小时6000次）
     - rpm: 固定 RPM（如 OpenAI 标准限流）
     """
+
     model_config = ConfigDict(extra="ignore")
 
     # 滚动窗口模式
@@ -61,7 +62,10 @@ class RateLimitConfig(BaseModel):
         if self.rpm is not None:
             return self.rpm / 60.0
 
-        if self.rollingWindowRequests is not None and self.rollingWindowDuration is not None:
+        if (
+            self.rollingWindowRequests is not None
+            and self.rollingWindowDuration is not None
+        ):
             return self.rollingWindowRequests / self.rollingWindowDuration
 
         # 默认百炼规格: 6000/18000 = 0.33 req/sec
@@ -118,6 +122,7 @@ class AgentConfig(BaseModel):
 
 class QueueConfigModel(BaseModel):
     """队列配置（TurnTicket 模式）"""
+
     model_config = ConfigDict(extra="ignore")
 
     # CRITICAL 队列配置
@@ -139,6 +144,7 @@ class QueueConfigModel(BaseModel):
 
 class TimeoutConfigModel(BaseModel):
     """等待超时配置（动态调整）"""
+
     model_config = ConfigDict(extra="ignore")
 
     # 基础超时（秒）
@@ -202,7 +208,9 @@ def _migrate_v1_to_v2(data: dict) -> dict:
                     "defaults": {"primary": defaults["model"]}
                 }
                 migrated = True
-                logger.debug("Migrated: agents.defaults.model -> agents.defaults.defaults.primary")
+                logger.debug(
+                    "Migrated: agents.defaults.model -> agents.defaults.defaults.primary"
+                )
 
             # 半迁移格式: {"defaults": {"primary": "..."}}
             elif "primary" in defaults and "defaults" not in defaults:

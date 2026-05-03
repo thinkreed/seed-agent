@@ -31,71 +31,72 @@ class HookPoint(str, Enum):
     """
 
     # 会话生命周期
-    SESSION_START = "session_start"          # 会话开始
-    SESSION_END = "session_end"              # 会话结束
-    SESSION_PAUSE = "session_pause"          # 会话暂停
-    SESSION_RESUME = "session_resume"        # 会话恢复
+    SESSION_START = "session_start"  # 会话开始
+    SESSION_END = "session_end"  # 会话结束
+    SESSION_PAUSE = "session_pause"  # 会话暂停
+    SESSION_RESUME = "session_resume"  # 会话恢复
 
     # 工具执行生命周期
-    TOOL_CALL_BEFORE = "tool_call_before"    # 工具调用前
-    TOOL_CALL_AFTER = "tool_call_after"      # 工具调用后
-    TOOL_CALL_ERROR = "tool_call_error"      # 工具调用错误
+    TOOL_CALL_BEFORE = "tool_call_before"  # 工具调用前
+    TOOL_CALL_AFTER = "tool_call_after"  # 工具调用后
+    TOOL_CALL_ERROR = "tool_call_error"  # 工具调用错误
 
     # LLM 调用生命周期
-    LLM_CALL_BEFORE = "llm_call_before"      # LLM 调用前
-    LLM_CALL_AFTER = "llm_call_after"        # LLM 调用后
-    LLM_STREAM_START = "llm_stream_start"    # LLM 流式响应开始
-    LLM_STREAM_CHUNK = "llm_stream_chunk"    # LLM 流式响应块
-    LLM_STREAM_END = "llm_stream_end"        # LLM 流式响应结束
+    LLM_CALL_BEFORE = "llm_call_before"  # LLM 调用前
+    LLM_CALL_AFTER = "llm_call_after"  # LLM 调用后
+    LLM_STREAM_START = "llm_stream_start"  # LLM 流式响应开始
+    LLM_STREAM_CHUNK = "llm_stream_chunk"  # LLM 流式响应块
+    LLM_STREAM_END = "llm_stream_end"  # LLM 流式响应结束
 
     # 响应生命周期
-    RESPONSE_BEFORE = "response_before"      # 响应生成前
-    RESPONSE_AFTER = "response_after"        # 响应生成后
+    RESPONSE_BEFORE = "response_before"  # 响应生成前
+    RESPONSE_AFTER = "response_after"  # 响应生成后
 
     # 上下文生命周期
-    CONTEXT_RESET_BEFORE = "context_reset_before"    # 上下文重置前
-    CONTEXT_RESET_AFTER = "context_reset_after"      # 上下文重置后
-    SUMMARY_GENERATED = "summary_generated"          # 摘要生成后
+    CONTEXT_RESET_BEFORE = "context_reset_before"  # 上下文重置前
+    CONTEXT_RESET_AFTER = "context_reset_after"  # 上下文重置后
+    SUMMARY_GENERATED = "summary_generated"  # 摘要生成后
 
     # 子代理生命周期
-    SUBAGENT_SPAWN = "subagent_spawn"        # 子代理创建
-    SUBAGENT_START = "subagent_start"        # 子代理开始执行
-    SUBAGENT_END = "subagent_end"            # 子代理执行结束
-    SUBAGENT_ERROR = "subagent_error"        # 子代理执行错误
+    SUBAGENT_SPAWN = "subagent_spawn"  # 子代理创建
+    SUBAGENT_START = "subagent_start"  # 子代理开始执行
+    SUBAGENT_END = "subagent_end"  # 子代理执行结束
+    SUBAGENT_ERROR = "subagent_error"  # 子代理执行错误
 
     # Ralph Loop 生命周期
     RALPH_ITERATION_START = "ralph_iteration_start"  # Ralph 迭代开始
-    RALPH_ITERATION_END = "ralph_iteration_end"      # Ralph 迭代结束
+    RALPH_ITERATION_END = "ralph_iteration_end"  # Ralph 迭代结束
     RALPH_COMPLETION_CHECK = "ralph_completion_check"  # Ralph 完成检查
-    RALPH_CONTEXT_RESET = "ralph_context_reset"      # Ralph 上下文重置
+    RALPH_CONTEXT_RESET = "ralph_context_reset"  # Ralph 上下文重置
 
     # Ask User 生命周期（新增）
-    USER_QUESTION = "user_question"          # 发起用户问题
-    USER_WAITING = "user_waiting"            # 等待用户响应
-    USER_RESPONSE = "user_response"          # 用户响应接收
-    USER_CANCELLED = "user_cancelled"        # 用户取消
+    USER_QUESTION = "user_question"  # 发起用户问题
+    USER_WAITING = "user_waiting"  # 等待用户响应
+    USER_RESPONSE = "user_response"  # 用户响应接收
+    USER_CANCELLED = "user_cancelled"  # 用户取消
 
     # 执行控制生命周期（新增）
-    EXECUTION_CANCEL = "execution_cancel"    # 执行被取消
-    EXECUTION_PAUSE = "execution_pause"      # 执行暂停
-    EXECUTION_RESUME = "execution_resume"    # 执行恢复
+    EXECUTION_CANCEL = "execution_cancel"  # 执行被取消
+    EXECUTION_PAUSE = "execution_pause"  # 执行暂停
+    EXECUTION_RESUME = "execution_resume"  # 执行恢复
 
     # 后台任务生命周期（新增）
-    TASK_START = "task_start"                # 后台任务开始
-    TASK_END = "task_end"                    # 后台任务结束
-    TASK_CANCEL = "task_cancel"              # 后台任务取消
-    TASK_ERROR = "task_error"                # 后台任务错误
+    TASK_START = "task_start"  # 后台任务开始
+    TASK_END = "task_end"  # 后台任务结束
+    TASK_CANCEL = "task_cancel"  # 后台任务取消
+    TASK_ERROR = "task_error"  # 后台任务错误
     GRACE_PERIOD_START = "grace_period_start"  # 优雅期开始
-    GRACE_PERIOD_END = "grace_period_end"      # 优雅期结束
+    GRACE_PERIOD_END = "grace_period_end"  # 优雅期结束
 
     # 关闭生命周期（新增）
-    SHUTDOWN_START = "shutdown_start"        # 关闭开始
+    SHUTDOWN_START = "shutdown_start"  # 关闭开始
     SHUTDOWN_COMPLETE = "shutdown_complete"  # 关闭完成
 
 
 @dataclass
 class HookExecutionResult:
     """单个钩子执行结果"""
+
     hook_id: str
     status: str  # "success" | "failed" | "skipped"
     duration_ms: float
@@ -106,6 +107,7 @@ class HookExecutionResult:
 @dataclass
 class HookTriggerReport:
     """钩子触发报告"""
+
     hook_point: str
     hooks_count: int
     hooks_executed: int
@@ -138,6 +140,7 @@ class HookTriggerReport:
 @dataclass
 class HookStats:
     """钩子执行统计"""
+
     hook_id: str
     hook_point: str
     priority: int
@@ -159,8 +162,12 @@ class HookStats:
             "success_calls": self.success_calls,
             "failed_calls": self.failed_calls,
             "skipped_calls": self.skipped_calls,
-            "success_rate": self.success_calls / self.total_calls if self.total_calls > 0 else 0.0,
-            "avg_duration_ms": self.total_duration_ms / self.total_calls if self.total_calls > 0 else 0.0,
+            "success_rate": self.success_calls / self.total_calls
+            if self.total_calls > 0
+            else 0.0,
+            "avg_duration_ms": self.total_duration_ms / self.total_calls
+            if self.total_calls > 0
+            else 0.0,
             "last_call_time": self.last_call_time,
             "last_error": self.last_error,
         }
@@ -306,16 +313,20 @@ class LifecycleHookRegistry:
             ValueError: 未知的钩子节点
         """
         # 转换为字符串值
-        point_value = hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+        point_value = (
+            hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+        )
 
         if point_value not in self._hooks:
             raise ValueError(f"Unknown hook point: {point_value}")
 
         # 装饰器模式支持
         if callback is None:
+
             def decorator(func: Callable) -> Callable:
                 self._do_register(point_value, func, priority, name, description)
                 return func
+
             return decorator
 
         return self._do_register(point_value, callback, priority, name, description)
@@ -386,7 +397,9 @@ class LifecycleHookRegistry:
         """
         count = 0
         if hook_point:
-            point_value = hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+            point_value = (
+                hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+            )
             if point_value in self._hooks:
                 for _, _, hook_id in self._hooks[point_value]:
                     if hook_id in self._hook_stats:
@@ -422,7 +435,9 @@ class LifecycleHookRegistry:
         Returns:
             执行报告
         """
-        point_value = hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+        point_value = (
+            hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+        )
 
         if point_value not in self._hooks:
             logger.warning(f"Unknown hook point: {point_value}")
@@ -524,7 +539,9 @@ class LifecycleHookRegistry:
         Returns:
             执行报告
         """
-        point_value = hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+        point_value = (
+            hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+        )
 
         if point_value not in self._hooks:
             return HookTriggerReport(
@@ -593,7 +610,9 @@ class LifecycleHookRegistry:
 
     # === 查询 ===
 
-    def list_hooks(self, hook_point: HookPoint | str | None = None) -> list[dict[str, Any]]:
+    def list_hooks(
+        self, hook_point: HookPoint | str | None = None
+    ) -> list[dict[str, Any]]:
         """列出已注册钩子
 
         Args:
@@ -603,7 +622,9 @@ class LifecycleHookRegistry:
             钩子列表
         """
         if hook_point:
-            point_value = hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+            point_value = (
+                hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+            )
             return [
                 {
                     "hook_id": id_,
@@ -646,8 +667,7 @@ class LifecycleHookRegistry:
         return {
             "global": self._global_stats,
             "hooks": {
-                hook_id: stats.to_dict()
-                for hook_id, stats in self._hook_stats.items()
+                hook_id: stats.to_dict() for hook_id, stats in self._hook_stats.items()
             },
         }
 
@@ -661,7 +681,9 @@ class LifecycleHookRegistry:
             钩子数量
         """
         if hook_point:
-            point_value = hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+            point_value = (
+                hook_point.value if isinstance(hook_point, HookPoint) else hook_point
+            )
             return len(self._hooks.get(point_value, []))
 
         return sum(len(hooks) for hooks in self._hooks.values())

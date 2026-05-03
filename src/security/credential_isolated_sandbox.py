@@ -45,7 +45,6 @@ BLOCKED_ENV_VARS = [
     "GEMINI_API_KEY",
     "COHERE_API_KEY",
     "HUGGINGFACE_TOKEN",
-
     # Cloud Credentials
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -54,25 +53,21 @@ BLOCKED_ENV_VARS = [
     "AZURE_SUBSCRIPTION_ID",
     "AZURE_CLIENT_ID",
     "AZURE_CLIENT_SECRET",
-
     # Database Credentials
     "DATABASE_URL",
     "DB_PASSWORD",
     "MYSQL_PASSWORD",
     "POSTGRES_PASSWORD",
     "MONGODB_PASSWORD",
-
     # Service Tokens
     "GITHUB_TOKEN",
     "GITLAB_TOKEN",
     "SLACK_TOKEN",
     "DISCORD_TOKEN",
     "TELEGRAM_TOKEN",
-
     # SSH Keys
     "SSH_PRIVATE_KEY",
     "SSH_AUTH_SOCK",
-
     # Generic
     "API_KEY",
     "SECRET_KEY",
@@ -321,7 +316,7 @@ class CredentialIsolatedSandbox(SecureSandbox):
 
         try:
             # 安全的执行脚本（参数从文件读取）
-            safe_script = f'''
+            safe_script = f"""
 import json
 import sys
 args_file = sys.argv[1]
@@ -330,11 +325,14 @@ with open(args_file) as f:
 from src.tools.builtin_tools import {tool_name}
 result = {tool_name}(**args)
 print(result)
-'''
+"""
 
             # 创建子进程（无凭证环境）
             proc = await asyncio.create_subprocess_exec(
-                "python", "-c", safe_script, args_file_path,
+                "python",
+                "-c",
+                safe_script,
+                args_file_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=isolated_env,  # 无凭证环境
@@ -409,15 +407,17 @@ print(result)
                 cmd,
                 volumes={
                     str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
-                    str(self._fs_root): {"bind": "/sandbox", "mode": "rw"}
+                    str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
                 },
                 environment={},  # 不传递任何环境变量（关键）
                 remove=True,
                 stdout=True,
-                stderr=True
+                stderr=True,
             )
 
-            result = container.decode() if isinstance(container, bytes) else str(container)
+            result = (
+                container.decode() if isinstance(container, bytes) else str(container)
+            )
             return self._sanitize_output(result)
 
         except Exception as e:
@@ -506,15 +506,18 @@ print(result)
         # sk-* 模式 (OpenAI)
         output = re.sub(r"sk-[a-zA-Z0-9]{20,}", "[REDACTED_API_KEY]", output)
 
-        #Bearer * 模式
+        # Bearer * 模式
         output = re.sub(r"Bearer\s+[a-zA-Z0-9_-]{20,}", "Bearer [REDACTED]", output)
 
-        #AWS Access Key 模式
+        # AWS Access Key 模式
         output = re.sub(r"AKIA[A-Z0-9]{16}", "[REDACTED_AWS_KEY]", output)
 
         # 通用 API Key 模式
-        return re.sub(r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}', "api_key=[REDACTED]", output)
-
+        return re.sub(
+            r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}',
+            "api_key=[REDACTED]",
+            output,
+        )
 
     # === 凭证代理集成 ===
 
@@ -658,7 +661,9 @@ print(result)
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "python", "-c", test_code,
+                "python",
+                "-c",
+                test_code,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=self._create_isolated_environment(),

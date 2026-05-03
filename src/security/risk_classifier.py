@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 class RiskLevel(str, Enum):
     """风险等级"""
+
     SAFE = "safe"
     CAUTION = "caution"
     RISKY = "risky"
@@ -31,6 +32,7 @@ class RiskLevel(str, Enum):
 
 class RiskAction(str, Enum):
     """风险处理策略"""
+
     AUTO_EXECUTE = "auto_execute"
     LOG_AND_EXECUTE = "log_and_execute"
     REQUEST_CONFIRM = "request_confirm"
@@ -40,6 +42,7 @@ class RiskAction(str, Enum):
 @dataclass
 class RiskLevelConfig:
     """风险等级配置"""
+
     action: RiskAction
     description: str
     log_level: str
@@ -77,6 +80,7 @@ RISK_LEVEL_CONFIGS: dict[RiskLevel, RiskLevelConfig] = {
 @dataclass
 class ClassificationResult:
     """分类结果"""
+
     risk_level: RiskLevel
     action: RiskAction
     score: float
@@ -118,7 +122,6 @@ class CommandRiskClassifier:
         "list_subagents": 0.0,
         "check_ralph_status": 0.0,
         "list_scheduled_tasks": 0.0,
-
         # 中风险工具（写入/执行）
         "file_write": 0.4,
         "file_edit": 0.4,
@@ -131,7 +134,6 @@ class CommandRiskClassifier:
         "wait_for_subagent": 0.2,
         "aggregate_subagent_results": 0.2,
         "create_scheduled_task": 0.4,
-
         # 高风险工具（系统操作）
         "code_as_policy": 0.8,
         "run_shell_command": 0.8,
@@ -140,7 +142,6 @@ class CommandRiskClassifier:
         "git_push": 0.9,
         "kill_subagent": 0.5,
         "remove_scheduled_task": 0.5,
-
         # 默认中等风险
         "default": 0.5,
     }
@@ -154,10 +155,19 @@ class CommandRiskClassifier:
         },
         "system_paths": {
             "patterns": [
-                "/etc/", "/var/", "/usr/", "/bin/", "/sbin/",
-                "/root/", "/home/", "/sys/", "/proc/",
-                "C:\\Windows\\", "C:\\Program Files\\",
-                "/System/", "/Library/",
+                "/etc/",
+                "/var/",
+                "/usr/",
+                "/bin/",
+                "/sbin/",
+                "/root/",
+                "/home/",
+                "/sys/",
+                "/proc/",
+                "C:\\Windows\\",
+                "C:\\Program Files\\",
+                "/System/",
+                "/Library/",
             ],
             "risk_boost": 0.5,
             "description": "系统路径访问",
@@ -168,44 +178,93 @@ class CommandRiskClassifier:
             "description": "覆盖写入模式",
         },
         "shell_language": {
-            "param_conditions": {"language": ["shell", "bash", "sh", "powershell", "ps", "pwsh"]},
+            "param_conditions": {
+                "language": ["shell", "bash", "sh", "powershell", "ps", "pwsh"]
+            },
             "risk_boost": 0.3,
             "description": "Shell 语言执行",
         },
         "dangerous_commands": {
             "code_patterns": [
                 # 文件删除
-                "rm -rf", "rm -r", "rm -fr", "rmdir", "del /s", "del /q",
-                "Remove-Item", "Delete-Item", "rm\\t", "rm\\x09",  # 制表符绕过
+                "rm -rf",
+                "rm -r",
+                "rm -fr",
+                "rmdir",
+                "del /s",
+                "del /q",
+                "Remove-Item",
+                "Delete-Item",
+                "rm\\t",
+                "rm\\x09",  # 制表符绕过
                 # 权限修改
-                "sudo", "su", "chmod 777", "chmod 666", "chown",
+                "sudo",
+                "su",
+                "chmod 777",
+                "chmod 666",
+                "chown",
                 # 系统操作
-                "mkfs", "dd if=", "fdisk", "format", "shutdown", "reboot",
+                "mkfs",
+                "dd if=",
+                "fdisk",
+                "format",
+                "shutdown",
+                "reboot",
                 # 网络操作
-                "wget", "curl -o", "nc ", "netcat", "telnet",
+                "wget",
+                "curl -o",
+                "nc ",
+                "netcat",
+                "telnet",
                 # 进程控制
-                "kill -9", "pkill", "killall", "Stop-Process -Force",
+                "kill -9",
+                "pkill",
+                "killall",
+                "Stop-Process -Force",
                 # Shell 特殊操作
-                "> /dev/", "mv /*", ":(){ :|:& };:",  # Fork bomb
+                "> /dev/",
+                "mv /*",
+                ":(){ :|:& };:",  # Fork bomb
                 # Windows 危险命令
-                "Format-Volume", "Stop-Process", "Remove-Item -Recurse",
+                "Format-Volume",
+                "Stop-Process",
+                "Remove-Item -Recurse",
                 # Python 危险代码
-                "eval(", "exec(", "__import__", "import os", "import subprocess",
-                "os.system", "os.popen", "subprocess.call", "subprocess.run",
+                "eval(",
+                "exec(",
+                "__import__",
+                "import os",
+                "import subprocess",
+                "os.system",
+                "os.popen",
+                "subprocess.call",
+                "subprocess.run",
                 "shell=True",  # subprocess shell=True
                 # Bash 变量展开绕过
-                "$(", "${", "`",  # 命令替换
+                "$(",
+                "${",
+                "`",  # 命令替换
                 # 编码绕过尝试
-                "\\x", "\\u", "base64", "hex",
+                "\\x",
+                "\\u",
+                "base64",
+                "hex",
             ],
             "risk_boost": 1.5,
             "description": "危险命令模式",
         },
         "sensitive_files": {
             "path_patterns": [
-                "passwd", "shadow", "hosts", "ssh",
-                ".env", "credentials", "secrets",
-                "api_key", "private_key", "token",
+                "passwd",
+                "shadow",
+                "hosts",
+                "ssh",
+                ".env",
+                "credentials",
+                "secrets",
+                "api_key",
+                "private_key",
+                "token",
             ],
             "risk_boost": 0.4,
             "description": "敏感文件访问",
@@ -224,19 +283,19 @@ class CommandRiskClassifier:
 
     # 用户权限等级修正
     USER_LEVEL_MODIFIERS: dict[str, float] = {
-        "admin": -0.4,      # 管理员: 风险降低
-        "trusted": -0.2,    # 受信任用户: 风险降低
-        "normal": 0.0,      # 正常用户: 不调整
-        "guest": 0.3,       # 访客: 风险提高
+        "admin": -0.4,  # 管理员: 风险降低
+        "trusted": -0.2,  # 受信任用户: 风险降低
+        "normal": 0.0,  # 正常用户: 不调整
+        "guest": 0.3,  # 访客: 风险提高
         "restricted": 0.5,  # 受限用户: 风险大幅提高
     }
 
     # Sandbox 隔离等级修正
     ISOLATION_LEVEL_MODIFIERS: dict[str, float] = {
-        "vm": -0.8,          # 虚拟机: 风险大幅降低
-        "container": -0.5,   # 容器: 风险降低
-        "process": -0.2,     # 进程: 风险轻微降低
-        "none": 0.0,         # 无隔离: 不调整
+        "vm": -0.8,  # 虚拟机: 风险大幅降低
+        "container": -0.5,  # 容器: 风险降低
+        "process": -0.2,  # 进程: 风险轻微降低
+        "none": 0.0,  # 无隔离: 不调整
     }
 
     def __init__(
@@ -357,7 +416,9 @@ class CommandRiskClassifier:
                 for param_name, param_values in conditions.items():
                     if param_name in args:
                         arg_value = args[param_name]
-                        if arg_value in param_values or str(arg_value).lower() in [str(v).lower() for v in param_values]:
+                        if arg_value in param_values or str(arg_value).lower() in [
+                            str(v).lower() for v in param_values
+                        ]:
                             risk_score += factor_config["risk_boost"]
                             factors.append(f"{factor_name}({param_name}={arg_value})")
 
@@ -410,11 +471,15 @@ class CommandRiskClassifier:
         factors: list[str] = []
 
         code_lower = code.lower()
-        dangerous_patterns = self.PARAM_RISK_FACTORS["dangerous_commands"]["code_patterns"]
+        dangerous_patterns = self.PARAM_RISK_FACTORS["dangerous_commands"][
+            "code_patterns"
+        ]
 
         for pattern in dangerous_patterns:
             if pattern.lower() in code_lower:
-                risk_score += self.PARAM_RISK_FACTORS["dangerous_commands"]["risk_boost"]
+                risk_score += self.PARAM_RISK_FACTORS["dangerous_commands"][
+                    "risk_boost"
+                ]
                 factors.append(f"dangerous_command({pattern})")
 
         return risk_score, factors
@@ -443,7 +508,9 @@ class CommandRiskClassifier:
 
         # 限制历史大小
         if len(self._classification_history) > self._max_history_size:
-            self._classification_history = self._classification_history[-self._max_history_size:]
+            self._classification_history = self._classification_history[
+                -self._max_history_size :
+            ]
 
     def _log_classification(
         self,

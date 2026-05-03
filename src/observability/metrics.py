@@ -56,27 +56,23 @@ def _init_instruments() -> None:
         _tokens_input_counter = meter.create_counter(
             name="seed.llm.tokens.input",
             description="Total input tokens consumed",
-            unit="1"
+            unit="1",
         )
 
         _tokens_output_counter = meter.create_counter(
             name="seed.llm.tokens.output",
             description="Total output tokens generated",
-            unit="1"
+            unit="1",
         )
 
         # Request Counter
         _request_counter = meter.create_counter(
-            name="seed.llm.request.count",
-            description="Total LLM requests",
-            unit="1"
+            name="seed.llm.request.count", description="Total LLM requests", unit="1"
         )
 
         # Error Counter
         _error_counter = meter.create_counter(
-            name="seed.llm.error.count",
-            description="LLM errors by type",
-            unit="1"
+            name="seed.llm.error.count", description="LLM errors by type", unit="1"
         )
 
         # Duration Histogram
@@ -84,7 +80,7 @@ def _init_instruments() -> None:
             name="seed.llm.request.duration",
             description="LLM request duration distribution",
             unit="ms",
-            explicit_bucket_boundaries_advisory=DURATION_BUCKETS
+            explicit_bucket_boundaries_advisory=DURATION_BUCKETS,
         )
 
         _initialized = True

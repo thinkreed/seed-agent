@@ -32,10 +32,11 @@ logger = logging.getLogger("seed_agent")
 
 class RequestPriority(IntEnum):
     """请求优先级"""
-    CRITICAL = 0    # 用户直接交互，最高优先级，独立队列
-    HIGH = 1        # RalphLoop 迭代，优先处理
-    NORMAL = 2      # Subagent 任务，标准处理
-    LOW = 3         # Scheduler 后台，队列处理
+
+    CRITICAL = 0  # 用户直接交互，最高优先级，独立队列
+    HIGH = 1  # RalphLoop 迭代，优先处理
+    NORMAL = 2  # Subagent 任务，标准处理
+    LOW = 3  # Scheduler 后台，队列处理
 
 
 class QueueFullError(Exception):
@@ -219,8 +220,12 @@ class QueueStats:
             "signaled": {p.name: self.signaled[p] for p in RequestPriority},
             "rejected": {p.name: self.rejected[p] for p in RequestPriority},
             "cancelled": {p.name: self.cancelled[p] for p in RequestPriority},
-            "avg_wait_times": {p.name: self.get_avg_wait_time(p) for p in RequestPriority},
-            "p95_wait_times": {p.name: self.get_p95_wait_time(p) for p in RequestPriority},
+            "avg_wait_times": {
+                p.name: self.get_avg_wait_time(p) for p in RequestPriority
+            },
+            "p95_wait_times": {
+                p.name: self.get_p95_wait_time(p) for p in RequestPriority
+            },
             "reject_rates": {p.name: self.get_reject_rate(p) for p in RequestPriority},
         }
 
@@ -291,12 +296,12 @@ class RequestQueue:
             "high": len(self._normal_queues[RequestPriority.HIGH]),
             "normal": len(self._normal_queues[RequestPriority.NORMAL]),
             "low": len(self._normal_queues[RequestPriority.LOW]),
-            "total": len(self._critical_queue) + sum(len(q) for q in self._normal_queues.values()),
+            "total": len(self._critical_queue)
+            + sum(len(q) for q in self._normal_queues.values()),
         }
 
     async def request_turn(
-        self,
-        priority: RequestPriority = RequestPriority.NORMAL
+        self, priority: RequestPriority = RequestPriority.NORMAL
     ) -> TurnTicket:
         """申请轮次（核心入口）
 
@@ -397,7 +402,11 @@ class RequestQueue:
                     continue
 
                 # 2. CRITICAL 空，处理普通队列（按优先级）
-                for priority in [RequestPriority.HIGH, RequestPriority.NORMAL, RequestPriority.LOW]:
+                for priority in [
+                    RequestPriority.HIGH,
+                    RequestPriority.NORMAL,
+                    RequestPriority.LOW,
+                ]:
                     ticket = await self._pop_ticket(priority)
                     if ticket:
                         await self._signal_turn(ticket)
@@ -452,7 +461,9 @@ class RequestQueue:
                     return True
         return False
 
-    async def cancel_ticket(self, ticket_id: str, reason: str = "User cancelled") -> bool:
+    async def cancel_ticket(
+        self, ticket_id: str, reason: str = "User cancelled"
+    ) -> bool:
         """取消指定的 ticket
 
         Args:
@@ -483,7 +494,9 @@ class RequestQueue:
             logger.info(f"Ticket {ticket_id} cancelled: reason={reason}")
             return True
 
-    async def cancel_all_by_priority(self, priority: RequestPriority, reason: str = "Batch cancel"):
+    async def cancel_all_by_priority(
+        self, priority: RequestPriority, reason: str = "Batch cancel"
+    ):
         """取消指定优先级的所有 ticket"""
         async with self._lock:
             if priority == RequestPriority.CRITICAL:
@@ -498,7 +511,9 @@ class RequestQueue:
                 self._active_tickets.pop(ticket.id, None)
                 self._stats.record_cancelled(priority)
 
-            logger.info(f"Cancelled {len(tickets)} tickets with priority={priority.name}")
+            logger.info(
+                f"Cancelled {len(tickets)} tickets with priority={priority.name}"
+            )
 
     async def cancel_all_tickets(self, reason: str = "Emergency cleanup"):
         """取消所有 ticket"""
@@ -533,7 +548,10 @@ class RequestQueue:
                 logger.error(f"Adjust config error: {type(e).__name__}: {e}")
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
             except Exception as e:
-                logger.error(f"Adjust loop unexpected error: {type(e).__name__}: {e}", exc_info=True)
+                logger.error(
+                    f"Adjust loop unexpected error: {type(e).__name__}: {e}",
+                    exc_info=True,
+                )
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
 
     async def _adjust_config(self):
@@ -546,7 +564,9 @@ class RequestQueue:
         if critical_avg_wait > self.config.critical_target_wait_time:
             old_rate = self.config.critical_dispatch_rate
             self.config.critical_dispatch_rate *= _DISPATCH_RATE_MULTIPLIER
-            self.config.critical_dispatch_rate = min(self.config.critical_dispatch_rate, _MAX_CRITICAL_DISPATCH_RATE)
+            self.config.critical_dispatch_rate = min(
+                self.config.critical_dispatch_rate, _MAX_CRITICAL_DISPATCH_RATE
+            )
 
             if self.config.critical_dispatch_rate != old_rate:
                 logger.info(
@@ -559,7 +579,7 @@ class RequestQueue:
                 old_size = self.config.critical_max_size
                 self.config.critical_max_size = min(
                     self.config.critical_max_size + _CRITICAL_SIZE_INCREMENT,
-                    _MAX_CRITICAL_QUEUE_SIZE
+                    _MAX_CRITICAL_QUEUE_SIZE,
                 )
                 if self.config.critical_max_size != old_size:
                     logger.info(
@@ -574,7 +594,7 @@ class RequestQueue:
             old_threshold = self.config.critical_backpressure_threshold
             self.config.critical_backpressure_threshold = min(
                 self.config.critical_backpressure_threshold + 0.05,
-                _MAX_BACKPRESSURE_THRESHOLD
+                _MAX_BACKPRESSURE_THRESHOLD,
             )
             if self.config.critical_backpressure_threshold != old_threshold:
                 logger.info(
@@ -587,7 +607,9 @@ class RequestQueue:
         if normal_avg_wait > self.config.normal_target_wait_time:
             old_rate = self.config.normal_dispatch_rate
             self.config.normal_dispatch_rate *= _DISPATCH_RATE_MULTIPLIER
-            self.config.normal_dispatch_rate = min(self.config.normal_dispatch_rate, _MAX_NORMAL_DISPATCH_RATE)
+            self.config.normal_dispatch_rate = min(
+                self.config.normal_dispatch_rate, _MAX_NORMAL_DISPATCH_RATE
+            )
 
             if self.config.normal_dispatch_rate != old_rate:
                 logger.info(

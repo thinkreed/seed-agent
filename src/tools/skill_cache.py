@@ -100,7 +100,9 @@ def load_snapshot(skills_dir: Path) -> dict | None:
         if "skills" in snapshot:
             snapshot["skills"] = _convert_lists_to_sets_for_meta(snapshot["skills"])
 
-        logger.debug(f"Skill cache snapshot loaded: {len(snapshot.get('skills', {}))} skills")
+        logger.debug(
+            f"Skill cache snapshot loaded: {len(snapshot.get('skills', {}))} skills"
+        )
         return snapshot
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse skill cache snapshot: {type(e).__name__}: {e}")

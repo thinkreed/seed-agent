@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 MEMORY_ROOT = os.path.join(os.path.expanduser("~"), ".seed", "memory")
 SESSIONS_DIR = os.path.join(MEMORY_ROOT, "raw", "sessions")
 
+
 def write_memory(level: str, content: str, title: str = "", metadata: str = "") -> str:
     """
     Write memory to L1/L2/L3/L4. Validates content length and structure.
@@ -83,7 +84,9 @@ def write_memory(level: str, content: str, title: str = "", metadata: str = "") 
         return f"Error writing memory: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
         # 完整错误记录到日志
-        logger.exception(f"Unexpected error writing memory to {path}: {type(e).__name__}: {e}")
+        logger.exception(
+            f"Unexpected error writing memory to {path}: {type(e).__name__}: {e}"
+        )
         return f"Error writing memory: {type(e).__name__}: {str(e)[:100]}"
 
 
@@ -112,14 +115,18 @@ def _validate_skill_format(content: str, name: str = "") -> str:
         skill_name = name_match.group(1).strip()
         # name 校验规则：小写字母/数字/连字符，1-64字符
         if not re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", skill_name):
-            return (f"Error: L2 Skill name '{skill_name}' must be lowercase "
-                    f"letters/numbers/hyphens, 1-64 chars, "
-                    f"no leading/trailing/consecutive hyphens.")
+            return (
+                f"Error: L2 Skill name '{skill_name}' must be lowercase "
+                f"letters/numbers/hyphens, 1-64 chars, "
+                f"no leading/trailing/consecutive hyphens."
+            )
         if len(skill_name) > 64:
             return "Error: L2 Skill name exceeds 64 chars limit."
 
     # 校验 description 长度
-    desc_match = re.search(r'description:\s*["\']?(.+?)["\']?\n', frontmatter_text, re.DOTALL)
+    desc_match = re.search(
+        r'description:\s*["\']?(.+?)["\']?\n', frontmatter_text, re.DOTALL
+    )
     if desc_match:
         desc = desc_match.group(1).strip()
         if len(desc) > 1024:
@@ -158,6 +165,7 @@ def _get_path(level: str, filename: str | None = None) -> str | None:
 
     return os.path.join(MEMORY_ROOT, base, filename)
 
+
 def read_memory_index() -> str:
     """
     Read the global memory index (L1) to find available SOPs or knowledge.
@@ -173,6 +181,7 @@ def read_memory_index() -> str:
             return f.read()
     except Exception as e:
         return f"Error reading index: {e!s}"
+
 
 def search_memory(keyword: str, levels: list[str] | None = None) -> str:
     """
@@ -215,7 +224,9 @@ def search_memory(keyword: str, levels: list[str] | None = None) -> str:
                             if keyword.lower() in f.read().lower():
                                 results.append(f"[{lvl}] {file}")
                     except Exception as e:
-                        logger.debug(f"Failed to read memory file {file}: {type(e).__name__}")
+                        logger.debug(
+                            f"Failed to read memory file {file}: {type(e).__name__}"
+                        )
                         continue
     return "\n".join(results) if results else "No matching memory found."
 
@@ -225,7 +236,9 @@ def start_long_term_update(args: dict[str, Any], **kwargs: Any) -> str:
     Triggered when the agent believes a task is complete.
     Dynamically reads memory SOP and injects it into the prompt.
     """
-    memory_md_path = os.path.join(os.path.dirname(__file__), "..", "..", "memory", "memory.md")
+    memory_md_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "memory", "memory.md"
+    )
     sop_content = "[Error: Unable to load memory.md]"
     try:
         with open(memory_md_path, encoding="utf-8") as f:
@@ -237,13 +250,14 @@ def start_long_term_update(args: dict[str, Any], **kwargs: Any) -> str:
 
 以下是必须严格遵守的记忆管理 SOP，请根据 SOP 中的层级定义和约束进行经验提炼：
 
-{ sop_content }
+{sop_content}
 
 请总结以下内容并使用 `write_memory` 保存：
 1. **环境事实/配置**: 经过验证的路径 (相对)、依赖、配置 (Level: L2)。
 2. **SOP/技能**: 成功的操作步骤、代码片段、重试策略 (Level: L2)。
 3. **避坑/知识**: 失败原因、解决方案、通用规则 (Level: L3)。
 4. **用户偏好**: 特定的需求或习惯 (Level: L2)。"""
+
 
 def register_memory_tools(registry: ToolRegistry) -> None:
     """Register memory tools to the Agent system."""
@@ -280,50 +294,66 @@ def register_memory_tools(registry: ToolRegistry) -> None:
 # 迁移完成后，JSONL 文件将不再使用，但保留 _ensure_sessions_dir 等函数
 # 以支持可能仍依赖它们的旧代码。
 
+
 def _ensure_sessions_dir() -> None:
     """确保 sessions 目录存在（保留兼容）"""
     os.makedirs(SESSIONS_DIR, exist_ok=True)
 
-def _save_session_history(messages: list, summary: str | None = None, session_id: str | None = None) -> str:
+
+def _save_session_history(
+    messages: list, summary: str | None = None, session_id: str | None = None
+) -> str:
     """Save conversation history to SQLite (wrapper for session_db.py)"""
     try:
         from src.tools.session_db import save_session_history as sqlite_save
+
         return sqlite_save(messages, summary, session_id)
     except ImportError:
         return _save_session_history_jsonl(messages, summary, session_id)
+
 
 def _load_session_history(session_id: str) -> str:
     """Load conversation history from SQLite (wrapper for session_db.py)"""
     try:
         from src.tools.session_db import load_session_history as sqlite_load
+
         return sqlite_load(session_id)
     except ImportError:
         return _load_session_history_jsonl(session_id)
+
 
 def _list_sessions(limit: int = 10) -> str:
     """List recent sessions from SQLite (wrapper for session_db.py)"""
     try:
         from src.tools.session_db import list_sessions as sqlite_list
+
         return sqlite_list(limit)
     except ImportError:
         return _list_sessions_jsonl(limit)
+
 
 def _search_history(keyword: str, limit: int = 20) -> str:
     """Search conversation history using FTS5 (wrapper for session_db.py)"""
     try:
         from src.tools.session_db import search_history as sqlite_search
+
         return sqlite_search(keyword, limit)
     except ImportError:
         return _search_history_jsonl(keyword, limit)
 
+
 # ---- JSONL Fallback (保留向后兼容) ----
+
 
 def _generate_session_filename() -> str:
     """生成会话文件名"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"session_{timestamp}.jsonl"
 
-def _save_session_history_jsonl(messages: list, summary: str | None = None, session_id: str | None = None) -> str:
+
+def _save_session_history_jsonl(
+    messages: list, summary: str | None = None, session_id: str | None = None
+) -> str:
     """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
@@ -332,26 +362,39 @@ def _save_session_history_jsonl(messages: list, summary: str | None = None, sess
         filepath = os.path.join(SESSIONS_DIR, session_id)
         with open(filepath, "a", encoding="utf-8") as f:
             if not os.path.exists(filepath) or os.stat(filepath).st_size == 0:
-                meta = {"type": "session_meta", "session_id": session_id, "created_at": datetime.now().isoformat()}
+                meta = {
+                    "type": "session_meta",
+                    "session_id": session_id,
+                    "created_at": datetime.now().isoformat(),
+                }
                 f.write(json.dumps(meta, ensure_ascii=False) + "\n")
             for msg in messages:
                 msg["timestamp"] = datetime.now().isoformat()
                 msg["type"] = "message"
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
             if summary:
-                summary_line = {"type": "summary", "content": summary, "timestamp": datetime.now().isoformat()}
+                summary_line = {
+                    "type": "summary",
+                    "content": summary,
+                    "timestamp": datetime.now().isoformat(),
+                }
                 f.write(json.dumps(summary_line, ensure_ascii=False) + "\n")
         msg_count = len(messages)
         return f"Session saved: {session_id} ({msg_count} messages)"
     except Exception as e:
         return f"Error saving session: {e!s}"
 
+
 def _load_session_history_jsonl(session_id: str) -> str:
     """JSONL fallback implementation"""
     try:
         filepath = os.path.join(SESSIONS_DIR, session_id)
         if not os.path.exists(filepath):
-            matches = [f for f in os.listdir(SESSIONS_DIR) if f.startswith(session_id) or session_id in f]
+            matches = [
+                f
+                for f in os.listdir(SESSIONS_DIR)
+                if f.startswith(session_id) or session_id in f
+            ]
             if matches:
                 filepath = os.path.join(SESSIONS_DIR, matches[0])
             else:
@@ -380,7 +423,10 @@ def _load_session_history_jsonl(session_id: str) -> str:
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
             if msg.get("tool_calls"):
-                tc_names = [tc.get("function", {}).get("name", "unknown") for tc in msg["tool_calls"]]
+                tc_names = [
+                    tc.get("function", {}).get("name", "unknown")
+                    for tc in msg["tool_calls"]
+                ]
                 content = f"[Tool Calls: {', '.join(tc_names)}]"
             if msg.get("tool_call_id"):
                 content = msg.get("content", "")[:200]
@@ -391,12 +437,15 @@ def _load_session_history_jsonl(session_id: str) -> str:
     except Exception as e:
         return f"Error loading session: {e!s}"
 
+
 def _list_sessions_jsonl(limit: int = 10) -> str:
     """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
         files = sorted(os.listdir(SESSIONS_DIR), reverse=True)
-        session_files = [f for f in files if f.startswith("session_") and f.endswith(".jsonl")]
+        session_files = [
+            f for f in files if f.startswith("session_") and f.endswith(".jsonl")
+        ]
         results = []
         for f in session_files[:limit]:
             filepath = os.path.join(SESSIONS_DIR, f)
@@ -414,23 +463,37 @@ def _list_sessions_jsonl(limit: int = 10) -> str:
                         msg_count += 1
                     elif obj.get("type") == "summary":
                         summary = obj.get("content", "")[:100]
-            results.append({"session_id": f, "created_at": created_at, "message_count": msg_count, "summary": summary})
+            results.append(
+                {
+                    "session_id": f,
+                    "created_at": created_at,
+                    "message_count": msg_count,
+                    "summary": summary,
+                }
+            )
         if not results:
             return "No sessions found."
         output = "Recent Sessions:\n"
         for s in results:
-            output += f"- {s['session_id']}: {s['message_count']} msgs, {s['created_at']}\n"
+            output += (
+                f"- {s['session_id']}: {s['message_count']} msgs, {s['created_at']}\n"
+            )
             if s["summary"]:
                 output += f"  Summary: {s['summary']}...\n"
         return output
     except Exception as e:
         return f"Error listing sessions: {e!s}"
 
+
 def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
     """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
-        files = [f for f in os.listdir(SESSIONS_DIR) if f.startswith("session_") and f.endswith(".jsonl")]
+        files = [
+            f
+            for f in os.listdir(SESSIONS_DIR)
+            if f.startswith("session_") and f.endswith(".jsonl")
+        ]
         results = []
         keyword_lower = keyword.lower()
         for f in files:
@@ -449,11 +512,20 @@ def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
                     context_start = max(0, i - 1)
                     context_end = min(len(messages), i + 2)
                     context = messages[context_start:context_end]
-                    results.append({
-                        "session_id": f, "timestamp": msg.get("timestamp", "unknown"), "role": msg.get("role"),
-                        "matched": content[:300] + "..." if len(content) > 300 else content,
-                        "context": [f"{m.get('role')}: {m.get('content', '')[:100]}" for m in context]
-                    })
+                    results.append(
+                        {
+                            "session_id": f,
+                            "timestamp": msg.get("timestamp", "unknown"),
+                            "role": msg.get("role"),
+                            "matched": content[:300] + "..."
+                            if len(content) > 300
+                            else content,
+                            "context": [
+                                f"{m.get('role')}: {m.get('content', '')[:100]}"
+                                for m in context
+                            ],
+                        }
+                    )
                     if len(results) >= limit:
                         break
             if len(results) >= limit:
@@ -472,13 +544,14 @@ def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
 
 # ==================== Memory Graph 工具 (SQLite 后端) ====================
 
+
 def _record_skill_outcome(
     skill_name: str,
     outcome: str,
     score: float = 1.0,
     signals: list | None = None,
     session_id: str | None = None,
-    context: str | None = None
+    context: str | None = None,
 ) -> str:
     """
     Record skill execution outcome to gene_outcomes table.
@@ -501,9 +574,11 @@ def _record_skill_outcome(
     """
     try:
         from src.tools.session_db import record_skill_outcome as db_record
+
         return db_record(skill_name, outcome, score, signals, session_id, context)
     except ImportError:
         return "Error: session_db module not available"
+
 
 def _get_skill_stats(skill_name: str) -> str:
     """
@@ -517,6 +592,7 @@ def _get_skill_stats(skill_name: str) -> str:
     """
     try:
         from src.tools.session_db import get_skill_stats as db_stats
+
         stats = db_stats(skill_name)
         if "error" in stats:
             return f"Error: {stats['error']}"
@@ -537,6 +613,7 @@ def _get_skill_stats(skill_name: str) -> str:
     except ImportError:
         return "Error: session_db module not available"
 
+
 def _list_banned_skills() -> str:
     """
     List skills with value below ban_threshold.
@@ -547,6 +624,7 @@ def _list_banned_skills() -> str:
     """
     try:
         from src.tools.session_db import list_banned_skills as db_list
+
         banned = db_list()
         if not banned:
             return "No banned skills found."
@@ -554,13 +632,16 @@ def _list_banned_skills() -> str:
         output = "Banned Skills:\n"
         for s in banned:
             output += f"\n- {s['skill_name']}\n"
-            output += f"  Attempts: {s['total_attempts']}, Value: {s['current_value']:.3f}\n"
+            output += (
+                f"  Attempts: {s['total_attempts']}, Value: {s['current_value']:.3f}\n"
+            )
             output += f"  Success rate: {s['success_rate']:.1%}\n"
             output += f"  Reason: {s['ban_reason']}\n"
             output += f"  Action: {s['suggested_action']}\n"
         return output
     except ImportError:
         return "Error: session_db module not available"
+
 
 def _get_top_skills(limit: int = 10) -> str:
     """
@@ -574,6 +655,7 @@ def _get_top_skills(limit: int = 10) -> str:
     """
     try:
         from src.tools.session_db import get_top_skills as db_top
+
         top = db_top(limit)
         if not top:
             return "No skills with outcome history found."
@@ -581,7 +663,9 @@ def _get_top_skills(limit: int = 10) -> str:
         output = f"Top {len(top)} Skills (by selection value):\n"
         for s in top:
             output += f"\n- {s['skill_name']}\n"
-            output += f"  Value: {s['selection_value']:.3f}, Rate: {s['success_rate']:.1%}\n"
+            output += (
+                f"  Value: {s['selection_value']:.3f}, Rate: {s['success_rate']:.1%}\n"
+            )
             output += f"  Attempts: {s['total']}\n"
         return output
     except ImportError:
@@ -590,11 +674,9 @@ def _get_top_skills(limit: int = 10) -> str:
 
 # ==================== L4 用户建模工具 (黑格尔辩证式进化) ====================
 
+
 def _observe_user_preference(
-    key: str,
-    value: str,
-    context: str | None = None,
-    confidence: float = 0.8
+    key: str, value: str, context: str | None = None, confidence: float = 0.8
 ) -> str:
     """
     观察用户偏好证据
@@ -614,17 +696,19 @@ def _observe_user_preference(
     """
     try:
         from src.tools.user_modeling import UserModelingLayer
+
         user_model = UserModelingLayer()
         return user_model.observe(
             evidence_type="preference",
             data={"key": key, "value": value},
             context=context,
-            confidence=confidence
+            confidence=confidence,
         )
     except ImportError:
         return "Error: user_modeling module not available"
     except Exception as e:
         return f"Error observing preference: {type(e).__name__}: {str(e)[:100]}"
+
 
 def _get_user_preference(key: str, context: str | None = None) -> str:
     """
@@ -643,6 +727,7 @@ def _get_user_preference(key: str, context: str | None = None) -> str:
     """
     try:
         from src.tools.user_modeling import UserModelingLayer
+
         user_model = UserModelingLayer()
         result = user_model.get_user_preference(key, context)
 
@@ -655,6 +740,7 @@ def _get_user_preference(key: str, context: str | None = None) -> str:
         return "Error: user_modeling module not available"
     except Exception as e:
         return f"Error getting preference: {type(e).__name__}: {str(e)[:100]}"
+
 
 def _get_user_profile_summary() -> str:
     """
@@ -670,12 +756,14 @@ def _get_user_profile_summary() -> str:
     """
     try:
         from src.tools.user_modeling import UserModelingLayer
+
         user_model = UserModelingLayer()
         return user_model.get_user_profile_summary()
     except ImportError:
         return "Error: user_modeling module not available"
     except Exception as e:
         return f"Error getting profile: {type(e).__name__}: {str(e)[:100]}"
+
 
 def _update_user_model() -> str:
     """
@@ -686,9 +774,12 @@ def _update_user_model() -> str:
     Returns:
         更新提示信息 (实际更新需要在异步环境中执行)
     """
-    return ("提示: 用户模型辩证式更新需要异步执行。\n"
-            "请使用 MemoryManager.update_user_model() 在异步环境中调用。\n"
-            "流程: 检测矛盾 -> 内部推理 -> 升级模型 (不覆盖)")
+    return (
+        "提示: 用户模型辩证式更新需要异步执行。\n"
+        "请使用 MemoryManager.update_user_model() 在异步环境中调用。\n"
+        "流程: 检测矛盾 -> 内部推理 -> 升级模型 (不覆盖)"
+    )
+
 
 def _list_user_preferences() -> str:
     """
@@ -699,6 +790,7 @@ def _list_user_preferences() -> str:
     """
     try:
         from src.tools.user_modeling import UserModelingLayer
+
         user_model = UserModelingLayer()
         preferences = user_model.get_all_preferences()
 
@@ -715,7 +807,9 @@ def _list_user_preferences() -> str:
             if exceptions:
                 for exc_key, exc_val in exceptions.items():
                     if exc_key != "previously":
-                        output += f"  例外 [{exc_key}]: {exc_val.get('value', '未知')}\n"
+                        output += (
+                            f"  例外 [{exc_key}]: {exc_val.get('value', '未知')}\n"
+                        )
 
         return output
     except ImportError:
@@ -726,10 +820,9 @@ def _list_user_preferences() -> str:
 
 # ==================== L5 工作日志工具 (长期归档 + LLM摘要) ====================
 
+
 def _archive_session_events(
-    session_id: str,
-    events_json: str,
-    metadata_json: str | None = None
+    session_id: str, events_json: str, metadata_json: str | None = None
 ) -> str:
     """
     归档会话事件到长期存储
@@ -746,16 +839,20 @@ def _archive_session_events(
     """
     try:
         import json
+
         events = json.loads(events_json) if events_json else []
 
         if not events:
             return "Error: No events to archive"
 
-        return (f"提示: 会话归档需要异步执行。\n"
-                f"请使用 MemoryManager.archive_session() 在异步环境中调用。\n"
-                f"会话 ID: {session_id}, 事件数: {len(events)}")
+        return (
+            f"提示: 会话归档需要异步执行。\n"
+            f"请使用 MemoryManager.archive_session() 在异步环境中调用。\n"
+            f"会话 ID: {session_id}, 事件数: {len(events)}"
+        )
     except json.JSONDecodeError as e:
         return f"Error parsing JSON: {type(e).__name__}: {str(e)[:100]}"
+
 
 def _search_archives(keyword: str, limit: int = 20) -> str:
     """
@@ -773,6 +870,7 @@ def _search_archives(keyword: str, limit: int = 20) -> str:
     """
     try:
         from src.tools.long_term_archive import LongTermArchiveLayer
+
         archive = LongTermArchiveLayer()
         results = archive.search_with_context(keyword, limit)
 
@@ -795,6 +893,7 @@ def _search_archives(keyword: str, limit: int = 20) -> str:
     except Exception as e:
         return f"Error searching archives: {type(e).__name__}: {str(e)[:100]}"
 
+
 def _get_archive_details(archive_id: str) -> str:
     """
     获取归档详情
@@ -807,6 +906,7 @@ def _get_archive_details(archive_id: str) -> str:
     """
     try:
         from src.tools.long_term_archive import LongTermArchiveLayer
+
         archive = LongTermArchiveLayer()
         details = archive.get_archive(archive_id)
 
@@ -835,6 +935,7 @@ def _get_archive_details(archive_id: str) -> str:
     except Exception as e:
         return f"Error getting archive: {type(e).__name__}: {str(e)[:100]}"
 
+
 def _get_archive_stats() -> str:
     """
     获取归档统计信息
@@ -844,6 +945,7 @@ def _get_archive_stats() -> str:
     """
     try:
         from src.tools.long_term_archive import LongTermArchiveLayer
+
         archive = LongTermArchiveLayer()
         stats = archive.get_archive_stats()
 
@@ -863,6 +965,7 @@ def _get_archive_stats() -> str:
     except Exception as e:
         return f"Error getting stats: {type(e).__name__}: {str(e)[:100]}"
 
+
 def _get_memory_hierarchy() -> str:
     """
     获取五层记忆架构摘要
@@ -872,6 +975,7 @@ def _get_memory_hierarchy() -> str:
     """
     try:
         from src.memory_manager import get_memory_manager
+
         manager = get_memory_manager()
         return manager.get_memory_hierarchy_summary()
     except ImportError:

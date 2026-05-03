@@ -45,11 +45,12 @@ logger = logging.getLogger("seed_agent.ralph")
 
 class CompletionType(Enum):
     """完成验证类型"""
-    TEST_PASS = "test_pass"         # 测试通过
-    FILE_EXISTS = "file_exists"     # 目标文件存在
-    MARKER_FILE = "marker_file"     # 完成标志文件
-    GIT_CLEAN = "git_clean"         # Git 工作区干净
-    CUSTOM_CHECK = "custom_check"   # 自定义验证函数
+
+    TEST_PASS = "test_pass"  # 测试通过
+    FILE_EXISTS = "file_exists"  # 目标文件存在
+    MARKER_FILE = "marker_file"  # 完成标志文件
+    GIT_CLEAN = "git_clean"  # Git 工作区干净
+    CUSTOM_CHECK = "custom_check"  # 自定义验证函数
 
 
 class RalphLoop:
@@ -74,7 +75,7 @@ class RalphLoop:
     # 默认配置
     MAX_ITERATIONS = 1000
     MAX_DURATION = 8 * 60 * 60  # 8小时
-    ITERATION_INTERVAL = 5      # 上下文重置间隔
+    ITERATION_INTERVAL = 5  # 上下文重置间隔
 
     def __init__(
         self,
@@ -82,10 +83,12 @@ class RalphLoop:
         completion_type: CompletionType,
         completion_criteria: dict | None = None,
         task_prompt_path: Path | None = None,
-        on_iteration_complete: Callable[[int, str], None] | Callable[[int, str], Coroutine[Any, Any, None]] | None = None,
+        on_iteration_complete: Callable[[int, str], None]
+        | Callable[[int, str], Coroutine[Any, Any, None]]
+        | None = None,
         max_iterations: int | None = None,
         max_duration: int | None = None,
-        context_reset_interval: int | None = None
+        context_reset_interval: int | None = None,
     ):
         """初始化 Ralph Loop
 
@@ -115,7 +118,11 @@ class RalphLoop:
         self._start_time: float = 0  # 当前会话开始时间
         self._accumulated_duration: float = 0  # 累计执行时间（跨会话）
         # 状态文件名：使用任务文件名或 UUID（避免多实例冲突）
-        state_name = task_prompt_path.stem if task_prompt_path else f"auto_{uuid.uuid4().hex[:8]}"
+        state_name = (
+            task_prompt_path.stem
+            if task_prompt_path
+            else f"auto_{uuid.uuid4().hex[:8]}"
+        )
         self._state_file: Path = SEED_DIR / "ralph" / f"task_{state_name}_state.json"
         self._is_running: bool = False
 
@@ -158,26 +165,36 @@ class RalphLoop:
                 response = await self.agent.run(prompt)
             except ConfigurationError as e:
                 # 配置错误：不可恢复，终止循环
-                logger.critical(f"Configuration error at iteration {self._iteration_count}: {e}")
+                logger.critical(
+                    f"Configuration error at iteration {self._iteration_count}: {e}"
+                )
                 self._cleanup()
                 raise
             except SeedAgentError as e:
                 # 已知错误类型：根据严重程度决定是否继续
                 error_type, severity = e.error_type, e.severity
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
-                    logger.error(f"Critical error at iteration {self._iteration_count}: {e}")
+                    logger.error(
+                        f"Critical error at iteration {self._iteration_count}: {e}"
+                    )
                     self._cleanup()
                     raise
-                logger.warning(f"Recoverable error at iteration {self._iteration_count}: {e}")
+                logger.warning(
+                    f"Recoverable error at iteration {self._iteration_count}: {e}"
+                )
                 response = f"Error: {e!s}"
             except Exception as e:
                 # 未知错误：分类后决定处理方式
                 error_type, severity = classify_error(e)
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
-                    logger.error(f"Severe unclassified error at iteration {self._iteration_count}: {error_type.value}: {e}")
+                    logger.error(
+                        f"Severe unclassified error at iteration {self._iteration_count}: {error_type.value}: {e}"
+                    )
                     self._cleanup()
                     raise
-                logger.warning(f"Agent execution failed at iteration {self._iteration_count}: {e}")
+                logger.warning(
+                    f"Agent execution failed at iteration {self._iteration_count}: {e}"
+                )
                 response = f"Error: {e!s}"
 
             # 5. 持久化状态
@@ -185,7 +202,9 @@ class RalphLoop:
 
             # 6. 外部完成验证（异步）
             if await self._check_completion():
-                logger.info(f"Ralph Loop completed at iteration {self._iteration_count}")
+                logger.info(
+                    f"Ralph Loop completed at iteration {self._iteration_count}"
+                )
                 self._cleanup()
                 return "DONE"
 
@@ -193,7 +212,9 @@ class RalphLoop:
             if self.on_iteration_complete:
                 try:
                     if asyncio.iscoroutinefunction(self.on_iteration_complete):
-                        await self.on_iteration_complete(self._iteration_count, response)
+                        await self.on_iteration_complete(
+                            self._iteration_count, response
+                        )
                     else:
                         self.on_iteration_complete(self._iteration_count, response)
                 except Exception as e:
@@ -259,7 +280,7 @@ class RalphLoop:
                 *cmd_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=cwd
+                cwd=cwd,
             )
 
             # 异步等待完成（5分钟超时）
@@ -309,7 +330,9 @@ class RalphLoop:
                 logger.debug(f"Process {proc.pid} terminated gracefully")
             except asyncio.TimeoutError:
                 # 2. 优雅终止超时，强制终止 (SIGKILL)
-                logger.warning(f"Process {proc.pid} did not terminate gracefully, killing")
+                logger.warning(
+                    f"Process {proc.pid} did not terminate gracefully, killing"
+                )
                 proc.kill()
                 await proc.wait()
                 logger.debug(f"Process {proc.pid} killed")
@@ -367,7 +390,9 @@ class RalphLoop:
         """检查完成标志文件"""
         if not self.completion_criteria:
             return False
-        marker_path = Path(self.completion_criteria.get("marker_path", SEED_DIR / "completion_marker"))
+        marker_path = Path(
+            self.completion_criteria.get("marker_path", SEED_DIR / "completion_marker")
+        )
         marker_content = self.completion_criteria.get("marker_content", "DONE")
 
         try:
@@ -396,10 +421,12 @@ class RalphLoop:
         try:
             # 使用异步 subprocess 执行 git 命令
             proc = await asyncio.create_subprocess_exec(
-                "git", "status", "--porcelain",
+                "git",
+                "status",
+                "--porcelain",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=repo_path
+                cwd=repo_path,
             )
 
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
@@ -461,7 +488,9 @@ class RalphLoop:
                 content = self.task_prompt_path.read_text(encoding="utf-8")
                 return f"[Ralph Loop 迭代 {self._iteration_count}]\n\n{content}"
             except (PermissionError, OSError, UnicodeDecodeError) as e:
-                logger.warning(f"Failed to load task prompt from {self.task_prompt_path}: {e}")
+                logger.warning(
+                    f"Failed to load task prompt from {self.task_prompt_path}: {e}"
+                )
         # 默认 prompt
         return f"继续执行任务。当前迭代: {self._iteration_count}"
 
@@ -523,17 +552,14 @@ class RalphLoop:
         agent_loop,
         task_prompt_path: Path,
         test_command: str = "pytest tests/ -v",
-        pass_rate: float = 100
+        pass_rate: float = 100,
     ) -> "RalphLoop":
         """创建测试驱动的 Ralph Loop"""
         return cls(
             agent_loop=agent_loop,
             completion_type=CompletionType.TEST_PASS,
-            completion_criteria={
-                "test_command": test_command,
-                "pass_rate": pass_rate
-            },
-            task_prompt_path=task_prompt_path
+            completion_criteria={"test_command": test_command, "pass_rate": pass_rate},
+            task_prompt_path=task_prompt_path,
         )
 
     @classmethod
@@ -542,7 +568,7 @@ class RalphLoop:
         agent_loop,
         task_prompt_path: Path,
         marker_path: Path | None = None,
-        marker_content: str = "DONE"
+        marker_content: str = "DONE",
     ) -> "RalphLoop":
         """创建标志文件驱动的 Ralph Loop"""
         return cls(
@@ -550,9 +576,9 @@ class RalphLoop:
             completion_type=CompletionType.MARKER_FILE,
             completion_criteria={
                 "marker_path": str(marker_path or SEED_DIR / "completion_marker"),
-                "marker_content": marker_content
+                "marker_content": marker_content,
             },
-            task_prompt_path=task_prompt_path
+            task_prompt_path=task_prompt_path,
         )
 
 
@@ -561,7 +587,7 @@ async def create_ralph_loop(
     task_file: str,
     completion_type: str = "marker_file",
     completion_criteria: dict | None = None,
-    **kwargs
+    **kwargs,
 ) -> RalphLoop:
     """创建 Ralph Loop 实例
 
@@ -597,5 +623,5 @@ async def create_ralph_loop(
         completion_type=c_type,
         completion_criteria=criteria,
         task_prompt_path=task_path,
-        **kwargs
+        **kwargs,
     )

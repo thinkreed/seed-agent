@@ -35,17 +35,19 @@ CANCEL_GRACE_SECONDS = 5
 
 class TaskStatus(Enum):
     """任务状态"""
-    PENDING = "pending"       # 等待执行
-    RUNNING = "running"       # 正在执行
-    COMPLETED = "completed"   # 执行完成
-    FAILED = "failed"         # 执行失败
-    CANCELLED = "cancelled"   # 已取消
-    TIMEOUT = "timeout"       # 执行超时
+
+    PENDING = "pending"  # 等待执行
+    RUNNING = "running"  # 正在执行
+    COMPLETED = "completed"  # 执行完成
+    FAILED = "failed"  # 执行失败
+    CANCELLED = "cancelled"  # 已取消
+    TIMEOUT = "timeout"  # 执行超时
 
 
 @dataclass
 class BackgroundTaskEntry:
     """后台任务条目"""
+
     task_id: str
     prompt: str
     status: TaskStatus
@@ -61,12 +63,18 @@ class BackgroundTaskEntry:
         """转换为字典"""
         return {
             "task_id": self.task_id,
-            "prompt": self.prompt[:100] + "..." if len(self.prompt) > 100 else self.prompt,
+            "prompt": self.prompt[:100] + "..."
+            if len(self.prompt) > 100
+            else self.prompt,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
-            "result": self.result[:200] + "..." if self.result and len(self.result) > 200 else self.result,
+            "completed_at": self.completed_at.isoformat()
+            if self.completed_at
+            else None,
+            "result": self.result[:200] + "..."
+            if self.result and len(self.result) > 200
+            else self.result,
             "error": self.error,
         }
 
@@ -111,7 +119,9 @@ class BackgroundTaskRegistry:
         # 异步锁用于异步方法
         self._async_lock = asyncio.Lock()
 
-        logger.info(f"BackgroundTaskRegistry initialized: max_concurrent={max_concurrent}")
+        logger.info(
+            f"BackgroundTaskRegistry initialized: max_concurrent={max_concurrent}"
+        )
 
     def register(
         self,
@@ -158,7 +168,9 @@ class BackgroundTaskRegistry:
                 return False
 
             if entry.status != TaskStatus.PENDING:
-                logger.warning(f"Task {task_id} is not pending (status={entry.status.value})")
+                logger.warning(
+                    f"Task {task_id} is not pending (status={entry.status.value})"
+                )
                 return False
 
             entry.status = TaskStatus.RUNNING
@@ -251,7 +263,9 @@ class BackgroundTaskRegistry:
                 return False
 
             if entry.status != TaskStatus.RUNNING:
-                logger.warning(f"Task {task_id} is not running (status={entry.status.value})")
+                logger.warning(
+                    f"Task {task_id} is not running (status={entry.status.value})"
+                )
                 # 直接标记为取消
                 if entry.status == TaskStatus.PENDING:
                     entry.status = TaskStatus.CANCELLED
@@ -372,8 +386,7 @@ class BackgroundTaskRegistry:
     def get_running_count(self) -> int:
         """获取正在运行的任务数量"""
         return sum(
-            1 for entry in self._tasks.values()
-            if entry.status == TaskStatus.RUNNING
+            1 for entry in self._tasks.values() if entry.status == TaskStatus.RUNNING
         )
 
     def can_start_new(self) -> bool:
@@ -405,7 +418,7 @@ class BackgroundTaskRegistry:
                     TaskStatus.COMPLETED,
                     TaskStatus.FAILED,
                     TaskStatus.CANCELLED,
-                    TaskStatus.TIMEOUT
+                    TaskStatus.TIMEOUT,
                 ):
                     to_remove.append(tid)
 

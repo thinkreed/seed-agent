@@ -38,6 +38,7 @@ MAX_DYNAMIC_ITERATIONS = 10  # 动态任务分配最大迭代
 
 class CollaborationMode(str, Enum):
     """协作模式枚举"""
+
     MULTI_BRAIN_ONE_HAND = "multi_brain_one_hand"  # 多脑一手
     ONE_BRAIN_MULTI_HAND = "one_brain_multi_hand"  # 一脑多手
     MULTI_BRAIN_MULTI_HAND = "multi_brain_multi_hand"  # 多脑多手
@@ -46,6 +47,7 @@ class CollaborationMode(str, Enum):
 @dataclass
 class AgentInstance:
     """智能体实例"""
+
     id: str
     llm_client: LLMClient
     sandbox: Sandbox | None = None
@@ -57,6 +59,7 @@ class AgentInstance:
 @dataclass
 class AnalysisResult:
     """分析结果"""
+
     perspective: str
     result: str
     issues: list[str] = field(default_factory=list)
@@ -66,6 +69,7 @@ class AnalysisResult:
 @dataclass
 class ExecutionResult:
     """执行结果"""
+
     agent_id: str
     label: str
     results: list[str]
@@ -76,6 +80,7 @@ class ExecutionResult:
 @dataclass
 class CoordinationResult:
     """协调结果"""
+
     task: str
     agent_results: list[dict[str, Any]]
     merged_result: dict[str, Any]
@@ -112,13 +117,19 @@ class MultiBrainOneHandOrchestrator:
         # 创建智能体实例
         self._agents: list[AgentInstance] = []
         for i, client in enumerate(llm_clients):
-            perspective = perspectives[i] if perspectives and i < len(perspectives) else f"perspective_{i}"
-            self._agents.append(AgentInstance(
-                id=str(uuid.uuid4())[:8],
-                llm_client=client,
-                sandbox=sandbox,
-                perspective=perspective,
-            ))
+            perspective = (
+                perspectives[i]
+                if perspectives and i < len(perspectives)
+                else f"perspective_{i}"
+            )
+            self._agents.append(
+                AgentInstance(
+                    id=str(uuid.uuid4())[:8],
+                    llm_client=client,
+                    sandbox=sandbox,
+                    perspective=perspective,
+                )
+            )
 
         self._perspectives: list[str] = perspectives or [
             a.perspective for a in self._agents if a.perspective is not None
@@ -138,7 +149,9 @@ class MultiBrainOneHandOrchestrator:
         if agent_index < len(self._agents):
             self._agents[agent_index].perspective = perspective
             self._perspectives[agent_index] = perspective
-            logger.debug(f"Perspective registered: agent={agent_index}, perspective={perspective}")
+            logger.debug(
+                f"Perspective registered: agent={agent_index}, perspective={perspective}"
+            )
 
     async def analyze_from_multiple_angles(self, target: str) -> dict[str, Any]:
         """多角度分析
@@ -189,16 +202,20 @@ class MultiBrainOneHandOrchestrator:
             目标内容
         """
         # 如果是文件路径，通过 Sandbox 读取
-        if target.endswith((".py", ".js", ".ts", ".md", ".txt", ".json", ".yaml", ".yml")):
-            result = await self.sandbox.execute_tools([
-                {
-                    "id": "read_target",
-                    "function": {
-                        "name": "file_read",
-                        "arguments": json.dumps({"file_path": target})
+        if target.endswith(
+            (".py", ".js", ".ts", ".md", ".txt", ".json", ".yaml", ".yml")
+        ):
+            result = await self.sandbox.execute_tools(
+                [
+                    {
+                        "id": "read_target",
+                        "function": {
+                            "name": "file_read",
+                            "arguments": json.dumps({"file_path": target}),
+                        },
                     }
-                }
-            ])
+                ]
+            )
             if result and result[0].get("content"):
                 return result[0]["content"]
 
@@ -240,10 +257,12 @@ class MultiBrainOneHandOrchestrator:
 """
 
         try:
-            response = await agent.llm_client.reason([
-                {"role": "user", "content": prompt}
-            ])
-            result_text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            response = await agent.llm_client.reason(
+                [{"role": "user", "content": prompt}]
+            )
+            result_text = (
+                response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
 
             # 解析结果
             issues = self._parse_issues(result_text)
@@ -312,7 +331,10 @@ class MultiBrainOneHandOrchestrator:
                 target, merged_suggestions["actions"]
             )
         else:
-            improvement_result = {"status": "no_actions", "message": "No improvement actions suggested"}
+            improvement_result = {
+                "status": "no_actions",
+                "message": "No improvement actions suggested",
+            }
 
         return {
             "target": target,
@@ -321,7 +343,9 @@ class MultiBrainOneHandOrchestrator:
             "improvement_result": improvement_result,
         }
 
-    async def _merge_suggestions(self, analysis_result: dict[str, Any]) -> dict[str, Any]:
+    async def _merge_suggestions(
+        self, analysis_result: dict[str, Any]
+    ) -> dict[str, Any]:
         """融合改进建议
 
         Args:
@@ -357,10 +381,12 @@ class MultiBrainOneHandOrchestrator:
 2. 最关键的改进建议（前 5 个）
 3. 可执行的具体行动步骤
 """
-            response = await self._agents[0].llm_client.reason([
-                {"role": "user", "content": merge_prompt}
-            ])
-            merged_text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            response = await self._agents[0].llm_client.reason(
+                [{"role": "user", "content": merge_prompt}]
+            )
+            merged_text = (
+                response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
 
             return {
                 "merged_text": merged_text,
@@ -389,9 +415,7 @@ class MultiBrainOneHandOrchestrator:
         return actions[:10]
 
     async def _execute_improvements(
-        self,
-        target: str,
-        actions: list[dict[str, str]]
+        self, target: str, actions: list[dict[str, str]]
     ) -> dict[str, Any]:
         """执行改进操作
 
@@ -405,11 +429,13 @@ class MultiBrainOneHandOrchestrator:
         results = []
         for action in actions:
             # 这里简化处理，实际需要更复杂的代码修改逻辑
-            results.append({
-                "action": action,
-                "status": "suggested",
-                "message": f"建议执行: {action['description']}",
-            })
+            results.append(
+                {
+                    "action": action,
+                    "status": "suggested",
+                    "message": f"建议执行: {action['description']}",
+                }
+            )
 
         return {
             "status": "completed",
@@ -475,16 +501,17 @@ class OneBrainMultiHandOrchestrator:
             self.sandboxes.append(sandbox)
 
             label = labels[i] if labels and i < len(labels) else f"sandbox_{i}"
-            self._agents.append(AgentInstance(
-                id=str(uuid.uuid4())[:8],
-                llm_client=llm_client,
-                sandbox=sandbox,
-                label=label,
-            ))
+            self._agents.append(
+                AgentInstance(
+                    id=str(uuid.uuid4())[:8],
+                    llm_client=llm_client,
+                    sandbox=sandbox,
+                    label=label,
+                )
+            )
 
         self._sandbox_labels: dict[int, str] = {
-            i: agent.label or f"sandbox_{i}"
-            for i, agent in enumerate(self._agents)
+            i: agent.label or f"sandbox_{i}" for i, agent in enumerate(self._agents)
         }
 
         logger.info(
@@ -573,10 +600,12 @@ class OneBrainMultiHandOrchestrator:
 """
 
         try:
-            response = await self.llm_client.reason([
-                {"role": "user", "content": prompt}
-            ])
-            plan_text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            response = await self.llm_client.reason(
+                [{"role": "user", "content": prompt}]
+            )
+            plan_text = (
+                response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
 
             # 解析 JSON
             return self._parse_plan(plan_text)
@@ -610,9 +639,7 @@ class OneBrainMultiHandOrchestrator:
         }
 
     async def _execute_sandbox_tasks(
-        self,
-        sandbox: Sandbox,
-        tasks: list[dict[str, Any]]
+        self, sandbox: Sandbox, tasks: list[dict[str, Any]]
     ) -> list[str]:
         """执行 Sandbox 任务列表
 
@@ -630,15 +657,17 @@ class OneBrainMultiHandOrchestrator:
             tool_args = task.get("args", {})
 
             try:
-                result = await sandbox.execute_tools([
-                    {
-                        "id": str(uuid.uuid4())[:8],
-                        "function": {
-                            "name": tool_name,
-                            "arguments": json.dumps(tool_args)
+                result = await sandbox.execute_tools(
+                    [
+                        {
+                            "id": str(uuid.uuid4())[:8],
+                            "function": {
+                                "name": tool_name,
+                                "arguments": json.dumps(tool_args),
+                            },
                         }
-                    }
-                ])
+                    ]
+                )
                 if result:
                     results.append(result[0].get("content", "No content"))
                 else:
@@ -671,10 +700,12 @@ class OneBrainMultiHandOrchestrator:
 """
 
         try:
-            response = await self.llm_client.reason([
-                {"role": "user", "content": prompt}
-            ])
-            summary = response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            response = await self.llm_client.reason(
+                [{"role": "user", "content": prompt}]
+            )
+            summary = (
+                response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
 
             return {
                 "summary": summary,
@@ -700,8 +731,18 @@ class OneBrainMultiHandOrchestrator:
         """
         # 规划测试方案
         test_plan = {
-            "0": [{"tool": "code_as_policy", "args": {"code": test_code, "language": "python"}}],
-            "1": [{"tool": "code_as_policy", "args": {"code": test_code, "language": "javascript"}}],
+            "0": [
+                {
+                    "tool": "code_as_policy",
+                    "args": {"code": test_code, "language": "python"},
+                }
+            ],
+            "1": [
+                {
+                    "tool": "code_as_policy",
+                    "args": {"code": test_code, "language": "javascript"},
+                }
+            ],
         }
 
         # 执行测试
@@ -709,7 +750,9 @@ class OneBrainMultiHandOrchestrator:
         for sandbox_idx, tasks in test_plan.items():
             if int(sandbox_idx) < len(self.sandboxes):
                 sandbox = self.sandboxes[int(sandbox_idx)]
-                label = self._sandbox_labels.get(int(sandbox_idx), f"sandbox_{sandbox_idx}")
+                label = self._sandbox_labels.get(
+                    int(sandbox_idx), f"sandbox_{sandbox_idx}"
+                )
                 results[label] = await self._execute_sandbox_tasks(sandbox, tasks)
 
         # 检查跨环境一致性
@@ -775,11 +818,13 @@ class MultiBrainMultiHandOrchestrator:
         for _, (llm_client, sandbox) in enumerate(self._pairs):
             pair_id = str(uuid.uuid4())[:8]
             self._pair_ids.append(pair_id)
-            self._agents.append(AgentInstance(
-                id=pair_id,
-                llm_client=llm_client,
-                sandbox=sandbox,
-            ))
+            self._agents.append(
+                AgentInstance(
+                    id=pair_id,
+                    llm_client=llm_client,
+                    sandbox=sandbox,
+                )
+            )
 
         self._task_assignments: dict[str, list[dict]] = {}
 
@@ -789,10 +834,7 @@ class MultiBrainMultiHandOrchestrator:
         )
 
     def register_pair(
-        self,
-        llm_client: LLMClient,
-        sandbox: Sandbox,
-        pair_id: str | None = None
+        self, llm_client: LLMClient, sandbox: Sandbox, pair_id: str | None = None
     ) -> str:
         """注册 Claude + Sandbox 组合
 
@@ -807,11 +849,13 @@ class MultiBrainMultiHandOrchestrator:
         pair_id = pair_id or str(uuid.uuid4())[:8]
         self._pairs.append((llm_client, sandbox))
         self._pair_ids.append(pair_id)
-        self._agents.append(AgentInstance(
-            id=pair_id,
-            llm_client=llm_client,
-            sandbox=sandbox,
-        ))
+        self._agents.append(
+            AgentInstance(
+                id=pair_id,
+                llm_client=llm_client,
+                sandbox=sandbox,
+            )
+        )
 
         logger.info(f"Pair registered: {pair_id}")
         return pair_id
@@ -832,50 +876,66 @@ class MultiBrainMultiHandOrchestrator:
             协调结果
         """
         # 1. Session 记录任务
-        self.session.emit_event(EventType.SESSION_START, {
-            "task": task,
-            "pairs": self._pair_ids,
-            "mode": "multi_brain_multi_hand",
-        })
+        self.session.emit_event(
+            EventType.SESSION_START,
+            {
+                "task": task,
+                "pairs": self._pair_ids,
+                "mode": "multi_brain_multi_hand",
+            },
+        )
 
         # 2. 各组合独立执行（并行）
         pair_results = await asyncio.gather(
             *[self._execute_pair(agent, task) for agent in self._agents],
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         # 3. 结果记录到 Session
         processed_results: list[dict[str, Any]] = []
         for pair_id, result in zip(self._pair_ids, pair_results, strict=True):
             if isinstance(result, Exception):
-                self.session.emit_event(EventType.ERROR_OCCURRED, {
-                    "pair_id": pair_id,
-                    "error": str(result),
-                })
-                processed_results.append({
-                    "pair_id": pair_id,
-                    "status": "failed",
-                    "error": str(result),
-                })
+                self.session.emit_event(
+                    EventType.ERROR_OCCURRED,
+                    {
+                        "pair_id": pair_id,
+                        "error": str(result),
+                    },
+                )
+                processed_results.append(
+                    {
+                        "pair_id": pair_id,
+                        "status": "failed",
+                        "error": str(result),
+                    }
+                )
             else:
-                self.session.emit_event(EventType.SUBAGENT_RESULT, {
-                    "pair_id": pair_id,
-                    "result": result,
-                })
-                processed_results.append({
-                    "pair_id": pair_id,
-                    "status": "completed",
-                    "result": result,
-                })
+                self.session.emit_event(
+                    EventType.SUBAGENT_RESULT,
+                    {
+                        "pair_id": pair_id,
+                        "result": result,
+                    },
+                )
+                processed_results.append(
+                    {
+                        "pair_id": pair_id,
+                        "status": "completed",
+                        "result": result,
+                    }
+                )
 
         # 4. Session 协调合并
         merged = await self._merge_from_session()
 
         # 5. 记录会话结束
-        self.session.emit_event(EventType.SESSION_END, {
-            "reason": "completed",
-            "pairs_count": len(self._pair_ids),
-        })
+        self.session.emit_event(
+            EventType.SESSION_END,
+            {
+                "reason": "completed",
+                "pairs_count": len(self._pair_ids),
+            },
+        )
 
         return CoordinationResult(
             task=task,
@@ -912,7 +972,9 @@ class MultiBrainMultiHandOrchestrator:
 
             # 4. Sandbox 执行工具
             tool_results: list[str] = []
-            tool_calls = response.get("choices", [{}])[0].get("message", {}).get("tool_calls")
+            tool_calls = (
+                response.get("choices", [{}])[0].get("message", {}).get("tool_calls")
+            )
 
             if tool_calls and agent.sandbox:
                 results = await agent.sandbox.execute_tools(tool_calls)
@@ -937,9 +999,7 @@ class MultiBrainMultiHandOrchestrator:
             }
 
     def _build_pair_context(
-        self,
-        task: str,
-        session_state: dict[str, Any]
+        self, task: str, session_state: dict[str, Any]
     ) -> list[dict[str, Any]]:
         """构建组合上下文
 
@@ -953,38 +1013,39 @@ class MultiBrainMultiHandOrchestrator:
         # 包含任务和其他组合的进度
         other_pairs_progress = [
             {"pair_id": agent.id, "status": agent.status}
-            for agent in self._agents if agent.id != session_state.get("current_pair_id")
+            for agent in self._agents
+            if agent.id != session_state.get("current_pair_id")
         ]
 
         return [
-            {"role": "system", "content": "你是一个协作智能体，正在与其他智能体协同完成任务。"},
-            {"role": "user", "content": f"""任务: {task}
+            {
+                "role": "system",
+                "content": "你是一个协作智能体，正在与其他智能体协同完成任务。",
+            },
+            {
+                "role": "user",
+                "content": f"""任务: {task}
 
 其他智能体状态:
 {json.dumps(other_pairs_progress, ensure_ascii=False, indent=2)}
 
 请执行你的部分任务，并输出结果或下一步建议。
-"""}
+""",
+            },
         ]
-
 
     async def _merge_from_session(self) -> dict[str, Any]:
         """从 Session 合并所有结果"""
         # 获取所有 subagent_result 事件
         pair_events = [
-            e for e in self.session.get_events()
+            e
+            for e in self.session.get_events()
             if e["type"] == EventType.SUBAGENT_RESULT.value
         ]
 
         # 合并逻辑
-        successful_pairs = [
-            e for e in pair_events
-            if "error" not in e["data"]
-        ]
-        failed_pairs = [
-            e for e in pair_events
-            if "error" in e["data"]
-        ]
+        successful_pairs = [e for e in pair_events if "error" not in e["data"]]
+        failed_pairs = [e for e in pair_events if "error" in e["data"]]
 
         # 收集结果
         all_results = []
@@ -1024,10 +1085,12 @@ class MultiBrainMultiHandOrchestrator:
 """
 
         try:
-            response = await self._agents[0].llm_client.reason([
-                {"role": "user", "content": prompt}
-            ])
-            return response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            response = await self._agents[0].llm_client.reason(
+                [{"role": "user", "content": prompt}]
+            )
+            return (
+                response.get("choices", [{}])[0].get("message", {}).get("content", "")
+            )
 
         except Exception as e:
             logger.error(f"Merge summary failed: {e}")
@@ -1060,8 +1123,7 @@ class MultiBrainMultiHandOrchestrator:
 
             # 检查完成状态
             completed_pairs = [
-                r["pair_id"] for r in results
-                if r.get("status") == "completed"
+                r["pair_id"] for r in results if r.get("status") == "completed"
             ]
 
             if len(completed_pairs) == len(self._pair_ids):
@@ -1069,8 +1131,7 @@ class MultiBrainMultiHandOrchestrator:
 
             # 3. 动态重分配
             remaining_pairs = [
-                pid for pid in self._pair_ids
-                if pid not in completed_pairs
+                pid for pid in self._pair_ids if pid not in completed_pairs
             ]
 
             if remaining_pairs:
@@ -1083,7 +1144,9 @@ class MultiBrainMultiHandOrchestrator:
             "initial_assignments": initial_assignments,
             "final_results": final_results,
             "iterations": iteration,
-            "completed": len([r for r in final_results if r.get("status") == "completed"]),
+            "completed": len(
+                [r for r in final_results if r.get("status") == "completed"]
+            ),
         }
 
     async def _initial_assignment(self, task: str) -> dict[str, list[dict]]:
@@ -1092,15 +1155,12 @@ class MultiBrainMultiHandOrchestrator:
         assignments: dict[str, list[dict]] = {}
 
         for pair_id in self._pair_ids:
-            assignments[pair_id] = [
-                {"task": task, "phase": "initial"}
-            ]
+            assignments[pair_id] = [{"task": task, "phase": "initial"}]
 
         return assignments
 
     async def _execute_assignments(
-        self,
-        assignments: dict[str, list[dict]]
+        self, assignments: dict[str, list[dict]]
     ) -> list[dict[str, Any]]:
         """执行分配的任务"""
         results = []
@@ -1109,11 +1169,13 @@ class MultiBrainMultiHandOrchestrator:
             # 找到对应的智能体
             agent = next((a for a in self._agents if a.id == pair_id), None)
             if not agent:
-                results.append({
-                    "pair_id": pair_id,
-                    "status": "failed",
-                    "error": "Agent not found",
-                })
+                results.append(
+                    {
+                        "pair_id": pair_id,
+                        "status": "failed",
+                        "error": "Agent not found",
+                    }
+                )
                 continue
 
             # 执行任务
@@ -1202,9 +1264,7 @@ class InterAgentMessageBus:
         self._pair_ids = pair_ids
 
     def register_handler(
-        self,
-        message_type: str,
-        handler: Callable[[dict[str, Any]], Any]
+        self, message_type: str, handler: Callable[[dict[str, Any]], Any]
     ) -> None:
         """注册消息处理器
 
@@ -1235,21 +1295,22 @@ class InterAgentMessageBus:
         Returns:
             事件 ID
         """
-        message_id = self.session.emit_event("inter_agent_message", {
-            "from": from_agent,
-            "to": to_agent,
-            "type": message_type,
-            "content": content,
-            "timestamp": time.time(),
-        })
+        message_id = self.session.emit_event(
+            "inter_agent_message",
+            {
+                "from": from_agent,
+                "to": to_agent,
+                "type": message_type,
+                "content": content,
+                "timestamp": time.time(),
+            },
+        )
 
         logger.debug(f"Message sent: {from_agent} -> {to_agent}, type={message_type}")
         return message_id
 
     async def receive_messages(
-        self,
-        agent_id: str,
-        message_types: list[str] | None = None
+        self, agent_id: str, message_types: list[str] | None = None
     ) -> list[dict[str, Any]]:
         """接收消息
 
@@ -1291,7 +1352,7 @@ class InterAgentMessageBus:
         from_agent: str,
         message_type: str,
         content: dict[str, Any],
-        exclude_self: bool = True
+        exclude_self: bool = True,
     ) -> list[int]:
         """广播消息
 
@@ -1306,8 +1367,7 @@ class InterAgentMessageBus:
         """
         message_ids: list[int] = []
         targets = [
-            pid for pid in self._pair_ids
-            if not (exclude_self and pid == from_agent)
+            pid for pid in self._pair_ids if not (exclude_self and pid == from_agent)
         ]
 
         for target in targets:
@@ -1321,10 +1381,9 @@ class InterAgentMessageBus:
 
     def get_message_count(self) -> int:
         """获取消息总数"""
-        return len([
-            e for e in self.session.get_events()
-            if e["type"] == "inter_agent_message"
-        ])
+        return len(
+            [e for e in self.session.get_events() if e["type"] == "inter_agent_message"]
+        )
 
     def clear_handlers(self) -> None:
         """清除所有处理器"""
@@ -1334,6 +1393,7 @@ class InterAgentMessageBus:
 
 # === 工具注册 ===
 
+
 def register_collaboration_tools(registry: Any) -> None:
     """注册协作工具到 Registry
 
@@ -1342,4 +1402,5 @@ def register_collaboration_tools(registry: Any) -> None:
     """
     # 导入并注册协作工具
     from src.tools.collaboration_tools import register_tools
+
     register_tools(registry)

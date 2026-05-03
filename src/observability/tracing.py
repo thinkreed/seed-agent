@@ -94,7 +94,9 @@ def record_llm_span_error(span: Span, error: Exception) -> str:
     return error_type
 
 
-def create_task_with_context(coro: Coroutine[Any, Any, T], ctx: context.Context | None = None) -> asyncio.Task[T]:
+def create_task_with_context(
+    coro: Coroutine[Any, Any, T], ctx: context.Context | None = None
+) -> asyncio.Task[T]:
     """
     创建继承 OTel context 的 asyncio task
 
@@ -186,6 +188,7 @@ def traced(
         name: Span 名称 (默认使用函数名)
         attributes: Span 属性
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         span_name = name or f"{SPAN_TOOL_PREFIX}{func.__name__}"
 
@@ -254,7 +257,7 @@ def add_fallback_event(
             "seed.fallback.to": to_provider,
             "seed.fallback.reason": reason,
             "seed.fallback.attempt": attempt,
-        }
+        },
     )
 
 

@@ -130,7 +130,9 @@ def list_tasks(status: Optional[str] = None) -> str:
 
     result = f"Found {len(tasks)} tasks:\n"
     for task in tasks:
-        result += f"- {task['task_id']}: {task['status']} (created: {task['created_at']})\n"
+        result += (
+            f"- {task['task_id']}: {task['status']} (created: {task['created_at']})\n"
+        )
 
     # 添加统计
     stats = registry.get_stats()
@@ -162,4 +164,6 @@ def register_task_stop_tools(registry) -> None:
     registry.register("list_tasks", list_tasks)
     registry.register("cancel_all_tasks", cancel_all_tasks)
 
-    logger.info("TaskStop tools registered: task_stop, task_status, list_tasks, cancel_all_tasks")
+    logger.info(
+        "TaskStop tools registered: task_stop, task_status, list_tasks, cancel_all_tasks"
+    )

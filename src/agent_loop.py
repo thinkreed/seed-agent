@@ -89,6 +89,7 @@ from src.tools.subagent_tools import init_subagent_manager, register_subagent_to
 
 try:
     from opentelemetry.trace import Span
+
     _SPAN_TYPE_AVAILABLE = True
 except ImportError:
     Span = None  # type: ignore[misc,assignment]
@@ -172,15 +173,17 @@ class AgentLoop:
 
         # === 不可变事件流 ===
         self.session = SessionEventStream(self.session_id)
-        self.session.record_session_start({
-            "model_id": self.model_id,
-            "max_iterations": self.max_iterations,
-            "summary_interval": self.summary_interval,
-            "isolation_level": isolation_level.value,
-            "enable_pruning": enable_pruning,
-            "enable_secure_sandbox": enable_secure_sandbox,
-            "user_permission_level": user_permission_level
-        })
+        self.session.record_session_start(
+            {
+                "model_id": self.model_id,
+                "max_iterations": self.max_iterations,
+                "summary_interval": self.summary_interval,
+                "isolation_level": isolation_level.value,
+                "enable_pruning": enable_pruning,
+                "enable_secure_sandbox": enable_secure_sandbox,
+                "user_permission_level": user_permission_level,
+            }
+        )
 
         # === 内部状态 ===
         self._conversation_rounds: int = 0
@@ -221,6 +224,7 @@ class AgentLoop:
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         from src.shared_config import get_primary_model
+
         return get_primary_model(self.gateway)
 
     def _setup_tools_and_skills(self) -> None:
@@ -261,10 +265,7 @@ class AgentLoop:
             isolation_level: Sandbox 隔离级别
         """
         # 1. LLMClient (大脑)
-        self.llm_client = LLMClient(
-            gateway=self.gateway,
-            model_id=self.model_id
-        )
+        self.llm_client = LLMClient(gateway=self.gateway, model_id=self.model_id)
 
         # 2. Sandbox (工作台) - 根据 enable_secure_sandbox 选择类型
         if self._enable_secure_sandbox:
@@ -276,10 +277,7 @@ class AgentLoop:
                 enable_single_purpose_tools=True,
             )
         else:
-            self.sandbox = Sandbox(
-                isolation_level=isolation_level,
-                workspace_path=None
-            )
+            self.sandbox = Sandbox(isolation_level=isolation_level, workspace_path=None)
         self.sandbox.register_tools(self.tools)
 
         # 3. Harness (控制器) - 不传递 context_engineering，稍后初始化
@@ -308,7 +306,7 @@ class AgentLoop:
             gateway=self.gateway,
             model_id=self.model_id,
             compression_config=self._compression_config,
-            pruning_config=self._pruning_config
+            pruning_config=self._pruning_config,
         )
 
         # 将 ContextEngineering 实例传递给 Harness
@@ -324,7 +322,9 @@ class AgentLoop:
 
     def _get_tokenizer(self) -> tiktoken.Encoding | None:
         """获取 tokenizer (带缓存)"""
-        model_name = self.model_id.split("/", 1)[-1] if "/" in self.model_id else self.model_id
+        model_name = (
+            self.model_id.split("/", 1)[-1] if "/" in self.model_id else self.model_id
+        )
 
         if model_name in _ENCODING_CACHE:
             return _ENCODING_CACHE[model_name]
@@ -376,6 +376,7 @@ class AgentLoop:
                 total += self._encode_text(content)
             if msg.get("tool_calls"):
                 import json
+
                 total += self._encode_text(json.dumps(msg["tool_calls"]))
 
         return total
@@ -384,11 +385,9 @@ class AgentLoop:
 
     def _format_events_for_summary(self) -> str:
         """将事件格式化为摘要文本"""
-        events = self.session.get_events_since_last_summary([
-            EventType.USER_INPUT,
-            EventType.LLM_RESPONSE,
-            EventType.TOOL_RESULT
-        ])
+        events = self.session.get_events_since_last_summary(
+            [EventType.USER_INPUT, EventType.LLM_RESPONSE, EventType.TOOL_RESULT]
+        )
 
         lines = []
         for event in events:
@@ -400,7 +399,11 @@ class AgentLoop:
             elif event_type == EventType.LLM_RESPONSE.value:
                 content = data.get("content", "")
                 if data.get("tool_calls"):
-                    tc_names = [tc["function"]["name"] for tc in data["tool_calls"] if tc.get("function")]
+                    tc_names = [
+                        tc["function"]["name"]
+                        for tc in data["tool_calls"]
+                        if tc.get("function")
+                    ]
                     content = f"[Tool Calls: {', '.join(tc_names)}]"
                 if content:
                     lines.append(f"assistant: {content}")
@@ -419,14 +422,14 @@ class AgentLoop:
         prompt = self.SUMMARY_PROMPT.format(history=events_text)
         try:
             response = await self.gateway.chat_completion(
-                self.model_id,
-                [{"role": "user", "content": prompt}],
-                tools=None
+                self.model_id, [{"role": "user", "content": prompt}], tools=None
             )
             summary = response["choices"][0]["message"]["content"]
             return summary.strip()
         except Exception as e:
-            logger.warning(f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}")
+            logger.warning(
+                f"Summary generation failed: {type(e).__name__}: {str(e)[:100]}"
+            )
             return None
 
     def _should_summarize(self) -> tuple[bool, int, bool]:
@@ -439,7 +442,11 @@ class AgentLoop:
         token_threshold = self.context_window * self.context_usage_threshold
         is_context_full = estimated_tokens > token_threshold
         is_round_limit_reached = self._conversation_rounds >= self.summary_interval
-        return (is_context_full or is_round_limit_reached), estimated_tokens, is_context_full
+        return (
+            (is_context_full or is_round_limit_reached),
+            estimated_tokens,
+            is_context_full,
+        )
 
     async def _create_summary_marker(self, is_context_full: bool) -> None:
         """创建摘要标记 (不截断历史)"""
@@ -449,9 +456,7 @@ class AgentLoop:
 
         current_event_id = self.session.get_event_count()
         self.session.create_summary_marker(
-            current_event_id,
-            summary,
-            {"is_context_full": is_context_full}
+            current_event_id, summary, {"is_context_full": is_context_full}
         )
 
         _save_session_history([], summary=summary, session_id=self.session_id)
@@ -501,9 +506,7 @@ class AgentLoop:
         signal = self._abort_controller.signal
 
         try:
-            result = await self.harness.run_conversation(
-                user_input, priority, signal
-            )
+            result = await self.harness.run_conversation(user_input, priority, signal)
 
             # 处理等待状态
             if result["status"] == "waiting_for_user":
@@ -513,7 +516,9 @@ class AgentLoop:
 
                     # 获取注入的响应
                     user_response = self._pending_user_response
-                    assert user_response is not None, "user_response should be set after wait"
+                    assert user_response is not None, (
+                        "user_response should be set after wait"
+                    )
 
                     # 清理状态
                     self._user_input_event.clear()
@@ -555,9 +560,7 @@ class AgentLoop:
             raise
 
     async def stream_run(
-        self,
-        user_input: str,
-        priority: int = RequestPriority.CRITICAL
+        self, user_input: str, priority: int = RequestPriority.CRITICAL
     ) -> AsyncGenerator[dict, None]:
         """流式执行对话（支持 Ask User 等待和取消）
 
@@ -598,7 +601,9 @@ class AgentLoop:
 
                 # 获取注入的响应
                 user_response = self._pending_user_response
-                assert user_response is not None, "user_response should be set after wait"
+                assert user_response is not None, (
+                    "user_response should be set after wait"
+                )
 
                 # 清理状态
                 self._user_input_event.clear()
@@ -622,7 +627,10 @@ class AgentLoop:
                         "request": final_result["pending_request"],
                     }
                 else:
-                    yield {"type": "error", "content": f"Unexpected status: {final_result['status']}"}
+                    yield {
+                        "type": "error",
+                        "content": f"Unexpected status: {final_result['status']}",
+                    }
 
             elif result["status"] == "cancelled":
                 yield {"type": "cancelled", "reason": result["cancel_reason"]}
@@ -633,7 +641,10 @@ class AgentLoop:
                 yield {"type": "final", "content": result["content"]}
 
             else:
-                yield {"type": "error", "content": f"Unexpected status: {result['status']}"}
+                yield {
+                    "type": "error",
+                    "content": f"Unexpected status: {result['status']}",
+                }
 
         except MaxIterationsExceeded as e:
             logger.exception("Max iterations exceeded")
@@ -674,22 +685,19 @@ class AgentLoop:
     # === Skill Outcome 记录 ===
 
     def _record_load_skill_if_needed(
-        self,
-        tool_name: str,
-        tool_args: dict,
-        tool_id: str,
-        content: str,
-        failed: bool
+        self, tool_name: str, tool_args: dict, tool_id: str, content: str, failed: bool
     ) -> None:
         """记录 load_skill 结果"""
         if tool_name == "load_skill":
-            self._pending_skill_outcomes.append({
-                "skill_name": tool_args.get("name", ""),
-                "tool_call_id": tool_id,
-                "result": content,
-                "signals": self._extract_signals_from_events(),
-                **({"failed": True} if failed else {})
-            })
+            self._pending_skill_outcomes.append(
+                {
+                    "skill_name": tool_args.get("name", ""),
+                    "tool_call_id": tool_id,
+                    "result": content,
+                    "signals": self._extract_signals_from_events(),
+                    **({"failed": True} if failed else {}),
+                }
+            )
 
     def _extract_signals_from_events(self) -> list[str]:
         """从最近事件提取触发信号"""
@@ -716,7 +724,9 @@ class AgentLoop:
             failed = outcome.get("failed", False)
             signals = outcome.get("signals", [])
 
-            outcome_status, score = self._evaluate_skill_outcome(result, failed, final_success)
+            outcome_status, score = self._evaluate_skill_outcome(
+                result, failed, final_success
+            )
 
             _record_skill_outcome(
                 skill_name=skill_name,
@@ -724,16 +734,13 @@ class AgentLoop:
                 score=score,
                 signals=signals,
                 session_id=self.session_id,
-                context=f"Event stream session: {self.session_id}"
+                context=f"Event stream session: {self.session_id}",
             )
 
         self._pending_skill_outcomes.clear()
 
     def _evaluate_skill_outcome(
-        self,
-        result: str,
-        failed: bool,
-        final_success: bool
+        self, result: str, failed: bool, final_success: bool
     ) -> tuple[str, float]:
         """评估单个 Skill 结果"""
         if failed:
@@ -763,7 +770,7 @@ class AgentLoop:
         span: "Span | None",
         start_time: float,
         success: bool,
-        error: Exception | None = None
+        error: Exception | None = None,
     ) -> None:
         """完成 Span"""
         if not span:
@@ -815,13 +822,15 @@ class AgentLoop:
             "context_engineering": {
                 "enabled": self._context_engineering is not None,
                 "pruning_enabled": self._enable_pruning,
-                "compression_configured": self._compression_config is not None
+                "compression_configured": self._compression_config is not None,
             },
             "hooks": {
                 "registry": self._hook_registry is not None,
-                "hooks_registered": self._hook_registry.get_hook_count() if self._hook_registry else 0,
+                "hooks_registered": self._hook_registry.get_hook_count()
+                if self._hook_registry
+                else 0,
                 "hook_reports": len(self.harness.get_hook_reports()),
-            }
+            },
         }
 
     def get_hook_registry(self) -> LifecycleHookRegistry | None:
@@ -854,13 +863,16 @@ class AgentLoop:
         """
         if self._hook_registry:
             from src.lifecycle_hooks import HookPoint
+
             # 尝试转换字符串为 HookPoint
             point: HookPoint | str
             try:
                 point = HookPoint(hook_point)
             except ValueError:
                 point = hook_point
-            result = self._hook_registry.register(point, callback, priority=priority, name=name)
+            result = self._hook_registry.register(
+                point, callback, priority=priority, name=name
+            )
             # register 返回 str | Callable，直接调用时返回 str
             return result if isinstance(result, str) else None
         return None

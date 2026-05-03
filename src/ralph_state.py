@@ -145,7 +145,9 @@ def persist_state(
     }
 
     state_file.write_text(json.dumps(state_data, indent=2))
-    logger.debug(f"State persisted: iteration={iteration}, accumulated={total_accumulated}s")
+    logger.debug(
+        f"State persisted: iteration={iteration}, accumulated={total_accumulated}s"
+    )
 
 
 def load_or_init_state(
@@ -172,7 +174,9 @@ def load_or_init_state(
             )
             return state
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"State file corrupted, starting fresh: {type(e).__name__}: {e}")
+            logger.warning(
+                f"State file corrupted, starting fresh: {type(e).__name__}: {e}"
+            )
 
     # 初始化新状态
     return RalphState(
@@ -230,10 +234,12 @@ def reset_context(
 
     # 重新注入保留信息（如有）
     if preserved_context:
-        history.append({
-            "role": "system",
-            "content": f"[迭代 {iteration} 状态摘要]\n{preserved_context}"
-        })
+        history.append(
+            {
+                "role": "system",
+                "content": f"[迭代 {iteration} 状态摘要]\n{preserved_context}",
+            }
+        )
 
     logger.info(f"Context reset at iteration {iteration}")
     return True
@@ -282,7 +288,7 @@ def generate_status_report(
 Ralph Loop Status Report:
 - Task: {task_file}
 - Iterations: {iteration}
-- Total Duration: {total_elapsed/60:.1f} minutes (accumulated: {accumulated_duration/60:.1f} min)
+- Total Duration: {total_elapsed / 60:.1f} minutes (accumulated: {accumulated_duration / 60:.1f} min)
 - Exit Reason: {exit_reason}
 - Completion Type: {completion_type}
 - State File: {state_file}

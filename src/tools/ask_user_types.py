@@ -16,6 +16,7 @@ Ask User 数据类型定义
 参考：
 - qwen-code: askUserQuestion.ts
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,10 +29,11 @@ from typing import Any, Optional
 
 class QuestionType(Enum):
     """问题类型枚举"""
+
     SINGLE_SELECT = "single_select"  # 单选
-    MULTI_SELECT = "multi_select"    # 多选
-    TEXT_INPUT = "text_input"        # 文本输入
-    CONFIRMATION = "confirmation"    # 确认（是/否）
+    MULTI_SELECT = "multi_select"  # 多选
+    TEXT_INPUT = "text_input"  # 文本输入
+    CONFIRMATION = "confirmation"  # 确认（是/否）
 
 
 @dataclass
@@ -43,6 +45,7 @@ class QuestionOption:
         value: 选项值（默认等于 label）
         description: 选项描述（可选）
     """
+
     label: str
     value: Optional[str] = None
     description: Optional[str] = None
@@ -73,6 +76,7 @@ class Question:
         allow_custom: 是否允许自定义输入
         default: 默认选项值
     """
+
     question: str
     header: str
     options: list[QuestionOption] = field(default_factory=list)
@@ -91,10 +95,9 @@ class Question:
         if self.options and not (2 <= len(self.options) <= 4):
             # 自动调整：不足2个添加默认，超过4个截断
             if len(self.options) < 2:
-                self.options.extend([
-                    QuestionOption(label="Yes"),
-                    QuestionOption(label="No")
-                ])
+                self.options.extend(
+                    [QuestionOption(label="Yes"), QuestionOption(label="No")]
+                )
             elif len(self.options) > 4:
                 self.options = self.options[:4]
 
@@ -106,7 +109,7 @@ class Question:
         if self.question_type == QuestionType.CONFIRMATION and not self.options:
             self.options = [
                 QuestionOption(label="Yes", value="yes"),
-                QuestionOption(label="No", value="no")
+                QuestionOption(label="No", value="no"),
             ]
 
     def to_dict(self) -> dict[str, Any]:
@@ -131,6 +134,7 @@ class UserResponse:
         selected: 选中的选项值列表
         custom_input: 自定义输入内容
     """
+
     question_id: str
     selected: list[str] = field(default_factory=list)
     custom_input: Optional[str] = None
@@ -159,6 +163,7 @@ class AskUserRequest:
         created_at: 创建时间戳
         metadata: 额外元数据
     """
+
     questions: list[Question]
     session_id: str = ""
     request_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
@@ -200,10 +205,7 @@ class AskUserRequest:
         if options:
             q_options = [QuestionOption(label=o) for o in options]
         else:
-            q_options = [
-                QuestionOption(label="Yes"),
-                QuestionOption(label="No")
-            ]
+            q_options = [QuestionOption(label="Yes"), QuestionOption(label="No")]
 
         # 构造问题
         q = Question(
@@ -228,6 +230,7 @@ class AskUserResult:
         cancelled: 用户取消
         timeout: 超时
     """
+
     request_id: str
     responses: list[UserResponse] = field(default_factory=list)
     cancelled: bool = False
@@ -299,6 +302,7 @@ class AskUserState:
         waiting_event: asyncio.Event 用于等待响应
         response: 用户响应（注入后设置）
     """
+
     pending_request: Optional[AskUserRequest] = None
     waiting_event: asyncio.Event = field(default_factory=asyncio.Event)
     response: Optional[AskUserResult] = None

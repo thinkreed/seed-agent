@@ -49,7 +49,7 @@ class ScheduledTask:
         interval_seconds: int,
         prompt: str,
         last_run: float = 0,
-        enabled: bool = True
+        enabled: bool = True,
     ):
         self.task_id = task_id
         self.task_type = task_type
@@ -76,7 +76,7 @@ class ScheduledTask:
             "interval_seconds": self.interval_seconds,
             "prompt": self.prompt,
             "last_run": self.last_run,
-            "enabled": self.enabled
+            "enabled": self.enabled,
         }
 
     @classmethod
@@ -88,7 +88,7 @@ class ScheduledTask:
             interval_seconds=data["interval_seconds"],
             prompt=data["prompt"],
             last_run=data.get("last_run", 0),
-            enabled=data.get("enabled", True)
+            enabled=data.get("enabled", True),
         )
 
 
@@ -130,7 +130,7 @@ class TaskScheduler:
 
         data = {
             "updated_at": datetime.now().isoformat(),
-            "tasks": [t.to_dict() for t in self._tasks.values()]
+            "tasks": [t.to_dict() for t in self._tasks.values()],
         }
 
         # 原子写入：先写临时文件，再替换原文件
@@ -168,7 +168,7 @@ class TaskScheduler:
                 interval_seconds=self.BUILTIN_TASKS["autodream"],
                 prompt="执行 autodream 记忆整理 SOP：分层逐查、ROI评估、低ROI清理、补全高价值项",
                 last_run=now,  # 启动时设置，避免立即触发
-                enabled=True
+                enabled=True,
             )
             modified = True
 
@@ -233,11 +233,15 @@ class TaskScheduler:
 
                 # 通过 run 执行任务（自动处理 tool_calls 循环）
                 # LOW 优先级会入队等待，让用户请求（CRITICAL）优先执行
-                response = await self.agent.run(task.prompt, priority=RequestPriority.LOW)
+                response = await self.agent.run(
+                    task.prompt, priority=RequestPriority.LOW
+                )
 
                 # 记录执行结果
                 if response:
-                    logger.info(f"Task {task.task_id} completed ({len(response)} chars)")
+                    logger.info(
+                        f"Task {task.task_id} completed ({len(response)} chars)"
+                    )
                 else:
                     logger.warning(f"Task {task.task_id} returned empty response")
 
@@ -260,7 +264,9 @@ class TaskScheduler:
             logger.exception(f"Task {task.task_id} failed: {e}")
             self._log_task_execution(task, f"Error: {e!s}", success=False)
 
-    def _log_task_execution(self, task: ScheduledTask, result: str, success: bool = True) -> None:
+    def _log_task_execution(
+        self, task: ScheduledTask, result: str, success: bool = True
+    ) -> None:
         """记录任务执行日志"""
         log_file = TASKS_DIR / "execution_log.jsonl"
 
@@ -269,18 +275,14 @@ class TaskScheduler:
             "task_id": task.task_id,
             "task_type": task.task_type,
             "success": success,
-            "result": result[:500]
+            "result": result[:500],
         }
 
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
     def add_task(
-        self,
-        task_id: str,
-        task_type: str,
-        interval_seconds: int,
-        prompt: str
+        self, task_id: str, task_type: str, interval_seconds: int, prompt: str
     ) -> str:
         """
         添加自定义定时任务
@@ -302,7 +304,7 @@ class TaskScheduler:
             task_type=task_type,
             interval_seconds=interval_seconds,
             prompt=prompt,
-            enabled=True
+            enabled=True,
         )
 
         self._save_tasks()
@@ -359,8 +361,12 @@ class TaskScheduler:
 
         lines = ["Scheduled Tasks:", "-" * 40]
         for task_id, task in self._tasks.items():
-            next_run = "disabled" if not task.enabled else f"{task.interval_seconds}s interval"
-            lines.append(f"  {task_id}: {task.task_type} | {next_run} | {task.prompt[:50]}...")
+            next_run = (
+                "disabled" if not task.enabled else f"{task.interval_seconds}s interval"
+            )
+            lines.append(
+                f"  {task_id}: {task.task_type} | {next_run} | {task.prompt[:50]}..."
+            )
 
         return "\n".join(lines)
 
@@ -375,8 +381,12 @@ class TaskScheduler:
             "task_type": task.task_type,
             "interval_seconds": task.interval_seconds,
             "enabled": task.enabled,
-            "last_run": datetime.fromtimestamp(task.last_run).isoformat() if task.last_run > 0 else "never",
-            "next_run_in": task.interval_seconds - (time.time() - task.last_run) if task.enabled else "disabled"
+            "last_run": datetime.fromtimestamp(task.last_run).isoformat()
+            if task.last_run > 0
+            else "never",
+            "next_run_in": task.interval_seconds - (time.time() - task.last_run)
+            if task.enabled
+            else "disabled",
         }
 
 
@@ -397,7 +407,7 @@ def create_scheduled_task(task_id: str, interval_minutes: int, prompt: str) -> s
         task_id=task_id,
         task_type="custom",
         interval_seconds=interval_minutes * 60,
-        prompt=prompt
+        prompt=prompt,
     )
 
 

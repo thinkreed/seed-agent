@@ -45,6 +45,7 @@ _OBSERVABILITY_ENABLED = is_observability_enabled()
 
 try:
     from opentelemetry.trace import Span
+
     _SPAN_TYPE_AVAILABLE = True
 except ImportError:
     Span = None  # type: ignore[misc,assignment]
@@ -59,7 +60,7 @@ class ReasonResult:
         response: dict[str, Any],
         model_id: str,
         duration_ms: float,
-        tokens_used: int | None = None
+        tokens_used: int | None = None,
     ):
         self.response = response
         self.model_id = model_id
@@ -68,11 +69,15 @@ class ReasonResult:
 
     def get_content(self) -> str:
         """获取响应内容"""
-        return self.response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return (
+            self.response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        )
 
     def get_tool_calls(self) -> list[dict] | None:
         """获取工具调用"""
-        return self.response.get("choices", [{}])[0].get("message", {}).get("tool_calls")
+        return (
+            self.response.get("choices", [{}])[0].get("message", {}).get("tool_calls")
+        )
 
     def is_tool_call(self) -> bool:
         """是否包含工具调用"""
@@ -107,7 +112,7 @@ class LLMClient:
         self,
         gateway: LLMGateway,
         model_id: str,
-        default_priority: int = RequestPriority.NORMAL
+        default_priority: int = RequestPriority.NORMAL,
     ):
         """初始化 LLMClient
 
@@ -133,7 +138,7 @@ class LLMClient:
         context: list[dict[str, Any]],
         tools: list[dict] | None = None,
         priority: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> dict[str, Any]:
         """执行推理
 
@@ -164,11 +169,7 @@ class LLMClient:
 
         try:
             response = await self.gateway.chat_completion(
-                self.model_id,
-                context,
-                priority=priority,
-                tools=tools,
-                **kwargs
+                self.model_id, context, priority=priority, tools=tools, **kwargs
             )
 
             duration_ms = (time.time() - start_time) * 1000
@@ -176,14 +177,22 @@ class LLMClient:
             # 记录成功指标
             if _OBSERVABILITY_ENABLED:
                 usage = response.get("usage", {})
-                provider = self.model_id.split("/", 1)[0] if "/" in self.model_id else "unknown"
-                model_name = self.model_id.split("/", 1)[-1] if "/" in self.model_id else self.model_id
+                provider = (
+                    self.model_id.split("/", 1)[0]
+                    if "/" in self.model_id
+                    else "unknown"
+                )
+                model_name = (
+                    self.model_id.split("/", 1)[-1]
+                    if "/" in self.model_id
+                    else self.model_id
+                )
                 record_llm_success(
                     provider,
                     model_name,
                     usage.get("prompt_tokens", 0),
                     usage.get("completion_tokens", 0),
-                    duration_ms
+                    duration_ms,
                 )
 
             self._finish_llm_span(span, start_time, success=True)
@@ -208,7 +217,7 @@ class LLMClient:
         context: list[dict[str, Any]],
         tools: list[dict] | None = None,
         priority: int | None = None,
-        **kwargs
+        **kwargs,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """流式推理
 
@@ -237,11 +246,7 @@ class LLMClient:
 
         try:
             async for chunk in self.gateway.stream_chat_completion(
-                self.model_id,
-                context,
-                priority=priority,
-                tools=tools,
-                **kwargs
+                self.model_id, context, priority=priority, tools=tools, **kwargs
             ):
                 chunk_count += 1
                 yield chunk
@@ -251,14 +256,22 @@ class LLMClient:
             # 记录成功指标（估算 token 数）
             if _OBSERVABILITY_ENABLED:
                 estimated_tokens = chunk_count * 10  # 每chunk约10 tokens
-                provider = self.model_id.split("/", 1)[0] if "/" in self.model_id else "unknown"
-                model_name = self.model_id.split("/", 1)[-1] if "/" in self.model_id else self.model_id
+                provider = (
+                    self.model_id.split("/", 1)[0]
+                    if "/" in self.model_id
+                    else "unknown"
+                )
+                model_name = (
+                    self.model_id.split("/", 1)[-1]
+                    if "/" in self.model_id
+                    else self.model_id
+                )
                 record_llm_success(
                     provider,
                     model_name,
                     estimated_tokens // 2,  # 估算输入 tokens
                     estimated_tokens // 2,  # 估算输出 tokens
-                    duration_ms
+                    duration_ms,
                 )
 
             self._finish_llm_span(span, start_time, success=True)
@@ -291,7 +304,9 @@ class LLMClient:
             "model_id": self.model_id,
             "context_window": self._model_config.contextWindow,
             "max_output_tokens": self.get_max_output_tokens(),
-            "provider": self.model_id.split("/", 1)[0] if "/" in self.model_id else "unknown"
+            "provider": self.model_id.split("/", 1)[0]
+            if "/" in self.model_id
+            else "unknown",
         }
 
     async def get_active_provider(self) -> str:
@@ -305,7 +320,7 @@ class LLMClient:
             return {
                 "tokens_available": status.tokens_available,
                 "window_usage_ratio": status.window_usage_ratio,
-                "is_limited": self.gateway.is_rate_limited()
+                "is_limited": self.gateway.is_rate_limited(),
             }
         return None
 
@@ -315,7 +330,7 @@ class LLMClient:
         self,
         context: list[dict[str, Any]],
         tools: list[dict] | None,
-        is_stream: bool = False
+        is_stream: bool = False,
     ) -> "Span | None":
         """创建 LLM Span"""
         tracer = get_tracer()
@@ -334,7 +349,7 @@ class LLMClient:
         span: "Span | None",
         start_time: float,
         success: bool,
-        error: Exception | None = None
+        error: Exception | None = None,
     ) -> None:
         """完成 LLM Span"""
         if not span:
@@ -382,7 +397,7 @@ class LLMClientPool:
         self,
         model_id: str,
         is_primary: bool = False,
-        priority: int = RequestPriority.NORMAL
+        priority: int = RequestPriority.NORMAL,
     ) -> LLMClient:
         """添加 LLM 客户端
 
@@ -447,7 +462,7 @@ class LLMClientPool:
         context: list[dict[str, Any]],
         tools: list[dict] | None = None,
         priority: int | None = None,
-        fallback_models: list[str] | None = None
+        fallback_models: list[str] | None = None,
     ) -> dict[str, Any]:
         """带故障转移的推理
 
@@ -482,5 +497,5 @@ class LLMClientPool:
         return {
             "models": list(self._clients.keys()),
             "primary_model": self._primary_model,
-            "clients_count": len(self._clients)
+            "clients_count": len(self._clients),
         }

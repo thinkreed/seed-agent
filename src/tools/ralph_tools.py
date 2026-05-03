@@ -26,7 +26,7 @@ def start_ralph_loop(
     task_prompt_file: str,
     completion_type: str = "marker_file",
     max_iterations: int = 1000,
-    completion_criteria: dict | None = None
+    completion_criteria: dict | None = None,
 ) -> str:
     """启动 Ralph Loop（长周期确定性任务执行器）
 
@@ -86,13 +86,15 @@ def start_ralph_loop(
         "completion_type": completion_type,
         "max_iterations": max_iterations,
         "completion_criteria": completion_criteria or {},
-        "status": "pending"
+        "status": "pending",
     }
 
     try:
         config_file.write_text(json.dumps(config, indent=2))
     except OSError as e:
-        return f"Error: Failed to write config file - {type(e).__name__}: {str(e)[:100]}"
+        return (
+            f"Error: Failed to write config file - {type(e).__name__}: {str(e)[:100]}"
+        )
 
     return f"""Ralph Loop configured successfully:
 - ID: {ralph_id}
@@ -105,7 +107,9 @@ To execute, use: check_ralph_status("{ralph_id}") or run Ralph Loop via schedule
 Note: Ralph Loop requires AgentLoop instance to execute. Use write_completion_marker() to signal completion."""
 
 
-def write_completion_marker(content: str = "DONE", marker_path: str | None = None) -> str:
+def write_completion_marker(
+    content: str = "DONE", marker_path: str | None = None
+) -> str:
     """写入完成标志（用于 Ralph Loop 的 marker_file 完成验证）
 
     当 Agent 完成任务后，调用此工具写入完成标志。
@@ -171,7 +175,9 @@ def check_ralph_status(ralph_id: str | None = None) -> str:
                 state = json.loads(state_file.read_text())
                 result += f"- Iteration: {state.get('iteration', 'N/A')}\n"
                 result += f"- Started: {state.get('start_time', 'N/A')}\n"
-                result += f"- Last Response: {state.get('last_response', '')[:100]}...\n"
+                result += (
+                    f"- Last Response: {state.get('last_response', '')[:100]}...\n"
+                )
                 result += "- Status: running\n"
             except json.JSONDecodeError as e:
                 result += f"- State file corrupted: {str(e)[:50]}\n"

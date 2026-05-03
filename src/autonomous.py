@@ -43,12 +43,21 @@ SOP_PATH = PROJECT_ROOT / "auto" / "自主探索 SOP.md"
 COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
 COMPLETION_PROMISE_TOKENS = ["DONE", "COMPLETE", "TASK_FINISHED"]
 CONTEXT_RESET_ENABLED = True  # 默认开启
-CONTEXT_RESET_INTERVAL = 5    # 每5轮迭代重置
-RALPH_MAX_ITERATIONS = 1000   # 理论上限
+CONTEXT_RESET_INTERVAL = 5  # 每5轮迭代重置
+RALPH_MAX_ITERATIONS = 1000  # 理论上限
 RALPH_MAX_DURATION = 8 * 60 * 60  # 8小时最大执行时间
 
 # 任务完成检测标记（支持多语言）
-COMPLETION_MARKERS = ["任务完成", "已完成", "DONE", "COMPLETE", "FINISHED", "done", "complete", "finished"]
+COMPLETION_MARKERS = [
+    "任务完成",
+    "已完成",
+    "DONE",
+    "COMPLETE",
+    "FINISHED",
+    "done",
+    "complete",
+    "finished",
+]
 
 
 class AutonomousExplorer:
@@ -77,7 +86,9 @@ class AutonomousExplorer:
     def __init__(
         self,
         agent_loop: "AgentLoop",
-        on_explore_complete: Callable[[str], None] | Callable[[str], Coroutine[Any, Any, None]] | None = None
+        on_explore_complete: Callable[[str], None]
+        | Callable[[str], Coroutine[Any, Any, None]]
+        | None = None,
     ):
         self.agent = agent_loop
         self.on_explore_complete = on_explore_complete
@@ -93,6 +104,7 @@ class AutonomousExplorer:
         self._state_file: Path = SEED_DIR / "ralph" / self.STATE_FILE_NAME
         # 从配置读取 IDLE_TIMEOUT
         from src.shared_config import get_autonomous_config
+
         self._idle_timeout: float = get_autonomous_config().idle_timeout_hours * 60 * 60
         self._load_sop()
 
@@ -124,7 +136,9 @@ class AutonomousExplorer:
 
         # 检查 SOP 文件是否存在
         if not self._sop_content:
-            logger.warning(f"SOP file not found: {SOP_PATH} - autonomous exploration disabled")
+            logger.warning(
+                f"SOP file not found: {SOP_PATH} - autonomous exploration disabled"
+            )
             return
 
         self._running = True
@@ -146,12 +160,16 @@ class AutonomousExplorer:
             idle_time = self.get_idle_time()
 
             if idle_time >= self._idle_timeout:
-                logger.warning(f"Idle for {idle_time/60:.1f} minutes, starting autonomous exploration")
+                logger.warning(
+                    f"Idle for {idle_time / 60:.1f} minutes, starting autonomous exploration"
+                )
                 result = await self._execute_autonomous_task()
                 if result:
                     self.record_activity()  # 仅成功时重置计时
                 else:
-                    logger.warning("Autonomous exploration failed, not resetting idle timer")
+                    logger.warning(
+                        "Autonomous exploration failed, not resetting idle timer"
+                    )
 
             # 每30秒检查一次
             await asyncio.sleep(30)
@@ -216,15 +234,20 @@ class AutonomousExplorer:
         preserved_autonomous = self._extract_autonomous_prompt_core(autonomous_prompt)
 
         # 合并：自主探索指令 + 上次执行摘要
-        preserved = f"{preserved_autonomous}\n\n---\n\n{history_context}" if history_context else preserved_autonomous
+        preserved = (
+            f"{preserved_autonomous}\n\n---\n\n{history_context}"
+            if history_context
+            else preserved_autonomous
+        )
 
         # 通过 Session 创建上下文重置标记
         self.agent.session.create_context_reset_marker(
-            iteration=self._iteration_count,
-            preserved_context=preserved
+            iteration=self._iteration_count, preserved_context=preserved
         )
 
-        logger.info(f"Context reset marker created at iteration {self._iteration_count}")
+        logger.info(
+            f"Context reset marker created at iteration {self._iteration_count}"
+        )
         return preserved
 
     def _extract_autonomous_prompt_core(self, full_prompt: str) -> str:
@@ -243,7 +266,7 @@ class AutonomousExplorer:
         sop_match = re.search(
             r"(##?\s*自主探索\s*SOP.*?)(?=##?\s*|$)",
             full_prompt,
-            re.DOTALL | re.IGNORECASE
+            re.DOTALL | re.IGNORECASE,
         )
         sop_content = sop_match.group(1) if sop_match else ""
 
@@ -255,7 +278,7 @@ class AutonomousExplorer:
         task_match = re.search(
             r"(##?\s*自主探索任务触发.*?)(?=请开始执行|$)",
             full_prompt,
-            re.DOTALL | re.IGNORECASE
+            re.DOTALL | re.IGNORECASE,
         )
         task_content = task_match.group(1) if task_match else ""
 
@@ -339,11 +362,14 @@ class AutonomousExplorer:
         prompt = self._build_autonomous_prompt(todo_content, bool(todo_content))
 
         # 创建自主探索开始标记
-        self.agent.session.emit_event(EventType.SESSION_START, {
-            "type": "autonomous_exploration",
-            "iteration": self._iteration_count,
-            "todo_status": bool(todo_content)
-        })
+        self.agent.session.emit_event(
+            EventType.SESSION_START,
+            {
+                "type": "autonomous_exploration",
+                "iteration": self._iteration_count,
+                "todo_status": bool(todo_content),
+            },
+        )
 
         logger.info("Starting autonomous exploration via Agent Loop (Ralph enhanced)")
 
@@ -358,14 +384,19 @@ class AutonomousExplorer:
             response = await self._run_ralph_loop()
 
             if response:
-                logger.info(f"Autonomous exploration completed, response length: {len(response)}")
+                logger.info(
+                    f"Autonomous exploration completed, response length: {len(response)}"
+                )
 
                 # 创建自主探索结束标记
-                self.agent.session.emit_event(EventType.SESSION_END, {
-                    "type": "autonomous_exploration",
-                    "reason": "completed",
-                    "response_length": len(response)
-                })
+                self.agent.session.emit_event(
+                    EventType.SESSION_END,
+                    {
+                        "type": "autonomous_exploration",
+                        "reason": "completed",
+                        "response_length": len(response),
+                    },
+                )
 
                 if self.on_explore_complete:
                     if asyncio.iscoroutinefunction(self.on_explore_complete):
@@ -376,10 +407,10 @@ class AutonomousExplorer:
             logger.warning("Autonomous exploration returned empty response")
 
             # 创建失败标记
-            self.agent.session.emit_event(EventType.SESSION_END, {
-                "type": "autonomous_exploration",
-                "reason": "empty_response"
-            })
+            self.agent.session.emit_event(
+                EventType.SESSION_END,
+                {"type": "autonomous_exploration", "reason": "empty_response"},
+            )
             return None
 
         except Exception as e:
@@ -387,10 +418,13 @@ class AutonomousExplorer:
             self._persist_state(str(e))
 
             # 创建错误标记
-            self.agent.session.emit_event(EventType.ERROR_OCCURRED, {
-                "error_type": "autonomous_exploration_failed",
-                "error_message": str(e)[:500]
-            })
+            self.agent.session.emit_event(
+                EventType.ERROR_OCCURRED,
+                {
+                    "error_type": "autonomous_exploration_failed",
+                    "error_message": str(e)[:500],
+                },
+            )
             return None
 
         finally:
@@ -418,7 +452,9 @@ class AutonomousExplorer:
             self._iteration_count += 1
 
             if self._check_safety_limits():
-                logger.info("Ralph Loop safety limit reached, cleaning up state for next session")
+                logger.info(
+                    "Ralph Loop safety limit reached, cleaning up state for next session"
+                )
                 self._cleanup_state()  # 清理状态，防止下次启动时立即达到上限
                 break
 
@@ -432,17 +468,23 @@ class AutonomousExplorer:
             try:
                 response = await self.agent.run(next_prompt)
             except (RuntimeError, OSError, ValueError, asyncio.CancelledError) as e:
-                logger.exception(f"Agent execution failed at iteration {self._iteration_count}")
+                logger.exception(
+                    f"Agent execution failed at iteration {self._iteration_count}"
+                )
                 response = f"Error: {e!s}"
             self._persist_state(response or "")
 
             if response and any(marker in response for marker in COMPLETION_MARKERS):
-                logger.info(f"Autonomous exploration completed at iteration {self._iteration_count}")
+                logger.info(
+                    f"Autonomous exploration completed at iteration {self._iteration_count}"
+                )
                 self._cleanup_state()
                 break
 
             # 获取下一轮的 prompt（如果有）
-            next_prompt = await self._handle_response(response) or "继续执行自主探索任务"
+            next_prompt = (
+                await self._handle_response(response) or "继续执行自主探索任务"
+            )
             await asyncio.sleep(2)
 
         return response
@@ -466,8 +508,10 @@ class AutonomousExplorer:
         """
         if not response:
             self._empty_response_count += 1
-            logger.warning(f"Empty response at iteration {self._iteration_count} "
-                           f"(count: {self._empty_response_count})")
+            logger.warning(
+                f"Empty response at iteration {self._iteration_count} "
+                f"(count: {self._empty_response_count})"
+            )
             if self._empty_response_count >= 3:
                 logger.warning("Too many empty responses, trying simplified prompt")
                 return "请报告当前状态"
@@ -491,7 +535,9 @@ class AutonomousExplorer:
             signals = self._extract_task_signals(todo_content, has_todo)
             best_skill = skill_loader.select_best_skill(
                 signals=signals,
-                available_tools=getattr(self.agent.tools, "get_tool_names", lambda: None)()
+                available_tools=getattr(
+                    self.agent.tools, "get_tool_names", lambda: None
+                )(),
             )
 
             if best_skill:
@@ -566,41 +612,49 @@ class AutonomousExplorer:
         ]
 
         if has_todo and todo_content.strip():
-            prompt_parts.extend([
-                "## 当前TODO内容",
-                todo_content,
-                "",
-                "请按照 SOP 执行流程，逐个完成 TODO 条目：",
-                "1. 在 <thinking> 内推演执行逻辑",
-                "2. 执行任务并记录到工作记忆",
-                "3. 完成后标记 TODO 并更新工作记忆",
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "## 当前TODO内容",
+                    todo_content,
+                    "",
+                    "请按照 SOP 执行流程，逐个完成 TODO 条目：",
+                    "1. 在 <thinking> 内推演执行逻辑",
+                    "2. 执行任务并记录到工作记忆",
+                    "3. 完成后标记 TODO 并更新工作记忆",
+                    "",
+                ]
+            )
         else:
-            prompt_parts.extend([
-                "## 规划模式",
-                "当前无TODO，请进入规划模式：",
-                "1. 读取 history.md 和工作记忆",
-                "2. 反思低价值操作，提炼进化线索",
-                "3. 产出5-7条TODO（格式：`[ ] 类型 | 目标 | 验收标准 | 预期沉淀`）",
-                "4. 更新 TODO.md 文件",
-                "",
-            ])
+            prompt_parts.extend(
+                [
+                    "## 规划模式",
+                    "当前无TODO，请进入规划模式：",
+                    "1. 读取 history.md 和工作记忆",
+                    "2. 反思低价值操作，提炼进化线索",
+                    "3. 产出5-7条TODO（格式：`[ ] 类型 | 目标 | 验收标准 | 预期沉淀`）",
+                    "4. 更新 TODO.md 文件",
+                    "",
+                ]
+            )
 
-        prompt_parts.extend([
-            "## SOP 核心原则",
-            "- 价值公式：实际执行可落地性 × 进化沉淀价值",
-            "- 不推诿、有逻辑、重沉淀",
-            "- 失败升级：1次重试，2次探测，3次换方案",
-            "- 不可逆操作需先确认用户（但自主模式下跳过需确认的操作）",
-            "",
-            "请开始执行自主探索任务。",
-        ])
+        prompt_parts.extend(
+            [
+                "## SOP 核心原则",
+                "- 价值公式：实际执行可落地性 × 进化沉淀价值",
+                "- 不推诿、有逻辑、重沉淀",
+                "- 失败升级：1次重试，2次探测，3次换方案",
+                "- 不可逆操作需先确认用户（但自主模式下跳过需确认的操作）",
+                "",
+                "请开始执行自主探索任务。",
+            ]
+        )
 
         return "\n".join(prompt_parts)
 
 
-async def create_autonomous_explorer(agent_loop, on_explore_complete: Callable | None = None) -> AutonomousExplorer:
+async def create_autonomous_explorer(
+    agent_loop, on_explore_complete: Callable | None = None
+) -> AutonomousExplorer:
     """创建自主探索器"""
     explorer = AutonomousExplorer(agent_loop, on_explore_complete)
     await explorer.start()

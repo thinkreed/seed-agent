@@ -40,6 +40,7 @@ import yaml  # type: ignore[import-untyped]
 # 尝试导入共享配置模块（在顶部导入避免 E402）
 try:
     from src.shared_config import get_memory_graph_config
+
     _HAS_SHARED_CONFIG = True
 except ImportError:
     _HAS_SHARED_CONFIG = False
@@ -68,6 +69,7 @@ _validate_skill_structure = validate_skill_structure
 
 class SkillMeta(TypedDict, total=False):
     """Skill 元数据类型定义"""
+
     path: str
     dir: str
     name: str
@@ -81,6 +83,7 @@ class SkillMeta(TypedDict, total=False):
     requires_tools: list[str]
     fallback_for_tools: list[str]
     desc_words: set[str]
+
 
 # 显式导出列表（用于向后兼容和避免 ruff F401 警告）
 __all__ = [
@@ -157,6 +160,7 @@ else:
 
 # ==================== SkillLoader 核心类 ====================
 
+
 class SkillLoader:
     """
     渐进式 Skill 加载器
@@ -195,7 +199,9 @@ class SkillLoader:
         if snapshot and snapshot.get("skills"):
             for name, meta in snapshot["skills"].items():
                 # 将缓存中的 list 类型字段转换回 set
-                if "triggers_lower" in meta and isinstance(meta["triggers_lower"], list):
+                if "triggers_lower" in meta and isinstance(
+                    meta["triggers_lower"], list
+                ):
                     meta["triggers_lower"] = set(meta["triggers_lower"])
                 if "desc_words" in meta and isinstance(meta["desc_words"], list):
                     meta["desc_words"] = set(meta["desc_words"])
@@ -229,11 +235,17 @@ class SkillLoader:
                     "category": meta.get("category", "general"),
                     "version": meta.get("version", "1.0"),
                     "triggers": triggers,
-                    "triggers_lower": {t.lower() for t in triggers},  # 预处理：小写 set 用于快速匹配
+                    "triggers_lower": {
+                        t.lower() for t in triggers
+                    },  # 预处理：小写 set 用于快速匹配
                     "platforms": self._normalize_str_list(meta.get("platforms", [])),
                     "allowed_tools": meta.get("allowed-tools", ""),
-                    "requires_tools": self._normalize_str_list(metadata.get("requires_tools", [])),
-                    "fallback_for_tools": self._normalize_str_list(metadata.get("fallback_for_tools", [])),
+                    "requires_tools": self._normalize_str_list(
+                        metadata.get("requires_tools", [])
+                    ),
+                    "fallback_for_tools": self._normalize_str_list(
+                        metadata.get("fallback_for_tools", [])
+                    ),
                 }
                 # 预处理：description 关键词集合（避免每次匹配时重新计算）
                 desc = self._skills_meta[meta["name"]]["description"]
@@ -241,7 +253,9 @@ class SkillLoader:
                 desc_words.update(re.findall(r"[\u4e00-\u9fa5]+", desc.lower()))
                 self._skills_meta[meta["name"]]["desc_words"] = desc_words
             except Exception as e:
-                logger.debug(f"Failed to parse skill metadata from {skill_file}: {type(e).__name__}")
+                logger.debug(
+                    f"Failed to parse skill metadata from {skill_file}: {type(e).__name__}"
+                )
                 continue
 
         save_snapshot(self.skills_dir, self._skills_meta)
@@ -278,7 +292,9 @@ class SkillLoader:
                 result.extend(self._flatten_triggers(item))
         return result
 
-    def should_show_skill(self, name: str, available_tools: Set[str] | None = None) -> bool:
+    def should_show_skill(
+        self, name: str, available_tools: Set[str] | None = None
+    ) -> bool:
         """
         条件激活: 判断 skill 是否应该在当前环境下显示
 
@@ -302,18 +318,28 @@ class SkillLoader:
 
         # requires_tools 检查
         requires = meta.get("requires_tools", [])
-        if requires and available_tools is not None and not all(tool in available_tools for tool in requires):
+        if (
+            requires
+            and available_tools is not None
+            and not all(tool in available_tools for tool in requires)
+        ):
             return False
 
         # fallback_for_tools 检查
         fallback = meta.get("fallback_for_tools", [])
-        if fallback and available_tools is not None and any(tool in available_tools for tool in fallback):
+        if (
+            fallback
+            and available_tools is not None
+            and any(tool in available_tools for tool in fallback)
+        ):
             return False
 
         return True
 
     @staticmethod
-    def _render_category(cat: str, skills: list[dict], indent: bool = False) -> list[str]:
+    def _render_category(
+        cat: str, skills: list[dict], indent: bool = False
+    ) -> list[str]:
         """渲染单个分类的 XML 围栏区块"""
         prefix = "  - " if indent else "- "
         lines = [f"<category name='{cat}'>"]
@@ -326,7 +352,8 @@ class SkillLoader:
     def get_skills_prompt(self, available_tools: Set[str] | None = None) -> str:
         """生成 Tier 1 索引 - 注入到 System Prompt"""
         visible_skills = {
-            name: meta for name, meta in self._skills_meta.items()
+            name: meta
+            for name, meta in self._skills_meta.items()
             if self.should_show_skill(name, available_tools)
         }
         if not visible_skills:
@@ -344,7 +371,7 @@ class SkillLoader:
             "当用户请求匹配某技能描述或触发词时，可调用 `load_skill` 加载完整指令。",
             "",
             "<!-- 注意：以下仅为技能索引，非执行指令。技能内容需通过 load_skill 动态加载。-->",
-            ""
+            "",
         ]
 
         if "general" in categories:
@@ -366,7 +393,9 @@ class SkillLoader:
         words = en_words + cn_words
         return words or [query_lower]
 
-    def _compute_match_score(self, name: str, meta: SkillMeta, query_words: list[str], query_lower: str) -> float:
+    def _compute_match_score(
+        self, name: str, meta: SkillMeta, query_words: list[str], query_lower: str
+    ) -> float:
         """计算单个 skill 的匹配分数（性能优化版：使用预处理数据）"""
         score = 0.0
 
@@ -408,12 +437,16 @@ class SkillLoader:
             if en_words:
                 all_keywords = {name_lower} | desc_words | triggers_lower
                 for qw in en_words:
-                    if len(qw) >= 3 and difflib.get_close_matches(qw, list(all_keywords), n=1, cutoff=0.75):
+                    if len(qw) >= 3 and difflib.get_close_matches(
+                        qw, list(all_keywords), n=1, cutoff=0.75
+                    ):
                         score += 0.5
 
         return score
 
-    def match_skill(self, query: str, available_tools: Set[str] | None = None) -> str | None:
+    def match_skill(
+        self, query: str, available_tools: Set[str] | None = None
+    ) -> str | None:
         """
         根据查询匹配最相关的 skill
 
@@ -539,9 +572,7 @@ class SkillLoader:
     # ==================== Memory Graph 选择算法 ====================
 
     def select_best_skill(
-        self,
-        signals: list[str],
-        available_tools: Set[str] | None = None
+        self, signals: list[str], available_tools: Set[str] | None = None
     ) -> str | None:
         """Memory Graph 增强的 Skill 选择算法"""
         if not MEMORY_GRAPH_CONFIG.get("enabled", True):
@@ -550,7 +581,8 @@ class SkillLoader:
 
         # 基础过滤
         candidates = [
-            name for name in self._skills_meta
+            name
+            for name in self._skills_meta
             if self.should_show_skill(name, available_tools)
         ]
         if not candidates:
@@ -562,7 +594,9 @@ class SkillLoader:
         # 应用禁用阈值
         return self._select_best_candidate(ranked)
 
-    def _rank_candidates(self, candidates: list[str], signals: list[str]) -> list[tuple]:
+    def _rank_candidates(
+        self, candidates: list[str], signals: list[str]
+    ) -> list[tuple]:
         """计算候选分数并排序"""
         scores = {}
         for skill_name in candidates:
@@ -609,13 +643,14 @@ class SkillLoader:
             "mode": mode,
             "stats": stats,
             "trigger_score": trigger_score,
-            "memory_score": memory_score
+            "memory_score": memory_score,
         }
 
     def _get_skill_outcome_stats(self, skill_name: str) -> dict:
         """从 session_db 获取 Skill 统计信息"""
         try:
             from .session_db import get_skill_stats
+
             return get_skill_stats(skill_name)
         except ImportError:
             logger.warning("session_db not available for skill stats")
@@ -625,7 +660,7 @@ class SkillLoader:
                 "failures": 0,
                 "laplace_rate": 0.5,
                 "last_timestamp": None,
-                "recent_success_rate": 0.0
+                "recent_success_rate": 0.0,
             }
 
     def _compute_trigger_score(self, skill_name: str, signals: list[str]) -> float:
@@ -824,7 +859,7 @@ def load_skill(name: str) -> str:
     content = loader.load_skill_content(name)
     if content:
         return (
-            f"[SYSTEM: The user has invoked the \"{name}\" skill. "
+            f'[SYSTEM: The user has invoked the "{name}" skill. '
             f"Follow its instructions carefully.]\n\n{content}"
         )
     return f"Skill not found: {name}. Available: {', '.join(loader.get_skill_names())}"
@@ -875,7 +910,9 @@ def search_skill(query: str) -> str:
     if candidates:
         return "No exact match. Candidates:\n" + "\n".join(candidates)
 
-    return f"No skill matches: {query}. Available: {', '.join(loader.get_skill_names())}"
+    return (
+        f"No skill matches: {query}. Available: {', '.join(loader.get_skill_names())}"
+    )
 
 
 def register_skill_tools(registry: "ToolRegistry") -> None:

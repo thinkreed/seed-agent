@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class SinglePurposeToolRisk(str, Enum):
     """单用途工具风险等级"""
+
     SAFE = "safe"
     CAUTION = "caution"
     RISKY = "risky"
@@ -34,6 +35,7 @@ class SinglePurposeToolRisk(str, Enum):
 @dataclass
 class SinglePurposeToolConfig:
     """单用途工具配置"""
+
     name: str
     description: str
     replaces_command: str  # 替代的通用命令
@@ -76,7 +78,11 @@ SINGLE_PURPOSE_TOOLS: dict[str, SinglePurposeToolConfig] = {
         risk=SinglePurposeToolRisk.SAFE,
         args_schema={
             "path": {"type": "string", "required": True, "description": "起始目录"},
-            "pattern": {"type": "string", "required": True, "description": "文件名模式"},
+            "pattern": {
+                "type": "string",
+                "required": True,
+                "description": "文件名模式",
+            },
             "max_depth": {"type": "integer", "required": False, "default": 10},
         },
     ),
@@ -146,7 +152,6 @@ SINGLE_PURPOSE_TOOLS: dict[str, SinglePurposeToolConfig] = {
             "overwrite": {"type": "boolean", "required": False, "default": False},
         },
     ),
-
     # === 代码执行 ===
     "run_python_script": SinglePurposeToolConfig(
         name="run_python_script",
@@ -154,7 +159,11 @@ SINGLE_PURPOSE_TOOLS: dict[str, SinglePurposeToolConfig] = {
         replaces_command="python <script.py>",
         risk=SinglePurposeToolRisk.CAUTION,
         args_schema={
-            "script_path": {"type": "string", "required": True, "description": "脚本路径"},
+            "script_path": {
+                "type": "string",
+                "required": True,
+                "description": "脚本路径",
+            },
             "args": {"type": "array", "required": False, "default": []},
             "timeout": {"type": "integer", "required": False, "default": 60},
         },
@@ -165,7 +174,11 @@ SINGLE_PURPOSE_TOOLS: dict[str, SinglePurposeToolConfig] = {
         replaces_command="pytest <test_path>",
         risk=SinglePurposeToolRisk.CAUTION,
         args_schema={
-            "test_path": {"type": "string", "required": True, "description": "测试路径"},
+            "test_path": {
+                "type": "string",
+                "required": True,
+                "description": "测试路径",
+            },
             "options": {"type": "array", "required": False, "default": []},
             "timeout": {"type": "integer", "required": False, "default": 120},
         },
@@ -178,11 +191,14 @@ SINGLE_PURPOSE_TOOLS: dict[str, SinglePurposeToolConfig] = {
         args_schema={
             "package": {"type": "string", "required": True, "description": "包名"},
             "version": {"type": "string", "required": False},
-            "index": {"type": "string", "required": False, "default": "https://pypi.org/simple"},
+            "index": {
+                "type": "string",
+                "required": False,
+                "default": "https://pypi.org/simple",
+            },
         },
         require_confirmation=True,
     ),
-
     # === Git 操作 ===
     "git_status": SinglePurposeToolConfig(
         name="git_status",
@@ -251,11 +267,14 @@ SINGLE_PURPOSE_TOOLS: dict[str, SinglePurposeToolConfig] = {
         replaces_command="git branch",
         risk=SinglePurposeToolRisk.CAUTION,
         args_schema={
-            "action": {"type": "string", "required": True, "enum": ["list", "create", "delete"]},
+            "action": {
+                "type": "string",
+                "required": True,
+                "enum": ["list", "create", "delete"],
+            },
             "name": {"type": "string", "required": False},
         },
     ),
-
     # === 系统信息 ===
     "get_env_info": SinglePurposeToolConfig(
         name="get_env_info",
@@ -335,7 +354,10 @@ class SinglePurposeToolFactory:
         if config.block_by_default and not self._allow_dangerous_tools:
             raise ValueError(f"Tool {tool_name} is blocked by default security policy")
 
-        if config.risk == SinglePurposeToolRisk.DANGEROUS and not self._allow_dangerous_tools:
+        if (
+            config.risk == SinglePurposeToolRisk.DANGEROUS
+            and not self._allow_dangerous_tools
+        ):
             raise ValueError(f"Tool {tool_name} requires dangerous tool permission")
 
         if config.risk == SinglePurposeToolRisk.RISKY and not self._allow_risky_tools:
@@ -377,8 +399,7 @@ class SinglePurposeToolFactory:
     def get_tools_by_risk(self, risk: SinglePurposeToolRisk) -> list[str]:
         """获取指定风险等级的工具"""
         return [
-            name for name, config in SINGLE_PURPOSE_TOOLS.items()
-            if config.risk == risk
+            name for name, config in SINGLE_PURPOSE_TOOLS.items() if config.risk == risk
         ]
 
     def get_tool_schema(self, tool_name: str) -> dict[str, Any]:
@@ -428,9 +449,15 @@ class SinglePurposeToolFactory:
 
         for name, config in SINGLE_PURPOSE_TOOLS.items():
             # 检查风险等级
-            if config.risk == SinglePurposeToolRisk.DANGEROUS and not self._allow_dangerous_tools:
+            if (
+                config.risk == SinglePurposeToolRisk.DANGEROUS
+                and not self._allow_dangerous_tools
+            ):
                 continue
-            if config.risk == SinglePurposeToolRisk.RISKY and not self._allow_risky_tools:
+            if (
+                config.risk == SinglePurposeToolRisk.RISKY
+                and not self._allow_risky_tools
+            ):
                 continue
 
             # 检查 block_by_default
@@ -602,7 +629,7 @@ class SinglePurposeToolFactory:
         try:
             matches = []
             for root, dirs, files in os.walk(path):
-                depth = root[len(path):].count(os.sep)
+                depth = root[len(path) :].count(os.sep)
                 if depth > max_depth:
                     dirs[:] = []  # 不再深入
                     continue
@@ -991,14 +1018,32 @@ class SinglePurposeToolFactory:
 
     # 敏感环境变量列表（不暴露给用户）
     _SENSITIVE_ENV_VARS = [
-        "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "BAILIAN_API_KEY",
-        "DEEPSEEK_API_KEY", "GEMINI_API_KEY", "COHERE_API_KEY",
-        "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
-        "GOOGLE_APPLICATION_CREDENTIALS", "AZURE_CLIENT_SECRET",
-        "DATABASE_URL", "DB_PASSWORD", "MYSQL_PASSWORD", "POSTGRES_PASSWORD",
-        "GITHUB_TOKEN", "GITLAB_TOKEN", "SLACK_TOKEN", "DISCORD_TOKEN",
-        "SSH_PRIVATE_KEY", "SSH_AUTH_SOCK",
-        "API_KEY", "SECRET_KEY", "PRIVATE_KEY", "PASSWORD", "TOKEN",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "BAILIAN_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "GEMINI_API_KEY",
+        "COHERE_API_KEY",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "AZURE_CLIENT_SECRET",
+        "DATABASE_URL",
+        "DB_PASSWORD",
+        "MYSQL_PASSWORD",
+        "POSTGRES_PASSWORD",
+        "GITHUB_TOKEN",
+        "GITLAB_TOKEN",
+        "SLACK_TOKEN",
+        "DISCORD_TOKEN",
+        "SSH_PRIVATE_KEY",
+        "SSH_AUTH_SOCK",
+        "API_KEY",
+        "SECRET_KEY",
+        "PRIVATE_KEY",
+        "PASSWORD",
+        "TOKEN",
     ]
 
     def _impl_get_env_info(self, args: dict[str, Any]) -> str:
@@ -1014,7 +1059,11 @@ class SinglePurposeToolFactory:
             # 检查是否为敏感变量
             is_sensitive = False
             for sensitive in self._SENSITIVE_ENV_VARS:
-                if sensitive.lower() in k.lower() or k.lower().endswith("_key") or k.lower().endswith("_token"):
+                if (
+                    sensitive.lower() in k.lower()
+                    or k.lower().endswith("_key")
+                    or k.lower().endswith("_token")
+                ):
                     is_sensitive = True
                     break
             if not is_sensitive:
@@ -1022,8 +1071,7 @@ class SinglePurposeToolFactory:
 
         if filter_pattern:
             env_vars = {
-                k: v for k, v in env_vars.items()
-                if filter_pattern.lower() in k.lower()
+                k: v for k, v in env_vars.items() if filter_pattern.lower() in k.lower()
             }
 
         lines = [f"{k}={v}" for k, v in sorted(env_vars.items())]
@@ -1037,9 +1085,9 @@ class SinglePurposeToolFactory:
         try:
             total, used, free = shutil.disk_usage(path)
             return (
-                f"Total: {total // (1024 ** 3)} GB\n"
-                f"Used: {used // (1024 ** 3)} GB\n"
-                f"Free: {free // (1024 ** 3)} GB\n"
+                f"Total: {total // (1024**3)} GB\n"
+                f"Used: {used // (1024**3)} GB\n"
+                f"Free: {free // (1024**3)} GB\n"
                 f"Usage: {used * 100 // total}%"
             )
         except FileNotFoundError:

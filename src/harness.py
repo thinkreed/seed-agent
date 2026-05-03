@@ -83,6 +83,7 @@ _OBSERVABILITY_ENABLED = is_observability_enabled()
 
 try:
     from opentelemetry.trace import Span
+
     _SPAN_TYPE_AVAILABLE = True
 except ImportError:
     Span = None  # type: ignore[misc,assignment]
@@ -91,6 +92,7 @@ except ImportError:
 
 class MaxIterationsExceeded(Exception):
     """超过最大迭代次数"""
+
     def __init__(self, iterations: int) -> None:
         super().__init__(f"Harness exceeded maximum iterations ({iterations})")
         self.iterations = iterations
@@ -98,6 +100,7 @@ class MaxIterationsExceeded(Exception):
 
 class ExecutionCancelled(Exception):
     """执行被取消"""
+
     def __init__(self, reason: str = "") -> None:
         super().__init__(f"Execution cancelled: {reason}")
         self.reason = reason
@@ -105,6 +108,7 @@ class ExecutionCancelled(Exception):
 
 class CycleResult(TypedDict):
     """单轮循环结果"""
+
     status: str  # "continue" | "waiting_for_user" | "cancelled" | "complete"
     response: dict[str, Any] | None
     tool_results: list[dict[str, Any]] | None
@@ -115,6 +119,7 @@ class CycleResult(TypedDict):
 
 class ToolExecutionMetrics(TypedDict):
     """工具执行指标"""
+
     tool_name: str
     duration_ms: float
     success: bool
@@ -187,9 +192,9 @@ class Harness:
             enable_pruning: 是否启用智能裁剪
             hook_registry: 生命周期钩子注册中心（可选）
         """
-        self.llm_client = llm_client      # 大脑
-        self.session = session            # 状态（只读访问）
-        self.sandbox = sandbox            # 执行环境
+        self.llm_client = llm_client  # 大脑
+        self.session = session  # 状态（只读访问）
+        self.sandbox = sandbox  # 执行环境
         self.max_iterations = max_iterations
         self.system_prompt = system_prompt
 
@@ -327,11 +332,7 @@ class Harness:
 
         # 7. 调用 LLM 推理
         start_time = time.time()
-        response = await self.llm_client.reason(
-            context,
-            tools=tools,
-            priority=priority
-        )
+        response = await self.llm_client.reason(context, tools=tools, priority=priority)
         duration_ms = (time.time() - start_time) * 1000
 
         # 8. 触发 llm_call_after 钩子
@@ -359,7 +360,9 @@ class Harness:
         # 11. 处理工具调用或完成
         if message.get("tool_calls"):
             # 路由工具调用到 Sandbox（带钩子）
-            tool_results = await self._route_tool_calls_with_hooks(message["tool_calls"])
+            tool_results = await self._route_tool_calls_with_hooks(
+                message["tool_calls"]
+            )
 
             # **关键：检查是否触发了 ask_user 等待**
             pending_request = get_pending_ask_user_request()
@@ -370,7 +373,7 @@ class Harness:
                     {
                         "request": pending_request.to_dict(),
                         "tool_call_id": message["tool_calls"][0].get("id"),
-                    }
+                    },
                 )
 
                 # 设置等待状态
@@ -378,10 +381,13 @@ class Harness:
                 self._pending_tool_call_id = message["tool_calls"][0].get("id")
 
                 # 触发 SESSION_PAUSE 钩子
-                await self._trigger_hook(HookPoint.SESSION_PAUSE, {
-                    "reason": "user_input_required",
-                    "request": pending_request.to_dict(),
-                })
+                await self._trigger_hook(
+                    HookPoint.SESSION_PAUSE,
+                    {
+                        "reason": "user_input_required",
+                        "request": pending_request.to_dict(),
+                    },
+                )
 
                 return {
                     "status": "waiting_for_user",
@@ -394,10 +400,13 @@ class Harness:
 
             # 记录工具结果事件
             for result in tool_results:
-                self.session.emit_event(EventType.TOOL_RESULT, {
-                    "tool_call_id": result["tool_call_id"],
-                    "content": result["content"]
-                })
+                self.session.emit_event(
+                    EventType.TOOL_RESULT,
+                    {
+                        "tool_call_id": result["tool_call_id"],
+                        "content": result["content"],
+                    },
+                )
 
             # 触发 response_after 钩子
             response_after_ctx = {
@@ -482,10 +491,13 @@ class Harness:
             while iteration < self.max_iterations:
                 # 每轮开始检查取消信号
                 if signal and signal.aborted:
-                    self.session.emit_event(EventType.EXECUTION_CANCEL, {
-                        "reason": signal.reason,
-                        "iteration": iteration,
-                    })
+                    self.session.emit_event(
+                        EventType.EXECUTION_CANCEL,
+                        {
+                            "reason": signal.reason,
+                            "iteration": iteration,
+                        },
+                    )
                     return {
                         "status": "cancelled",
                         "content": "",
@@ -524,7 +536,9 @@ class Harness:
                     # 对话完成
                     response = cycle_result["response"]
                     if response:
-                        final_response = response["choices"][0]["message"].get("content", "")
+                        final_response = response["choices"][0]["message"].get(
+                            "content", ""
+                        )
                     break
 
                 # 继续循环（status == "continue"）
@@ -590,18 +604,24 @@ class Harness:
         clear_ask_user_state()
 
         # 2. 记录用户响应事件
-        self.session.emit_event(EventType.USER_RESPONSE, {
-            "request_id": response.request_id,
-            "responses": [r.to_dict() for r in response.responses],
-            "cancelled": response.cancelled,
-            "timeout": response.timeout,
-        })
+        self.session.emit_event(
+            EventType.USER_RESPONSE,
+            {
+                "request_id": response.request_id,
+                "responses": [r.to_dict() for r in response.responses],
+                "cancelled": response.cancelled,
+                "timeout": response.timeout,
+            },
+        )
 
         # 3. 触发 SESSION_RESUME 钩子
-        await self._trigger_hook(HookPoint.SESSION_RESUME, {
-            "reason": "user_input_received",
-            "response": response.to_dict(),
-        })
+        await self._trigger_hook(
+            HookPoint.SESSION_RESUME,
+            {
+                "reason": "user_input_received",
+                "response": response.to_dict(),
+            },
+        )
 
         # 4. 构造工具结果并注入历史
         if response.cancelled:
@@ -615,10 +635,13 @@ class Harness:
 
         # 5. 注入到历史（作为 tool result）
         if self._pending_tool_call_id:
-            self.session.emit_event(EventType.TOOL_RESULT, {
-                "tool_call_id": self._pending_tool_call_id,
-                "content": tool_result,
-            })
+            self.session.emit_event(
+                EventType.TOOL_RESULT,
+                {
+                    "tool_call_id": self._pending_tool_call_id,
+                    "content": tool_result,
+                },
+            )
             self._pending_tool_call_id = None
 
         # 6. 继续执行循环
@@ -629,10 +652,13 @@ class Harness:
             while iteration < self.max_iterations:
                 # 每轮开始检查取消信号
                 if signal and signal.aborted:
-                    self.session.emit_event(EventType.EXECUTION_CANCEL, {
-                        "reason": signal.reason,
-                        "iteration": iteration,
-                    })
+                    self.session.emit_event(
+                        EventType.EXECUTION_CANCEL,
+                        {
+                            "reason": signal.reason,
+                            "iteration": iteration,
+                        },
+                    )
                     return {
                         "status": "cancelled",
                         "content": "",
@@ -642,7 +668,9 @@ class Harness:
                     }
 
                 iteration += 1
-                logger.debug(f"Harness iteration {iteration}/{self.max_iterations} (resumed)")
+                logger.debug(
+                    f"Harness iteration {iteration}/{self.max_iterations} (resumed)"
+                )
 
                 # 执行一轮循环
                 cycle_result = await self.run_cycle(priority, signal)
@@ -671,7 +699,9 @@ class Harness:
                     # 对话完成
                     resp = cycle_result["response"]
                     if resp:
-                        final_response = resp["choices"][0]["message"].get("content", "")
+                        final_response = resp["choices"][0]["message"].get(
+                            "content", ""
+                        )
                     break
 
             if iteration >= self.max_iterations:
@@ -713,9 +743,7 @@ class Harness:
             raise
 
     async def stream_conversation(
-        self,
-        initial_prompt: str,
-        priority: int = RequestPriority.CRITICAL
+        self, initial_prompt: str, priority: int = RequestPriority.CRITICAL
     ) -> AsyncGenerator[dict[str, Any], None]:
         """流式执行对话
 
@@ -763,13 +791,17 @@ class Harness:
                         if tc.get("function", {}).get("name"):
                             yield {
                                 "type": "tool_start",
-                                "tool_name": tc["function"]["name"]
+                                "tool_name": tc["function"]["name"],
                             }
 
             # 累积工具调用
             tool_calls = (
-                [tool_calls_accumulator[i] for i in sorted(tool_calls_accumulator.keys())]
-                if tool_calls_accumulator else []
+                [
+                    tool_calls_accumulator[i]
+                    for i in sorted(tool_calls_accumulator.keys())
+                ]
+                if tool_calls_accumulator
+                else []
             )
 
             # 记录响应
@@ -785,10 +817,13 @@ class Harness:
             if tool_calls:
                 tool_results = await self._route_tool_calls(tool_calls)
                 for result in tool_results:
-                    self.session.emit_event(EventType.TOOL_RESULT, {
-                        "tool_call_id": result["tool_call_id"],
-                        "content": result["content"]
-                    })
+                    self.session.emit_event(
+                        EventType.TOOL_RESULT,
+                        {
+                            "tool_call_id": result["tool_call_id"],
+                            "content": result["content"],
+                        },
+                    )
                     yield {"type": "tool_end", "result": result["content"]}
             else:
                 self.session.record_session_end("completed")
@@ -801,8 +836,7 @@ class Harness:
     # === 上下文构建 (上下文工程) ===
 
     def _build_context_from_session(
-        self,
-        current_task: str | None = None
+        self, current_task: str | None = None
     ) -> list[dict[str, Any]]:
         """从 Session 构建优化上下文（上下文工程）
 
@@ -823,16 +857,14 @@ class Harness:
                 context_window=self._context_window,
                 current_task=current_task or self._current_task,
                 system_prompt=self.system_prompt,
-                enable_pruning=self._enable_pruning
+                enable_pruning=self._enable_pruning,
             )
 
         # 无上下文工程时，使用 Session 原生方法
         return self.session.build_context_for_llm(system_prompt=self.system_prompt)
 
     async def _build_context_from_session_async(
-        self,
-        current_task: str | None = None,
-        enable_semantic_pruning: bool = False
+        self, current_task: str | None = None, enable_semantic_pruning: bool = False
     ) -> list[dict[str, Any]]:
         """异步构建优化上下文（支持 LLM 摘要）
 
@@ -850,7 +882,7 @@ class Harness:
                 current_task=current_task or self._current_task,
                 system_prompt=self.system_prompt,
                 enable_pruning=self._enable_pruning,
-                enable_semantic_pruning=enable_semantic_pruning
+                enable_semantic_pruning=enable_semantic_pruning,
             )
 
         return self.session.build_context_for_llm(system_prompt=self.system_prompt)
@@ -866,11 +898,9 @@ class Harness:
 
     def _get_events_since_last_summary(self) -> list[dict[str, Any]]:
         """获取最近摘要标记之后的事件"""
-        return self.session.get_events_since_last_summary([
-            EventType.USER_INPUT,
-            EventType.LLM_RESPONSE,
-            EventType.TOOL_RESULT
-        ])
+        return self.session.get_events_since_last_summary(
+            [EventType.USER_INPUT, EventType.LLM_RESPONSE, EventType.TOOL_RESULT]
+        )
 
     # === 工具路由 ===
 
@@ -887,19 +917,20 @@ class Harness:
 
         # 记录工具调用事件
         for tc in tool_calls:
-            self.session.emit_event(EventType.TOOL_CALL, {
-                "tool_call_id": tc.get("id"),
-                "tool_name": tc.get("function", {}).get("name"),
-                "arguments": tc.get("function", {}).get("arguments")
-            })
+            self.session.emit_event(
+                EventType.TOOL_CALL,
+                {
+                    "tool_call_id": tc.get("id"),
+                    "tool_name": tc.get("function", {}).get("name"),
+                    "arguments": tc.get("function", {}).get("arguments"),
+                },
+            )
 
         # 并发执行工具调用
         return await self._execute_tools_parallel(tool_calls)
 
-
     async def _route_tool_calls_with_hooks(
-        self,
-        tool_calls: list[dict]
+        self, tool_calls: list[dict]
     ) -> list[dict[str, Any]]:
         """路由工具调用到 Sandbox（带生命周期钩子）
 
@@ -913,19 +944,20 @@ class Harness:
 
         # 记录工具调用事件
         for tc in tool_calls:
-            self.session.emit_event(EventType.TOOL_CALL, {
-                "tool_call_id": tc.get("id"),
-                "tool_name": tc.get("function", {}).get("name"),
-                "arguments": tc.get("function", {}).get("arguments")
-            })
+            self.session.emit_event(
+                EventType.TOOL_CALL,
+                {
+                    "tool_call_id": tc.get("id"),
+                    "tool_name": tc.get("function", {}).get("name"),
+                    "arguments": tc.get("function", {}).get("arguments"),
+                },
+            )
 
         # 并发执行工具调用（带钩子）
         return await self._execute_tools_parallel_with_hooks(tool_calls)
 
-
     async def _execute_tools_parallel(
-        self,
-        tool_calls: list[dict]
+        self, tool_calls: list[dict]
     ) -> list[dict[str, Any]]:
         """并发执行工具调用
 
@@ -943,7 +975,7 @@ class Harness:
         # 并发执行
         results = await asyncio.gather(
             *[self._execute_single_tool_with_metrics(tc) for tc in tool_calls],
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         processed_results: list[dict[str, Any]] = []
@@ -953,27 +985,32 @@ class Harness:
 
             if isinstance(result, BaseException):
                 tool_name = tool_calls[i].get("function", {}).get("name", "unknown")
-                logger.error(f"Tool {tool_name} failed: {type(result).__name__}: {result}")
-                processed_results.append({
-                    "tool_call_id": tool_calls[i].get("id", "unknown"),
-                    "role": "tool",
-                    "content": f"Error: {type(result).__name__}: {str(result)[:200]}"
-                })
+                logger.error(
+                    f"Tool {tool_name} failed: {type(result).__name__}: {result}"
+                )
+                processed_results.append(
+                    {
+                        "tool_call_id": tool_calls[i].get("id", "unknown"),
+                        "role": "tool",
+                        "content": f"Error: {type(result).__name__}: {str(result)[:200]}",
+                    }
+                )
             elif isinstance(result, dict):
                 processed_results.append(result)
             else:
                 logger.warning(f"Unexpected result type: {type(result).__name__}")
-                processed_results.append({
-                    "tool_call_id": tool_calls[i].get("id", "unknown"),
-                    "role": "tool",
-                    "content": "Error: Unexpected result type"
-                })
+                processed_results.append(
+                    {
+                        "tool_call_id": tool_calls[i].get("id", "unknown"),
+                        "role": "tool",
+                        "content": "Error: Unexpected result type",
+                    }
+                )
 
         return processed_results
 
     async def _execute_tools_parallel_with_hooks(
-        self,
-        tool_calls: list[dict]
+        self, tool_calls: list[dict]
     ) -> list[dict[str, Any]]:
         """并发执行工具调用（带生命周期钩子）
 
@@ -991,7 +1028,7 @@ class Harness:
         # 并发执行（每个工具带钩子）
         results = await asyncio.gather(
             *[self._execute_single_tool_with_hooks(tc) for tc in tool_calls],
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         processed_results: list[dict[str, Any]] = []
@@ -1001,7 +1038,9 @@ class Harness:
 
             if isinstance(result, BaseException):
                 tool_name = tool_calls[i].get("function", {}).get("name", "unknown")
-                logger.error(f"Tool {tool_name} failed: {type(result).__name__}: {result}")
+                logger.error(
+                    f"Tool {tool_name} failed: {type(result).__name__}: {result}"
+                )
 
                 # 触发 tool_call_error 钩子
                 error_ctx = {
@@ -1014,27 +1053,28 @@ class Harness:
                 }
                 await self._trigger_hook(HookPoint.TOOL_CALL_ERROR, error_ctx)
 
-                processed_results.append({
-                    "tool_call_id": tool_calls[i].get("id", "unknown"),
-                    "role": "tool",
-                    "content": f"Error: {type(result).__name__}: {str(result)[:200]}"
-                })
+                processed_results.append(
+                    {
+                        "tool_call_id": tool_calls[i].get("id", "unknown"),
+                        "role": "tool",
+                        "content": f"Error: {type(result).__name__}: {str(result)[:200]}",
+                    }
+                )
             elif isinstance(result, dict):
                 processed_results.append(result)
             else:
                 logger.warning(f"Unexpected result type: {type(result).__name__}")
-                processed_results.append({
-                    "tool_call_id": tool_calls[i].get("id", "unknown"),
-                    "role": "tool",
-                    "content": "Error: Unexpected result type"
-                })
+                processed_results.append(
+                    {
+                        "tool_call_id": tool_calls[i].get("id", "unknown"),
+                        "role": "tool",
+                        "content": "Error: Unexpected result type",
+                    }
+                )
 
         return processed_results
 
-    async def _execute_single_tool_with_hooks(
-        self,
-        tool_call: dict
-    ) -> dict[str, Any]:
+    async def _execute_single_tool_with_hooks(self, tool_call: dict) -> dict[str, Any]:
         """执行单个工具（带生命周期钩子）
 
         Args:
@@ -1053,7 +1093,7 @@ class Harness:
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": "Error: Failed to parse arguments: invalid JSON"
+                "content": "Error: Failed to parse arguments: invalid JSON",
             }
 
         # 1. 触发 tool_call_before 钩子
@@ -1075,28 +1115,38 @@ class Harness:
 
         try:
             # 2. 执行工具
-            result = await self.sandbox.execute_tools([{
-                "id": tool_call_id,
-                "function": {
-                    "name": tool_name,
-                    "arguments": json.dumps(actual_args)
-                }
-            }])
+            result = await self.sandbox.execute_tools(
+                [
+                    {
+                        "id": tool_call_id,
+                        "function": {
+                            "name": tool_name,
+                            "arguments": json.dumps(actual_args),
+                        },
+                    }
+                ]
+            )
             duration_ms = (time.time() - start_time) * 1000
 
-            tool_result = result[0] if result else {
-                "tool_call_id": tool_call_id,
-                "role": "tool",
-                "content": "Error: No result returned"
-            }
+            tool_result = (
+                result[0]
+                if result
+                else {
+                    "tool_call_id": tool_call_id,
+                    "role": "tool",
+                    "content": "Error: No result returned",
+                }
+            )
 
             # 记录指标
-            self._metrics.append({
-                "tool_name": tool_name,
-                "duration_ms": duration_ms,
-                "success": True,
-                "error": None
-            })
+            self._metrics.append(
+                {
+                    "tool_name": tool_name,
+                    "duration_ms": duration_ms,
+                    "success": True,
+                    "error": None,
+                }
+            )
 
             self._finish_tool_span(span, start_time, success=True)
 
@@ -1120,12 +1170,14 @@ class Harness:
             duration_ms = (time.time() - start_time) * 1000
 
             # 记录指标
-            self._metrics.append({
-                "tool_name": tool_name,
-                "duration_ms": duration_ms,
-                "success": False,
-                "error": str(e)[:200]
-            })
+            self._metrics.append(
+                {
+                    "tool_name": tool_name,
+                    "duration_ms": duration_ms,
+                    "success": False,
+                    "error": str(e)[:200],
+                }
+            )
 
             self._finish_tool_span(span, start_time, success=False, error=e)
 
@@ -1145,7 +1197,7 @@ class Harness:
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": f"Error: {type(e).__name__}: {str(e)[:200]}"
+                "content": f"Error: {type(e).__name__}: {str(e)[:200]}",
             }
 
     def _check_write_conflicts(self, tool_calls: list[dict]) -> list[dict] | None:
@@ -1156,14 +1208,21 @@ class Harness:
         for tc in tool_calls:
             if tc["function"]["name"] in write_tools:
                 try:
-                    args = json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"]
+                    args = (
+                        json.loads(tc["function"]["arguments"])
+                        if isinstance(tc["function"]["arguments"], str)
+                        else tc["function"]["arguments"]
+                    )
                     path = args.get("path", "")
                     if path:
                         if path in seen_paths:
                             logger.warning(f"Concurrent write conflict: {path}")
                             return [
-                                {"role": "tool", "tool_call_id": tc["id"],
-                                 "content": f"Error: Concurrent write conflict on '{path}'"}
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc["id"],
+                                    "content": f"Error: Concurrent write conflict on '{path}'",
+                                }
                                 for tc in tool_calls
                             ]
                         seen_paths[path] = tc["id"]
@@ -1172,8 +1231,7 @@ class Harness:
         return None
 
     async def _execute_single_tool_with_metrics(
-        self,
-        tool_call: dict
+        self, tool_call: dict
     ) -> dict[str, Any]:
         """执行单个工具并记录指标"""
         tool_name = tool_call.get("function", {}).get("name", "unknown")
@@ -1187,42 +1245,52 @@ class Harness:
             duration_ms = (time.time() - start_time) * 1000
 
             # 记录指标
-            self._metrics.append({
-                "tool_name": tool_name,
-                "duration_ms": duration_ms,
-                "success": True,
-                "error": None
-            })
+            self._metrics.append(
+                {
+                    "tool_name": tool_name,
+                    "duration_ms": duration_ms,
+                    "success": True,
+                    "error": None,
+                }
+            )
 
             self._finish_tool_span(span, start_time, success=True)
 
-            return result[0] if result else {
-                "tool_call_id": tool_call.get("id"),
-                "role": "tool",
-                "content": "Error: No result returned"
-            }
+            return (
+                result[0]
+                if result
+                else {
+                    "tool_call_id": tool_call.get("id"),
+                    "role": "tool",
+                    "content": "Error: No result returned",
+                }
+            )
 
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
 
-            self._metrics.append({
-                "tool_name": tool_name,
-                "duration_ms": duration_ms,
-                "success": False,
-                "error": str(e)[:200]
-            })
+            self._metrics.append(
+                {
+                    "tool_name": tool_name,
+                    "duration_ms": duration_ms,
+                    "success": False,
+                    "error": str(e)[:200],
+                }
+            )
 
             self._finish_tool_span(span, start_time, success=False, error=e)
 
             return {
                 "tool_call_id": tool_call.get("id"),
                 "role": "tool",
-                "content": f"Error: {type(e).__name__}: {str(e)[:200]}"
+                "content": f"Error: {type(e).__name__}: {str(e)[:200]}",
             }
 
     # === 流式处理辅助 ===
 
-    def _process_tool_delta(self, tc_list: list[dict], accumulator: dict[int, dict]) -> None:
+    def _process_tool_delta(
+        self, tc_list: list[dict], accumulator: dict[int, dict]
+    ) -> None:
         """处理流式 Tool Call 增量"""
         for tc in tc_list:
             idx = tc.get("index", 0)
@@ -1230,7 +1298,7 @@ class Harness:
                 accumulator[idx] = {
                     "id": tc.get("id"),
                     "type": tc.get("type", "function"),
-                    "function": {"name": "", "arguments": ""}
+                    "function": {"name": "", "arguments": ""},
                 }
             acc = accumulator[idx]
             if tc.get("id"):
@@ -1260,7 +1328,7 @@ class Harness:
         span: "Span | None",
         start_time: float,
         success: bool,
-        error: Exception | None = None
+        error: Exception | None = None,
     ) -> None:
         """完成 Span"""
         if not span:
@@ -1315,7 +1383,9 @@ class Harness:
             "tools_registered": len(self.sandbox.get_tool_schemas()),
             "metrics_count": len(self._metrics),
             "hooks_enabled": self._hook_registry is not None,
-            "hooks_registered": self._hook_registry.get_hook_count() if self._hook_registry else 0,
+            "hooks_registered": self._hook_registry.get_hook_count()
+            if self._hook_registry
+            else 0,
             "hook_reports_count": len(self._hook_reports),
         }
 
@@ -1364,6 +1434,7 @@ class HarnessManager:
         """确保 Gateway 已创建"""
         if not self._gateway:
             from src.client import LLMGateway
+
             self._gateway = LLMGateway(self._gateway_config_path)
         return self._gateway
 
@@ -1373,7 +1444,7 @@ class HarnessManager:
         model_id: str,
         system_prompt: str | None = None,
         sandbox_config: dict[str, Any] | None = None,
-        max_iterations: int = MAX_ITERATIONS
+        max_iterations: int = MAX_ITERATIONS,
     ) -> Harness:
         """创建新的 Harness 实例
 
@@ -1401,9 +1472,11 @@ class HarnessManager:
 
         # 创建 Harness
         harness = Harness(
-            llm_client, session, sandbox,
+            llm_client,
+            session,
+            sandbox,
             max_iterations=max_iterations,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
         )
 
         # 注册
@@ -1445,10 +1518,7 @@ class HarnessManager:
 
     def get_all_status(self) -> dict[str, dict[str, Any]]:
         """获取所有 Harness 状态"""
-        return {
-            id: harness.get_status()
-            for id, harness in self._harnesses.items()
-        }
+        return {id: harness.get_status() for id, harness in self._harnesses.items()}
 
     def destroy_all(self) -> None:
         """销毁所有 Harness"""
@@ -1478,5 +1548,7 @@ class HarnessManager:
             "successful_calls": total_success,
             "failed_calls": total_failed,
             "total_duration_ms": total_duration_ms,
-            "average_duration_ms": total_duration_ms / total_tools if total_tools > 0 else 0
+            "average_duration_ms": total_duration_ms / total_tools
+            if total_tools > 0
+            else 0,
         }

@@ -34,6 +34,7 @@ try:
         get_code_execution_security_config,
         get_path_validation_config,
     )
+
     _path_config = get_path_validation_config()
     _security_config = get_code_execution_security_config()
     PROJECT_ROOT = _path_config.project_root
@@ -53,18 +54,40 @@ except ImportError:
         Path(os.path.expanduser("~")) / "Documents",
     ]
     SHELL_BLACKLIST = [
-        "rm -rf", "rm -r", "rmdir", "del ", "format",
-        "sudo", "su", "chmod 777", "chown",
-        "wget", "curl -o", "nc ", "netcat",
-        "kill -9", "pkill", "killall",
-        "; rm", "| rm", "& rm", "`rm", "$(rm",
-        "cat /etc/passwd", "cat /etc/shadow",
+        "rm -rf",
+        "rm -r",
+        "rmdir",
+        "del ",
+        "format",
+        "sudo",
+        "su",
+        "chmod 777",
+        "chown",
+        "wget",
+        "curl -o",
+        "nc ",
+        "netcat",
+        "kill -9",
+        "pkill",
+        "killall",
+        "; rm",
+        "| rm",
+        "& rm",
+        "`rm",
+        "$(rm",
+        "cat /etc/passwd",
+        "cat /etc/shadow",
     ]
     POWERSHELL_BLACKLIST = [
-        "Remove-Item", "Delete-Item", "Format-Volume",
-        "Set-ExecutionPolicy", "Start-Process -Verb RunAs",
-        "Download-File", "Invoke-WebRequest -OutFile",
-        "Stop-Process -Force", "Kill-Process",
+        "Remove-Item",
+        "Delete-Item",
+        "Format-Volume",
+        "Set-ExecutionPolicy",
+        "Start-Process -Verb RunAs",
+        "Download-File",
+        "Invoke-WebRequest -OutFile",
+        "Stop-Process -Force",
+        "Kill-Process",
     ]
     MAX_CODE_LENGTH = 10000
     DEFAULT_EXECUTION_TIMEOUT = 60
@@ -97,7 +120,9 @@ _RE_DOUBLE_DOT = re.compile(r"\.\.")  # 快速检测 .. 序列
 _RE_URL_ENCODED = re.compile(r"%[0-9a-fA-F]{2}", re.IGNORECASE)
 _RE_DOUBLE_URL_ENCODED = re.compile(r"%25[0-9a-fA-F]{2}", re.IGNORECASE)
 # UTF-8 过长编码：\xc0\xae 或 \xe0\x80\xae 等变体表示 '.'
-_RE_UTF8_OVERLONG = re.compile(r"[\xc0-\xc1][\x80-\xbf]|\xe0\x80[\xae\xaf]|\xed\xa0[\x80-\xbf]")
+_RE_UTF8_OVERLONG = re.compile(
+    r"[\xc0-\xc1][\x80-\xbf]|\xe0\x80[\xae\xaf]|\xed\xa0[\x80-\xbf]"
+)
 
 # 代码安全预处理正则
 _RE_ESCAPE_BACKSLASH = re.compile(r"\\([a-zA-Z])")
@@ -138,21 +163,39 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
         # 解码后检查是否包含危险字符
         try:
             from urllib.parse import unquote
+
             decoded_once = unquote(path)
             decoded_twice = unquote(decoded_once)
             for decoded in [path, decoded_once, decoded_twice]:
-                if ".." in decoded or decoded.startswith("/") or decoded.startswith("\\"):
-                    logger.warning(f"URL-encoded path traversal attempt blocked: {path} -> {decoded}")
-                    return False, f"URL-encoded path blocked: '{path[:50]}...' - decoded path contains traversal patterns"
+                if (
+                    ".." in decoded
+                    or decoded.startswith("/")
+                    or decoded.startswith("\\")
+                ):
+                    logger.warning(
+                        f"URL-encoded path traversal attempt blocked: {path} -> {decoded}"
+                    )
+                    return (
+                        False,
+                        f"URL-encoded path blocked: '{path[:50]}...' - decoded path contains traversal patterns",
+                    )
         except Exception as e:
             # 解码失败时保守拒绝
-            logger.warning(f"URL-encoded path blocked (decode failed: {path}, error: {type(e).__name__})")
-            return False, f"URL-encoded path blocked: '{path[:50]}...' - cannot safely decode"
+            logger.warning(
+                f"URL-encoded path blocked (decode failed: {path}, error: {type(e).__name__})"
+            )
+            return (
+                False,
+                f"URL-encoded path blocked: '{path[:50]}...' - cannot safely decode",
+            )
 
     # 2. UTF-8 过长编码检测（绕过技术）
     if _RE_UTF8_OVERLONG.search(path):
         logger.warning(f"UTF-8 overlong encoding detected: {path}")
-        return False, f"UTF-8 overlong encoding blocked: '{path[:50]}...' - potential path traversal attempt"
+        return (
+            False,
+            f"UTF-8 overlong encoding blocked: '{path[:50]}...' - potential path traversal attempt",
+        )
 
     # 3. 快速检测 .. 序列（使用预编译正则）
     if _RE_DOUBLE_DOT.search(path):
@@ -167,7 +210,10 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
                 depth += 1
         if depth < 0:
             logger.warning(f"Path traversal attempt blocked: {path}")
-            return False, f"Path traversal blocked: '{path}' contains '..' sequences that escape allowed directories"
+            return (
+                False,
+                f"Path traversal blocked: '{path}' contains '..' sequences that escape allowed directories",
+            )
 
     # Windows 特殊攻击模式
     if os.name == "nt":
@@ -217,7 +263,10 @@ def _resolve_path(path: str) -> str:
     try:
         resolved_seed = str(seed_path.resolve())
         # 使用缓存检查
-        if (resolved_seed.startswith(DEFAULT_WORK_DIR_RESOLVED) or resolved_seed.startswith(PROJECT_ROOT_RESOLVED)) and seed_path.exists():
+        if (
+            resolved_seed.startswith(DEFAULT_WORK_DIR_RESOLVED)
+            or resolved_seed.startswith(PROJECT_ROOT_RESOLVED)
+        ) and seed_path.exists():
             return resolved_seed
     except Exception as e:
         logger.debug(f"Failed to resolve seed path '{path}': {e}")
@@ -277,10 +326,14 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
         selected = content[start_idx:end_idx]
 
         if not selected:
-            return f"Empty range: lines {start}-{start+count-1} (file has {total_lines} lines)"
+            return f"Empty range: lines {start}-{start + count - 1} (file has {total_lines} lines)"
 
-        result = "".join(f"{i+start_idx+1}|{line}" for i, line in enumerate(selected))
-        enc_note = f" (decoded as {detected_encoding})" if detected_encoding != "utf-8" else ""
+        result = "".join(
+            f"{i + start_idx + 1}|{line}" for i, line in enumerate(selected)
+        )
+        enc_note = (
+            f" (decoded as {detected_encoding})" if detected_encoding != "utf-8" else ""
+        )
         result += f"\n--- File: {resolved_path}{enc_note}, Lines: {start}-{end_idx}/{total_lines} ---"
         return result
 
@@ -372,7 +425,9 @@ LANGUAGE_MAP = {
 }
 
 
-def _check_code_security(code: str, language: str, exec_logger: logging.Logger | None) -> str | None:
+def _check_code_security(
+    code: str, language: str, exec_logger: logging.Logger | None
+) -> str | None:
     """Check code against security blacklists. Returns error message if blocked."""
     code_lower = code.lower()
 
@@ -387,15 +442,21 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
     # 检测十六进制转义序列（如 \x2e = '.'）
     if _RE_HEX_ESCAPE.search(code):
         hex_decoded = _RE_HEX_ESCAPE.sub(lambda m: chr(int(m.group(0)[2:], 16)), code)
-        if ".." in hex_decoded or any(d.lower() in hex_decoded.lower() for d in SHELL_BLACKLIST[:5]):
+        if ".." in hex_decoded or any(
+            d.lower() in hex_decoded.lower() for d in SHELL_BLACKLIST[:5]
+        ):
             if exec_logger:
                 exec_logger.warning("Blocked hex escape sequence in code")
-            return "Error: Blocked hex escape sequence that may encode dangerous patterns."
+            return (
+                "Error: Blocked hex escape sequence that may encode dangerous patterns."
+            )
 
     # 检测八进制转义序列（如 \056 = '.'）
     if _RE_OCTAL_ESCAPE.search(code):
         oct_decoded = _RE_OCTAL_ESCAPE.sub(lambda m: chr(int(m.group(0)[1:], 8)), code)
-        if ".." in oct_decoded or any(d.lower() in oct_decoded.lower() for d in SHELL_BLACKLIST[:5]):
+        if ".." in oct_decoded or any(
+            d.lower() in oct_decoded.lower() for d in SHELL_BLACKLIST[:5]
+        ):
             if exec_logger:
                 exec_logger.warning("Blocked octal escape sequence in code")
             return "Error: Blocked octal escape sequence that may encode dangerous patterns."
@@ -405,7 +466,9 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
             danger_lower = danger.lower()
             if danger_lower in code_lower or danger_lower in normalized_code:
                 if exec_logger:
-                    exec_logger.warning(f"Blocked dangerous shell command: contains '{danger}'")
+                    exec_logger.warning(
+                        f"Blocked dangerous shell command: contains '{danger}'"
+                    )
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
         if _RE_BASE64_DECODE.search(normalized_code):
             if exec_logger:
@@ -413,12 +476,22 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
             return "Error: Blocked base64 decode pattern. Encoded commands are not allowed."
         # 检测环境变量注入攻击
         env_matches = _RE_ENV_VAR.findall(normalized_code)
-        dangerous_env_vars = ["PATH", "HOME", "USER", "SHELL", "IFS", "LD_PRELOAD", "LD_LIBRARY_PATH"]
+        dangerous_env_vars = [
+            "PATH",
+            "HOME",
+            "USER",
+            "SHELL",
+            "IFS",
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+        ]
         for env_var in env_matches:
             env_name = env_var.replace("${", "").replace("}", "").replace("$", "")
             if env_name in dangerous_env_vars:
                 if exec_logger:
-                    exec_logger.warning(f"Blocked dangerous env var reference: {env_var}")
+                    exec_logger.warning(
+                        f"Blocked dangerous env var reference: {env_var}"
+                    )
                 return f"Error: Blocked dangerous environment variable: '{env_name}'. Environment manipulation is not allowed."
 
     elif language in ("powershell", "ps", "pwsh"):
@@ -426,7 +499,9 @@ def _check_code_security(code: str, language: str, exec_logger: logging.Logger |
             danger_lower = danger.lower()
             if danger_lower in code_lower or danger_lower in normalized_code:
                 if exec_logger:
-                    exec_logger.warning(f"Blocked dangerous PowerShell command: contains '{danger}'")
+                    exec_logger.warning(
+                        f"Blocked dangerous PowerShell command: contains '{danger}'"
+                    )
                 return f"Error: Blocked dangerous command pattern: '{danger}'. This tool does not allow system-destructive operations."
         if _RE_PWSH_ENCODED.search(normalized_code):
             if exec_logger:
@@ -458,7 +533,9 @@ def _build_command(code: str, language: str) -> list[str] | None:
     return None
 
 
-def _format_execution_result(result: subprocess.CompletedProcess[str], language: str) -> str:
+def _format_execution_result(
+    result: subprocess.CompletedProcess[str], language: str
+) -> str:
     """格式化子进程输出为结果字符串"""
     output = result.stdout
     if result.stderr:
@@ -468,7 +545,9 @@ def _format_execution_result(result: subprocess.CompletedProcess[str], language:
     return output if output.strip() else f"Code executed successfully ({language})"
 
 
-def code_as_policy(code: str, language: str = "python", cwd: str | None = None, timeout: int = 60) -> str:
+def code_as_policy(
+    code: str, language: str = "python", cwd: str | None = None, timeout: int = 60
+) -> str:
     """
     Execute code in various languages (python, js, shell, bash, powershell).
 
@@ -493,7 +572,9 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
         if error:
             return error
 
-        exec_logger.info(f"Code execution: language={language}, cwd={cwd}, timeout={timeout}s")
+        exec_logger.info(
+            f"Code execution: language={language}, cwd={cwd}, timeout={timeout}s"
+        )
 
         cmd = _build_command(code, language)
         if cmd is None:
@@ -506,13 +587,15 @@ def code_as_policy(code: str, language: str = "python", cwd: str | None = None, 
             timeout=timeout,
             cwd=cwd,
             encoding="utf-8",
-            errors="replace"
+            errors="replace",
         )
         exec_logger.info(f"Code execution completed: returncode={result.returncode}")
         return _format_execution_result(result, language)
 
     except subprocess.TimeoutExpired:
-        exec_logger.warning(f"Code execution timed out: language={language}, timeout={timeout}s")
+        exec_logger.warning(
+            f"Code execution timed out: language={language}, timeout={timeout}s"
+        )
         return f"Error: Execution timed out ({timeout}s)"
     except FileNotFoundError:
         exec_logger.error(f"Interpreter not found for '{language}'")
@@ -634,7 +717,7 @@ def run_diagnosis(fix: bool = False) -> str:
             text=True,
             encoding="utf-8",
             cwd=str(DEFAULT_WORK_DIR),
-            timeout=120
+            timeout=120,
         )
 
         output = result.stdout

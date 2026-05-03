@@ -25,6 +25,7 @@ logger = logging.getLogger("seed_agent")
 @dataclass
 class TokenBucketState:
     """Token Bucket 状态（用于持久化）"""
+
     tokens: float
     last_refill_time: float
 
@@ -41,7 +42,9 @@ class TokenBucket:
     线程安全：使用 asyncio.Lock 保证并发安全
     """
 
-    def __init__(self, rate: float, capacity: float, initial_tokens: float | None = None):
+    def __init__(
+        self, rate: float, capacity: float, initial_tokens: float | None = None
+    ):
         """
         Args:
             rate: 每秒补充的 token 数
@@ -99,17 +102,16 @@ class TokenBucket:
 
             elapsed = time.monotonic() - start  # 使用 monotonic 避免系统时间调整影响
             if elapsed + wait_time > max_wait:
-                logger.warning(f"Token bucket wait timeout: {elapsed + wait_time:.1f}s > {max_wait}s")
+                logger.warning(
+                    f"Token bucket wait timeout: {elapsed + wait_time:.1f}s > {max_wait}s"
+                )
                 return False
 
             await asyncio.sleep(wait_time)
 
     def get_state(self) -> TokenBucketState:
         """获取当前状态（用于持久化）"""
-        return TokenBucketState(
-            tokens=self.tokens,
-            last_refill_time=self.last_refill
-        )
+        return TokenBucketState(tokens=self.tokens, last_refill_time=self.last_refill)
 
     def restore_state(self, state: TokenBucketState) -> None:
         """恢复状态（从持久化）"""
@@ -120,6 +122,7 @@ class TokenBucket:
 @dataclass
 class RollingWindowState:
     """滚动窗口状态（用于持久化）"""
+
     requests: list[float]  # 时间戳列表
     total_requests_lifetime: int = 0
 
@@ -167,7 +170,10 @@ class RollingWindowTracker:
         # 惰性清理：仅在需要时清理（窗口接近满或超过清理间隔）
         cleanup_interval = self.window_duration / 10  # 每 1/10 窗口清理一次
 
-        if now - self._last_cleanup_time < cleanup_interval and len(self.requests) < self.window_limit * 0.8:
+        if (
+            now - self._last_cleanup_time < cleanup_interval
+            and len(self.requests) < self.window_limit * 0.8
+        ):
             return  # 不需要清理
 
         self._last_cleanup_time = now
@@ -274,7 +280,7 @@ class RollingWindowTracker:
 
         return RollingWindowState(
             requests=[t + offset for t in self.requests],  # 转换为 wall clock 时间
-            total_requests_lifetime=self.total_requests_lifetime
+            total_requests_lifetime=self.total_requests_lifetime,
         )
 
     def restore_state(self, state: RollingWindowState) -> None:
@@ -290,7 +296,9 @@ class RollingWindowTracker:
         cutoff = now_monotonic - self.window_duration
 
         # 将 wall clock 时间转换为 monotonic 时间，并过滤过期请求
-        self.requests = deque(t + offset for t in state.requests if t + offset >= cutoff)
+        self.requests = deque(
+            t + offset for t in state.requests if t + offset >= cutoff
+        )
         self.total_requests_lifetime = state.total_requests_lifetime
 
         # 更新缓存
@@ -303,6 +311,7 @@ class RollingWindowTracker:
 @dataclass
 class RateLimitStatus:
     """限流状态快照"""
+
     # Token Bucket 状态
     tokens_available: float
     token_bucket_capacity: float
@@ -383,7 +392,9 @@ class RateLimiter:
 
             elapsed = time.monotonic() - start  # 使用 monotonic 避免系统时间调整影响
             if elapsed + wait_time > max_wait:
-                logger.warning(f"Rate limiter wait timeout: {elapsed + wait_time:.1f}s > {max_wait}s")
+                logger.warning(
+                    f"Rate limiter wait timeout: {elapsed + wait_time:.1f}s > {max_wait}s"
+                )
                 return False
 
             await asyncio.sleep(wait_time)
@@ -417,15 +428,12 @@ class RateLimiter:
 
     def get_state(self) -> tuple[TokenBucketState, RollingWindowState]:
         """获取完整状态（用于持久化）"""
-        return (
-            self.token_bucket.get_state(),
-            self.window_tracker.get_state()
-        )
+        return (self.token_bucket.get_state(), self.window_tracker.get_state())
 
     def restore_state(
         self,
         bucket_state: TokenBucketState | None = None,
-        window_state: RollingWindowState | None = None
+        window_state: RollingWindowState | None = None,
     ) -> None:
         """恢复状态（从持久化）"""
         if bucket_state:

@@ -35,17 +35,19 @@ RELEVANCE_THRESHOLD = 0.3
 
 class CompressionTier(str, Enum):
     """压缩层级枚举"""
-    TIER_1_FULL = "tier_1_full"           # 最新完整保留
-    TIER_2_LIGHT = "tier_2_light"         # 稍旧轻量总结
-    TIER_3_ABSTRACT = "tier_3_abstract"   # 更早简短摘要
+
+    TIER_1_FULL = "tier_1_full"  # 最新完整保留
+    TIER_2_LIGHT = "tier_2_light"  # 稍旧轻量总结
+    TIER_3_ABSTRACT = "tier_3_abstract"  # 更早简短摘要
 
 
 @dataclass
 class TierConfig:
     """层级配置"""
+
     name: str
-    threshold: float          # 容量阈值触发点
-    keep_rounds: int          # 保留轮数 (一轮 ≈ 2 条消息)
+    threshold: float  # 容量阈值触发点
+    keep_rounds: int  # 保留轮数 (一轮 ≈ 2 条消息)
     method: CompressionTier
     description: str
 
@@ -53,29 +55,32 @@ class TierConfig:
 @dataclass
 class CompressionConfig:
     """压缩配置"""
-    tiers: dict[CompressionTier, TierConfig] = field(default_factory=lambda: {
-        CompressionTier.TIER_1_FULL: TierConfig(
-            name="recent_full",
-            threshold=0.0,
-            keep_rounds=5,
-            method=CompressionTier.TIER_1_FULL,
-            description="最新 5 轮对话完整保留"
-        ),
-        CompressionTier.TIER_2_LIGHT: TierConfig(
-            name="medium_light",
-            threshold=0.5,
-            keep_rounds=10,
-            method=CompressionTier.TIER_2_LIGHT,
-            description="稍旧 10 轮轻量总结"
-        ),
-        CompressionTier.TIER_3_ABSTRACT: TierConfig(
-            name="old_abstract",
-            threshold=0.75,
-            keep_rounds=0,  # 全部压缩
-            method=CompressionTier.TIER_3_ABSTRACT,
-            description="更早历史简短摘要"
-        ),
-    })
+
+    tiers: dict[CompressionTier, TierConfig] = field(
+        default_factory=lambda: {
+            CompressionTier.TIER_1_FULL: TierConfig(
+                name="recent_full",
+                threshold=0.0,
+                keep_rounds=5,
+                method=CompressionTier.TIER_1_FULL,
+                description="最新 5 轮对话完整保留",
+            ),
+            CompressionTier.TIER_2_LIGHT: TierConfig(
+                name="medium_light",
+                threshold=0.5,
+                keep_rounds=10,
+                method=CompressionTier.TIER_2_LIGHT,
+                description="稍旧 10 轮轻量总结",
+            ),
+            CompressionTier.TIER_3_ABSTRACT: TierConfig(
+                name="old_abstract",
+                threshold=0.75,
+                keep_rounds=0,  # 全部压缩
+                method=CompressionTier.TIER_3_ABSTRACT,
+                description="更早历史简短摘要",
+            ),
+        }
+    )
 
     # Token 估算系数
     token_per_char: float = 0.5
@@ -87,23 +92,28 @@ class CompressionConfig:
 @dataclass
 class PruningConfig:
     """裁剪配置"""
+
     relevance_threshold: float = RELEVANCE_THRESHOLD
 
     # 实体类型权重
-    entity_weights: dict[str, float] = field(default_factory=lambda: {
-        "file_path": 1.0,
-        "function_name": 0.8,
-        "class_name": 0.8,
-        "keyword": 0.5,
-    })
+    entity_weights: dict[str, float] = field(
+        default_factory=lambda: {
+            "file_path": 1.0,
+            "function_name": 0.8,
+            "class_name": 0.8,
+            "keyword": 0.5,
+        }
+    )
 
     # 角色权重
-    role_weights: dict[str, float] = field(default_factory=lambda: {
-        "user": 1.0,
-        "assistant": 1.0,
-        "tool": 0.7,
-        "system": 0.5,
-    })
+    role_weights: dict[str, float] = field(
+        default_factory=lambda: {
+            "user": 1.0,
+            "assistant": 1.0,
+            "tool": 0.7,
+            "system": 0.5,
+        }
+    )
 
     # 最小保留消息数
     min_preserve_count: int = 5
@@ -143,7 +153,7 @@ class ProgressiveContextCompressor:
         self,
         gateway: "LLMGateway",
         model_id: str,
-        config: CompressionConfig | None = None
+        config: CompressionConfig | None = None,
     ):
         """初始化压缩器
 
@@ -160,7 +170,7 @@ class ProgressiveContextCompressor:
         self,
         session: SessionEventStream,
         context_window: int,
-        system_prompt: str | None = None
+        system_prompt: str | None = None,
     ) -> list[dict[str, Any]]:
         """应用三层压缩
 
@@ -188,7 +198,9 @@ class ProgressiveContextCompressor:
         if usage_ratio < self._config.tiers[CompressionTier.TIER_2_LIGHT].threshold:
             # 低使用率：Tier 1 仅
             compressed = self._apply_tier_1_only(full_history)
-        elif usage_ratio < self._config.tiers[CompressionTier.TIER_3_ABSTRACT].threshold:
+        elif (
+            usage_ratio < self._config.tiers[CompressionTier.TIER_3_ABSTRACT].threshold
+        ):
             # 中使用率：Tier 1 + Tier 2
             compressed = self._apply_tier_1_and_2(full_history)
         else:
@@ -197,7 +209,7 @@ class ProgressiveContextCompressor:
 
         # 4. 应用消息数量限制
         if len(compressed) > self._config.max_context_messages:
-            compressed = compressed[-self._config.max_context_messages:]
+            compressed = compressed[-self._config.max_context_messages :]
 
         logger.info(
             f"Context compressed: {len(full_history)} -> {len(compressed)} messages, "
@@ -210,7 +222,7 @@ class ProgressiveContextCompressor:
         self,
         session: SessionEventStream,
         context_window: int,
-        system_prompt: str | None = None
+        system_prompt: str | None = None,
     ) -> list[dict[str, Any]]:
         """异步应用三层压缩（使用 LLM 生成摘要）
 
@@ -237,14 +249,16 @@ class ProgressiveContextCompressor:
         # 3. 根据使用率决定压缩层级
         if usage_ratio < self._config.tiers[CompressionTier.TIER_2_LIGHT].threshold:
             compressed = self._apply_tier_1_only(full_history)
-        elif usage_ratio < self._config.tiers[CompressionTier.TIER_3_ABSTRACT].threshold:
+        elif (
+            usage_ratio < self._config.tiers[CompressionTier.TIER_3_ABSTRACT].threshold
+        ):
             compressed = await self._apply_tier_1_and_2_async(full_history)
         else:
             compressed = await self._apply_all_tiers_async(full_history)
 
         # 4. 应用消息数量限制
         if len(compressed) > self._config.max_context_messages:
-            compressed = compressed[-self._config.max_context_messages:]
+            compressed = compressed[-self._config.max_context_messages :]
 
         logger.info(
             f"Context async compressed: {len(full_history)} -> {len(compressed)} messages"
@@ -253,9 +267,7 @@ class ProgressiveContextCompressor:
         return compressed
 
     def _build_history_from_session(
-        self,
-        session: SessionEventStream,
-        system_prompt: str | None = None
+        self, session: SessionEventStream, system_prompt: str | None = None
     ) -> list[dict[str, Any]]:
         """从 Session 构建完整历史（包括摘要）"""
         messages: list[dict[str, Any]] = []
@@ -271,17 +283,14 @@ class ProgressiveContextCompressor:
         if last_summary:
             summary_content = last_summary["data"].get("summary", "")
             if summary_content:
-                messages.append({
-                    "role": "user",
-                    "content": f"[历史摘要]\n{summary_content}"
-                })
+                messages.append(
+                    {"role": "user", "content": f"[历史摘要]\n{summary_content}"}
+                )
 
         # 获取摘要后的事件
-        recent_events = session.get_events_since_last_summary([
-            EventType.USER_INPUT,
-            EventType.LLM_RESPONSE,
-            EventType.TOOL_RESULT
-        ])
+        recent_events = session.get_events_since_last_summary(
+            [EventType.USER_INPUT, EventType.LLM_RESPONSE, EventType.TOOL_RESULT]
+        )
 
         # 转换事件为消息
         for event in recent_events:
@@ -312,7 +321,7 @@ class ProgressiveContextCompressor:
             return {
                 "role": "tool",
                 "tool_call_id": data.get("tool_call_id"),
-                "content": data.get("content", "")
+                "content": data.get("content", ""),
             }
 
         return None
@@ -340,7 +349,8 @@ class ProgressiveContextCompressor:
 
         # 保留系统提示和摘要
         system_and_summary = [
-            m for m in history
+            m
+            for m in history
             if m["role"] in ["system", "user"] and "摘要" in m.get("content", "")
         ]
 
@@ -355,7 +365,9 @@ class ProgressiveContextCompressor:
 
         return compressed
 
-    def _apply_tier_1_and_2(self, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _apply_tier_1_and_2(
+        self, history: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Tier 1 + Tier 2: 同步版本（不使用 LLM）"""
         tier_1_config = self._config.tiers[CompressionTier.TIER_1_FULL]
         tier_2_config = self._config.tiers[CompressionTier.TIER_2_LIGHT]
@@ -364,7 +376,9 @@ class ProgressiveContextCompressor:
         tier_2_messages = tier_2_config.keep_rounds * 2
 
         # Tier 1: 最新完整保留
-        tier_1 = history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        tier_1 = (
+            history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        )
 
         # Tier 2: 稍旧部分
         tier_2_start = max(0, len(history) - tier_1_messages - tier_2_messages)
@@ -377,10 +391,12 @@ class ProgressiveContextCompressor:
         if tier_2:
             simplified = self._simplify_messages(tier_2)
             if simplified:
-                compressed.append({
-                    "role": "system",
-                    "content": f"[中等对话摘要]\n{self._format_simplified(simplified)}"
-                })
+                compressed.append(
+                    {
+                        "role": "system",
+                        "content": f"[中等对话摘要]\n{self._format_simplified(simplified)}",
+                    }
+                )
 
         # Tier 1
         compressed.extend(tier_1)
@@ -388,8 +404,7 @@ class ProgressiveContextCompressor:
         return compressed
 
     async def _apply_tier_1_and_2_async(
-        self,
-        history: list[dict[str, Any]]
+        self, history: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Tier 1 + Tier 2: 异步版本（使用 LLM 生成摘要）"""
         tier_1_config = self._config.tiers[CompressionTier.TIER_1_FULL]
@@ -399,7 +414,9 @@ class ProgressiveContextCompressor:
         tier_2_messages = tier_2_config.keep_rounds * 2
 
         # Tier 1: 最新完整保留
-        tier_1 = history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        tier_1 = (
+            history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        )
 
         # Tier 2: 稍旧部分
         tier_2_start = max(0, len(history) - tier_1_messages - tier_2_messages)
@@ -412,10 +429,9 @@ class ProgressiveContextCompressor:
         if tier_2:
             light_summary = await self._light_summarize(tier_2)
             if light_summary:
-                compressed.append({
-                    "role": "system",
-                    "content": f"[中等对话摘要]\n{light_summary}"
-                })
+                compressed.append(
+                    {"role": "system", "content": f"[中等对话摘要]\n{light_summary}"}
+                )
 
         # Tier 1
         compressed.extend(tier_1)
@@ -431,7 +447,9 @@ class ProgressiveContextCompressor:
         tier_2_messages = tier_2_config.keep_rounds * 2
 
         # Tier 1: 最新
-        tier_1 = history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        tier_1 = (
+            history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        )
 
         # Tier 2: 稍旧
         tier_2_start = max(0, len(history) - tier_1_messages - tier_2_messages)
@@ -447,19 +465,23 @@ class ProgressiveContextCompressor:
         if tier_3:
             abstract = self._simplify_messages(tier_3)
             if abstract:
-                compressed.append({
-                    "role": "system",
-                    "content": f"[历史摘要 - 简短]\n{self._format_abstract(abstract)}"
-                })
+                compressed.append(
+                    {
+                        "role": "system",
+                        "content": f"[历史摘要 - 简短]\n{self._format_abstract(abstract)}",
+                    }
+                )
 
         # Tier 2: 轻量总结（简化）
         if tier_2:
             simplified = self._simplify_messages(tier_2)
             if simplified:
-                compressed.append({
-                    "role": "system",
-                    "content": f"[中等对话摘要]\n{self._format_simplified(simplified)}"
-                })
+                compressed.append(
+                    {
+                        "role": "system",
+                        "content": f"[中等对话摘要]\n{self._format_simplified(simplified)}",
+                    }
+                )
 
         # Tier 1
         compressed.extend(tier_1)
@@ -467,8 +489,7 @@ class ProgressiveContextCompressor:
         return compressed
 
     async def _apply_all_tiers_async(
-        self,
-        history: list[dict[str, Any]]
+        self, history: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """完整三层: 异步版本（使用 LLM）"""
         tier_1_config = self._config.tiers[CompressionTier.TIER_1_FULL]
@@ -478,7 +499,9 @@ class ProgressiveContextCompressor:
         tier_2_messages = tier_2_config.keep_rounds * 2
 
         # Tier 1: 最新
-        tier_1 = history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        tier_1 = (
+            history[-tier_1_messages:] if len(history) > tier_1_messages else history
+        )
 
         # Tier 2: 稍旧
         tier_2_start = max(0, len(history) - tier_1_messages - tier_2_messages)
@@ -494,26 +517,26 @@ class ProgressiveContextCompressor:
         if tier_3:
             abstract = await self._abstract_summarize(tier_3)
             if abstract:
-                compressed.append({
-                    "role": "system",
-                    "content": f"[历史摘要 - 简短]\n{abstract}"
-                })
+                compressed.append(
+                    {"role": "system", "content": f"[历史摘要 - 简短]\n{abstract}"}
+                )
 
         # Tier 2: 使用 LLM 轻量总结
         if tier_2:
             light_summary = await self._light_summarize(tier_2)
             if light_summary:
-                compressed.append({
-                    "role": "system",
-                    "content": f"[中等对话摘要]\n{light_summary}"
-                })
+                compressed.append(
+                    {"role": "system", "content": f"[中等对话摘要]\n{light_summary}"}
+                )
 
         # Tier 1
         compressed.extend(tier_1)
 
         return compressed
 
-    def _simplify_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _simplify_messages(
+        self, messages: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """简化消息（提取关键信息）"""
         simplified = []
 
@@ -586,9 +609,7 @@ class ProgressiveContextCompressor:
 
         try:
             response = await self._gateway.chat_completion(
-                self._model_id,
-                [{"role": "user", "content": prompt}],
-                tools=None
+                self._model_id, [{"role": "user", "content": prompt}], tools=None
             )
             summary = response["choices"][0]["message"]["content"]
             return summary.strip()
@@ -609,14 +630,14 @@ class ProgressiveContextCompressor:
 
         try:
             response = await self._gateway.chat_completion(
-                self._model_id,
-                [{"role": "user", "content": prompt}],
-                tools=None
+                self._model_id, [{"role": "user", "content": prompt}], tools=None
             )
             summary = response["choices"][0]["message"]["content"]
             return summary.strip()
         except Exception as e:
-            logger.warning(f"Abstract summary generation failed: {type(e).__name__}: {e}")
+            logger.warning(
+                f"Abstract summary generation failed: {type(e).__name__}: {e}"
+            )
             # Fallback: 使用统计版本
             simplified = self._simplify_messages(messages)
             return self._format_abstract(simplified)
@@ -666,7 +687,7 @@ class IntelligentContextPruner:
         self,
         gateway: "LLMGateway | None" = None,
         model_id: str | None = None,
-        config: PruningConfig | None = None
+        config: PruningConfig | None = None,
     ):
         """初始化裁剪器
 
@@ -680,9 +701,7 @@ class IntelligentContextPruner:
         self._config = config or PruningConfig()
 
     def prune_for_task(
-        self,
-        history: list[dict[str, Any]],
-        current_task: str
+        self, history: list[dict[str, Any]], current_task: str
     ) -> list[dict[str, Any]]:
         """根据当前任务裁剪不相关上下文
 
@@ -695,13 +714,15 @@ class IntelligentContextPruner:
         """
         # 1. 系统消息和摘要消息总是保留
         always_preserve = [
-            m for m in history
+            m
+            for m in history
             if m["role"] == "system" or "摘要" in m.get("content", "")
         ]
 
         # 2. 可裁剪的消息
         prunable = [
-            m for m in history
+            m
+            for m in history
             if m["role"] not in ["system"] and "摘要" not in m.get("content", "")
         ]
 
@@ -730,9 +751,9 @@ class IntelligentContextPruner:
             scored_msgs = sorted(
                 zip(prunable, relevance_scores, strict=True),
                 key=lambda x: x[1],
-                reverse=True
+                reverse=True,
             )
-            pruned = [m for m, s in scored_msgs[:self._config.min_preserve_count]]
+            pruned = [m for m, s in scored_msgs[: self._config.min_preserve_count]]
 
         # 7. 合并结果
         result = always_preserve + pruned
@@ -740,10 +761,12 @@ class IntelligentContextPruner:
         # 8. 添加裁剪说明
         if len(result) < len(history):
             filtered_count = len(history) - len(result)
-            result.append({
-                "role": "system",
-                "content": f"[裁剪说明: 已过滤 {filtered_count} 条低相关性历史，保留 {len(result)} 条]"
-            })
+            result.append(
+                {
+                    "role": "system",
+                    "content": f"[裁剪说明: 已过滤 {filtered_count} 条低相关性历史，保留 {len(result)} 条]",
+                }
+            )
 
         logger.info(
             f"Context pruned for task: {len(history)} -> {len(result)} messages, "
@@ -753,9 +776,7 @@ class IntelligentContextPruner:
         return result
 
     async def prune_with_semantic_relevance(
-        self,
-        history: list[dict[str, Any]],
-        current_task: str
+        self, history: list[dict[str, Any]], current_task: str
     ) -> list[dict[str, Any]]:
         """使用语义相关性裁剪（LLM 评估）
 
@@ -772,12 +793,14 @@ class IntelligentContextPruner:
 
         # 系统消息和摘要消息总是保留
         always_preserve = [
-            m for m in history
+            m
+            for m in history
             if m["role"] == "system" or "摘要" in m.get("content", "")
         ]
 
         prunable = [
-            m for m in history
+            m
+            for m in history
             if m["role"] not in ["system"] and "摘要" not in m.get("content", "")
         ]
 
@@ -798,18 +821,20 @@ class IntelligentContextPruner:
             scored_msgs = sorted(
                 zip(prunable, semantic_scores, strict=True),
                 key=lambda x: x[1],
-                reverse=True
+                reverse=True,
             )
-            pruned = [m for m, s in scored_msgs[:self._config.min_preserve_count]]
+            pruned = [m for m, s in scored_msgs[: self._config.min_preserve_count]]
 
         result = always_preserve + pruned
 
         if len(result) < len(history):
             filtered_count = len(history) - len(result)
-            result.append({
-                "role": "system",
-                "content": f"[语义裁剪: 已过滤 {filtered_count} 条，保留 {len(result)} 条]"
-            })
+            result.append(
+                {
+                    "role": "system",
+                    "content": f"[语义裁剪: 已过滤 {filtered_count} 条，保留 {len(result)} 条]",
+                }
+            )
 
         return result
 
@@ -844,13 +869,48 @@ class IntelligentContextPruner:
         """提取任务关键词"""
         # 技术关键词
         tech_keywords = [
-            "bug", "fix", "error", "debug", "refactor", "重构",
-            "optimize", "优化", "implement", "实现", "test", "测试",
-            "create", "创建", "modify", "修改", "delete", "删除",
-            "read", "读取", "write", "写入", "execute", "执行",
-            "parse", "解析", "validate", "验证", "update", "更新",
-            "import", "导入", "export", "导出", "search", "搜索",
-            "find", "查找", "replace", "替换", "analyze", "分析",
+            "bug",
+            "fix",
+            "error",
+            "debug",
+            "refactor",
+            "重构",
+            "optimize",
+            "优化",
+            "implement",
+            "实现",
+            "test",
+            "测试",
+            "create",
+            "创建",
+            "modify",
+            "修改",
+            "delete",
+            "删除",
+            "read",
+            "读取",
+            "write",
+            "写入",
+            "execute",
+            "执行",
+            "parse",
+            "解析",
+            "validate",
+            "验证",
+            "update",
+            "更新",
+            "import",
+            "导入",
+            "export",
+            "导出",
+            "search",
+            "搜索",
+            "find",
+            "查找",
+            "replace",
+            "替换",
+            "analyze",
+            "分析",
         ]
 
         found = []
@@ -862,9 +922,7 @@ class IntelligentContextPruner:
         return found
 
     def _compute_relevance(
-        self,
-        history: list[dict[str, Any]],
-        entities: list[str]
+        self, history: list[dict[str, Any]], entities: list[str]
     ) -> list[float]:
         """计算相关性分数
 
@@ -887,10 +945,7 @@ class IntelligentContextPruner:
 
             # 计算实体匹配度
             content_lower = content.lower()
-            entity_matches = sum(
-                1 for e in entities
-                if e.lower() in content_lower
-            )
+            entity_matches = sum(1 for e in entities if e.lower() in content_lower)
             entity_score = entity_matches / max(len(entities), 1)
 
             # 获取角色权重
@@ -903,9 +958,7 @@ class IntelligentContextPruner:
         return scores
 
     async def _compute_semantic_relevance(
-        self,
-        history: list[dict[str, Any]],
-        task: str
+        self, history: list[dict[str, Any]], task: str
     ) -> list[float]:
         """语义相关性计算（使用 LLM）
 
@@ -922,9 +975,7 @@ class IntelligentContextPruner:
 
         try:
             response = await self._gateway.chat_completion(
-                self._model_id,
-                [{"role": "user", "content": batch_prompt}],
-                tools=None
+                self._model_id, [{"role": "user", "content": batch_prompt}], tools=None
             )
             result_text = response["choices"][0]["message"]["content"]
 
@@ -940,9 +991,7 @@ class IntelligentContextPruner:
         return scores
 
     def _build_batch_relevance_prompt(
-        self,
-        history: list[dict[str, Any]],
-        task: str
+        self, history: list[dict[str, Any]], task: str
     ) -> str:
         """构建批量相关性评估提示"""
         messages_text = []
@@ -966,9 +1015,7 @@ class IntelligentContextPruner:
 仅输出分数，无需解释。"""
 
     def _parse_relevance_scores(
-        self,
-        result_text: str,
-        expected_count: int
+        self, result_text: str, expected_count: int
     ) -> list[float]:
         """解析相关性分数"""
         scores: list[float] = []
@@ -1013,7 +1060,7 @@ class ContextEngineering:
         gateway: "LLMGateway",
         model_id: str,
         compression_config: CompressionConfig | None = None,
-        pruning_config: PruningConfig | None = None
+        pruning_config: PruningConfig | None = None,
     ):
         """初始化上下文工程管理器
 
@@ -1029,9 +1076,7 @@ class ContextEngineering:
         self._compressor = ProgressiveContextCompressor(
             gateway, model_id, compression_config
         )
-        self._pruner = IntelligentContextPruner(
-            gateway, model_id, pruning_config
-        )
+        self._pruner = IntelligentContextPruner(gateway, model_id, pruning_config)
 
         logger.info(f"ContextEngineering initialized: model={model_id}")
 
@@ -1041,7 +1086,7 @@ class ContextEngineering:
         context_window: int,
         current_task: str | None = None,
         system_prompt: str | None = None,
-        enable_pruning: bool = True
+        enable_pruning: bool = True,
     ) -> list[dict[str, Any]]:
         """构建优化后的上下文（同步版本）
 
@@ -1092,7 +1137,7 @@ class ContextEngineering:
         current_task: str | None = None,
         system_prompt: str | None = None,
         enable_pruning: bool = True,
-        enable_semantic_pruning: bool = False
+        enable_semantic_pruning: bool = False,
     ) -> list[dict[str, Any]]:
         """构建优化后的上下文（异步版本，支持 LLM 摘要）
 
@@ -1128,12 +1173,11 @@ class ContextEngineering:
             pruned_history, context_window, system_prompt
         )
 
-
     def _apply_compression_to_pruned(
         self,
         pruned_history: list[dict[str, Any]],
         context_window: int,
-        system_prompt: str | None = None
+        system_prompt: str | None = None,
     ) -> list[dict[str, Any]]:
         """对已裁剪的历史应用压缩（同步）"""
         # 估算 Token
@@ -1155,7 +1199,7 @@ class ContextEngineering:
         self,
         pruned_history: list[dict[str, Any]],
         context_window: int,
-        system_prompt: str | None = None
+        system_prompt: str | None = None,
     ) -> list[dict[str, Any]]:
         """对已裁剪的历史应用压缩（异步）"""
         current_tokens = self._compressor._estimate_tokens(pruned_history)

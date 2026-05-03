@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RequestAuditLog:
     """请求审计日志"""
+
     timestamp: float
     provider: str
     credential_type: str
@@ -49,6 +50,7 @@ class RequestAuditLog:
 @dataclass
 class TemporaryClient:
     """临时客户端（凭证销毁后不可用）"""
+
     provider: str
     client: Any
     # 使用内部列表存储凭证，便于安全清除
@@ -60,7 +62,9 @@ class TemporaryClient:
     def credential(self) -> str:
         """获取凭证"""
         if self.destroyed:
-            raise RuntimeError("Client has been destroyed, credential no longer available")
+            raise RuntimeError(
+                "Client has been destroyed, credential no longer available"
+            )
         return self._credential_storage[0] if self._credential_storage else ""
 
     def destroy(self) -> None:
@@ -79,7 +83,9 @@ class TemporaryClient:
             for _ in range(3):
                 self._credential_storage[0] = "\x00" * original_len  # 全零
                 self._credential_storage[0] = "\xff" * original_len  # 全一
-                self._credential_storage[0] = "REDACTED" * (original_len // 8 + 1)  # 标记
+                self._credential_storage[0] = "REDACTED" * (
+                    original_len // 8 + 1
+                )  # 标记
             # 最后清空列表
             self._credential_storage.clear()
 
@@ -445,6 +451,7 @@ class CredentialProxy:
         # 创建客户端实例
         if client_class == "AsyncOpenAI":
             from openai import AsyncOpenAI
+
             client = AsyncOpenAI(
                 api_key=credential,
                 base_url=base_url,
@@ -452,6 +459,7 @@ class CredentialProxy:
         elif client_class == "AsyncAnthropic":
             try:
                 from anthropic import AsyncAnthropic
+
                 client = AsyncAnthropic(api_key=credential)
             except ImportError:
                 raise ValueError(
@@ -518,14 +526,22 @@ class CredentialProxy:
 
         # 限制日志大小
         if len(self._request_logs) > self._max_request_logs:
-            self._request_logs = self._request_logs[-self._max_request_logs:]
+            self._request_logs = self._request_logs[-self._max_request_logs :]
 
         # 持久化审计日志
         self._persist_request_audit(log_entry)
 
     def _sanitize_request_context(self, context: dict[str, Any]) -> dict[str, Any]:
         """过滤请求上下文中的敏感信息"""
-        sensitive_keys = ["api_key", "apikey", "apiKey", "token", "secret", "password", "credential"]
+        sensitive_keys = [
+            "api_key",
+            "apikey",
+            "apiKey",
+            "token",
+            "secret",
+            "password",
+            "credential",
+        ]
 
         safe_context: dict[str, Any] = {}
         for key, value in context.items():
@@ -563,6 +579,7 @@ class CredentialProxy:
             # 安全：设置审计日志文件权限（仅 owner 可读写）
             try:
                 import os
+
                 os.chmod(audit_file, 0o600)
             except OSError:
                 logger.warning(f"Failed to set permissions on audit file: {audit_file}")
@@ -622,7 +639,9 @@ class CredentialProxy:
             "successful": successful,
             "failed": failed,
             "timeouts": timeouts,
-            "success_rate": (successful / total_requests * 100) if total_requests else 100.0,
+            "success_rate": (successful / total_requests * 100)
+            if total_requests
+            else 100.0,
             "average_duration_ms": avg_duration,
             "by_provider": by_provider,
             "active_clients": len(self._active_clients),
@@ -680,7 +699,8 @@ class CredentialProxy:
         now = time.time()
 
         expired_ids = [
-            provider for provider, client in self._active_clients.items()
+            provider
+            for provider, client in self._active_clients.items()
             if now - client.created_at > timeout_threshold
         ]
 

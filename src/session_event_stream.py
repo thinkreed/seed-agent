@@ -29,48 +29,48 @@ DEFAULT_STORAGE_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "eve
 
 # 事件清理配置
 MAX_IN_MEMORY_EVENTS = 10000  # 内存中最大事件数
-MAX_EVENT_AGE_DAYS = 30       # 事件最大保留天数
+MAX_EVENT_AGE_DAYS = 30  # 事件最大保留天数
 
 
 class EventType(str, Enum):
     """事件类型枚举"""
 
     # 对话事件
-    USER_INPUT = "user_input"           # 用户输入
-    LLM_RESPONSE = "llm_response"       # LLM 响应
-    TOOL_CALL = "tool_call"             # 工具调用
-    TOOL_RESULT = "tool_result"         # 工具结果
+    USER_INPUT = "user_input"  # 用户输入
+    LLM_RESPONSE = "llm_response"  # LLM 响应
+    TOOL_CALL = "tool_call"  # 工具调用
+    TOOL_RESULT = "tool_result"  # 工具结果
 
     # 上下文事件
     SUMMARY_GENERATED = "summary_generated"  # 摘要生成
-    SUMMARY_MARKER = "summary_marker"        # 摘要标记 (不截断历史)
-    CONTEXT_RESET = "context_reset"          # 上下文重置
+    SUMMARY_MARKER = "summary_marker"  # 摘要标记 (不截断历史)
+    CONTEXT_RESET = "context_reset"  # 上下文重置
 
     # 子代理事件
-    SUBAGENT_SPAWN = "subagent_spawn"        # 子代理创建
-    SUBAGENT_RESULT = "subagent_result"      # 子代理结果
+    SUBAGENT_SPAWN = "subagent_spawn"  # 子代理创建
+    SUBAGENT_RESULT = "subagent_result"  # 子代理结果
 
     # 系统事件
-    SESSION_START = "session_start"          # 会话开始
-    SESSION_END = "session_end"              # 会话结束
-    ERROR_OCCURRED = "error_occurred"        # 错误发生
-    STATE_PERSISTED = "state_persisted"      # 状态持久化
+    SESSION_START = "session_start"  # 会话开始
+    SESSION_END = "session_end"  # 会话结束
+    ERROR_OCCURRED = "error_occurred"  # 错误发生
+    STATE_PERSISTED = "state_persisted"  # 状态持久化
 
     # 用户交互事件 (Ask User 机制)
-    USER_QUESTION = "user_question"          # 发起问题
-    USER_WAITING = "user_waiting"            # 等待用户响应
-    USER_RESPONSE = "user_response"          # 用户响应
-    USER_CANCELLED = "user_cancelled"        # 用户取消
+    USER_QUESTION = "user_question"  # 发起问题
+    USER_WAITING = "user_waiting"  # 等待用户响应
+    USER_RESPONSE = "user_response"  # 用户响应
+    USER_CANCELLED = "user_cancelled"  # 用户取消
 
     # 执行控制事件 (取消机制)
-    EXECUTION_CANCEL = "execution_cancel"    # 执行取消
-    EXECUTION_PAUSE = "execution_pause"      # 执行暂停
-    EXECUTION_RESUME = "execution_resume"    # 执行恢复
+    EXECUTION_CANCEL = "execution_cancel"  # 执行取消
+    EXECUTION_PAUSE = "execution_pause"  # 执行暂停
+    EXECUTION_RESUME = "execution_resume"  # 执行恢复
 
     # 后台任务事件
-    TASK_START = "task_start"                # 后台任务开始
-    TASK_END = "task_end"                    # 后台任务结束
-    TASK_CANCEL = "task_cancel"              # 后台任务取消
+    TASK_START = "task_start"  # 后台任务开始
+    TASK_END = "task_end"  # 后台任务结束
+    TASK_CANCEL = "task_cancel"  # 后台任务取消
 
 
 class SessionEventStream:
@@ -104,7 +104,9 @@ class SessionEventStream:
 
     # === 核心接口 (只两个) ===
 
-    def emit_event(self, event_type: str | EventType, event_data: dict[str, Any]) -> int:
+    def emit_event(
+        self, event_type: str | EventType, event_data: dict[str, Any]
+    ) -> int:
         """记录事件 - 只追加，不可修改
 
         Args:
@@ -120,7 +122,7 @@ class SessionEventStream:
             "timestamp": time.time(),
             "type": event_type if isinstance(event_type, str) else event_type.value,
             "data": event_data,
-            "session_id": self.session_id
+            "session_id": self.session_id,
         }
 
         # 内存追加
@@ -137,7 +139,7 @@ class SessionEventStream:
         self,
         start_id: int = 0,
         end_id: int | None = None,
-        event_types: list[str | EventType] | None = None
+        event_types: list[str | EventType] | None = None,
     ) -> list[dict[str, Any]]:
         """读取事件 - 支持范围查询和类型过滤
 
@@ -160,10 +162,7 @@ class SessionEventStream:
 
         # 类型过滤
         if event_types:
-            type_values = [
-                t if isinstance(t, str) else t.value
-                for t in event_types
-            ]
+            type_values = [t if isinstance(t, str) else t.value for t in event_types]
             events = [e for e in events if e["type"] in type_values]
 
         return events
@@ -172,7 +171,7 @@ class SessionEventStream:
         self,
         max_age_days: int | None = None,
         max_count: int | None = None,
-        keep_summary_markers: bool = True
+        keep_summary_markers: bool = True,
     ) -> int:
         """清理旧事件，防止内存无限增长
 
@@ -204,9 +203,9 @@ class SessionEventStream:
         new_events = []
         for e in self._events:
             keep = (
-                e["id"] in summary_marker_ids or
-                e.get("timestamp", 0) >= cutoff_time or
-                e["id"] > self._event_counter - max_count // 2  # 保留最近一半
+                e["id"] in summary_marker_ids
+                or e.get("timestamp", 0) >= cutoff_time
+                or e["id"] > self._event_counter - max_count // 2  # 保留最近一半
             )
             if keep:
                 new_events.append(e)
@@ -236,7 +235,7 @@ class SessionEventStream:
             "messages": [],
             "context": {},
             "last_summary": None,
-            "conversation_rounds": 0
+            "conversation_rounds": 0,
         }
 
         if target_event_id <= 0:
@@ -258,9 +257,7 @@ class SessionEventStream:
         return self.replay_to_state(self._event_counter)
 
     def _apply_event_to_state(
-        self,
-        state: dict[str, Any],
-        event: dict[str, Any]
+        self, state: dict[str, Any], event: dict[str, Any]
     ) -> dict[str, Any]:
         """应用单个事件到状态
 
@@ -275,39 +272,34 @@ class SessionEventStream:
         data = event["data"]
 
         if event_type == EventType.USER_INPUT.value:
-            state["messages"].append({
-                "role": "user",
-                "content": data.get("content", "")
-            })
+            state["messages"].append(
+                {"role": "user", "content": data.get("content", "")}
+            )
             state["conversation_rounds"] += 1
 
         elif event_type == EventType.LLM_RESPONSE.value:
-            msg: dict[str, Any] = {
-                "role": "assistant",
-                "content": data.get("content")
-            }
+            msg: dict[str, Any] = {"role": "assistant", "content": data.get("content")}
             if data.get("tool_calls"):
                 msg["tool_calls"] = data["tool_calls"]
             state["messages"].append(msg)
 
         elif event_type == EventType.TOOL_CALL.value:
-            state["messages"].append({
-                "role": "assistant",
-                "tool_calls": [data]
-            })
+            state["messages"].append({"role": "assistant", "tool_calls": [data]})
 
         elif event_type == EventType.TOOL_RESULT.value:
-            state["messages"].append({
-                "role": "tool",
-                "tool_call_id": data.get("tool_call_id"),
-                "content": data.get("content", "")
-            })
+            state["messages"].append(
+                {
+                    "role": "tool",
+                    "tool_call_id": data.get("tool_call_id"),
+                    "content": data.get("content", ""),
+                }
+            )
 
         elif event_type == EventType.SUMMARY_MARKER.value:
             state["last_summary"] = {
                 "event_id": event["id"],
                 "summary": data.get("summary", ""),
-                "covers_events": data.get("covers_events", [])
+                "covers_events": data.get("covers_events", []),
             }
 
         elif event_type == EventType.CONTEXT_RESET.value:
@@ -322,10 +314,7 @@ class SessionEventStream:
     # === 摘要支持 (不修改原数据) ===
 
     def create_summary_marker(
-        self,
-        event_id: int,
-        summary: str,
-        metadata: dict[str, Any] | None = None
+        self, event_id: int, summary: str, metadata: dict[str, Any] | None = None
     ) -> int:
         """创建摘要标记 (不截断历史)
 
@@ -340,7 +329,7 @@ class SessionEventStream:
         marker_data: dict[str, Any] = {
             "covers_events": list(range(1, event_id + 1)),
             "summary": summary,
-            "created_at": time.time()
+            "created_at": time.time(),
         }
 
         if metadata:
@@ -349,9 +338,7 @@ class SessionEventStream:
         return self.emit_event(EventType.SUMMARY_MARKER, marker_data)
 
     def create_context_reset_marker(
-        self,
-        iteration: int,
-        preserved_context: str | None = None
+        self, iteration: int, preserved_context: str | None = None
     ) -> int:
         """创建上下文重置标记 (Ralph Loop 使用)
 
@@ -368,7 +355,7 @@ class SessionEventStream:
         marker_data: dict[str, Any] = {
             "iteration": iteration,
             "preserved_context": preserved_context,
-            "created_at": time.time()
+            "created_at": time.time(),
         }
 
         return self.emit_event(EventType.CONTEXT_RESET, marker_data)
@@ -398,14 +385,13 @@ class SessionEventStream:
         for event in reversed(self._events):
             if event["type"] in (
                 EventType.SUMMARY_MARKER.value,
-                EventType.CONTEXT_RESET.value
+                EventType.CONTEXT_RESET.value,
             ):
                 return event
         return None
 
     def get_events_since_last_summary(
-        self,
-        event_types: list[str | EventType] | None = None
+        self, event_types: list[str | EventType] | None = None
     ) -> list[dict[str, Any]]:
         """获取最近摘要标记之后的事件
 
@@ -479,8 +465,7 @@ class SessionEventStream:
                         event = json.loads(line)
                         self._events.append(event)
                         self._event_counter = max(
-                            self._event_counter,
-                            event.get("id", 0)
+                            self._event_counter, event.get("id", 0)
                         )
                     except json.JSONDecodeError as e:
                         logger.warning(
@@ -515,9 +500,7 @@ class SessionEventStream:
         return None
 
     def build_context_for_llm(
-        self,
-        system_prompt: str | None = None,
-        max_recent_events: int | None = None
+        self, system_prompt: str | None = None, max_recent_events: int | None = None
     ) -> list[dict[str, Any]]:
         """从事件流构建 LLM 上下文
 
@@ -547,25 +530,26 @@ class SessionEventStream:
             if event_type == EventType.SUMMARY_MARKER.value:
                 # 摘要标记：添加摘要作为上下文
                 summary_content = data.get("summary", "")
-                messages.append({
-                    "role": "user",
-                    "content": f"[历史摘要]\n{summary_content}"
-                })
+                messages.append(
+                    {"role": "user", "content": f"[历史摘要]\n{summary_content}"}
+                )
             elif event_type == EventType.CONTEXT_RESET.value:
                 # 上下文重置标记：添加保留的上下文
                 preserved = data.get("preserved_context")
                 iteration = data.get("iteration", 0)
                 if preserved:
-                    messages.append({
-                        "role": "system",
-                        "content": f"[迭代 {iteration} 状态摘要]\n{preserved}"
-                    })
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": f"[迭代 {iteration} 状态摘要]\n{preserved}",
+                        }
+                    )
 
         # 4. 获取边界点后的事件
         context_event_types: list[str | EventType] = [
             EventType.USER_INPUT,
             EventType.LLM_RESPONSE,
-            EventType.TOOL_RESULT
+            EventType.TOOL_RESULT,
         ]
 
         # 使用边界标记后的起始 ID
@@ -606,30 +590,24 @@ class SessionEventStream:
             return {
                 "role": "tool",
                 "tool_call_id": data.get("tool_call_id"),
-                "content": data.get("content", "")
+                "content": data.get("content", ""),
             }
 
         return None
 
     def record_session_start(self, metadata: dict[str, Any] | None = None) -> int:
         """记录会话开始"""
-        return self.emit_event(
-            EventType.SESSION_START,
-            {"metadata": metadata or {}}
-        )
+        return self.emit_event(EventType.SESSION_START, {"metadata": metadata or {}})
 
     def record_session_end(self, reason: str = "normal") -> int:
         """记录会话结束"""
         return self.emit_event(
             EventType.SESSION_END,
-            {"reason": reason, "event_count": self._event_counter}
+            {"reason": reason, "event_count": self._event_counter},
         )
 
     def record_error(
-        self,
-        error_type: str,
-        error_message: str,
-        context: dict[str, Any] | None = None
+        self, error_type: str, error_message: str, context: dict[str, Any] | None = None
     ) -> int:
         """记录错误"""
         return self.emit_event(
@@ -637,6 +615,6 @@ class SessionEventStream:
             {
                 "error_type": error_type,
                 "error_message": error_message,
-                "context": context or {}
-            }
+                "context": context or {},
+            },
         )

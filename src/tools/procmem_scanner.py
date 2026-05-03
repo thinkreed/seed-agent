@@ -3,6 +3,7 @@ Memory Scanner Helper - 进程内存扫描基础模块
 支持: Hex/字符串搜索, 特征码定位
 注意: 需要管理员权限及 PROCESS_VM_READ 权限
 """
+
 import ctypes
 import logging
 import os
@@ -35,6 +36,7 @@ MEM_IMAGE = 0x1000000
 @dataclass
 class MemoryRegion:
     """内存区域信息"""
+
     base_address: int
     region_size: int
     state: int
@@ -62,12 +64,12 @@ def open_process(pid: int) -> int | None:
 
     try:
         handle = ctypes.windll.kernel32.OpenProcess(
-            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-            False,
-            pid
+            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid
         )
         if handle == 0:
-            logger.error(f"Failed to open process {pid}. Error: {ctypes.GetLastError()}")
+            logger.error(
+                f"Failed to open process {pid}. Error: {ctypes.GetLastError()}"
+            )
             return None
         return handle
     except Exception as e:
@@ -87,16 +89,12 @@ def read_process_memory(handle: int, address: int, size: int) -> bytes | None:
     bytes_read = ctypes.c_size_t(0)
 
     success = ctypes.windll.kernel32.ReadProcessMemory(
-        handle,
-        ctypes.c_void_p(address),
-        buffer,
-        size,
-        ctypes.byref(bytes_read)
+        handle, ctypes.c_void_p(address), buffer, size, ctypes.byref(bytes_read)
     )
 
     if not success:
         return None
-    return buffer.raw[:bytes_read.value]
+    return buffer.raw[: bytes_read.value]
 
 
 def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
@@ -125,10 +123,7 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
 
     while True:
         result = ctypes.windll.kernel32.VirtualQueryEx(
-            handle,
-            ctypes.c_void_p(address),
-            ctypes.byref(mbi),
-            ctypes.sizeof(mbi)
+            handle, ctypes.c_void_p(address), ctypes.byref(mbi), ctypes.sizeof(mbi)
         )
 
         if result == 0:
@@ -136,13 +131,15 @@ def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
 
         # 只关注已提交的内存区域
         if mbi.State == 0x1000:  # MEM_COMMIT
-            regions.append(MemoryRegion(
-                base_address=mbi.BaseAddress,
-                region_size=mbi.RegionSize,
-                state=mbi.State,
-                protect=mbi.Protect,
-                type_=mbi.Type
-            ))
+            regions.append(
+                MemoryRegion(
+                    base_address=mbi.BaseAddress,
+                    region_size=mbi.RegionSize,
+                    state=mbi.State,
+                    protect=mbi.Protect,
+                    type_=mbi.Type,
+                )
+            )
 
         address += mbi.RegionSize
 
@@ -178,7 +175,15 @@ def _prepare_search_pattern(pattern: str, mode: str) -> bytes | None:
     return None
 
 
-def _search_region(data: bytes, pattern: bytes, base_addr: int, max_results: int, results: list[dict], type_name: str, size: int) -> bool:
+def _search_region(
+    data: bytes,
+    pattern: bytes,
+    base_addr: int,
+    max_results: int,
+    results: list[dict],
+    type_name: str,
+    size: int,
+) -> bool:
     """Search for pattern in data. Returns True if max_results reached."""
     offset = 0
     while len(results) < max_results:
@@ -190,23 +195,22 @@ def _search_region(data: bytes, pattern: bytes, base_addr: int, max_results: int
         ctx_start = max(0, idx - 16)
         ctx_end = min(len(data), idx + len(pattern) + 16)
 
-        results.append({
-            "address": addr,
-            "address_hex": f"0x{addr:016X}",
-            "matched": pattern.hex(),
-            "context_hex": data[ctx_start:ctx_end].hex(),
-            "region_size": size,
-            "region_type": type_name
-        })
+        results.append(
+            {
+                "address": addr,
+                "address_hex": f"0x{addr:016X}",
+                "matched": pattern.hex(),
+                "context_hex": data[ctx_start:ctx_end].hex(),
+                "region_size": size,
+                "region_type": type_name,
+            }
+        )
         offset = idx + 1
     return True
 
 
 def scan_memory(
-    pid: int,
-    pattern: str,
-    mode: str = "string",
-    max_results: int = 10
+    pid: int, pattern: str, mode: str = "string", max_results: int = 10
 ) -> list[dict]:
     """
     扫描进程内存
@@ -235,15 +239,25 @@ def scan_memory(
 
         results: list[dict] = []
         for region in regions:
-            if not is_readable_region(region.protect) or region.region_size > 100 * 1024 * 1024:
+            if (
+                not is_readable_region(region.protect)
+                or region.region_size > 100 * 1024 * 1024
+            ):
                 continue
 
             data = read_process_memory(handle, region.base_address, region.region_size)
             if not data:
                 continue
 
-            if _search_region(data, search_pattern, region.base_address, max_results, results,
-                             _region_type_name(region.type_), region.region_size):
+            if _search_region(
+                data,
+                search_pattern,
+                region.base_address,
+                max_results,
+                results,
+                _region_type_name(region.type_),
+                region.region_size,
+            ):
                 break
 
         logger.info(f"Found {len(results)} matches")

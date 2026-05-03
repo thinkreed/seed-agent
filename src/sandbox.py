@@ -44,13 +44,15 @@ DEFAULT_SANDBOX_ROOT = Path(os.path.expanduser("~")) / ".seed" / "sandbox"
 
 class IsolationLevel(str, Enum):
     """隔离级别"""
-    PROCESS = "process"       # 进程级隔离 (子进程执行)
-    CONTAINER = "container"   # 容器级隔离 (Docker)
-    VM = "vm"                 # 虚拟机级隔离 (最强)
+
+    PROCESS = "process"  # 进程级隔离 (子进程执行)
+    CONTAINER = "container"  # 容器级隔离 (Docker)
+    VM = "vm"  # 虚拟机级隔离 (最强)
 
 
 class PermissionAction(str, Enum):
     """权限动作"""
+
     ALLOW = "allow"
     DENY = "deny"
     READONLY = "readonly"
@@ -70,7 +72,7 @@ class SandboxPermission:
         tool_name: str,
         action: PermissionAction = PermissionAction.ALLOW,
         path_patterns: list[str] | None = None,
-        max_output_size: int = 10000
+        max_output_size: int = 10000,
     ):
         self.tool_name = tool_name
         self.action = action
@@ -87,7 +89,7 @@ class ExecutionResult:
         content: str,
         success: bool = True,
         error: str | None = None,
-        duration_ms: float = 0.0
+        duration_ms: float = 0.0,
     ):
         self.tool_call_id = tool_call_id
         self.content = content
@@ -100,7 +102,7 @@ class ExecutionResult:
         return {
             "tool_call_id": self.tool_call_id,
             "role": "tool",
-            "content": self.content
+            "content": self.content,
         }
 
 
@@ -137,36 +139,41 @@ class Sandbox:
         "file_write": SandboxPermission("file_write", PermissionAction.ALLOW),
         "file_edit": SandboxPermission("file_edit", PermissionAction.ALLOW),
         "list_directory": SandboxPermission("list_directory", PermissionAction.ALLOW),
-
         # 代码执行
-        "run_shell_command": SandboxPermission("run_shell_command", PermissionAction.ALLOW),
+        "run_shell_command": SandboxPermission(
+            "run_shell_command", PermissionAction.ALLOW
+        ),
         "code_as_policy": SandboxPermission("code_as_policy", PermissionAction.ALLOW),
-
         # 记忆操作
         "save_memory": SandboxPermission("save_memory", PermissionAction.ALLOW),
         "load_memory": SandboxPermission("load_memory", PermissionAction.ALLOW),
         "search_memory": SandboxPermission("search_memory", PermissionAction.ALLOW),
-
         # 用户交互
-        "ask_user_question": SandboxPermission("ask_user_question", PermissionAction.ALLOW),
-
+        "ask_user_question": SandboxPermission(
+            "ask_user_question", PermissionAction.ALLOW
+        ),
         # 技能操作
         "load_skill": SandboxPermission("load_skill", PermissionAction.ALLOW),
-
         # 子代理
         "spawn_subagent": SandboxPermission("spawn_subagent", PermissionAction.ALLOW),
-        "wait_for_subagent": SandboxPermission("wait_for_subagent", PermissionAction.ALLOW),
+        "wait_for_subagent": SandboxPermission(
+            "wait_for_subagent", PermissionAction.ALLOW
+        ),
         "aggregate_subagent_results": SandboxPermission(
             "aggregate_subagent_results", PermissionAction.ALLOW
         ),
         "list_subagents": SandboxPermission("list_subagents", PermissionAction.ALLOW),
         "kill_subagent": SandboxPermission("kill_subagent", PermissionAction.ALLOW),
-
         # Ralph Loop
-        "start_ralph_loop": SandboxPermission("start_ralph_loop", PermissionAction.ALLOW),
-        "check_ralph_status": SandboxPermission("check_ralph_status", PermissionAction.ALLOW),
-        "mark_ralph_complete": SandboxPermission("mark_ralph_complete", PermissionAction.ALLOW),
-
+        "start_ralph_loop": SandboxPermission(
+            "start_ralph_loop", PermissionAction.ALLOW
+        ),
+        "check_ralph_status": SandboxPermission(
+            "check_ralph_status", PermissionAction.ALLOW
+        ),
+        "mark_ralph_complete": SandboxPermission(
+            "mark_ralph_complete", PermissionAction.ALLOW
+        ),
         # Scheduler
         "create_scheduled_task": SandboxPermission(
             "create_scheduled_task", PermissionAction.ALLOW
@@ -181,9 +188,17 @@ class Sandbox:
 
     # 路径相关参数名
     PATH_KEYS = [
-        "path", "file_path", "directory", "dir",
-        "src", "dst", "source", "destination",
-        "root", "base_path", "output_path"
+        "path",
+        "file_path",
+        "directory",
+        "dir",
+        "src",
+        "dst",
+        "source",
+        "destination",
+        "root",
+        "base_path",
+        "output_path",
     ]
 
     def __init__(
@@ -192,7 +207,7 @@ class Sandbox:
         file_system_root: Path | None = None,
         network_policy: dict[str, Any] | None = None,
         permissions: dict[str, SandboxPermission] | None = None,
-        workspace_path: Path | None = None
+        workspace_path: Path | None = None,
     ):
         """初始化 Sandbox
 
@@ -304,7 +319,7 @@ class Sandbox:
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": "Error: Failed to parse arguments: invalid JSON"
+                "content": "Error: Failed to parse arguments: invalid JSON",
             }
 
         # 路径映射
@@ -316,7 +331,7 @@ class Sandbox:
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": f"Error: Permission denied for tool '{tool_name}' in sandbox"
+                "content": f"Error: Permission denied for tool '{tool_name}' in sandbox",
             }
 
         # 根据隔离级别执行
@@ -335,7 +350,7 @@ class Sandbox:
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": truncated_result
+                "content": truncated_result,
             }
 
         except Exception as e:
@@ -343,7 +358,7 @@ class Sandbox:
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
-                "content": f"Error: {type(e).__name__}: {str(e)[:500]}"
+                "content": f"Error: {type(e).__name__}: {str(e)[:500]}",
             }
 
     # === 路径映射 ===
@@ -370,7 +385,9 @@ class Sandbox:
                 mapped[key] = self._map_paths(value)
             elif isinstance(value, list):
                 mapped[key] = [
-                    self._map_single_path(v) if isinstance(v, str) and key in self.PATH_KEYS else v
+                    self._map_single_path(v)
+                    if isinstance(v, str) and key in self.PATH_KEYS
+                    else v
                     for v in value
                 ]
             else:
@@ -447,7 +464,9 @@ class Sandbox:
 
         if perm is None:
             # 未配置的工具默认允许（向后兼容）
-            logger.debug(f"No permission config for tool: {tool_name}, allowing by default")
+            logger.debug(
+                f"No permission config for tool: {tool_name}, allowing by default"
+            )
             return True
 
         if perm.action == PermissionAction.DENY:
@@ -505,12 +524,13 @@ class Sandbox:
 
         # 创建子进程
         proc = await asyncio.create_subprocess_exec(
-            "python", "-c",
+            "python",
+            "-c",
             f"import json; from src.tools.builtin_tools import {tool_name}; "
             f"print({tool_name}(**json.loads('{args_json}')))",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(self._workspace_path)
+            cwd=str(self._workspace_path),
         )
 
         stdout, stderr = await proc.communicate()
@@ -553,13 +573,15 @@ class Sandbox:
                 cmd,
                 volumes={
                     str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
-                    str(self._fs_root): {"bind": "/sandbox", "mode": "rw"}
+                    str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
                 },
                 remove=True,
                 stdout=True,
-                stderr=True
+                stderr=True,
             )
-            return container.decode() if isinstance(container, bytes) else str(container)
+            return (
+                container.decode() if isinstance(container, bytes) else str(container)
+            )
         except Exception as e:
             logger.error(f"Container execution failed: {e}")
             # 降级到进程执行
@@ -603,7 +625,7 @@ class Sandbox:
             "workspace_path": str(self._workspace_path),
             "tools_registered": len(self._tools._tools) if self._tools else 0,
             "network_policy": self._network_policy,
-            "permissions_count": len(self._permissions)
+            "permissions_count": len(self._permissions),
         }
 
     # === 权限配置 ===
@@ -613,7 +635,7 @@ class Sandbox:
         tool_name: str,
         action: PermissionAction,
         path_patterns: list[str] | None = None,
-        max_output_size: int = 10000
+        max_output_size: int = 10000,
     ) -> None:
         """设置单个工具权限
 
@@ -634,7 +656,7 @@ class Sandbox:
             name: {
                 "action": perm.action.value,
                 "path_patterns": perm.path_patterns,
-                "max_output_size": perm.max_output_size
+                "max_output_size": perm.max_output_size,
             }
             for name, perm in self._permissions.items()
         }
@@ -648,9 +670,15 @@ class Sandbox:
     def allow_readonly_tools(self) -> None:
         """只允许只读工具"""
         readonly_tools = [
-            "file_read", "list_directory", "search_memory",
-            "load_memory", "load_skill", "ask_user_question",
-            "list_subagents", "check_ralph_status", "list_scheduled_tasks"
+            "file_read",
+            "list_directory",
+            "search_memory",
+            "load_memory",
+            "load_skill",
+            "ask_user_question",
+            "list_subagents",
+            "check_ralph_status",
+            "list_scheduled_tasks",
         ]
         for name, perm in self._permissions.items():
             if name in readonly_tools:

@@ -16,6 +16,7 @@ AbortSignal 模块 - 取消信号控制
 - qwen-code: background-tasks.ts, acpAgent.ts
 - JavaScript AbortController API
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -237,7 +238,7 @@ class TimeoutCancellationToken(CancellationToken):
         self,
         timeout_seconds: float,
         parent: CancellationToken | None = None,
-        reason: str = "timeout"
+        reason: str = "timeout",
     ):
         """初始化超时令牌
 
@@ -290,9 +291,7 @@ class CompositeCancellationToken(CancellationToken):
     """
 
     def __init__(
-        self,
-        sources: list[CancellationToken],
-        reason: str = "composite_cancelled"
+        self, sources: list[CancellationToken], reason: str = "composite_cancelled"
     ):
         """初始化组合令牌
 
@@ -324,8 +323,7 @@ class CompositeCancellationToken(CancellationToken):
 
 
 def create_linked_token(
-    parent: CancellationToken | None = None,
-    timeout: float | None = None
+    parent: CancellationToken | None = None, timeout: float | None = None
 ) -> CancellationToken:
     """创建关联令牌（便捷函数）
 

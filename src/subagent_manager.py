@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SubagentTask:
     """Subagent 任务定义"""
+
     id: str
     subagent_type: SubagentType
     prompt: str
@@ -99,6 +100,7 @@ class SubagentManager:
     def _get_primary_model(self) -> str:
         """从配置获取主模型"""
         from src.shared_config import get_primary_model
+
         return get_primary_model(self.gateway)
 
     def register_status_callback(self, callback: Callable[[str, str], None]):
@@ -174,7 +176,8 @@ class SubagentManager:
                 subagent_type=task.subagent_type,
                 model_id=self.model_id,
                 max_iterations=task.max_iterations or self.DEFAULT_MAX_ITERATIONS,
-                timeout=task.timeout or DEFAULT_TIMEOUTS.get(task.subagent_type.value, 300),
+                timeout=task.timeout
+                or DEFAULT_TIMEOUTS.get(task.subagent_type.value, 300),
                 custom_system_prompt=task.custom_system_prompt,
                 custom_tools=task.custom_tools,
             )
@@ -324,12 +327,11 @@ class SubagentManager:
             try:
                 await asyncio.wait_for(
                     self._result_condition.wait_for(lambda: task_id in self._results),
-                    timeout=timeout
+                    timeout=timeout,
                 )
             except asyncio.TimeoutError:
                 return None
             return self._results.get(task_id)
-
 
     def aggregate_results(
         self,
@@ -369,7 +371,9 @@ class SubagentManager:
                 summaries.append(f"[{task_id}] SUCCESS:\n{content}")
             elif include_errors:
                 error_msg = result.error or "Unknown error"
-                summaries.append(f"[{task_id}] {result.state.status.upper()}: {error_msg}")
+                summaries.append(
+                    f"[{task_id}] {result.state.status.upper()}: {error_msg}"
+                )
 
         return "\n\n---\n\n".join(summaries)
 
@@ -410,13 +414,17 @@ class SubagentManager:
             task_status = self.get_status(task_id)
             if status and task_status != status:
                 continue
-            tasks.append({
-                "id": task_id,
-                "type": task.subagent_type.value,
-                "status": task_status,
-                "prompt_preview": task.prompt[:100] + "..." if len(task.prompt) > 100 else task.prompt,
-                "priority": task.priority,
-            })
+            tasks.append(
+                {
+                    "id": task_id,
+                    "type": task.subagent_type.value,
+                    "status": task_status,
+                    "prompt_preview": task.prompt[:100] + "..."
+                    if len(task.prompt) > 100
+                    else task.prompt,
+                    "priority": task.priority,
+                }
+            )
         return tasks
 
     # ==================== 便捷方法 ====================
@@ -439,6 +447,7 @@ class SubagentManager:
 
 
 # ==================== RalphLoop 集成支持 ====================
+
 
 class RalphSubagentOrchestrator:
     """
@@ -485,7 +494,9 @@ class RalphSubagentOrchestrator:
 
     def get_execution_report(self) -> dict:
         """获取执行报告"""
-        plan_result = self.manager.get_result(self._plan_task_id) if self._plan_task_id else None
+        plan_result = (
+            self.manager.get_result(self._plan_task_id) if self._plan_task_id else None
+        )
         return {
             "plan": {
                 "task_id": self._plan_task_id,
@@ -494,13 +505,23 @@ class RalphSubagentOrchestrator:
             "implement": [
                 {
                     "task_id": task_id,
-                    "result": (r.summary if (r := self.manager.get_result(task_id)) else None),
+                    "result": (
+                        r.summary if (r := self.manager.get_result(task_id)) else None
+                    ),
                 }
                 for task_id in self._implement_task_ids
             ],
             "review": {
                 "task_id": self._review_task_id,
-                "result": (r.summary if (r := self.manager.get_result(self._review_task_id) if self._review_task_id else None) else None),
+                "result": (
+                    r.summary
+                    if (
+                        r := self.manager.get_result(self._review_task_id)
+                        if self._review_task_id
+                        else None
+                    )
+                    else None
+                ),
             },
         }
 

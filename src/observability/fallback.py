@@ -27,7 +27,9 @@ class NoOpSpan:
     def set_attribute(self, key: str, value: SpanAttributeValue) -> None:
         pass
 
-    def add_event(self, name: str, attributes: dict[str, SpanAttributeValue] | None = None) -> None:
+    def add_event(
+        self, name: str, attributes: dict[str, SpanAttributeValue] | None = None
+    ) -> None:
         pass
 
     def record_exception(self, exception: BaseException) -> None:
@@ -57,17 +59,21 @@ class NoOpTracer:
         context: object = None,
     ):
         """返回一个 context manager"""
+
         class NoOpContextManager:
             def __enter__(self) -> NoOpSpan:
                 return NoOpSpan()
+
             def __exit__(self, *args) -> None:
                 pass
+
         return NoOpContextManager()
 
 
 # NoOp StatusCode
 class NoOpStatusCode:
     """NoOp StatusCode 枚举"""
+
     UNSET = "UNSET"
     OK = "OK"
     ERROR = "ERROR"
@@ -123,22 +129,28 @@ def record_llm_span_error(span: NoOpSpan, error: Exception) -> str:
     return classify_error(error)
 
 
-def record_llm_success(provider: str, model: str, input_tokens: int, output_tokens: int, duration_ms: float) -> None:
+def record_llm_success(
+    provider: str, model: str, input_tokens: int, output_tokens: int, duration_ms: float
+) -> None:
     """记录成功（NoOp）"""
 
 
-def record_llm_error(provider: str, model: str, duration_ms: float, error_type: str) -> None:
+def record_llm_error(
+    provider: str, model: str, duration_ms: float, error_type: str
+) -> None:
     """记录错误（NoOp）"""
 
 
-def add_fallback_event(span: NoOpSpan, from_provider: str, to_provider: str, reason: str, attempt: int) -> None:
+def add_fallback_event(
+    span: NoOpSpan, from_provider: str, to_provider: str, reason: str, attempt: int
+) -> None:
     """添加 Fallback 事件（NoOp）"""
 
 
 def set_llm_span_attributes(
-    span: NoOpSpan, 
-    model: str, 
-    provider: str, 
+    span: NoOpSpan,
+    model: str,
+    provider: str,
     streaming: bool = False,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
@@ -147,8 +159,8 @@ def set_llm_span_attributes(
 
 
 def set_tool_span_attributes(
-    span: NoOpSpan, 
-    tool_name: str, 
+    span: NoOpSpan,
+    tool_name: str,
     file_path: str | None = None,
     duration_ms: float | None = None,
 ) -> None:
@@ -156,15 +168,17 @@ def set_tool_span_attributes(
 
 
 def set_subagent_span_attributes(
-    span: NoOpSpan, 
-    subagent_type: str, 
+    span: NoOpSpan,
+    subagent_type: str,
     task_id: str,
     status: str | None = None,
 ) -> None:
     """设置 Subagent Span 属性（NoOp）"""
 
 
-def start_span(name: str, attributes: dict[str, SpanAttributeValue] | None = None) -> NoOpSpan:
+def start_span(
+    name: str, attributes: dict[str, SpanAttributeValue] | None = None
+) -> NoOpSpan:
     """启动新 Span（NoOp）"""
     return NoOpSpan()
 
@@ -173,15 +187,20 @@ def start_as_current_span(
     name: str, attributes: dict[str, SpanAttributeValue] | None = None
 ) -> "AbstractContextManager[NoOpSpan]":
     """启动作为当前 Span（NoOp context manager）"""
+
     class NoOpContextManager:
         def __enter__(self) -> NoOpSpan:
             return NoOpSpan()
+
         def __exit__(self, *args) -> None:
             pass
+
     return NoOpContextManager()
 
 
-def create_task_with_context(coro: Coroutine[Any, Any, T], ctx: object = None) -> asyncio.Task[T]:
+def create_task_with_context(
+    coro: Coroutine[Any, Any, T], ctx: object = None
+) -> asyncio.Task[T]:
     """创建带 context 的 task（fallback 直接创建）"""
     return asyncio.create_task(coro)
 

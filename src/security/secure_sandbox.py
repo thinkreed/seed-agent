@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SecureExecutionResult:
     """安全执行结果"""
+
     tool_call_id: str
     content: str
     success: bool
@@ -271,7 +272,9 @@ class SecureSandbox(Sandbox):
                 risk_level=classification.risk_level,
                 action_taken=classification.action,
                 duration_ms=duration_ms,
-                user_confirmed=True if classification.action == RiskAction.REQUEST_CONFIRM else None,
+                user_confirmed=True
+                if classification.action == RiskAction.REQUEST_CONFIRM
+                else None,
             )
 
         except Exception as e:
@@ -309,9 +312,7 @@ class SecureSandbox(Sandbox):
             是否批准
         """
         if self._user_confirmation_callback:
-            return self._user_confirmation_callback(
-                tool_name, risk_level.value, args
-            )
+            return self._user_confirmation_callback(tool_name, risk_level.value, args)
 
         # 默认行为：记录并返回 False（需要外部确认机制）
         logger.warning(
@@ -362,11 +363,15 @@ class SecureSandbox(Sandbox):
 
         # 限制历史大小
         if len(self._secure_execution_history) > self._max_history_size:
-            self._secure_execution_history = self._secure_execution_history[-self._max_history_size:]
+            self._secure_execution_history = self._secure_execution_history[
+                -self._max_history_size :
+            ]
 
     # === 公共 API ===
 
-    def get_available_tools_secure(self, context: dict[str, Any] | None = None) -> set[str]:
+    def get_available_tools_secure(
+        self, context: dict[str, Any] | None = None
+    ) -> set[str]:
         """获取可用工具集（考虑渐进式扩展）"""
         if self._tool_expander and context:
             return self._tool_expander.get_available_tools(context)
@@ -396,7 +401,9 @@ class SecureSandbox(Sandbox):
             "total_executions": len(self._secure_execution_history),
             "successful": sum(1 for r in self._secure_execution_history if r.success),
             "blocked": sum(1 for r in self._secure_execution_history if r.blocked),
-            "cancelled": sum(1 for r in self._secure_execution_history if r.user_confirmed is False),
+            "cancelled": sum(
+                1 for r in self._secure_execution_history if r.user_confirmed is False
+            ),
             "by_risk_level": {},
             "average_duration_ms": 0.0,
         }
@@ -404,8 +411,7 @@ class SecureSandbox(Sandbox):
         # 按风险等级统计
         for level in RiskLevel:
             stats["by_risk_level"][level.value] = sum(
-                1 for r in self._secure_execution_history
-                if r.risk_level == level
+                1 for r in self._secure_execution_history if r.risk_level == level
             )
 
         # 平均执行时间

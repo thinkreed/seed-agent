@@ -36,6 +36,7 @@ DEFAULT_VAULT_PATH = Path(os.path.expanduser("~")) / ".seed" / "vault"
 
 class CredentialType(str, Enum):
     """凭证类型"""
+
     API_KEY = "api_key"
     OAUTH_TOKEN = "oauth_token"
     SSH_KEY = "ssh_key"
@@ -45,15 +46,17 @@ class CredentialType(str, Enum):
 
 class CredentialScope(str, Enum):
     """凭证作用域"""
-    API_CALL = "api_call"          # 仅允许 API 调用
-    FILE_UPLOAD = "file_upload"    # 允许文件上传
-    ADMIN = "admin"                # 允许管理操作
-    READONLY = "readonly"          # 只读访问
+
+    API_CALL = "api_call"  # 仅允许 API 调用
+    FILE_UPLOAD = "file_upload"  # 允许文件上传
+    ADMIN = "admin"  # 允许管理操作
+    READONLY = "readonly"  # 只读访问
 
 
 @dataclass
 class CredentialAccessLog:
     """凭证访问日志"""
+
     timestamp: float
     credential_id: str
     scope: str
@@ -66,6 +69,7 @@ class CredentialAccessLog:
 @dataclass
 class CredentialRotationRecord:
     """凭证轮换记录"""
+
     old_value_encrypted: str
     rotated_at: float
     rotated_by: str
@@ -75,6 +79,7 @@ class CredentialRotationRecord:
 @dataclass
 class CredentialRecord:
     """凭证记录"""
+
     provider: str
     type: str
     value_encrypted: str
@@ -221,11 +226,13 @@ class CredentialVault:
         """
         try:
             from cryptography.fernet import Fernet
+
             key_bytes: bytes = Fernet.generate_key()
             return key_bytes.decode()
         except ImportError:
             # 如果 cryptography 不可用，使用 base64 编码的随机字节
             import secrets
+
             random_bytes = secrets.token_bytes(32)
             key_str: str = base64.urlsafe_b64encode(random_bytes).decode()
             logger.warning(
@@ -434,12 +441,14 @@ class CredentialVault:
             rotated_by=rotated_by,
             reason=reason,
         )
-        record.rotation_history.append({
-            "old_value_encrypted": rotation_record.old_value_encrypted,
-            "rotated_at": rotation_record.rotated_at,
-            "rotated_by": rotation_record.rotated_by,
-            "reason": rotation_record.reason,
-        })
+        record.rotation_history.append(
+            {
+                "old_value_encrypted": rotation_record.old_value_encrypted,
+                "rotated_at": rotation_record.rotated_at,
+                "rotated_by": rotation_record.rotated_by,
+                "reason": rotation_record.reason,
+            }
+        )
 
         # 加密新值
         encrypted_value = self._encrypt(new_value)
@@ -516,19 +525,21 @@ class CredentialVault:
         result: list[dict[str, Any]] = []
 
         for cred_id, record in self._credentials.items():
-            result.append({
-                "credential_id": cred_id,
-                "provider": record.provider,
-                "type": record.type,
-                "scopes": record.scopes,
-                "created_at": record.created_at,
-                "last_accessed": record.last_accessed,
-                "access_count": record.access_count,
-                "rotation_count": len(record.rotation_history),
-                "last_rotated_at": record.rotated_at,
-                "expiry": record.expiry,
-                "metadata": record.metadata,
-            })
+            result.append(
+                {
+                    "credential_id": cred_id,
+                    "provider": record.provider,
+                    "type": record.type,
+                    "scopes": record.scopes,
+                    "created_at": record.created_at,
+                    "last_accessed": record.last_accessed,
+                    "access_count": record.access_count,
+                    "rotation_count": len(record.rotation_history),
+                    "last_rotated_at": record.rotated_at,
+                    "expiry": record.expiry,
+                    "metadata": record.metadata,
+                }
+            )
 
         return result
 
@@ -666,7 +677,7 @@ class CredentialVault:
 
         # 限制日志大小
         if len(self._access_logs) > self._max_access_logs:
-            self._access_logs = self._access_logs[-self._max_access_logs:]
+            self._access_logs = self._access_logs[-self._max_access_logs :]
 
         # 持久化审计日志
         self._persist_audit_log()
@@ -694,7 +705,9 @@ class CredentialVault:
             for log in logs
         ]
 
-    def get_credential_usage_stats(self, provider: str, credential_type: str) -> dict[str, Any]:
+    def get_credential_usage_stats(
+        self, provider: str, credential_type: str
+    ) -> dict[str, Any]:
         """获取凭证使用统计
 
         Args:
@@ -713,8 +726,7 @@ class CredentialVault:
 
         # 过滤相关访问日志
         accesses = [
-            log for log in self._access_logs
-            if log.credential_id == credential_id
+            log for log in self._access_logs if log.credential_id == credential_id
         ]
 
         return {
@@ -738,7 +750,8 @@ class CredentialVault:
             ],
             "success_rate": (
                 sum(1 for a in accesses if a.success) / len(accesses) * 100
-                if accesses else 100.0
+                if accesses
+                else 100.0
             ),
         }
 
@@ -755,7 +768,9 @@ class CredentialVault:
             "total_accesses": total_accesses,
             "successful_accesses": successful,
             "failed_accesses": total_accesses - successful,
-            "success_rate": (successful / total_accesses * 100) if total_accesses else 100.0,
+            "success_rate": (successful / total_accesses * 100)
+            if total_accesses
+            else 100.0,
         }
 
     # === 持久化 ===
@@ -886,7 +901,8 @@ class CredentialVault:
             清理的凭证数量
         """
         expired_ids = [
-            cred_id for cred_id, record in self._credentials.items()
+            cred_id
+            for cred_id, record in self._credentials.items()
             if record.expiry and time.time() > record.expiry
         ]
 

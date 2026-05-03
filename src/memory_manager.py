@@ -138,10 +138,7 @@ class MemoryManager:
     # === 跨层查询 ===
 
     def search_all_levels(
-        self,
-        keyword: str,
-        levels: list[str] | None = None,
-        limit: int = 10
+        self, keyword: str, levels: list[str] | None = None, limit: int = 10
     ) -> dict[str, list[dict[str, Any]]]:
         """跨层搜索
 
@@ -195,12 +192,14 @@ class MemoryManager:
         keyword_lower = keyword.lower()
 
         if keyword_lower in content.lower():
-            return [{
-                "level": "L1",
-                "source": "notes.md",
-                "matched": True,
-                "type": "index_entry"
-            }]
+            return [
+                {
+                    "level": "L1",
+                    "source": "notes.md",
+                    "matched": True,
+                    "type": "index_entry",
+                }
+            ]
         return []
 
     def _search_l2(self, keyword: str, limit: int) -> list[dict[str, Any]]:
@@ -222,12 +221,14 @@ class MemoryManager:
             try:
                 content = skill_file.read_text(encoding="utf-8")
                 if keyword_lower in content.lower():
-                    results.append({
-                        "level": "L2",
-                        "source": skill_dir.name,
-                        "matched": True,
-                        "type": "skill"
-                    })
+                    results.append(
+                        {
+                            "level": "L2",
+                            "source": skill_dir.name,
+                            "matched": True,
+                            "type": "skill",
+                        }
+                    )
                     if len(results) >= limit:
                         break
             except OSError:
@@ -247,12 +248,14 @@ class MemoryManager:
             try:
                 content = f.read_text(encoding="utf-8")
                 if keyword_lower in content.lower():
-                    results.append({
-                        "level": "L3",
-                        "source": f.stem,
-                        "matched": True,
-                        "type": "knowledge"
-                    })
+                    results.append(
+                        {
+                            "level": "L3",
+                            "source": f.stem,
+                            "matched": True,
+                            "type": "knowledge",
+                        }
+                    )
                     if len(results) >= limit:
                         break
             except OSError:
@@ -269,30 +272,31 @@ class MemoryManager:
 
         for pref_key, pref_data in preferences.items():
             if keyword_lower in pref_key.lower():
-                results.append({
-                    "level": "L4",
-                    "source": pref_key,
-                    "value": pref_data.get("usual"),
-                    "type": "user_preference"
-                })
+                results.append(
+                    {
+                        "level": "L4",
+                        "source": pref_key,
+                        "value": pref_data.get("usual"),
+                        "type": "user_preference",
+                    }
+                )
 
             usual = pref_data.get("usual", "")
             if usual and keyword_lower in usual.lower():
-                results.append({
-                    "level": "L4",
-                    "source": pref_key,
-                    "value": usual,
-                    "type": "user_preference"
-                })
+                results.append(
+                    {
+                        "level": "L4",
+                        "source": pref_key,
+                        "value": usual,
+                        "type": "user_preference",
+                    }
+                )
 
         return results
 
     # === 用户观察 ===
 
-    def observe_user(
-        self,
-        interaction: dict[str, Any]
-    ) -> list[str]:
+    def observe_user(self, interaction: dict[str, Any]) -> list[str]:
         """观察用户交互
 
         Args:
@@ -309,11 +313,7 @@ class MemoryManager:
         return self._l4_user_modeling.observe_from_interaction(interaction)
 
     def observe_preference(
-        self,
-        key: str,
-        value: str,
-        context: str | None = None,
-        confidence: float = 0.8
+        self, key: str, value: str, context: str | None = None, confidence: float = 0.8
     ) -> str:
         """直接观察偏好
 
@@ -330,7 +330,7 @@ class MemoryManager:
             evidence_type="preference",
             data={"key": key, "value": value},
             context=context,
-            confidence=confidence
+            confidence=confidence,
         )
 
     async def update_user_model(self) -> dict[str, Any]:
@@ -342,9 +342,7 @@ class MemoryManager:
         return await self._l4_user_modeling.dialectical_update()
 
     def get_user_preference(
-        self,
-        key: str,
-        context: str | None = None
+        self, key: str, context: str | None = None
     ) -> dict[str, Any]:
         """获取用户偏好
 
@@ -363,7 +361,7 @@ class MemoryManager:
         self,
         session_id: str,
         events: list[dict[str, Any]],
-        metadata: dict[str, Any] | None = None
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """归档会话到 L5
 
@@ -378,9 +376,7 @@ class MemoryManager:
         return await self._l5_archive.archive_session(session_id, events, metadata)
 
     async def archive_from_stream(
-        self,
-        event_stream: Any,
-        metadata: dict[str, Any] | None = None
+        self, event_stream: Any, metadata: dict[str, Any] | None = None
     ) -> str:
         """从事件流归档
 
@@ -393,11 +389,7 @@ class MemoryManager:
         """
         return await self._l5_archive.archive_from_event_stream(event_stream, metadata)
 
-    def search_archives(
-        self,
-        keyword: str,
-        limit: int = 20
-    ) -> list[dict[str, Any]]:
+    def search_archives(self, keyword: str, limit: int = 20) -> list[dict[str, Any]]:
         """搜索归档
 
         Args:
@@ -447,8 +439,10 @@ class MemoryManager:
 
         # L5
         l5_stats = self._l5_archive.get_archive_stats()
-        lines.append(f"L5 归档: {l5_stats['total_archives']} 个归档, "
-                     f"{l5_stats['total_events']} 个事件")
+        lines.append(
+            f"L5 归档: {l5_stats['total_archives']} 个归档, "
+            f"{l5_stats['total_events']} 个事件"
+        )
 
         return chr(10).join(lines)
 

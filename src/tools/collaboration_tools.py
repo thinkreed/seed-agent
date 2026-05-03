@@ -53,6 +53,7 @@ def _add_background_task(task: asyncio.Task[Any]) -> None:
 
 # === 会话管理工具 ===
 
+
 def create_collaboration_session(
     session_id: str | None = None,
     mode: str = "multi_brain_one_hand",
@@ -71,7 +72,9 @@ def create_collaboration_session(
     from src.collaboration import CollaborationMode
     from src.session_event_stream import SessionEventStream
 
-    session_id = session_id or f"collab_{int(asyncio.get_event_loop().time() * 1000) % 1000000}"
+    session_id = (
+        session_id or f"collab_{int(asyncio.get_event_loop().time() * 1000) % 1000000}"
+    )
 
     # 验证模式
     mode_map = {
@@ -90,7 +93,7 @@ def create_collaboration_session(
         storage_path = config.get("storage_path")
         session = SessionEventStream(
             session_id=session_id,
-            storage_path=Path(storage_path) if storage_path else None
+            storage_path=Path(storage_path) if storage_path else None,
         )
 
         _collaboration_sessions[session_id] = {
@@ -170,6 +173,7 @@ def destroy_collaboration_session(session_id: str) -> str:
 
 # === 多脑一手模式工具 ===
 
+
 def setup_multi_brain_one_hand(
     session_id: str,
     sandbox_config: dict[str, Any] | None = None,
@@ -203,7 +207,9 @@ def setup_multi_brain_one_hand(
     fs_root = sandbox_config.get("file_system_root")
     ws_path = sandbox_config.get("workspace_path")
     sandbox = Sandbox(
-        isolation_level=IsolationLevel(sandbox_config.get("isolation_level", "process")),
+        isolation_level=IsolationLevel(
+            sandbox_config.get("isolation_level", "process")
+        ),
         file_system_root=Path(fs_root) if isinstance(fs_root, (str, Path)) else None,
         workspace_path=Path(ws_path) if isinstance(ws_path, (str, Path)) else None,
     )
@@ -267,7 +273,9 @@ def multi_angle_analysis(
     # 尝试异步执行
     try:
         asyncio.get_running_loop()
-        task = asyncio.create_task(_run_multi_angle_analysis_async(orchestrator, target))
+        task = asyncio.create_task(
+            _run_multi_angle_analysis_async(orchestrator, target)
+        )
         _add_background_task(task)
         return f"Multi-angle analysis started for: {target[:100]}\nUse 'get_collaboration_status' to check progress."
     except RuntimeError:
@@ -309,7 +317,9 @@ def collaborative_improve(
 
     try:
         asyncio.get_running_loop()
-        task = asyncio.create_task(_run_collaborative_improve_async(orchestrator, target))
+        task = asyncio.create_task(
+            _run_collaborative_improve_async(orchestrator, target)
+        )
         _add_background_task(task)
         return f"Collaborative improvement started for: {target[:100]}"
     except RuntimeError:
@@ -325,6 +335,7 @@ async def _run_collaborative_improve_async(
 
 
 # === 一脑多手模式工具 ===
+
 
 def setup_one_brain_multi_hand(
     session_id: str,
@@ -404,7 +415,9 @@ def cross_environment_execute(
 
     try:
         asyncio.get_running_loop()
-        task_coro = asyncio.create_task(_run_cross_environment_async(orchestrator, task))
+        task_coro = asyncio.create_task(
+            _run_cross_environment_async(orchestrator, task)
+        )
         _add_background_task(task_coro)
         return f"Cross-environment execution started: {task[:100]}"
     except RuntimeError:
@@ -454,6 +467,7 @@ def cross_environment_test(
 
 # === 多脑多手模式工具 ===
 
+
 def setup_multi_brain_multi_hand(
     session_id: str,
     pairs: list[dict[str, Any]] | None = None,
@@ -500,8 +514,12 @@ def setup_multi_brain_multi_hand(
 
         sandbox_cfg = pair_config.get("sandbox_config", {})
         sandbox = Sandbox(
-            isolation_level=IsolationLevel(sandbox_cfg.get("isolation_level", "process")),
-            workspace_path=Path(sandbox_cfg.get("workspace_path")) if sandbox_cfg.get("workspace_path") else None,
+            isolation_level=IsolationLevel(
+                sandbox_cfg.get("isolation_level", "process")
+            ),
+            workspace_path=Path(sandbox_cfg.get("workspace_path"))
+            if sandbox_cfg.get("workspace_path")
+            else None,
         )
 
         agent_sandbox_pairs.append((llm_client, sandbox))
@@ -568,6 +586,7 @@ def coordinated_task(
 
 
 # === 消息传递工具 ===
+
 
 def send_agent_message(
     session_id: str,
@@ -702,14 +721,20 @@ def register_message_handler(
     """
     # 预定义处理器（安全替代 eval 方案）
     predefined_handlers: dict[str, Callable[[dict], None]] = {
-        "log": lambda msg: logger.info(f"Message received: {msg.get('type', 'unknown')} - {msg.get('content', '')[:100]}"),
+        "log": lambda msg: logger.info(
+            f"Message received: {msg.get('type', 'unknown')} - {msg.get('content', '')[:100]}"
+        ),
         "count": lambda msg: None,  # 仅计数，由 message_bus 内部实现
-        "echo": lambda msg: print(f"[Message] {msg.get('type', 'unknown')}: {msg.get('content', '')}"),
+        "echo": lambda msg: print(
+            f"[Message] {msg.get('type', 'unknown')}: {msg.get('content', '')}"
+        ),
     }
 
     if handler_name not in predefined_handlers:
         available = list(predefined_handlers.keys())
-        return f"Error: Unknown handler '{handler_name}'. Available handlers: {available}"
+        return (
+            f"Error: Unknown handler '{handler_name}'. Available handlers: {available}"
+        )
 
     with _session_lock:
         if session_id not in _message_buses:
@@ -726,6 +751,7 @@ def register_message_handler(
 
 
 # === 工具注册 ===
+
 
 def register_tools(registry: Any) -> None:
     """注册所有协作工具到 Registry

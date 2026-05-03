@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 class ToolTier(str, Enum):
     """工具层级"""
+
     TIER_0_MINIMAL = "tier_0_minimal"
     TIER_1_BASIC = "tier_1_basic"
     TIER_2_EXTENDED = "tier_2_extended"
@@ -33,6 +34,7 @@ class ToolTier(str, Enum):
 @dataclass
 class ToolTierConfig:
     """工具层级配置"""
+
     description: str
     tools: set[str]
     trigger_conditions: list[str]
@@ -115,7 +117,11 @@ TOOL_TIER_CONFIGS: dict[ToolTier, ToolTierConfig] = {
             "run_test",
             "run_python_script",
         },
-        trigger_conditions=["implementation_task", "refactoring_task", "iteration_threshold"],
+        trigger_conditions=[
+            "implementation_task",
+            "refactoring_task",
+            "iteration_threshold",
+        ],
     ),
     ToolTier.TIER_3_FULL: ToolTierConfig(
         description="完整工具集 - 高风险操作",
@@ -166,6 +172,7 @@ TOOL_TIER_CONFIGS: dict[ToolTier, ToolTierConfig] = {
 @dataclass
 class ExpansionEvent:
     """工具扩展事件"""
+
     timestamp: float
     from_tier: ToolTier
     to_tier: ToolTier
@@ -280,7 +287,9 @@ class ProgressiveToolExpander:
         """
         # 1. 用户权限上限
         user_permission = context.get("user_permission", "normal")
-        max_tier = self.USER_PERMISSION_TIER_LIMITS.get(user_permission, ToolTier.TIER_2_EXTENDED)
+        max_tier = self.USER_PERMISSION_TIER_LIMITS.get(
+            user_permission, ToolTier.TIER_2_EXTENDED
+        )
 
         # 2. 任务类型
         task_type = context.get("task_type", "")
@@ -319,7 +328,6 @@ class ProgressiveToolExpander:
 
         # 不超过权限上限
         return min(highest_candidate, max_tier, key=lambda t: tier_order.index(t))
-
 
     def _expand_to_tier(self, new_tier: ToolTier, context: dict[str, Any]) -> None:
         """扩展到新层级
@@ -361,7 +369,7 @@ class ProgressiveToolExpander:
 
         # 限制历史大小
         if len(self._expansion_history) > self._max_history_size:
-            self._expansion_history = self._expansion_history[-self._max_history_size:]
+            self._expansion_history = self._expansion_history[-self._max_history_size :]
 
         logger.info(
             f"Tool tier expanded: {old_tier.value} → {new_tier.value}, "
@@ -394,7 +402,9 @@ class ProgressiveToolExpander:
 
         return ", ".join(reasons)
 
-    def force_expand_to_tier(self, target_tier: ToolTier, reason: str = "manual") -> set[str]:
+    def force_expand_to_tier(
+        self, target_tier: ToolTier, reason: str = "manual"
+    ) -> set[str]:
         """强制扩展到指定层级
 
         Args:
@@ -427,7 +437,9 @@ class ProgressiveToolExpander:
         self._current_tier = target_tier
         return added_tools
 
-    def reset_to_initial(self, initial_tier: ToolTier = ToolTier.TIER_0_MINIMAL) -> None:
+    def reset_to_initial(
+        self, initial_tier: ToolTier = ToolTier.TIER_0_MINIMAL
+    ) -> None:
         """重置到初始层级"""
         self._current_tier = initial_tier
         logger.info(f"Tool tier reset to: {initial_tier.value}")
@@ -464,13 +476,15 @@ class ProgressiveToolExpander:
 
         # 扩展事件摘要
         for event in self._expansion_history[-5:]:
-            stats["expansion_events"].append({
-                "timestamp": event.timestamp,
-                "from": event.from_tier.value,
-                "to": event.to_tier.value,
-                "added_count": len(event.added_tools),
-                "reason": event.reason,
-            })
+            stats["expansion_events"].append(
+                {
+                    "timestamp": event.timestamp,
+                    "from": event.from_tier.value,
+                    "to": event.to_tier.value,
+                    "added_count": len(event.added_tools),
+                    "reason": event.reason,
+                }
+            )
 
         return stats
 

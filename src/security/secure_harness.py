@@ -199,7 +199,11 @@ class SecureHarness(Harness):
         Returns:
             LLM 响应结果
         """
-        provider = model_id.split("/")[0] if model_id else self.llm_client.model_id.split("/")[0]
+        provider = (
+            model_id.split("/")[0]
+            if model_id
+            else self.llm_client.model_id.split("/")[0]
+        )
 
         # 通过代理调用 LLM
         async def llm_request_func(client, context):
@@ -326,7 +330,8 @@ class SecureHarness(Harness):
                 "failed": self._external_api_failed,
                 "success_rate": (
                     self._external_api_success / self._external_api_calls * 100
-                    if self._external_api_calls else 100.0
+                    if self._external_api_calls
+                    else 100.0
                 ),
             },
         }

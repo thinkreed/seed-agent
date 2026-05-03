@@ -21,42 +21,78 @@ from typing import Any
 
 class ErrorType(Enum):
     """错误类型枚举"""
-    RATELIMIT = "ratelimit"         # API 限流
-    TIMEOUT = "timeout"             # 超时
-    CONNECTION = "connection"       # 网络/连接错误
-    CONTEXT_OVERFLOW = "context"    # 上下文窗口溢出
-    PERMISSION = "permission"       # 权限错误
-    NOT_FOUND = "not_found"         # 资源不存在
-    VALIDATION = "validation"       # 数据验证错误
-    CONFIG = "config"               # 配置错误
-    API_ERROR = "api_error"         # 其他 API 错误
-    INTERNAL = "internal"           # 内部错误
+
+    RATELIMIT = "ratelimit"  # API 限流
+    TIMEOUT = "timeout"  # 超时
+    CONNECTION = "connection"  # 网络/连接错误
+    CONTEXT_OVERFLOW = "context"  # 上下文窗口溢出
+    PERMISSION = "permission"  # 权限错误
+    NOT_FOUND = "not_found"  # 资源不存在
+    VALIDATION = "validation"  # 数据验证错误
+    CONFIG = "config"  # 配置错误
+    API_ERROR = "api_error"  # 其他 API 错误
+    INTERNAL = "internal"  # 内部错误
 
 
 class ErrorSeverity(Enum):
     """错误严重程度"""
-    LOW = "low"         # 可忽略/自动恢复
-    MEDIUM = "medium"   # 需要关注/可能影响功能
-    HIGH = "high"       # 严重/需要立即处理
+
+    LOW = "low"  # 可忽略/自动恢复
+    MEDIUM = "medium"  # 需要关注/可能影响功能
+    HIGH = "high"  # 严重/需要立即处理
     CRITICAL = "critical"  # 致命/系统不可用
 
 
 # 错误类型识别规则（按优先级排序）
 _ERROR_TYPE_RULES: list[tuple[ErrorType, list[str], ErrorSeverity]] = [
     # 高优先级错误
-    (ErrorType.RATELIMIT, ["rate limit", "429", "too many requests"], ErrorSeverity.MEDIUM),
-    (ErrorType.TIMEOUT, ["timeout", "timed out", "deadline exceeded"], ErrorSeverity.MEDIUM),
-    (ErrorType.CONNECTION, ["connection", "connect", "network", "socket", "dns", "refused"], ErrorSeverity.MEDIUM),
-    (ErrorType.PERMISSION, ["permission", "access denied", "unauthorized", "forbidden", "403"], ErrorSeverity.HIGH),
-    (ErrorType.NOT_FOUND, ["not found", "404", "does not exist", "no such"], ErrorSeverity.LOW),
-
+    (
+        ErrorType.RATELIMIT,
+        ["rate limit", "429", "too many requests"],
+        ErrorSeverity.MEDIUM,
+    ),
+    (
+        ErrorType.TIMEOUT,
+        ["timeout", "timed out", "deadline exceeded"],
+        ErrorSeverity.MEDIUM,
+    ),
+    (
+        ErrorType.CONNECTION,
+        ["connection", "connect", "network", "socket", "dns", "refused"],
+        ErrorSeverity.MEDIUM,
+    ),
+    (
+        ErrorType.PERMISSION,
+        ["permission", "access denied", "unauthorized", "forbidden", "403"],
+        ErrorSeverity.HIGH,
+    ),
+    (
+        ErrorType.NOT_FOUND,
+        ["not found", "404", "does not exist", "no such"],
+        ErrorSeverity.LOW,
+    ),
     # 中优先级错误
-    (ErrorType.CONTEXT_OVERFLOW, ["context", "overflow", "too long", "maximum context", "token limit"], ErrorSeverity.HIGH),
-    (ErrorType.VALIDATION, ["validation", "invalid", "malformed", "parse error", "json"], ErrorSeverity.MEDIUM),
-    (ErrorType.CONFIG, ["config", "configuration", "missing key", "invalid value"], ErrorSeverity.HIGH),
-
+    (
+        ErrorType.CONTEXT_OVERFLOW,
+        ["context", "overflow", "too long", "maximum context", "token limit"],
+        ErrorSeverity.HIGH,
+    ),
+    (
+        ErrorType.VALIDATION,
+        ["validation", "invalid", "malformed", "parse error", "json"],
+        ErrorSeverity.MEDIUM,
+    ),
+    (
+        ErrorType.CONFIG,
+        ["config", "configuration", "missing key", "invalid value"],
+        ErrorSeverity.HIGH,
+    ),
     # 低优先级（兜底）
-    (ErrorType.API_ERROR, ["api", "server", "500", "502", "503", "internal"], ErrorSeverity.MEDIUM),
+    (
+        ErrorType.API_ERROR,
+        ["api", "server", "500", "502", "503", "internal"],
+        ErrorSeverity.MEDIUM,
+    ),
 ]
 
 
@@ -180,24 +216,28 @@ class SeedAgentError(Exception):
 
 class RateLimitError(SeedAgentError):
     """限流错误"""
+
     def __init__(self, message: str = "Rate limit exceeded", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.RATELIMIT, ErrorSeverity.MEDIUM, **kwargs)
 
 
 class SeedTimeoutError(SeedAgentError):
     """超时错误（避免与内置 TimeoutError 冲突）"""
+
     def __init__(self, message: str = "Operation timed out", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.TIMEOUT, ErrorSeverity.MEDIUM, **kwargs)
 
 
 class SeedConnectionError(SeedAgentError):
     """连接错误（避免与内置 ConnectionError 冲突）"""
+
     def __init__(self, message: str = "Connection failed", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.CONNECTION, ErrorSeverity.MEDIUM, **kwargs)
 
 
 class ConfigurationError(SeedAgentError):
     """配置错误"""
+
     def __init__(self, message: str = "Configuration error", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.CONFIG, ErrorSeverity.HIGH, **kwargs)
 
