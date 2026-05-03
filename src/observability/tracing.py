@@ -17,7 +17,7 @@ Span 层级:
 
 import asyncio
 import functools
-from typing import Any, Callable, Coroutine, TypeVar
+from typing import Any, Callable, Coroutine, TypeVar, overload
 
 from opentelemetry import context
 from opentelemetry.trace import Span, StatusCode
@@ -28,6 +28,7 @@ from .setup import get_tracer
 SpanAttributeValue = str | int | float | bool
 
 T = TypeVar("T")
+R = TypeVar("R")
 
 # Span 名称常量
 SPAN_SESSION = "seed.session"
@@ -201,7 +202,8 @@ def traced(
                         span.set_attribute(key, value)
 
                 try:
-                    result = await func(*args, **kwargs)
+                    # mypy 无法正确推断 T 为 Awaitable，使用类型忽略
+                    result = await func(*args, **kwargs)  # type: ignore[misc]
                     span.set_status(StatusCode.OK)
                     return result
                 except Exception as e:
