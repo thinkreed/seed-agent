@@ -35,6 +35,9 @@ try:
 except ImportError:
     _HAS_JIEBA = False
 
+# 导入 session_db 的分词缓存函数
+from src.tools.session_db import tokenize_for_fts5
+
 # 数据库路径
 ARCHIVE_DB_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "archives.db"
 
@@ -259,11 +262,10 @@ class LongTermArchiveLayer:
         event_content = self._build_event_content_for_fts(events)
         key_findings_text = " ".join(key_findings)
 
-        # 使用 jieba 分词预处理（如果有）
-        if _HAS_JIEBA:
-            summary = " ".join(jieba.cut(summary))
-            key_findings_text = " ".join(jieba.cut(key_findings_text))
-            event_content = " ".join(jieba.cut(event_content))
+        # 使用 tokenize_for_fts5 进行分词预处理（带缓存）
+        summary = tokenize_for_fts5(summary)
+        key_findings_text = tokenize_for_fts5(key_findings_text)
+        event_content = tokenize_for_fts5(event_content)
 
         self._ensure_conn().execute("""
             INSERT INTO archives_fts
@@ -482,10 +484,8 @@ class LongTermArchiveLayer:
         if len(query) > 200:
             query = query[:200]
 
-        # jieba 分词
-        if _HAS_JIEBA:
-            tokens = jieba.cut(query)
-            query = " ".join(tokens)
+        # 使用 tokenize_for_fts5 进行分词（带缓存）
+        query = tokenize_for_fts5(query)
 
         # 移除 FTS5 特殊字符
         special_chars = '"():*^#&|-!~'
