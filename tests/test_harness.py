@@ -312,7 +312,9 @@ class TestHarnessRunConversation:
 
         result = await harness.run_conversation("hello")
 
-        assert result == "final answer"
+        # run_conversation 返回字典而非字符串
+        assert result["content"] == "final answer"
+        assert result["status"] == "completed"
 
     @pytest.mark.asyncio
     async def test_run_conversation_max_iterations(self, tmp_path):

@@ -192,7 +192,7 @@ class TestSubagentInstance(unittest.TestCase):
         )
 
         self.assertEqual(instance.subagent_type, SubagentType.EXPLORE)
-        self.assertEqual(instance.max_iterations, 15)
+        self.assertEqual(instance.max_iterations, 100)  # 默认值已更新为 100
         self.assertEqual(instance.timeout, 180)  # EXPLORE 默认 180s
         self.assertEqual(len(instance.history), 0)
 

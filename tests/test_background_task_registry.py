@@ -147,15 +147,17 @@ class TestBackgroundTaskRegistry(unittest.TestCase):
 
     def test_cancel_all(self):
         """取消所有任务"""
-        # cancel_all 对于 PENDING 任务不需要 asyncio
+        # cancel_all 返回 RUNNING 任务取消数，PENDING 任务直接标记取消不计入返回值
         self.registry.register("task_1", "Test 1")
         self.registry.register("task_2", "Test 2")
-        # 不启动 task_1，保持 PENDING
 
         count = self.registry.cancel_all()
 
-        # 两个 PENDING 任务被取消
-        self.assertEqual(count, 2)
+        # PENDING 任务直接标记取消，但不计入返回值（返回值只计 RUNNING 任务）
+        self.assertEqual(count, 0)
+        # 验证 PENDING 任务确实被标记为 CANCELLED
+        self.assertEqual(self.registry.get_status("task_1"), TaskStatus.CANCELLED)
+        self.assertEqual(self.registry.get_status("task_2"), TaskStatus.CANCELLED)
 
     def test_get_stats(self):
         """获取统计"""

@@ -344,7 +344,7 @@ class TestCredentialProxy:
         expired_client = TemporaryClient(
             provider="expired",
             client=MagicMock(),
-            credential="expired123",
+            _credential_storage=["expired123"],  # 使用列表存储
             created_at=time.time() - 400  # 400秒前（超时）
         )
         self.proxy._active_clients["expired"] = expired_client
@@ -366,7 +366,7 @@ class TestTemporaryClient:
         temp_client = TemporaryClient(
             provider="test",
             client=mock_client,
-            credential="test123",
+            _credential_storage=["test123"],  # 使用列表存储
             created_at=time.time()
         )
 
@@ -381,7 +381,7 @@ class TestTemporaryClient:
         temp_client = TemporaryClient(
             provider="test",
             client=mock_client,
-            credential="test123",
+            _credential_storage=["test123"],  # 使用列表存储
             created_at=time.time()
         )
 
@@ -389,7 +389,9 @@ class TestTemporaryClient:
 
         assert temp_client.destroyed
         assert temp_client.client is None
-        assert temp_client.credential == ""
+        # 销毁后访问 credential 应抛出 RuntimeError
+        with pytest.raises(RuntimeError, match="Client has been destroyed"):
+            _ = temp_client.credential
 
 
 # === 集成测试 ===

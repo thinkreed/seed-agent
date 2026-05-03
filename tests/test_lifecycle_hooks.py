@@ -565,7 +565,7 @@ class TestHookPointEnum:
     def test_hook_point_count(self):
         """Test number of hook points"""
         # Should have all defined hook points
-        expected_count = 25  # Based on the enum definition
+        expected_count = 40  # Updated count based on current enum definition
         assert len(HookPoint) == expected_count
 
 
