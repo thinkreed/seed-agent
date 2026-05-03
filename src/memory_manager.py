@@ -17,8 +17,12 @@
 
 import logging
 import os
+import threading
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.client import LLMGateway
 
 from src.tools.long_term_archive import LongTermArchiveLayer
 from src.tools.user_modeling import UserModelingLayer
@@ -48,12 +52,10 @@ class MemoryManager:
 
     _instance: "MemoryManager | None" = None
     _initialized: bool = False
-    _lock: Any = None  # threading.Lock
+    _lock: threading.Lock | None = None
 
     def __new__(cls, *args, **kwargs) -> "MemoryManager":
         """单例模式 - 忽略构造参数"""
-        import threading
-
         if cls._instance is None:
             if cls._lock is None:
                 cls._lock = threading.Lock()
@@ -62,13 +64,12 @@ class MemoryManager:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, llm_gateway: Any = None):
-        import threading
-
+    def __init__(self, llm_gateway: "LLMGateway | None" = None):
         if MemoryManager._initialized:
             return
 
-        with MemoryManager._lock or threading.Lock():
+        lock = MemoryManager._lock or threading.Lock()
+        with lock:
             if MemoryManager._initialized:
                 return
             MemoryManager._initialized = True

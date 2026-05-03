@@ -19,7 +19,10 @@ import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.client import LLMGateway
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ class UserModelingLayer:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, db_path: str | Path | None = None, llm_gateway: Any = None):
+    def __init__(self, db_path: str | Path | None = None, llm_gateway: "LLMGateway | None" = None):
         with UserModelingLayer._lock:
             if UserModelingLayer._initialized:
                 return
@@ -65,7 +68,7 @@ class UserModelingLayer:
         self.conn: sqlite3.Connection | None = None
         self._init_db()
 
-    def set_llm_gateway(self, gateway: Any) -> None:
+    def set_llm_gateway(self, gateway: "LLMGateway") -> None:
         """设置 LLM Gateway（用于内部推理）"""
         self._llm_gateway = gateway
 

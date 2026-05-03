@@ -22,7 +22,10 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.client import LLMGateway
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +66,7 @@ class LongTermArchiveLayer:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, db_path: str | Path | None = None, llm_gateway: Any = None):
+    def __init__(self, db_path: str | Path | None = None, llm_gateway: "LLMGateway | None" = None):
         with LongTermArchiveLayer._lock:
             if LongTermArchiveLayer._initialized:
                 return
@@ -74,7 +77,7 @@ class LongTermArchiveLayer:
         self.conn: sqlite3.Connection | None = None
         self._init_db()
 
-    def set_llm_gateway(self, gateway: Any) -> None:
+    def set_llm_gateway(self, gateway: "LLMGateway") -> None:
         """设置 LLM Gateway（用于自动摘要）"""
         self._llm_gateway = gateway
 
