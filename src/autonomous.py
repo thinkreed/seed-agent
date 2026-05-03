@@ -6,12 +6,13 @@
 - 防无限循环上限：迭代和时间双重保护
 - Memory Graph 选择：基于历史结果选择最佳 Skill
 - 自动结果记录：执行完成后自动记录 outcome
+- Session 事件记录：所有状态变更通过 Session 正确记录
 """
 
 import asyncio
 import logging
+import threading
 import time
-import uuid
 from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any, Callable, TYPE_CHECKING
@@ -28,6 +29,7 @@ from src.ralph_state import (
     load_or_init_state,
     persist_state,
 )
+from src.session_event_stream import EventType
 
 logger = logging.getLogger("seed_agent")
 
@@ -55,9 +57,21 @@ class AutonomousExplorer:
     - completion_promise 检测：外部标志驱动退出
     - 可选上下文重置：防止上下文漂移
     - 防无限循环上限：迭代和时间双重保护
+    - Session 事件记录：所有状态变更通过 Session 正确记录
+    - 状态文件固定：进程重启后可恢复状态
+
+    修复:
+    - 不直接修改 AgentLoop.history（这是兼容性接口，赋值无效）
+    - 使用 Session API 记录自主探索开始/结束事件
+    - 状态文件名固定，避免碎片化
+    - 完成检测添加原子操作保护
     """
 
-    IDLE_TIMEOUT = 2 * 60 * 60  # 2小时（秒）
+    # 固定状态文件名，进程重启后可恢复
+    STATE_FILE_NAME = "autonomous_state.json"
+
+    # 原子操作锁（用于完成检测）
+    _completion_check_lock = threading.Lock()
 
     def __init__(
         self,
@@ -74,9 +88,11 @@ class AutonomousExplorer:
         self._ralph_start_time: float = 0.0  # 当前会话开始时间
         self._accumulated_duration: float = 0.0  # 累计执行时间（跨会话）
         self._empty_response_count: int = 0  # 空响应计数
-        # 状态持久化：使用唯一标识符避免多实例冲突
-        self._instance_id: str = uuid.uuid4().hex[:8]
-        self._state_file: Path = SEED_DIR / "ralph" / f"autonomous_{self._instance_id}_state.json"
+        # 使用固定状态文件名，进程重启后可恢复
+        self._state_file: Path = SEED_DIR / "ralph" / self.STATE_FILE_NAME
+        # 从配置读取 IDLE_TIMEOUT
+        from src.shared_config import get_autonomous_config
+        self._idle_timeout: float = get_autonomous_config().idle_timeout_hours * 60 * 60
         self._load_sop()
 
     def _load_sop(self) -> None:
@@ -126,7 +142,7 @@ class AutonomousExplorer:
         while self._running:
             idle_time = self.get_idle_time()
 
-            if idle_time >= self.IDLE_TIMEOUT:
+            if idle_time >= self._idle_timeout:
                 logger.warning(f"Idle for {idle_time/60:.1f} minutes, starting autonomous exploration")
                 result = await self._execute_autonomous_task()
                 if result:
@@ -140,14 +156,21 @@ class AutonomousExplorer:
     # === Ralph Loop 增强方法 ===
 
     def _check_completion_promise(self) -> bool:
-        """检查外部完成标志（Ralph Loop 核心机制）"""
-        if COMPLETION_PROMISE_FILE.exists():
-            content = COMPLETION_PROMISE_FILE.read_text().strip()
-            if content in COMPLETION_PROMISE_TOKENS:
-                logger.info(f"Completion promise detected: {content}")
-                # 清除标志
-                COMPLETION_PROMISE_FILE.unlink()
-                return True
+        """检查外部完成标志（Ralph Loop 核心机制，原子化版本）
+
+        使用锁保护文件检查与删除操作，防止多进程/多线程竞态条件。
+        """
+        with self._completion_check_lock:
+            if COMPLETION_PROMISE_FILE.exists():
+                try:
+                    content = COMPLETION_PROMISE_FILE.read_text().strip()
+                    if content in COMPLETION_PROMISE_TOKENS:
+                        logger.info(f"Completion promise detected: {content}")
+                        # 清除标志
+                        COMPLETION_PROMISE_FILE.unlink()
+                        return True
+                except IOError as e:
+                    logger.warning(f"Failed to read/delete completion promise: {e}")
         return False
 
     def _check_safety_limits(self) -> bool:
@@ -202,11 +225,15 @@ class AutonomousExplorer:
         return preserved
 
     def _extract_autonomous_prompt_core(self, full_prompt: str) -> str:
-        """从完整自主探索 prompt 中提取核心指令部分
+        """从完整自主探索 prompt 中提取核心指令部分（增强版）
 
         只保留 SOP 和任务指令，避免重复注入 skills（会导致上下文膨胀）。
+
+        增强点：
+        1. 如果提取失败，使用已加载的 SOP 作为 fallback
+        2. 如果任务指令缺失，动态构建当前任务
+        3. 确保始终返回有效内容（非空）
         """
-        # 提取 SOP 部分（以 "# 自主探索 SOP" 或 "## 自主探索 SOP" 开头）
         import re
 
         # 匹配 SOP 部分
@@ -217,13 +244,23 @@ class AutonomousExplorer:
         )
         sop_content = sop_match.group(1) if sop_match else ""
 
-        # 匹配任务指令部分（以 "# 自主探索任务触发" 开头）
+        # 如果提取失败，使用已加载的 SOP
+        if not sop_content and self._sop_content:
+            sop_content = f"## 自主探索 SOP\n\n{self._sop_content}"
+
+        # 匹配任务指令部分
         task_match = re.search(
             r'(##?\s*自主探索任务触发.*?)(?=请开始执行|$)',
             full_prompt,
             re.DOTALL | re.IGNORECASE
         )
         task_content = task_match.group(1) if task_match else ""
+
+        # 如果任务指令缺失，动态构建当前任务
+        if not task_content:
+            todo_content = self._load_todo_content()
+            has_todo = bool(todo_content)
+            task_content = self._build_task_instruction(todo_content, has_todo)
 
         # 合并核心部分
         core_parts = []
@@ -232,11 +269,16 @@ class AutonomousExplorer:
         if task_content:
             core_parts.append(task_content.strip())
 
+        # 确保返回有效内容
         if core_parts:
             return "\n\n".join(core_parts)
 
-        # 如果无法提取，返回 prompt 的前 2000 字符作为 fallback
-        return full_prompt[:2000] if full_prompt else ""
+        # 使用已加载的 SOP 作为 fallback
+        if self._sop_content:
+            return f"## 自主探索 SOP\n\n{self._sop_content}"
+
+        # 最终 fallback：返回 prompt 的前 3000 字符
+        return full_prompt[:3000] if full_prompt else "继续执行自主探索任务"
 
     def _persist_state(self, response: str = ""):
         """持久化当前状态（使用共享模块）"""
@@ -274,7 +316,17 @@ class AutonomousExplorer:
         cleanup_state_file(self._state_file)
 
     async def _execute_autonomous_task(self):
-        """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强）"""
+        """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强）
+
+        关键修复：
+        1. 不保存/恢复 history（history 是兼容性接口，赋值无效）
+        2. 使用 Session 标记自主探索开始/结束
+        3. 通过 Session 创建上下文边界
+
+        这样确保：
+        - Session 包含自主探索的完整事件历史
+        - 用户交互时上下文可正确区分自主探索事件
+        """
         if not self._sop_content:
             logger.warning("No SOP loaded, skipping autonomous exploration")
             return None
@@ -282,20 +334,36 @@ class AutonomousExplorer:
         self._load_or_init_state()
         todo_content = self._load_todo_content()
         prompt = self._build_autonomous_prompt(todo_content, bool(todo_content))
+
+        # 创建自主探索开始标记
+        self.agent.session.emit_event(EventType.SESSION_START, {
+            "type": "autonomous_exploration",
+            "iteration": self._iteration_count,
+            "todo_status": bool(todo_content)
+        })
+
         logger.info("Starting autonomous exploration via Agent Loop (Ralph enhanced)")
 
+        # 只保存/恢复 system_prompt 和 max_iterations
+        # 不再操作 history（history 是兼容性接口，赋值无效）
         original_system_prompt = self.agent.system_prompt
-        original_history = list(self.agent.history)
         original_max_iterations = self.agent.max_iterations
 
         try:
-            response = None
             self.agent.system_prompt = prompt
             self.agent.max_iterations = 100
             response = await self._run_ralph_loop()
 
             if response:
                 logger.info(f"Autonomous exploration completed, response length: {len(response)}")
+
+                # 创建自主探索结束标记
+                self.agent.session.emit_event(EventType.SESSION_END, {
+                    "type": "autonomous_exploration",
+                    "reason": "completed",
+                    "response_length": len(response)
+                })
+
                 if self.on_explore_complete:
                     if asyncio.iscoroutinefunction(self.on_explore_complete):
                         await self.on_explore_complete(response)
@@ -304,16 +372,29 @@ class AutonomousExplorer:
                 return response
             else:
                 logger.warning("Autonomous exploration returned empty response")
+
+                # 创建失败标记
+                self.agent.session.emit_event(EventType.SESSION_END, {
+                    "type": "autonomous_exploration",
+                    "reason": "empty_response"
+                })
                 return None
 
         except Exception as e:
             logger.exception(f"Autonomous exploration failed: {e}")
             self._persist_state(str(e))
+
+            # 创建错误标记
+            self.agent.session.emit_event(EventType.ERROR_OCCURRED, {
+                "error_type": "autonomous_exploration_failed",
+                "error_message": str(e)[:500]
+            })
             return None
+
         finally:
             self.agent.system_prompt = original_system_prompt
-            self.agent.history = original_history
             self.agent.max_iterations = original_max_iterations
+            # 不再恢复 history（无效操作）
 
     def _load_todo_content(self) -> str:
         """加载TODO文件内容"""

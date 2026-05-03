@@ -191,10 +191,12 @@ AutonomousExplorer enables the agent to be productive during idle periods by mon
 
 ### Key Features
 
-- **Idle Monitoring**: Tracks user activity and triggers exploration after 30 minutes of inactivity
+- **Idle Monitoring**: Tracks user activity and triggers exploration after **2 hours** of inactivity (configurable via `AutonomousConfig.idle_timeout_hours` in `shared_config.py`)
 - **SOP Integration**: Loads and executes tasks based on configurable SOP documents
 - **Planning Mode**: When no TODOs exist, generates new task items autonomously
 - **Error Resilience**: Implements retry logic with exponential backoff and graceful degradation
+- **Session Integration**: All state changes recorded through Session API (not direct history modification)
+- **State Recovery**: Fixed state filename enables process restart recovery
 
 ### Key Methods
 
@@ -206,7 +208,8 @@ Initializes the autonomous explorer with agent loop reference.
 class AutonomousExplorer:
     """自主探索执行器"""
 
-    IDLE_TIMEOUT = 60 * 60  # 1 hour in seconds
+    # Fixed state filename for process restart recovery
+    STATE_FILE_NAME = "autonomous_state.json"
 
     def __init__(self, agent_loop, on_explore_complete: Callable = None):
         self.agent = agent_loop
@@ -215,6 +218,9 @@ class AutonomousExplorer:
         self._running: bool = False
         self._task: Optional[asyncio.Task] = None
         self._sop_content: Optional[str] = None
+        # Read IDLE_TIMEOUT from configuration
+        from src.shared_config import get_autonomous_config
+        self._idle_timeout = get_autonomous_config().idle_timeout_hours * 60 * 60  # Default: 2 hours
         self._load_sop()
 ```
 
@@ -253,7 +259,7 @@ async def _idle_monitor_loop(self):
     while self._running:
         idle_time = self.get_idle_time()
 
-        if idle_time >= self.IDLE_TIMEOUT:
+        if idle_time >= self._idle_timeout:
             logger.info(f"Idle for {idle_time/60:.1f} minutes, starting autonomous exploration")
             await self._execute_autonomous_task()
             self.record_activity()  # Reset timer after execution

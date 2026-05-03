@@ -84,8 +84,12 @@ class TestAutonomousExplorerInit(unittest.TestCase):
         self.assertEqual(explorer.on_explore_complete, callback)
 
     def test_idle_timeout_constant(self):
-        """测试空闲超时常量"""
-        self.assertEqual(AutonomousExplorer.IDLE_TIMEOUT, 120 * 60)  # 2小时
+        """测试空闲超时从配置读取"""
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        expected_timeout = config.idle_timeout_hours * 60 * 60  # 默认2小时
+        explorer = AutonomousExplorer(self.mock_agent)
+        self.assertEqual(explorer._idle_timeout, expected_timeout)
 
 
 class TestActivityTracking(unittest.TestCase):
