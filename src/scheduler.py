@@ -114,12 +114,24 @@ class TaskScheduler:
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
         if TASKS_FILE.exists():
-            with open(TASKS_FILE, encoding="utf-8") as f:
-                data = json.load(f)
-                for task_data in data.get("tasks", []):
-                    task = ScheduledTask.from_dict(task_data)
-                    self._tasks[task.task_id] = task
-            logger.info(f"Loaded {len(self._tasks)} scheduled tasks")
+            try:
+                with open(TASKS_FILE, encoding="utf-8") as f:
+                    data = json.load(f)
+                    for task_data in data.get("tasks", []):
+                        try:
+                            task = ScheduledTask.from_dict(task_data)
+                            self._tasks[task.task_id] = task
+                        except (KeyError, TypeError) as e:
+                            logger.warning(
+                                f"Skipping invalid task data: {task_data}, error: {e}"
+                            )
+                logger.info(f"Loaded {len(self._tasks)} scheduled tasks")
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(f"Failed to load tasks file: {e}, starting fresh")
+                # Corrupted file: backup and start fresh
+                backup_path = TASKS_FILE.with_suffix(".json.bak")
+                with contextlib.suppress(OSError):
+                    TASKS_FILE.replace(backup_path)
 
     def _save_tasks(self) -> None:
         """保存任务到文件（原子写入模式）

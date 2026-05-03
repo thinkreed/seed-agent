@@ -196,8 +196,15 @@ class CredentialVault:
                     key = f.read().strip()
                 logger.info("Loaded existing vault encryption key")
                 return key
-            except Exception as e:
-                logger.warning(f"Failed to load vault key: {e}, generating new key")
+            except PermissionError as e:
+                # 权限错误不应被静默处理，这可能表示严重的安全问题
+                logger.error(f"Permission denied loading vault key: {e}")
+                raise
+            except OSError as e:
+                # 其他 I/O 错误（如文件损坏）可以恢复
+                logger.warning(
+                    f"Failed to load vault key (I/O error): {e}, generating new key"
+                )
 
         # 生成新密钥
         key = self._generate_encryption_key()
