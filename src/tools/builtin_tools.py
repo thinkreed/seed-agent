@@ -559,6 +559,10 @@ def code_as_policy(
 
     Returns:
         Execution output (stdout + stderr), or error message.
+
+    Note:
+        This is a synchronous version. For async contexts, use code_as_policy_async
+        to avoid blocking the event loop.
     """
     exec_logger = logging.getLogger("seed_agent.code_exec")
     try:
@@ -608,6 +612,93 @@ def code_as_policy(
         return f"Error: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
         exec_logger.exception(f"Code execution error: {e!s}")
+        return f"Error executing code: {e!s}"
+
+
+async def code_as_policy_async(
+    code: str, language: str = "python", cwd: str | None = None, timeout: int = 60
+) -> str:
+    """
+    Async version of code_as_policy - non-blocking for event loop.
+
+    Uses asyncio.create_subprocess_exec instead of subprocess.run.
+
+    Args:
+        code: Code string to execute.
+        language: Language type - 'python', 'javascript'/'js', 'shell'/'bash', 'powershell'/'ps'.
+        cwd: Working directory for execution (default: .seed directory).
+        timeout: Execution timeout in seconds.
+
+    Returns:
+        Execution output (stdout + stderr), or error message.
+    """
+    import asyncio
+
+    exec_logger = logging.getLogger("seed_agent.code_exec")
+    try:
+        if len(code) > MAX_CODE_LENGTH:
+            return f"Error: Code exceeds maximum length ({MAX_CODE_LENGTH} chars) for security"
+
+        cwd = _resolve_execution_cwd(cwd)
+        language = language.lower()
+
+        error = _check_code_security(code, language, exec_logger)
+        if error:
+            return error
+
+        exec_logger.info(
+            f"Async code execution: language={language}, cwd={cwd}, timeout={timeout}s"
+        )
+
+        cmd = _build_command(code, language)
+        if cmd is None:
+            return f"Error: Unsupported language '{language}'. Supported: python, javascript, shell, powershell"
+
+        # Use async subprocess to avoid blocking event loop
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+        )
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            # Kill process on timeout
+            proc.kill()
+            await proc.wait()
+            exec_logger.warning(
+                f"Async code execution timed out: language={language}, timeout={timeout}s"
+            )
+            return f"Error: Execution timed out ({timeout}s)"
+
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+
+        exec_logger.info(f"Async code execution completed: returncode={proc.returncode}")
+
+        # Build result
+        output = stdout
+        if stderr:
+            output += "\n[Stderr]\n" + stderr
+        if proc.returncode and proc.returncode != 0:
+            output += f"\n[Exit Code: {proc.returncode}]"
+        return output if output.strip() else f"Code executed successfully ({language})"
+
+    except FileNotFoundError:
+        exec_logger.error(f"Interpreter not found for '{language}'")
+        return f"Error: Interpreter not found for '{language}'. Please ensure it's installed."
+    except PermissionError as e:
+        exec_logger.error(f"Permission denied for '{language}': {e}")
+        return f"Error: Permission denied executing '{language}' code."
+    except OSError as e:
+        exec_logger.error(f"OS error: {type(e).__name__}: {e}")
+        return f"Error: OS error - {type(e).__name__}: {str(e)[:100]}"
+    except Exception as e:
+        exec_logger.exception(f"Async code execution error: {e!s}")
         return f"Error executing code: {e!s}"
 
 
