@@ -7,12 +7,19 @@ LLM 网关客户端模块
 3. 请求队列管理 (优先级调度、并发控制、背压处理)
 4. 限流保护 (Token Bucket、Rolling Window、SQLite 持久化)
 5. 流式响应处理 (Server-Sent Events、Tool Call 累积)
+6. 凭证安全管理 (CredentialVault + CredentialProxy)
 
 核心特性:
 - 支持多提供商故障转移
 - 动态超时调整 (基于负载因子)
 - 完整的错误分类与日志记录
 - OpenTelemetry 可观测性 (Token/Metrics/Tracing)
+- 凭证永不进沙盒 (Harness Engineering 设计理念)
+
+凭证安全:
+- CredentialVault: 加密存储凭证
+- CredentialProxy: 代理执行外部请求
+- 凭证按作用域获取 (最小权限原则)
 """
 
 import asyncio
@@ -22,11 +29,25 @@ import random
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
 
 from src.models import FullConfig, ModelConfig, RateLimitConfig, load_config
+
+# 凭证安全模块（可选导入）
+try:
+    from src.security.credential_vault import CredentialVault, CredentialScope
+    from src.security.credential_proxy import CredentialProxy
+    _CREDENTIAL_SECURITY_AVAILABLE = True
+except ImportError:
+    CredentialVault = None  # type: ignore[misc,assignment]
+    CredentialProxy = None  # type: ignore[misc,assignment]
+    CredentialScope = None  # type: ignore[misc,assignment]
+    _CREDENTIAL_SECURITY_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from src.security.credential_vault import CredentialVault as CredentialVaultType
 
 # OpenTelemetry 可观测性（自动处理 ImportError）
 from src.observability import (
@@ -81,11 +102,45 @@ def _estimate_stream_tokens(chunk_count: int) -> int:
     return chunk_count * 10
 
 
-def _resolve_api_key(api_key: str) -> str:
-    """解析 API Key,支持环境变量引用"""
+def _resolve_api_key(
+    api_key: str,
+    vault: "CredentialVaultType | None" = None,
+    provider: str | None = None,
+) -> str:
+    """解析 API Key，支持环境变量引用和 CredentialVault
+
+    凭证获取优先级：
+    1. 如果 vault 配置且 provider 存储在 vault 中 → 从 vault 获取
+    2. 环境变量引用 (${ENV_VAR}) → 从环境变量获取
+    3. 直接值 → 返回原始值
+
+    Args:
+        api_key: API Key 配置值（可能是 ${ENV_VAR} 或直接值）
+        vault: CredentialVault 实例（可选）
+        provider: Provider 名称（用于从 vault 获取）
+
+    Returns:
+        解析后的 API Key
+    """
+    # 优先从 Vault 获取
+    if vault and provider:
+        try:
+            if vault.has_credential(provider, "api_key"):
+                return vault.get_credential(
+                    provider,
+                    "api_key",
+                    scope="api_call",
+                    requester_id="llm_gateway_init",
+                )
+        except Exception as e:
+            logger.warning(f"Failed to get credential from vault for {provider}: {e}")
+
+    # 环境变量引用
     if api_key.startswith("${") and api_key.endswith("}"):
         env_var = api_key[2:-1]
         return os.environ.get(env_var, "").strip()
+
+    # 直接值
     return api_key.strip()
 
 
@@ -215,10 +270,19 @@ class LLMGateway:
     - 阶段4：执行（execute with fallback）
     """
 
-    def __init__(self, config_path: str) -> None:
+    def __init__(
+        self,
+        config_path: str,
+        vault=None,
+        credential_proxy=None,
+    ) -> None:
         self.config: FullConfig = load_config(config_path)
         self.clients: dict[str, AsyncOpenAI] = {}
         self._fallback_chain: FallbackChain | None = None
+        # 凭证安全组件
+        self._vault = vault
+        self._credential_proxy = credential_proxy
+        self._credential_security_enabled = vault is not None
 
         # 模型配置缓存（避免重复线性搜索）
         self._model_config_cache: dict[str, ModelConfig] = {}
@@ -254,11 +318,27 @@ class LLMGateway:
         self._init_rate_limiting()
         self._init_state_persistence()
 
+        if self._credential_security_enabled:
+            logger.info(
+                f"LLMGateway initialized with credential security: "
+                f"vault_enabled=True, proxy_enabled={credential_proxy is not None}"
+            )
+
     def _init_clients(self) -> None:
-        """为每个 provider 初始化客户端"""
+        """为每个 provider 初始化客户端
+
+        凭证获取优先级：
+        1. Vault 中存储的凭证（如果 vault 配置）
+        2. 环境变量引用 (${ENV_VAR})
+        3. 配置文件中的直接值
+        """
         for provider_id, provider_cfg in self.config.models.items():
             if provider_cfg.api == "openai-completions":
-                api_key = _resolve_api_key(provider_cfg.apiKey)
+                api_key = _resolve_api_key(
+                    provider_cfg.apiKey,
+                    vault=self._vault,
+                    provider=provider_id,
+                )
                 self.clients[provider_id] = AsyncOpenAI(
                     base_url=provider_cfg.baseUrl,
                     api_key=api_key

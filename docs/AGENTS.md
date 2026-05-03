@@ -173,4 +173,5 @@ Planned design documents to add:
 - ✅ Ralph Loop Enhancement Design (long-cycle task execution)
 - ✅ Ralph Loop Concept (design philosophy)
 - ✅ Subagent Design (in `subagents.md`)
-- ✅ Rate Limiting System Design (LLM request rate control) |
+- ✅ Rate Limiting System Design (LLM request rate control)
+- ✅ Credential Security Design (Vault + Proxy architecture, see `harness/08_credential_security_design.md`) |

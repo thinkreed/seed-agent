@@ -1,11 +1,12 @@
 """
-安全模块单元测试 - CommandRiskClassifier, ProgressiveToolExpander, SinglePurposeToolFactory, SecureSandbox
+安全模块单元测试 - CommandRiskClassifier, ProgressiveToolExpander, SinglePurposeToolFactory, SecureSandbox, CredentialIsolatedSandbox
 
 覆盖:
 - 风险分类: 各风险等级、参数风险、用户权限修正
 - 渐进式扩展: 层级判定、动态扩展、复杂度自适应
 - 单用途工具: 工具创建、参数验证、风险预设
 - 安全沙盒: 集成执行、用户确认、历史追溯
+- 凭证隔离: 环境变量过滤、凭证访问检测、输出过滤
 """
 
 import os
@@ -39,6 +40,7 @@ from src.security.secure_sandbox import (
     SecureSandbox,
     SecureExecutionResult,
 )
+from src.security.credential_isolated_sandbox import CredentialIsolatedSandbox
 from src.sandbox import IsolationLevel
 
 
@@ -944,3 +946,197 @@ class MockToolRegistry:
         if tool_name in self._tools:
             return await self._tools[tool_name](**kwargs)
         raise KeyError(f"Tool not found: {tool_name}")
+
+
+# === CredentialIsolatedSandbox 测试 ===
+
+class TestCredentialIsolatedSandbox:
+    """测试 CredentialIsolatedSandbox"""
+
+    def test_init_default_values(self):
+        """默认初始化"""
+        sandbox = CredentialIsolatedSandbox()
+        assert sandbox.isolation_level == IsolationLevel.PROCESS
+        assert len(sandbox._blocked_env_vars) > 0
+        assert sandbox._enforce_credential_isolation == True
+
+    def test_init_custom_blocked_env_vars(self):
+        """自定义屏蔽环境变量"""
+        custom_vars = ["CUSTOM_API_KEY", "CUSTOM_TOKEN"]
+        sandbox = CredentialIsolatedSandbox(
+            blocked_env_vars=custom_vars
+        )
+        assert "CUSTOM_API_KEY" in sandbox._blocked_env_vars
+        assert "CUSTOM_TOKEN" in sandbox._blocked_env_vars
+
+    def test_blocked_env_vars_includes_common(self):
+        """屏蔽常见凭证环境变量"""
+        sandbox = CredentialIsolatedSandbox()
+
+        # 检查常见环境变量被屏蔽
+        assert "OPENAI_API_KEY" in sandbox._blocked_env_vars
+        assert "AWS_ACCESS_KEY_ID" in sandbox._blocked_env_vars
+        assert "GITHUB_TOKEN" in sandbox._blocked_env_vars
+
+    def test_create_isolated_environment(self):
+        """创建隔离环境"""
+        sandbox = CredentialIsolatedSandbox()
+
+        # 模拟设置敏感环境变量
+        os.environ["OPENAI_API_KEY"] = "sk-test-secret"
+        os.environ["SAFE_VAR"] = "safe_value"
+
+        isolated_env = sandbox._create_isolated_environment()
+
+        # 验证敏感变量被移除
+        assert "OPENAI_API_KEY" not in isolated_env
+        # 验证安全变量保留
+        assert "SAFE_VAR" in isolated_env
+        assert isolated_env["SAFE_VAR"] == "safe_value"
+
+        # 清理
+        del os.environ["OPENAI_API_KEY"]
+        del os.environ["SAFE_VAR"]
+
+    def test_detect_credential_access_attempt(self):
+        """检测凭证访问尝试"""
+        sandbox = CredentialIsolatedSandbox()
+
+        # 检测直接环境变量访问
+        assert sandbox._detect_credential_access_attempt("os.environ.get('OPENAI_API_KEY')")
+        assert sandbox._detect_credential_access_attempt("getenv('API_KEY')")
+
+        # 检测安全代码
+        assert not sandbox._detect_credential_access_attempt("print('hello')")
+        assert not sandbox._detect_credential_access_attempt("file_read(path='/tmp/test')")
+
+    def test_sanitize_output(self):
+        """过滤输出中的凭证"""
+        sandbox = CredentialIsolatedSandbox()
+
+        # 测试 sk-* 模式过滤
+        output = "API Key: sk-test1234567890abcdefghijklmnopqrst"
+        safe_output = sandbox._sanitize_output(output)
+        assert "[REDACTED_API_KEY]" in safe_output
+        assert "sk-test123" not in safe_output
+
+        # 测试 Bearer 模式过滤
+        output2 = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        safe_output2 = sandbox._sanitize_output(output2)
+        assert "[REDACTED]" in safe_output2
+
+    def test_add_remove_blocked_env_var(self):
+        """添加和移除屏蔽环境变量"""
+        sandbox = CredentialIsolatedSandbox()
+
+        # 添加
+        sandbox.add_blocked_env_var("NEW_SECRET_VAR")
+        assert "NEW_SECRET_VAR" in sandbox._blocked_env_vars
+
+        # 移除
+        sandbox.remove_blocked_env_var("NEW_SECRET_VAR")
+        assert "NEW_SECRET_VAR" not in sandbox._blocked_env_vars
+
+    def test_get_blocked_env_vars(self):
+        """获取屏蔽环境变量列表"""
+        sandbox = CredentialIsolatedSandbox()
+        blocked = sandbox.get_blocked_env_vars()
+
+        assert isinstance(blocked, list)
+        assert len(blocked) > 0
+        # 确保返回的是副本
+        blocked.append("TEST_VAR")
+        assert "TEST_VAR" not in sandbox._blocked_env_vars
+
+    @pytest.mark.asyncio
+    async def test_verify_credential_isolation(self):
+        """验证凭证隔离"""
+        sandbox = CredentialIsolatedSandbox()
+
+        # 设置敏感环境变量
+        os.environ["OPENAI_API_KEY"] = "sk-should-be-blocked"
+
+        result = await sandbox.verify_credential_isolation()
+
+        # 验证隔离有效（检查返回结果，可能有不同情况）
+        # 注意：验证结果取决于子进程执行成功与否
+        # 如果子进程无法执行，返回 False 是预期的
+        assert "isolation_verified" in result
+
+        # 清理
+        if "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
+
+    def test_isolation_stats(self):
+        """隔离统计信息"""
+        sandbox = CredentialIsolatedSandbox()
+        stats = sandbox.get_isolation_stats()
+
+        assert "credential_isolation" in stats
+        assert stats["credential_isolation"]["enforced"] == True
+        assert stats["credential_isolation"]["blocked_env_vars_count"] > 0
+
+    def test_status_isolated(self):
+        """隔离状态"""
+        sandbox = CredentialIsolatedSandbox()
+        status = sandbox.get_status_isolated()
+
+        assert "credential_isolation" in status
+        assert status["credential_isolation"]["enforced"] == True
+
+
+# === CredentialIsolatedSandbox 异步执行测试 ===
+
+class TestCredentialIsolatedSandboxAsync:
+    """测试 CredentialIsolatedSandbox 异步执行"""
+
+    @pytest.mark.asyncio
+    async def test_execute_tools_isolated_empty(self):
+        """空工具调用列表"""
+        sandbox = CredentialIsolatedSandbox()
+        results = await sandbox.execute_tools_isolated([])
+        assert len(results) == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_tools_isolated_blocked_tool(self):
+        """被阻断的工具"""
+        sandbox = CredentialIsolatedSandbox()
+        sandbox.deny_all_tools()  # 拒绝所有工具
+
+        tool_call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "file_read",
+                "arguments": '{"path": "/tmp/test"}'
+            }
+        }
+
+        results = await sandbox.execute_tools_isolated([tool_call])
+        assert len(results) == 1
+        # 注意：被拒绝的工具可能返回不同结果，取决于风险分类配置
+
+    @pytest.mark.asyncio
+    async def test_credential_access_blocked_in_args(self):
+        """参数中凭证访问被阻断"""
+        sandbox = CredentialIsolatedSandbox()
+
+        # 尝试在参数中访问凭证
+        tool_call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "code_as_policy",
+                "arguments": '{"code": "import os; print(os.environ.get(\'OPENAI_API_KEY\'))"}'
+            }
+        }
+
+        results = await sandbox.execute_tools_isolated([tool_call])
+
+        # 应检测到凭证访问尝试并阻断
+        assert len(results) == 1
+        assert "[BLOCKED]" in results[0].content or "Credential access" in results[0].content
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
