@@ -194,7 +194,7 @@ class FallbackChain:
     """跨 Provider 降级链：primary 失败时自动切换到 fallback
 
     借鉴 CodeBrain 架构设计的优雅降级机制。
-    
+
     并发安全：使用 asyncio.Lock 保护状态变更
     """
 
@@ -1003,7 +1003,7 @@ class LLMGateway:
 
     async def _try_provider_with_retry(self, model_id: str, messages: list[dict], provider_id: str, **kwargs) -> tuple[bool, dict | None]:
         """尝试单个 provider 调用（带重试）
-        
+
         Returns:
             (success, result) - success为True表示成功，result为响应数据
         """
@@ -1023,7 +1023,7 @@ class LLMGateway:
 
     async def _try_fallback_providers(self, span, model_id: str, messages: list[dict], start_time: float, **kwargs) -> tuple[bool, dict | None]:
         """尝试所有 fallback providers
-        
+
         Returns:
             (success, result) - success为True表示成功，result为响应数据
         """
@@ -1115,7 +1115,7 @@ class LLMGateway:
 
     def _iterate_fallback_models(self, model_id: str, exclude_provider: str) -> list[tuple[str, str]]:
         """生成fallback provider和model_id列表
-        
+
         Returns:
             List of (fallback_provider, fallback_model_id) tuples
         """
@@ -1305,7 +1305,7 @@ class LLMGateway:
                 yield response.model_dump()
             except Exception as e:
                 logger.debug(f"Failed to serialize response: {type(e).__name__}")
-                yield {"error": str(response)}  # type: ignore[misc]
+                yield {"error": str(response)}
             return
 
         async for chunk in stream:

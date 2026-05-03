@@ -160,7 +160,7 @@ def _get_path(level: str, filename: str | None = None) -> str | None:
 def read_memory_index() -> str:
     """
     Read the global memory index (L1) to find available SOPs or knowledge.
-    
+
     Returns:
         Content of notes.md
     """

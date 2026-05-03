@@ -122,7 +122,7 @@ class TaskScheduler:
 
     def _save_tasks(self) -> None:
         """保存任务到文件（原子写入模式）
-        
+
         使用临时文件+原子替换模式，避免写入中途崩溃导致数据损坏。
         """
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
@@ -154,7 +154,7 @@ class TaskScheduler:
 
     def _init_builtin_tasks(self) -> None:
         """初始化内置任务
-        
+
         重要：启动时设置 last_run 为当前时间，避免立即触发到期的任务。
         这样确保任务在启动后等待一个完整间隔周期才首次执行。
         """
@@ -216,7 +216,7 @@ class TaskScheduler:
 
     async def _execute_task(self, task: ScheduledTask) -> None:
         """执行任务（支持 tool_calls 循环处理）
-        
+
         使用 LOW 优先级，确保定时任务不会阻塞用户请求。
         用户请求使用 CRITICAL 优先级，会立即执行。
         """

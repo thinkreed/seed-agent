@@ -19,10 +19,10 @@ SNAPSHOT_PATH = CACHE_DIR / "skills_snapshot.json"
 def build_manifest(skills_dir: Path) -> str:
     """
     构建技能目录的 manifest (mtime + size) 用于缓存失效检测
-    
+
     Args:
         skills_dir: 技能目录路径
-        
+
     Returns:
         MD5 hash 字符串，空目录返回空字符串
     """

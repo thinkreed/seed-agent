@@ -29,7 +29,7 @@ class ToolRegistry:
 
     def register(self, name: str, func: Callable[..., Any], schema: dict[str, Any] | None = None) -> None:
         """注册工具
-        
+
         Args:
             name: 工具名称
             func: 工具函数(可以是普通函数或异步函数)

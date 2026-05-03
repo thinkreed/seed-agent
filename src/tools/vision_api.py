@@ -75,13 +75,13 @@ async def analyze_image_async(
 ) -> str:
     """
     异步分析图像 - 通过 LLMGateway 调用多模态模型
-    
+
     Args:
         image: PIL Image 对象
         prompt: 分析提示词
         model_id: 模型 ID (格式: provider/model)，默认 VISION_MODEL
         config_path: 配置文件路径，默认 ~/.seed/config.json
-    
+
     Returns:
         模型响应文本
     """
@@ -109,7 +109,8 @@ async def analyze_image_async(
     ]
 
     cfg_path = config_path or DEFAULT_CONFIG_PATH
-    if not os.path.exists(cfg_path):
+    import asyncio
+    if not await asyncio.to_thread(Path(cfg_path).exists):
         return f"Error: Config file not found at {cfg_path}"
 
     try:

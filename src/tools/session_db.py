@@ -536,7 +536,7 @@ class SessionDB:
 
         return p * decay_weight + recent_boost
 
-    
+
     def list_banned_skills(self) -> list[BannedSkillInfo]:
         """
         列出被禁用的 Skill（低于 ban_threshold）（批量查询优化，避免 N+1）
@@ -596,7 +596,7 @@ class SessionDB:
             return banned
         except Exception as e:
             logger.warning(f"Failed to list banned skills: {type(e).__name__}: {e}")
-            return []  # type: ignore[return-value]
+            return []
 
     def get_top_skills(self, limit: int = 10) -> list[dict]:
         """

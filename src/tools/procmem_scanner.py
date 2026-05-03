@@ -102,7 +102,7 @@ def read_process_memory(handle: int, address: int, size: int) -> bytes | None:
 def enumerate_memory_regions(handle: int) -> list[MemoryRegion]:
     """
     枚举进程的所有内存区域
-    
+
     通过 VirtualQueryEx 遍历整个进程地址空间，
     返回所有已提交 (MEM_COMMIT) 的内存区域。
     """
@@ -210,7 +210,7 @@ def scan_memory(
 ) -> list[dict]:
     """
     扫描进程内存
-    
+
     Args:
         pid: 目标进程 ID
         pattern: 搜索模式 (字符串或十六进制)

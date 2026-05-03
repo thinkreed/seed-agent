@@ -31,10 +31,10 @@ SUSPICIOUS_EXTENSIONS = {".exe", ".dll", ".so", ".dylib", ".bin", ".dat", ".com"
 def scan_for_injections(content: str) -> str | None:
     """
     检测 Skill 内容中的 Prompt Injection 攻击
-    
+
     Args:
         content: Skill 文件内容
-        
+
     Returns:
         发现攻击时的警告消息，安全时返回 None
     """
@@ -48,14 +48,14 @@ def scan_for_injections(content: str) -> str | None:
 def validate_skill_structure(skill_dir: Path) -> str | None:
     """
     验证 Skill 目录结构安全
-    
+
     检查:
     - 符号链接逃逸（指向 skill 目录外的路径）
     - 可疑二进制文件
-    
+
     Args:
         skill_dir: Skill 目录路径
-        
+
     Returns:
         发现安全问题时的警告消息，安全时返回 None
     """
@@ -83,11 +83,11 @@ def validate_skill_structure(skill_dir: Path) -> str | None:
 def validate_path_within_dir(target: Path, base_dir: Path) -> bool:
     """
     验证目标路径是否在基准目录内（防止路径穿越）
-    
+
     Args:
         target: 待验证的目标路径
         base_dir: 基准目录
-        
+
     Returns:
         True 表示路径安全，False 表示路径穿越
     """

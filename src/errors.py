@@ -16,6 +16,7 @@
 
 import logging
 from enum import Enum
+from typing import Any
 
 
 class ErrorType(Enum):
@@ -179,25 +180,25 @@ class SeedAgentError(Exception):
 
 class RateLimitError(SeedAgentError):
     """限流错误"""
-    def __init__(self, message: str = "Rate limit exceeded", **kwargs):
+    def __init__(self, message: str = "Rate limit exceeded", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.RATELIMIT, ErrorSeverity.MEDIUM, **kwargs)
 
 
 class SeedTimeoutError(SeedAgentError):
     """超时错误（避免与内置 TimeoutError 冲突）"""
-    def __init__(self, message: str = "Operation timed out", **kwargs):
+    def __init__(self, message: str = "Operation timed out", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.TIMEOUT, ErrorSeverity.MEDIUM, **kwargs)
 
 
 class SeedConnectionError(SeedAgentError):
     """连接错误（避免与内置 ConnectionError 冲突）"""
-    def __init__(self, message: str = "Connection failed", **kwargs):
+    def __init__(self, message: str = "Connection failed", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.CONNECTION, ErrorSeverity.MEDIUM, **kwargs)
 
 
 class ConfigurationError(SeedAgentError):
     """配置错误"""
-    def __init__(self, message: str = "Configuration error", **kwargs):
+    def __init__(self, message: str = "Configuration error", **kwargs: Any) -> None:
         super().__init__(message, ErrorType.CONFIG, ErrorSeverity.HIGH, **kwargs)
 
 
