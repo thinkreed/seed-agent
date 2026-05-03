@@ -558,6 +558,10 @@ class AgentLoop:
             logger.exception("Agent execution failed")
             self.session.record_session_end("error")
             raise
+        finally:
+            # 清理等待状态，防止污染后续执行
+            self._pending_user_response = None
+            self._user_input_event.clear()
 
     async def stream_run(
         self, user_input: str, priority: int = RequestPriority.CRITICAL
@@ -654,6 +658,10 @@ class AgentLoop:
             logger.exception("Agent execution failed")
             self.session.record_session_end("error")
             yield {"type": "error", "content": str(e)}
+        finally:
+            # 清理等待状态，防止污染后续执行
+            self._pending_user_response = None
+            self._user_input_event.clear()
 
     def inject_user_input(self, response: AskUserResult) -> None:
         """注入用户响应（外部调用）
