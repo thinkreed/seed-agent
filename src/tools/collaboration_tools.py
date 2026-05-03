@@ -20,6 +20,8 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.tools.utils import add_background_task
+
 if TYPE_CHECKING:
     from src.collaboration import (
         MultiBrainOneHandOrchestrator,
@@ -35,20 +37,6 @@ _message_buses: dict[str, Any] = {}
 
 # 线程安全锁
 _session_lock = threading.Lock()
-
-# 后台任务集合
-_background_tasks: set[asyncio.Task[Any]] = set()
-_MAX_BACKGROUND_TASKS = 50
-
-
-def _add_background_task(task: asyncio.Task[Any]) -> None:
-    """安全添加后台任务"""
-    if len(_background_tasks) >= _MAX_BACKGROUND_TASKS:
-        done_tasks = [t for t in _background_tasks if t.done()]
-        for t in done_tasks:
-            _background_tasks.discard(t)
-    _background_tasks.add(task)
-    task.add_done_callback(lambda t: _background_tasks.discard(t))
 
 
 # === 会话管理工具 ===
@@ -276,7 +264,7 @@ def multi_angle_analysis(
         task = asyncio.create_task(
             _run_multi_angle_analysis_async(orchestrator, target)
         )
-        _add_background_task(task)
+        add_background_task(task)
         return f"Multi-angle analysis started for: {target[:100]}\nUse 'get_collaboration_status' to check progress."
     except RuntimeError:
         # 没有事件循环，需要同步执行（但实际是异步的）
@@ -320,7 +308,7 @@ def collaborative_improve(
         task = asyncio.create_task(
             _run_collaborative_improve_async(orchestrator, target)
         )
-        _add_background_task(task)
+        add_background_task(task)
         return f"Collaborative improvement started for: {target[:100]}"
     except RuntimeError:
         return "Improvement requires async context. Use in AgentLoop."
@@ -418,7 +406,7 @@ def cross_environment_execute(
         task_coro = asyncio.create_task(
             _run_cross_environment_async(orchestrator, task)
         )
-        _add_background_task(task_coro)
+        add_background_task(task_coro)
         return f"Cross-environment execution started: {task[:100]}"
     except RuntimeError:
         return "Execution requires async context. Use in AgentLoop."
@@ -459,7 +447,7 @@ def cross_environment_test(
     try:
         asyncio.get_running_loop()
         task = asyncio.create_task(orchestrator.cross_environment_test(test_code))
-        _add_background_task(task)
+        add_background_task(task)
         return "Cross-environment test started"
     except RuntimeError:
         return "Test requires async context. Use in AgentLoop."
@@ -579,7 +567,7 @@ def coordinated_task(
             )
         else:
             bg_task = asyncio.create_task(orchestrator.coordinated_execution(task))
-        _add_background_task(bg_task)
+        add_background_task(bg_task)
         return f"Coordinated task started: {task[:100]}\nDynamic assignment: {enable_dynamic_assignment}"
     except RuntimeError:
         return "Task requires async context. Use in AgentLoop."
@@ -619,7 +607,7 @@ def send_agent_message(
         task = asyncio.create_task(
             message_bus.send_message(from_agent, to_agent, message_type, content)
         )
-        _add_background_task(task)
+        add_background_task(task)
         return f"Message sent: {from_agent} -> {to_agent}\nType: {message_type}"
     except RuntimeError:
         return "Message sending requires async context. Use in AgentLoop."
@@ -656,7 +644,7 @@ def broadcast_message(
         task = asyncio.create_task(
             message_bus.broadcast(from_agent, message_type, content, exclude_self)
         )
-        _add_background_task(task)
+        add_background_task(task)
         return f"Message broadcast from: {from_agent}\nType: {message_type}"
     except RuntimeError:
         return "Broadcast requires async context. Use in AgentLoop."
@@ -689,7 +677,7 @@ def receive_agent_messages(
         task = asyncio.create_task(
             message_bus.receive_messages(agent_id, message_types)
         )
-        _add_background_task(task)
+        add_background_task(task)
         return f"Message receiving started for agent: {agent_id}"
     except RuntimeError:
         # 同步获取消息数量

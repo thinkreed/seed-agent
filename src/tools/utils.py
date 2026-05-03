@@ -1,6 +1,6 @@
 """工具辅助函数模块
 
-提供工具参数解析、错误处理等公共功能。
+提供工具参数解析、错误处理、后台任务管理等公共功能。
 """
 
 import asyncio
@@ -12,6 +12,33 @@ logger = logging.getLogger(__name__)
 
 # 解析失败标记 - 用于区分 "成功解析的空字典 {}" 和 "解析失败"
 PARSE_FAILED: dict[str, Any] = {"__parse_failed__": True}
+
+# 全局后台任务集合（防止 asyncio.create_task 返回值被垃圾回收）
+_background_tasks: set[asyncio.Task[Any]] = set()
+_MAX_BACKGROUND_TASKS = 100  # 最大后台任务数，防止内存泄漏
+
+
+def add_background_task(task: asyncio.Task[Any]) -> None:
+    """安全添加后台任务，超过限制时自动清理已完成任务
+
+    Args:
+        task: asyncio Task 对象
+
+    Note:
+        - 任务完成后自动从集合中移除
+        - 超过 _MAX_BACKGROUND_TASKS 时清理已完成任务
+        - 用于防止 Task 对象被垃圾回收导致任务取消
+    """
+    # 如果超过最大限制，清理已完成任务
+    if len(_background_tasks) >= _MAX_BACKGROUND_TASKS:
+        done_tasks = [t for t in _background_tasks if t.done()]
+        for t in done_tasks:
+            _background_tasks.discard(t)
+        if done_tasks:
+            logger.debug(f"Cleaned {len(done_tasks)} completed background tasks")
+
+    _background_tasks.add(task)
+    task.add_done_callback(lambda t: _background_tasks.discard(t))
 
 
 def parse_tool_arguments(raw_args: str | dict | None) -> dict[str, Any]:
