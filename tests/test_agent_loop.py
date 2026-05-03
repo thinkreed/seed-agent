@@ -806,7 +806,8 @@ class TestRunLoop:
         agent, mgr = create_agent(
             mock_gateway,
             session_id=unique_id,
-            storage_path=temp_storage_path
+            storage_path=temp_storage_path,
+            use_harness=False  # 使用传统执行路径进行测试
         )
         try:
             agent.max_iterations = 2

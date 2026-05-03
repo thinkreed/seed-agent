@@ -6,15 +6,20 @@ Agent 主循环模块
 - 核心接口：emitEvent() 记录事件、getEvents() 读取事件
 - 只追加的日志，天然支持重放和状态恢复
 
+三件套解耦架构 (v2.0):
+- LLMClient (大脑): 负责推理，无状态
+- Harness (控制器): 驱动循环，路由工具
+- Sandbox (工作台): 隔离执行，安全可控
+
 负责:
 1. Session 不可变事件流 (只追加日志、摘要标记、状态重放)
-2. 工具调用执行 (并发安全、路径重叠检查)
+2. 工具调用执行 (通过 Sandbox 隔离)
 3. 技能加载与匹配 (渐进式披露、Memory Graph 选择)
 4. 子代理生命周期管理 (创建、等待、结果聚合)
 5. 上下文窗口管理 (摘要触发、Token 估算)
 
 核心流程:
-- 接收用户输入 → 记录事件 → 构建 messages → 调用 LLM → 记录响应 → 执行工具 → 循环
+- 接收用户输入 → Harness.run_cycle() → Claude 推理 → Sandbox 执行工具 → 循环
 - 摘要只创建标记，不截断历史
 - 支持从任意事件点重放状态
 
@@ -33,6 +38,9 @@ from typing import Any, TypedDict
 import tiktoken
 
 from src.client import LLMGateway
+from src.llm_client import LLMClient
+from src.harness import Harness
+from src.sandbox import IsolationLevel, Sandbox
 from src.observability import (
     SPAN_TOOL_PREFIX,
     StatusCode,
@@ -114,7 +122,9 @@ class AgentLoop:
         system_prompt: str | None = None,
         max_iterations: int = 30,
         summary_interval: int = 10,
-        session_id: str | None = None
+        session_id: str | None = None,
+        isolation_level: IsolationLevel = IsolationLevel.PROCESS,
+        use_harness: bool = True
     ):
         """初始化 AgentLoop
 
@@ -125,19 +135,23 @@ class AgentLoop:
             max_iterations: 最大迭代次数
             summary_interval: 摘要触发间隔 (对话轮数)
             session_id: 会话 ID (用于事件流持久化)
+            isolation_level: Sandbox 隔离级别
+            use_harness: 是否使用三件套架构 (默认 True)
         """
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
         self.summary_interval = summary_interval
         self.session_id = session_id or _generate_session_filename()
+        self.use_harness = use_harness
 
         # === 不可变事件流 (替代可变历史) ===
         self.session = SessionEventStream(self.session_id)
         self.session.record_session_start({
             "model_id": self.model_id,
             "max_iterations": self.max_iterations,
-            "summary_interval": self.summary_interval
+            "summary_interval": self.summary_interval,
+            "isolation_level": isolation_level.value
         })
 
         # === 内部状态 ===
@@ -153,6 +167,10 @@ class AgentLoop:
         # === 初始化子系统 ===
         self._setup_tools_and_skills()
         self._setup_subsystems(system_prompt)
+
+        # === 三件套架构初始化 ===
+        if use_harness:
+            self._setup_harness_trio(isolation_level)
 
     def _setup_tools_and_skills(self) -> None:
         """注册工具并加载技能"""
@@ -183,6 +201,40 @@ class AgentLoop:
             self.system_prompt = system_prompt + "\n\n" + skills_prompt
         else:
             self.system_prompt = skills_prompt
+
+    def _setup_harness_trio(self, isolation_level: IsolationLevel) -> None:
+        """初始化三件套架构
+
+        Args:
+            isolation_level: Sandbox 隔离级别
+        """
+        # 1. LLMClient (大脑)
+        self.llm_client = LLMClient(
+            gateway=self.gateway,
+            model_id=self.model_id
+        )
+
+        # 2. Sandbox (工作台)
+        self.sandbox = Sandbox(
+            isolation_level=isolation_level,
+            workspace_path=None  # 使用当前工作目录
+        )
+        # 将已注册的工具注入 Sandbox
+        self.sandbox.register_tools(self.tools)
+
+        # 3. Harness (控制器)
+        self.harness = Harness(
+            llm_client=self.llm_client,
+            session=self.session,
+            sandbox=self.sandbox,
+            max_iterations=self.max_iterations,
+            system_prompt=self.system_prompt
+        )
+
+        logger.info(
+            f"Harness trio initialized: model={self.model_id}, "
+            f"isolation={isolation_level.value}, tools={len(self.tools._tools)}"
+        )
 
     # === Token 管理 ===
 
@@ -367,6 +419,49 @@ class AgentLoop:
         Returns:
             最终响应文本
         """
+        # 使用 Harness 执行（三件套架构）
+        if self.use_harness and hasattr(self, 'harness'):
+            return await self._run_with_harness(user_input, priority)
+
+        # 传统执行流程（向后兼容）
+        return await self._run_legacy(user_input, priority)
+
+    async def _run_with_harness(self, user_input: str, priority: int) -> str:
+        """使用 Harness 执行对话（三件套架构）
+
+        Args:
+            user_input: 用户输入
+            priority: 请求优先级
+
+        Returns:
+            最终响应文本
+        """
+        self._conversation_rounds += 1
+
+        try:
+            result = await self.harness.run_conversation(user_input, priority)
+
+            # 执行摘要和技能记录
+            await self._maybe_summarize()
+            self._evaluate_and_record_skill_outcomes(final_success=True)
+
+            return result
+
+        except Exception as e:
+            if "max_iterations" in str(e).lower():
+                raise MaxIterationsExceeded(str(e))
+            raise
+
+    async def _run_legacy(self, user_input: str, priority: int) -> str:
+        """传统执行流程（向后兼容）
+
+        Args:
+            user_input: 用户输入
+            priority: 请求优先级
+
+        Returns:
+            最终响应文本
+        """
         # 1. 记录用户输入事件
         self.session.emit_event(EventType.USER_INPUT, {"content": user_input})
         self._conversation_rounds += 1
@@ -433,7 +528,60 @@ class AgentLoop:
         user_input: str,
         priority: int = RequestPriority.CRITICAL
     ) -> AsyncGenerator[dict, None]:
-        """流式执行对话"""
+        """流式执行对话
+
+        Args:
+            user_input: 用户输入
+            priority: 请求优先级
+
+        Yields:
+            流式响应 chunk
+        """
+        # 使用 Harness 执行（三件套架构）
+        if self.use_harness and hasattr(self, 'harness'):
+            async for chunk in self._stream_run_with_harness(user_input, priority):
+                yield chunk
+            return
+
+        # 传统执行流程（向后兼容）
+        async for chunk in self._stream_run_legacy(user_input, priority):
+            yield chunk
+
+    async def _stream_run_with_harness(
+        self,
+        user_input: str,
+        priority: int
+    ) -> AsyncGenerator[dict, None]:
+        """使用 Harness 流式执行对话（三件套架构）
+
+        Args:
+            user_input: 用户输入
+            priority: 请求优先级
+
+        Yields:
+            流式响应 chunk
+        """
+        self._conversation_rounds += 1
+
+        try:
+            async for chunk in self.harness.stream_conversation(user_input, priority):
+                yield chunk
+
+            # 执行摘要和技能记录
+            await self._maybe_summarize()
+            self._evaluate_and_record_skill_outcomes(final_success=True)
+
+        except Exception as e:
+            if "max_iterations" in str(e).lower():
+                raise MaxIterationsExceeded(str(e))
+            raise
+
+    async def _stream_run_legacy(
+        self,
+        user_input: str,
+        priority: int
+    ) -> AsyncGenerator[dict, None]:
+        """传统流式执行流程（向后兼容）"""
         # 1. 记录用户输入事件
         self.session.emit_event(EventType.USER_INPUT, {"content": user_input})
         self._conversation_rounds += 1
