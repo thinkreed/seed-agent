@@ -1,6 +1,7 @@
 """LLM 请求限流状态持久化
 
 使用 SQLite + WAL 模式实现跨进程共享的限流状态存储
+路径从 PathsConfig 动态获取
 """
 
 import asyncio
@@ -33,6 +34,16 @@ class RateLimitState:
     total_requests_lifetime: int = 0
 
 
+def _get_db_path() -> Path:
+    """获取数据库路径（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().rate_limit_db
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "rate_limit.db"
+
+
 class RateLimitSQLite:
     """SQLite 持久化存储
 
@@ -43,14 +54,12 @@ class RateLimitSQLite:
     - 崩溃恢复支持
     """
 
-    DB_PATH = Path.home() / ".seed" / "rate_limit.db"
-
     def __init__(self, db_path: Path | None = None):
         """
         Args:
-            db_path: 数据库路径，默认 ~/.seed/rate_limit.db
+            db_path: 数据库路径，默认从 PathsConfig 获取
         """
-        self._db_path = db_path or self.DB_PATH
+        self._db_path = db_path or _get_db_path()
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self._lock = asyncio.Lock()

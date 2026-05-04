@@ -60,8 +60,27 @@ except ImportError:
         "max_entries_per_skill": 5000,
     }
 
-# 数据库路径
-DB_PATH = Path.home() / ".seed" / "memory" / "raw" / "sessions.db"
+
+def _get_db_path() -> Path:
+    """获取数据库路径（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().sessions_db
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "memory" / "raw" / "sessions.db"
+
+
+# 数据库路径（延迟获取）
+DB_PATH = None  # 类型: Path | None
+
+
+def _ensure_db_path() -> Path:
+    """确保数据库路径已初始化"""
+    global DB_PATH
+    if DB_PATH is None:
+        DB_PATH = _get_db_path()
+    return DB_PATH
 
 
 # LRU 缓存配置
@@ -199,7 +218,7 @@ class SessionDB:
                 return
             SessionDB._initialized = True
 
-        self.db_path = db_path or str(DB_PATH)
+        self.db_path = db_path or str(_ensure_db_path())
         self.conn: sqlite3.Connection | None = None
         self._init_db()
 

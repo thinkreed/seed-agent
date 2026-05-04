@@ -1,6 +1,7 @@
 """
 Vision API Helper - 视觉识别基础模块
 支持: 窗口截图, 图像编码, 调用多模态大模型 (Claude/OpenAI/DashScope)
+路径从 PathsConfig 动态获取。
 """
 
 import asyncio
@@ -21,7 +22,27 @@ logger = logging.getLogger("seed_agent")
 # ================= 配置 =================
 VISION_MODEL = "bailian/qwen3.6-plus"  # 默认模型，可通过环境变量覆盖
 MAX_PIXELS = 1_440_000  # 限制图像像素以节省 Token
-DEFAULT_CONFIG_PATH = Path.home() / ".seed" / "config.json"
+
+
+def _get_config_path() -> Path:
+    """获取配置文件路径（动态）"""
+    try:
+        from src.models import get_config_path
+        return get_config_path()
+    except Exception:
+        # Fallback
+        return Path.home() / ".seed" / "config.json"
+
+
+DEFAULT_CONFIG_PATH = None  # 类型: Path | None
+
+
+def _ensure_config_path() -> Path:
+    """确保配置路径已初始化"""
+    global DEFAULT_CONFIG_PATH
+    if DEFAULT_CONFIG_PATH is None:
+        DEFAULT_CONFIG_PATH = _get_config_path()
+    return DEFAULT_CONFIG_PATH
 
 # 模型映射
 MODEL_MAP = {

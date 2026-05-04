@@ -26,8 +26,26 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# 数据库路径
-USER_MODELING_DB_PATH = Path.home() / ".seed" / "memory" / "user_modeling.db"
+
+def _get_db_path() -> Path:
+    """获取数据库路径（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().memory_dir / "user_modeling.db"
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "memory" / "user_modeling.db"
+
+
+USER_MODELING_DB_PATH = None  # 类型: Path | None
+
+
+def _ensure_db_path() -> Path:
+    """确保数据库路径已初始化"""
+    global USER_MODELING_DB_PATH
+    if USER_MODELING_DB_PATH is None:
+        USER_MODELING_DB_PATH = _get_db_path()
+    return USER_MODELING_DB_PATH
 
 
 class UserModelingLayer:
@@ -65,7 +83,7 @@ class UserModelingLayer:
                 return
             UserModelingLayer._initialized = True
 
-        self.db_path = str(db_path or USER_MODELING_DB_PATH)
+        self.db_path = str(db_path or _ensure_db_path())
         self._llm_gateway = llm_gateway
         self.conn: sqlite3.Connection | None = None
         self._init_db()

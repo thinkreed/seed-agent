@@ -36,8 +36,26 @@ try:
 except ImportError:
     _HAS_JIEBA = False
 
-# 数据库路径
-ARCHIVE_DB_PATH = Path.home() / ".seed" / "memory" / "archives.db"
+
+def _get_archive_db_path() -> Path:
+    """获取归档数据库路径（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().archives_db
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "memory" / "archives.db"
+
+
+ARCHIVE_DB_PATH = None  # 类型: Path | None
+
+
+def _ensure_archive_db_path() -> Path:
+    """确保归档数据库路径已初始化"""
+    global ARCHIVE_DB_PATH
+    if ARCHIVE_DB_PATH is None:
+        ARCHIVE_DB_PATH = _get_archive_db_path()
+    return ARCHIVE_DB_PATH
 
 
 # 导入 session_db 的公共函数
@@ -104,7 +122,7 @@ class LongTermArchiveLayer:
                 return
             LongTermArchiveLayer._initialized = True
 
-        self.db_path = str(db_path or ARCHIVE_DB_PATH)
+        self.db_path = str(db_path or _ensure_archive_db_path())
         self._llm_gateway = llm_gateway
         self.conn: sqlite3.Connection | None = None
         self._init_db()

@@ -1,6 +1,7 @@
 """数据模型与配置加载模块单元测试
 
 测试覆盖:
+- PathsConfig: 路径配置模型、动态路径计算
 - RateLimitConfig: 限流配置模型、速率计算、窗口参数
 - ModelConfig: 模型参数模型
 - ProviderConfig: 提供商配置、空白字符剥离
@@ -9,6 +10,7 @@
 - TimeoutConfigModel: 超时配置
 - FullConfig: 完整配置聚合
 - load_config: 配置文件加载、旧版迁移、错误处理
+- get_config_path: 配置路径定位（SEED_HOME 支持）
 """
 
 import os
@@ -24,6 +26,7 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 from models import (  # noqa: E402
+    PathsConfig,
     RateLimitConfig,
     ModelConfig,
     ProviderConfig,
@@ -33,8 +36,99 @@ from models import (  # noqa: E402
     TimeoutConfigModel,
     FullConfig,
     load_config,
-    DEFAULT_CONFIG_PATH,
+    get_config_path,
 )
+
+
+class TestPathsConfig(unittest.TestCase):
+    """测试路径配置模型"""
+
+    def test_default_values(self):
+        """测试默认值"""
+        config = PathsConfig()
+        self.assertEqual(config.seedBaseDir, "~/.seed")
+        self.assertIsNone(config.projectRoot)
+        self.assertIsNone(config.wikiDir)
+        self.assertEqual(config.allowedDirs, [])
+
+    def test_path_expansion(self):
+        """测试路径展开"""
+        config = PathsConfig(seedBaseDir="~/custom")
+        # 验证 ~ 已展开
+        expanded = os.path.expanduser("~/custom")
+        self.assertEqual(config.seedBaseDir, expanded)
+
+    def test_seed_base_property(self):
+        """测试 seed_base 属性"""
+        config = PathsConfig(seedBaseDir="~/.seed")
+        expected = Path(os.path.expanduser("~/.seed")).resolve()
+        self.assertEqual(config.seed_base, expected)
+
+    def test_sub_path_properties(self):
+        """测试子路径属性"""
+        config = PathsConfig(seedBaseDir="~/.seed")
+        base = config.seed_base
+        self.assertEqual(config.memory_dir, base / "memory")
+        self.assertEqual(config.sandbox_dir, base / "sandbox")
+        self.assertEqual(config.tasks_dir, base / "tasks")
+        self.assertEqual(config.cache_dir, base / "cache")
+        self.assertEqual(config.logs_dir, base / "logs")
+        self.assertEqual(config.vault_dir, base / "vault")
+        self.assertEqual(config.ralph_dir, base / "ralph")
+
+    def test_db_path_properties(self):
+        """测试数据库路径属性"""
+        config = PathsConfig(seedBaseDir="~/.seed")
+        self.assertEqual(config.sessions_db, config.memory_dir / "raw" / "sessions.db")
+        self.assertEqual(config.archives_db, config.memory_dir / "archives.db")
+        self.assertEqual(config.rate_limit_db, config.seed_base / "rate_limit.db")
+
+    def test_project_root_auto_detect(self):
+        """测试项目根目录自动检测"""
+        config = PathsConfig()
+        # 自动检测应该返回项目根目录
+        self.assertTrue(config.project_root.exists())
+
+    def test_project_root_explicit(self):
+        """测试显式项目根目录"""
+        config = PathsConfig(projectRoot="/custom/project")
+        self.assertEqual(config.project_root, Path("/custom/project").resolve())
+
+    def test_allowed_dirs_resolved(self):
+        """测试允许目录解析"""
+        config = PathsConfig(allowedDirs=["~/custom", "/absolute"])
+        dirs = config.allowed_dirs_resolved
+        # 验证路径已解析
+        self.assertTrue(any("custom" in str(d) for d in dirs))
+        # 验证核心目录已自动添加
+        self.assertIn(config.seed_base, dirs)
+        self.assertIn(config.project_root, dirs)
+
+
+class TestGetConfigPath(unittest.TestCase):
+    """测试配置路径定位"""
+
+    def test_default_path(self):
+        """测试默认路径（无 SEED_HOME）"""
+        # 确保没有 SEED_HOME 环境变量
+        old_val = os.environ.pop("SEED_HOME", None)
+        try:
+            path = get_config_path()
+            expected = Path.home() / ".seed" / "config.json"
+            self.assertEqual(path, expected)
+        finally:
+            if old_val:
+                os.environ["SEED_HOME"] = old_val
+
+    def test_seed_home_override(self):
+        """测试 SEED_HOME 环境变量覆盖"""
+        os.environ["SEED_HOME"] = "/custom/seed"
+        try:
+            path = get_config_path()
+            expected = Path("/custom/seed").resolve() / "config.json"
+            self.assertEqual(path, expected)
+        finally:
+            os.environ.pop("SEED_HOME", None)
 
 
 class TestRateLimitConfig(unittest.TestCase):
@@ -445,6 +539,32 @@ class TestLoadConfig(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_migration_paths_added(self):
+        """测试添加默认 paths 段"""
+        data = {
+            "models": {
+                "dashscope": {
+                    "baseUrl": "https://dashscope.aliyuncs.com",
+                    "apiKey": "test-key",
+                    "models": [{"id": "qwen-max", "name": "Qwen Max"}],
+                }
+            },
+            "agents": {
+                "defaults": {
+                    "defaults": {"primary": "qwen-max"}
+                }
+            },
+        }
+        path = self._write_config(data)
+        try:
+            config = load_config(path)
+            # 路径在加载时已展开
+            expected = os.path.expanduser("~/.seed")
+            self.assertEqual(config.paths.seedBaseDir, expected)
+            self.assertEqual(config.version, 3)
+        finally:
+            os.unlink(path)
+
     def test_migration_idempotent(self):
         """测试迁移幂等性（已迁移格式不应被再次修改）"""
         data = {
@@ -467,13 +587,6 @@ class TestLoadConfig(unittest.TestCase):
             self.assertEqual(config.agents["defaults"].defaults.primary, "qwen-max")
         finally:
             os.unlink(path)
-
-    def test_default_config_path(self):
-        """测试默认配置路径常量"""
-        expected = Path.home() / ".seed" / "config.json"
-        self.assertEqual(DEFAULT_CONFIG_PATH, expected)
-        # 验证可以正确转换为字符串
-        self.assertEqual(str(DEFAULT_CONFIG_PATH), str(expected))
 
 
 if __name__ == '__main__':

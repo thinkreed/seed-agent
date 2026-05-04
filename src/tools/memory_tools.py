@@ -26,9 +26,20 @@ from . import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
-# 定位 ~/.seed/memory
-MEMORY_ROOT = Path.home() / ".seed" / "memory"
-SESSIONS_DIR = MEMORY_ROOT / "raw" / "sessions"
+
+def _get_memory_root() -> Path:
+    """获取记忆根目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().memory_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "memory"
+
+
+def _get_sessions_dir() -> Path:
+    """获取会话目录"""
+    return _get_memory_root() / "raw" / "sessions"
 
 
 def write_memory(level: str, content: str, title: str = "", metadata: str = "") -> str:
@@ -151,10 +162,11 @@ def _get_path(level: str, filename: str | None = None) -> str | None:
     if level not in mapping:
         return None
     base = mapping[level]
+    memory_root = _get_memory_root()
 
     # L1 是单个文件，无需 filename
     if level == "L1":
-        return os.path.join(MEMORY_ROOT, base)
+        return os.path.join(memory_root, base)
 
     # L2-L4 需要指定 filename
     if not filename:
@@ -164,7 +176,7 @@ def _get_path(level: str, filename: str | None = None) -> str | None:
     if level == "L2" and not filename.endswith("/SKILL.md") and filename != "SKILL.md":
         filename = os.path.join(filename, "SKILL.md")
 
-    return os.path.join(MEMORY_ROOT, base, filename)
+    return os.path.join(memory_root, base, filename)
 
 
 def read_memory_index() -> str:
@@ -198,16 +210,17 @@ def search_memory(keyword: str, levels: list[str] | None = None) -> str:
     if levels is None:
         levels = ["L1", "L2", "L3"]
     results = []
-    if not os.path.exists(MEMORY_ROOT):
+    memory_root = _get_memory_root()
+    if not os.path.exists(memory_root):
         return "Memory root not found."
 
-    for root, _, files in os.walk(MEMORY_ROOT):
+    for root, _, files in os.walk(memory_root):
         if ".git" in root or "__pycache__" in root:
             continue
         for file in files:
             if file.endswith((".md", ".txt")):
                 # Determine level
-                rel = os.path.relpath(root, MEMORY_ROOT)
+                rel = os.path.relpath(root, memory_root)
                 lvl = "Unknown"
                 if "notes" in rel or file == "notes.md":
                     lvl = "L1"
@@ -298,7 +311,7 @@ def register_memory_tools(registry: ToolRegistry) -> None:
 
 def _ensure_sessions_dir() -> None:
     """确保 sessions 目录存在（保留兼容）"""
-    os.makedirs(SESSIONS_DIR, exist_ok=True)
+    os.makedirs(_get_sessions_dir(), exist_ok=True)
 
 
 def _save_session_history(
@@ -360,7 +373,7 @@ def _save_session_history_jsonl(
         _ensure_sessions_dir()
         if not session_id:
             session_id = _generate_session_filename()
-        filepath = os.path.join(SESSIONS_DIR, session_id)
+        filepath = os.path.join(_get_sessions_dir(), session_id)
         with open(filepath, "a", encoding="utf-8") as f:
             if not os.path.exists(filepath) or os.stat(filepath).st_size == 0:
                 meta = {
@@ -389,17 +402,19 @@ def _save_session_history_jsonl(
 def _load_session_history_jsonl(session_id: str) -> str:
     """JSONL fallback implementation"""
     try:
-        filepath = os.path.join(SESSIONS_DIR, session_id)
+        filepath = os.path.join(_get_sessions_dir(), session_id)
+        sessions_dir = _get_sessions_dir()
         if not os.path.exists(filepath):
             matches = [
                 f
-                for f in os.listdir(SESSIONS_DIR)
+                for f in os.listdir(sessions_dir)
                 if f.startswith(session_id) or session_id in f
             ]
             if matches:
-                filepath = os.path.join(SESSIONS_DIR, matches[0])
+                filepath = os.path.join(sessions_dir, matches[0])
             else:
                 return f"Session not found: {session_id}"
+        sessions_dir = _get_sessions_dir()
         messages = []
         meta = {}
         summary = None
@@ -443,13 +458,14 @@ def _list_sessions_jsonl(limit: int = 10) -> str:
     """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
-        files = sorted(os.listdir(SESSIONS_DIR), reverse=True)
+        sessions_dir = _get_sessions_dir()
+        files = sorted(os.listdir(sessions_dir), reverse=True)
         session_files = [
             f for f in files if f.startswith("session_") and f.endswith(".jsonl")
         ]
         results = []
         for f in session_files[:limit]:
-            filepath = os.path.join(SESSIONS_DIR, f)
+            filepath = os.path.join(sessions_dir, f)
             msg_count = 0
             created_at = "unknown"
             summary = None
@@ -490,15 +506,16 @@ def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
     """JSONL fallback implementation"""
     try:
         _ensure_sessions_dir()
+        sessions_dir = _get_sessions_dir()
         files = [
             f
-            for f in os.listdir(SESSIONS_DIR)
+            for f in os.listdir(sessions_dir)
             if f.startswith("session_") and f.endswith(".jsonl")
         ]
         results = []
         keyword_lower = keyword.lower()
         for f in files:
-            filepath = os.path.join(SESSIONS_DIR, f)
+            filepath = os.path.join(sessions_dir, f)
             messages = []
             with open(filepath, encoding="utf-8") as fp:
                 for line in fp:

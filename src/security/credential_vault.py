@@ -30,8 +30,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 默认保险库路径
-DEFAULT_VAULT_PATH = Path.home() / ".seed" / "vault"
+
+def _get_default_vault_path() -> Path:
+    """获取默认保险库路径（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().vault_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "vault"
 
 
 class CredentialType(StrEnum):
@@ -157,7 +164,7 @@ class CredentialVault:
             encryption_key: 加密密钥（可选，自动生成）
             auto_generate_key: 是否自动生成加密密钥
         """
-        self._vault_path = vault_path or DEFAULT_VAULT_PATH
+        self._vault_path = vault_path or _get_default_vault_path()
         self._credentials: dict[str, CredentialRecord] = {}
         self._access_logs: list[CredentialAccessLog] = []
         self._max_access_logs = 10000

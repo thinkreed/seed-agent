@@ -117,7 +117,26 @@ __all__ = [
 
 # ==================== 常量配置 ====================
 
-SKILLS_DIR = Path.home() / ".seed" / "memory" / "skills"
+
+def _get_skills_dir() -> Path:
+    """获取技能目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().memory_dir / "skills"
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "memory" / "skills"
+
+
+SKILLS_DIR = None  # 类型: Path | None
+
+
+def _ensure_skills_dir() -> Path:
+    """确保技能目录已初始化"""
+    global SKILLS_DIR
+    if SKILLS_DIR is None:
+        SKILLS_DIR = _get_skills_dir()
+    return SKILLS_DIR
 
 # LRU 缓存配置
 MAX_LOADED_SKILL_CACHE = 5  # 最多缓存 5 个已加载的完整 skill 内容
@@ -177,7 +196,7 @@ class SkillLoader:
     """
 
     def __init__(self, skills_dir: Path | None = None):
-        self.skills_dir = skills_dir or SKILLS_DIR
+        self.skills_dir = skills_dir or _ensure_skills_dir()
         self._skills_meta: dict[str, SkillMeta] = {}
         self._lock = threading.Lock()
 

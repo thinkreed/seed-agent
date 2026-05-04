@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
 
 from src.ralph_state import (
-    SEED_DIR,
     check_safety_limits,
     cleanup_state_file,
     extract_critical_context,
@@ -33,6 +32,7 @@ from src.ralph_state import (
     load_or_init_state,
     persist_state,
     reset_context,
+    _ensure_ralph_dir,
 )
 
 # 预编译正则表达式（性能优化）

@@ -2,6 +2,7 @@
 磁盘快照缓存模块 - Skill 元数据的持久化缓存
 
 使用 mtime+size manifest 检测文件变更，实现缓存失效机制。
+路径从 PathsConfig 动态获取。
 """
 
 import hashlib
@@ -14,9 +15,34 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 缓存路径配置
-CACHE_DIR = Path.home() / ".seed" / "cache"
-SNAPSHOT_PATH = CACHE_DIR / "skills_snapshot.json"
+
+def _get_cache_dir() -> Path:
+    """获取缓存目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().cache_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "cache"
+
+
+def _get_snapshot_path() -> Path:
+    """获取快照路径"""
+    return _get_cache_dir() / "skills_snapshot.json"
+
+
+# 缓存路径配置（延迟获取）
+CACHE_DIR = None  # 类型: Path | None
+SNAPSHOT_PATH = None  # 类型: Path | None
+
+
+def _ensure_cache_paths() -> tuple[Path, Path]:
+    """确保缓存路径已初始化"""
+    global CACHE_DIR, SNAPSHOT_PATH
+    if CACHE_DIR is None:
+        CACHE_DIR = _get_cache_dir()
+        SNAPSHOT_PATH = _get_snapshot_path()
+    return CACHE_DIR, SNAPSHOT_PATH
 
 
 def build_manifest(skills_dir: Path) -> str:

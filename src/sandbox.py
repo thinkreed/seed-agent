@@ -38,8 +38,15 @@ from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
-# 默认沙盒根目录
-DEFAULT_SANDBOX_ROOT = Path.home() / ".seed" / "sandbox"
+
+def _get_default_sandbox_root() -> Path:
+    """获取默认沙盒根目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().sandbox_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "sandbox"
 
 
 class IsolationLevel(StrEnum):
@@ -204,7 +211,7 @@ class Sandbox:
             workspace_path: 工作目录映射（沙盒内 /workspace → 主机路径）
         """
         self.isolation_level = isolation_level
-        self._fs_root = file_system_root or DEFAULT_SANDBOX_ROOT
+        self._fs_root = file_system_root or _get_default_sandbox_root()
         self._network_policy = network_policy or {"allow": ["*"], "deny": []}
         self._permissions = permissions or self.DEFAULT_PERMISSIONS.copy()
         self._workspace_path = workspace_path or Path.cwd()

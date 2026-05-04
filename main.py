@@ -1,3 +1,12 @@
+"""
+Seed Agent 主入口
+
+改动：
+1. 使用 get_config_path() 定位配置文件
+2. 从 PathsConfig 获取日志路径
+3. 移除所有硬编码的 ~/.seed 路径
+"""
+
 import argparse
 import asyncio
 import logging
@@ -17,8 +26,16 @@ load_dotenv()
 # Add src to path to allow imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-# Setup cross-platform logging to ~/.seed/logs with daily rotation
-LOG_DIR = Path(os.path.expanduser("~")) / ".seed" / "logs"
+# 先加载配置以获取路径
+from models import load_config, get_config_path, PathsConfig  # noqa: E402
+from shared_config import init_paths_config, get_paths_config, get_logs_dir  # noqa: E402
+
+# 加载配置并初始化路径
+_config = load_config()
+init_paths_config(_config.paths)
+
+# Setup cross-platform logging to logs_dir with daily rotation
+LOG_DIR = get_logs_dir()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # 按天分割日志文件：seed_agent_2026-04-18.log
@@ -422,7 +439,7 @@ async def interactive_loop(agent: AgentLoop, explorer: AutonomousExplorer) -> No
 
 async def main(args=None):
     """交互式主循环入口"""
-    config_path = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
+    config_path = str(get_config_path())
 
     # Load system prompt
     prompt_path = os.path.join(os.path.dirname(__file__), 'core_principles', 'system_prompts_en.md')
@@ -433,18 +450,19 @@ async def main(args=None):
 
     print("Initializing Agent...")
 
-    # Create PID file for abnormal exit detection
-    pid_file = os.path.join(os.path.dirname(__file__), 'tasks', 'seed_agent.pid')
-    os.makedirs(os.path.dirname(pid_file), exist_ok=True)
+    # Create PID file for abnormal exit detection（使用动态路径）
+    paths = get_paths_config()
+    pid_file = paths.tasks_dir / "seed_agent.pid"
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
     with open(pid_file, 'w') as f:
         f.write(str(os.getpid()))
 
     # Register cleanup on exit
     import atexit
     def remove_pid():
-        if os.path.exists(pid_file):
+        if pid_file.exists():
             try:
-                os.remove(pid_file)
+                pid_file.unlink()
             except Exception:
                 pass
     atexit.register(remove_pid)
@@ -452,14 +470,13 @@ async def main(args=None):
     # 启动前诊断检查（可选，使用 --no-check 跳过）
     if not args or not getattr(args, 'no_check', False):
         try:
-            seed_dir = Path(os.path.expanduser("~")) / ".seed"
-            diag_script = seed_dir / "scripts" / "diagnose_seed_agent.py"
+            diag_script = paths.seed_base / "scripts" / "diagnose_seed_agent.py"
             if diag_script.exists():
                 import subprocess
                 result = subprocess.run(
                     ['python', str(diag_script), '--json', '-q'],
                     capture_output=True, text=True, encoding='utf-8',
-                    cwd=str(seed_dir), timeout=60
+                    cwd=str(paths.seed_base), timeout=60
                 )
                 if result.returncode == 0:
                     import json as _json
@@ -469,7 +486,7 @@ async def main(args=None):
                     warned = summary.get('warned', 0)
                     if failed > 0:
                         print(f"  ⚠️  诊断发现 {failed} 个问题，建议运行修复:")
-                        print(f"     python {seed_dir}/scripts/diagnose_seed_agent.py --fix")
+                        print(f"     python {paths.seed_base}/scripts/diagnose_seed_agent.py --fix")
                         for r in report.get('results', []):
                             if r['status'] == 'FAIL':
                                 print(f"     - [{r['severity']}] {r['id']}: {r['name']}")

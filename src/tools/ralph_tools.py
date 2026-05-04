@@ -8,6 +8,8 @@
 
 类型安全:
 - max_iterations 参数在入口处强制转换为整数
+
+路径从 PathsConfig 动态获取。
 """
 
 import json
@@ -18,15 +20,23 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from src.tools import ToolRegistry
 
-from src.shared_config import SEED_DIR
+from src.ralph_state import _ensure_ralph_dir
 from src.tools.utils import safe_int_convert
 
 logger = logging.getLogger(__name__)
 
 # 类型注解使用内置类型
 
-COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
-RALPH_STATE_DIR = SEED_DIR / "ralph"
+
+def _get_completion_promise_file() -> Path:
+    """获取完成标志文件路径（动态）"""
+    return _ensure_ralph_dir().parent / "completion_promise"
+
+
+def _get_ralph_state_dir() -> Path:
+    """获取 Ralph 状态目录（动态）"""
+    return _ensure_ralph_dir()
+
 
 # 兼容别名（使用 utils.py 的公共函数）
 _safe_int_convert = safe_int_convert
@@ -90,8 +100,9 @@ def start_ralph_loop(
     ralph_id = f"ralph_{task_path.stem}"
 
     # 保存 Ralph Loop 配置
-    RALPH_STATE_DIR.mkdir(parents=True, exist_ok=True)
-    config_file = RALPH_STATE_DIR / f"{ralph_id}_config.json"
+    ralph_dir = _get_ralph_state_dir()
+    ralph_dir.mkdir(parents=True, exist_ok=True)
+    config_file = ralph_dir / f"{ralph_id}_config.json"
 
     config = {
         "ralph_id": ralph_id,
@@ -140,12 +151,13 @@ def write_completion_marker(
         write_completion_marker("COMPLETE", ".seed/custom_marker")  # 自定义路径
     """
     # 解析路径
+    ralph_dir = _get_ralph_state_dir()
     if marker_path:
         path = Path(marker_path)
         if not path.is_absolute():
-            path = SEED_DIR / marker_path
+            path = ralph_dir.parent / marker_path
     else:
-        path = COMPLETION_PROMISE_FILE
+        path = _get_completion_promise_file()
 
     # 确保目录存在并写入标志
     try:
@@ -170,13 +182,14 @@ def check_ralph_status(ralph_id: str | None = None) -> str:
         check_ralph_status()  # 列出所有 Ralph Loops
         check_ralph_status("ralph_refactor_auth")  # 查看特定状态
     """
-    if not RALPH_STATE_DIR.exists():
+    ralph_dir = _get_ralph_state_dir()
+    if not ralph_dir.exists():
         return "No Ralph Loops found"
 
     if ralph_id:
         # 查找特定 Ralph Loop
-        state_file = RALPH_STATE_DIR / f"{ralph_id}_state.json"
-        config_file = RALPH_STATE_DIR / f"{ralph_id}_config.json"
+        state_file = ralph_dir / f"{ralph_id}_state.json"
+        config_file = ralph_dir / f"{ralph_id}_config.json"
 
         if not state_file.exists() and not config_file.exists():
             return f"Ralph Loop not found: {ralph_id}"
@@ -207,8 +220,8 @@ def check_ralph_status(ralph_id: str | None = None) -> str:
         return result
 
     # 列出所有 Ralph Loops
-    configs = list(RALPH_STATE_DIR.glob("*_config.json"))
-    states = list(RALPH_STATE_DIR.glob("*_state.json"))
+    configs = list(ralph_dir.glob("*_config.json"))
+    states = list(ralph_dir.glob("*_state.json"))
 
     if not configs and not states:
         return "No Ralph Loops found"
@@ -218,8 +231,8 @@ def check_ralph_status(ralph_id: str | None = None) -> str:
     for config_file in configs:
         try:
             config = json.loads(config_file.read_text())
-            ralph_id = config.get("ralph_id", config_file.stem.replace("_config", ""))
-            state_file = RALPH_STATE_DIR / f"{ralph_id}_state.json"
+            ralph_id_found = config.get("ralph_id", config_file.stem.replace("_config", ""))
+            state_file = ralph_dir / f"{ralph_id_found}_state.json"
 
             status = "pending"
             iteration = "N/A"
@@ -229,7 +242,7 @@ def check_ralph_status(ralph_id: str | None = None) -> str:
                 state = json.loads(state_file.read_text())
                 iteration = state.get("iteration", "N/A")
 
-            result += f"- {ralph_id}: {status} (iteration: {iteration})\n"
+            result += f"- {ralph_id_found}: {status} (iteration: {iteration})\n"
         except Exception as e:
             result += f"- {config_file.stem}: error reading config ({e})\n"
 
@@ -245,8 +258,9 @@ def stop_ralph_loop(ralph_id: str) -> str:
     Returns:
         操作结果
     """
-    state_file = RALPH_STATE_DIR / f"{ralph_id}_state.json"
-    config_file = RALPH_STATE_DIR / f"{ralph_id}_config.json"
+    ralph_dir = _get_ralph_state_dir()
+    state_file = ralph_dir / f"{ralph_id}_state.json"
+    config_file = ralph_dir / f"{ralph_id}_config.json"
 
     if not state_file.exists() and not config_file.exists():
         return f"Ralph Loop not found: {ralph_id}"
@@ -271,7 +285,8 @@ def create_ralph_task_file(task_name: str, task_description: str) -> str:
     Returns:
         任务文件路径
     """
-    tasks_dir = SEED_DIR / "tasks"
+    ralph_dir = _get_ralph_state_dir()
+    tasks_dir = ralph_dir.parent / "tasks"
     tasks_dir.mkdir(parents=True, exist_ok=True)
 
     task_file = tasks_dir / f"{task_name}.md"

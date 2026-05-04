@@ -7,6 +7,8 @@
 - Memory Graph 选择：基于历史结果选择最佳 Skill
 - 自动结果记录：执行完成后自动记录 outcome
 - Session 事件记录：所有状态变更通过 Session 正确记录
+
+路径从 PathsConfig 动态获取。
 """
 
 import asyncio
@@ -25,13 +27,13 @@ if TYPE_CHECKING:
 import contextlib
 
 from src.ralph_state import (
-    SEED_DIR,
     RalphState,
     check_safety_limits,
     cleanup_state_file,
     extract_critical_context,
     load_or_init_state,
     persist_state,
+    _ensure_ralph_dir,
 )
 from src.session_event_stream import EventType
 
@@ -42,9 +44,13 @@ PROJECT_ROOT = Path(__file__).parent.parent
 # SOP 文档路径
 SOP_PATH = PROJECT_ROOT / "auto" / "自主探索 SOP.md"
 
+
+def _get_completion_promise_file() -> Path:
+    """获取完成标志文件路径（动态）"""
+    return _ensure_ralph_dir().parent / "completion_promise"
+
+
 # Ralph Loop 增强配置
-COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
-COMPLETION_PROMISE_TOKENS = ["DONE", "COMPLETE", "TASK_FINISHED"]
 CONTEXT_RESET_ENABLED = True  # 默认开启
 CONTEXT_RESET_INTERVAL = 5  # 每5轮迭代重置
 RALPH_MAX_ITERATIONS = 1000  # 理论上限
@@ -188,14 +194,15 @@ class AutonomousExplorer:
 
         使用锁保护文件检查与删除操作，防止多进程/多线程竞态条件。
         """
+        completion_file = _get_completion_promise_file()
         with self._completion_check_lock:
-            if COMPLETION_PROMISE_FILE.exists():
+            if completion_file.exists():
                 try:
-                    content = COMPLETION_PROMISE_FILE.read_text().strip()
-                    if content in COMPLETION_PROMISE_TOKENS:
+                    content = completion_file.read_text().strip()
+                    if content in ["DONE", "COMPLETE", "TASK_FINISHED"]:
                         logger.info(f"Completion promise detected: {content}")
                         # 清除标志
-                        COMPLETION_PROMISE_FILE.unlink()
+                        completion_file.unlink()
                         return True
                 except OSError as e:
                     logger.warning(f"Failed to read/delete completion promise: {e}")

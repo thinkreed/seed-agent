@@ -1,21 +1,121 @@
 """
-共享配置模块 - 提取各模块的硬编码常量
+共享配置模块 - 统一路径管理
+
+改动：
+1. 移除 SEED_DIR 硬编码
+2. 从 PathsConfig 动态读取路径
+3. 提供全局 PathsConfig 访问接口
+4. 其他配置类保持不变
 
 统一管理:
 - Memory Graph 参数
 - Subagent 超时配置
-- 路径验证配置
+- 路径验证配置（动态）
 - 代码执行安全规则
-- SEED 目录路径
-
-便于用户覆盖和维护更新。
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
-# 统一 SEED 目录定义（避免多文件重复定义）
-SEED_DIR = Path.home() / ".seed"
+if TYPE_CHECKING:
+    from src.models import PathsConfig
+
+# 全局 PathsConfig 实例（延迟初始化）
+_paths_config: Optional["PathsConfig"] = None
+
+
+def init_paths_config(config: "PathsConfig") -> None:
+    """初始化全局路径配置
+
+    Args:
+        config: PathsConfig 实例
+
+    Raises:
+        RuntimeError: 重复初始化
+    """
+    global _paths_config
+    if _paths_config is not None:
+        raise RuntimeError("PathsConfig 已经初始化，不可重复调用")
+    _paths_config = config
+
+
+def get_paths_config() -> "PathsConfig":
+    """获取全局路径配置
+
+    Returns:
+        PathsConfig: 路径配置实例
+
+    Raises:
+        RuntimeError: 未初始化
+    """
+    if _paths_config is None:
+        raise RuntimeError(
+            "PathsConfig 未初始化，请先调用 init_paths_config() "
+            "或在 AgentLoop 启动后使用"
+        )
+    return _paths_config
+
+
+# ========== 便利访问函数 ==========
+
+
+def get_seed_dir() -> Path:
+    """获取主工作目录"""
+    return get_paths_config().seed_base
+
+
+def get_memory_dir() -> Path:
+    """获取记忆目录"""
+    return get_paths_config().memory_dir
+
+
+def get_logs_dir() -> Path:
+    """获取日志目录"""
+    return get_paths_config().logs_dir
+
+
+def get_tasks_dir() -> Path:
+    """获取任务目录"""
+    return get_paths_config().tasks_dir
+
+
+def get_cache_dir() -> Path:
+    """获取缓存目录"""
+    return get_paths_config().cache_dir
+
+
+def get_sandbox_dir() -> Path:
+    """获取沙盒目录"""
+    return get_paths_config().sandbox_dir
+
+
+def get_ralph_dir() -> Path:
+    """获取 Ralph Loop 目录"""
+    return get_paths_config().ralph_dir
+
+
+def get_vault_dir() -> Path:
+    """获取凭证存储目录"""
+    return get_paths_config().vault_dir
+
+
+def get_allowed_dirs() -> list[Path]:
+    """获取允许访问的目录列表"""
+    return get_paths_config().allowed_dirs_resolved
+
+
+def get_project_root() -> Path:
+    """获取项目根目录"""
+    return get_paths_config().project_root
+
+
+def get_wiki_dir() -> Path | None:
+    """获取 Wiki 目录"""
+    return get_paths_config().wiki_dir
+
+
+# ========== 其他配置类（保持不变）==========
 
 
 @dataclass
@@ -37,16 +137,10 @@ class MemoryGraphConfig:
 class SubagentTimeoutConfig:
     """Subagent 超时配置（秒）"""
 
-    # 不同类型任务的默认超时时间
-    # EXPLORE: 快速查询 (3m)
-    # REVIEW: 审查+测试 (10m)
-    # IMPLEMENT: 实现+调试 (15m)
-    # PLAN: 规划分析 (5m)
-    explore: int = 180
-    review: int = 600
-    implement: int = 900
-    plan: int = 300
-
+    explore: int = 180  # EXPLORE: 快速查询 (3m)
+    review: int = 600  # REVIEW: 审查+测试 (10m)
+    implement: int = 900  # IMPLEMENT: 实现+调试 (15m)
+    plan: int = 300  # PLAN: 规划分析 (5m)
     max_iterations: int = 15  # 最大迭代次数
 
 
@@ -61,65 +155,71 @@ class RalphLoopConfig:
 
 @dataclass
 class AutonomousConfig:
-    """自主探索配置（增强版）
-
-    新增特性：
-    - LLM 调用超时保护
-    - Ask User 自动跳过策略
-    - 错误恢复退避机制
-    - 调试日志级别控制
-    """
+    """自主探索配置"""
 
     idle_timeout_hours: int = 2  # 空闲触发时间（小时）
     completion_prompt_tokens: int = 500  # 完成提示 token 数
     max_exploration_rounds: int = 5  # 最大探索轮数
 
-    # === 新增：超时保护 ===
+    # 超时保护
     llm_call_timeout_seconds: int = 300  # LLM 单次调用超时（5分钟）
     iteration_timeout_seconds: int = 600  # 单轮迭代总超时（10分钟）
 
-    # === 新增：Ask User 跳过策略 ===
+    # Ask User 跳过策略
     ask_user_skip_response: str = "[AUTONOMOUS_SKIP] 自主模式自动跳过用户确认，继续执行"
-    ask_user_auto_confirm: bool = True  # 自动确认（而非跳过整个任务）
+    ask_user_auto_confirm: bool = True
 
-    # === 新增：错误恢复退避 ===
-    consecutive_failure_threshold: int = 3  # 连续失败阈值
-    backoff_duration_seconds: int = 60  # 退避等待时间（1分钟）
-    max_backoff_multiplier: int = 5  # 最大退避倍数（5分钟后重试）
+    # 错误恢复退避
+    consecutive_failure_threshold: int = 3
+    backoff_duration_seconds: int = 60
+    max_backoff_multiplier: int = 5
 
-    # === 新增：调试日志 ===
-    debug_logging_enabled: bool = True  # 启用详细调试日志
+    # 调试日志
+    debug_logging_enabled: bool = True
 
 
 @dataclass
 class QueueConfig:
     """请求队列配置"""
 
-    max_critical_dispatch_rate: float = 50.0  # VIP 最大调度速率
-    max_background_dispatch_rate: float = 20.0  # 后台最大调度速率
-    queue_size_warning_threshold: int = 100  # 队列大小警告阈值
-    queue_size_critical_threshold: int = 200  # 队列大小临界阈值
+    max_critical_dispatch_rate: float = 50.0
+    max_background_dispatch_rate: float = 20.0
+    queue_size_warning_threshold: int = 100
+    queue_size_critical_threshold: int = 200
 
 
 @dataclass
 class PathValidationConfig:
-    """路径验证配置"""
+    """路径验证配置（动态路径）"""
 
-    # 默认工作目录为 ~/.seed 目录
-    project_root: Path = field(default_factory=lambda: Path(__file__).parent.parent)
-    default_work_dir: Path = field(default_factory=lambda: Path.home() / ".seed")
+    # 所有路径从 PathsConfig 动态获取
+    # 当 PathsConfig 未初始化时返回 fallback 值
+    @property
+    def project_root(self) -> Path:
+        try:
+            return get_paths_config().project_root
+        except RuntimeError:
+            # Fallback: 从 shared_config.py 所在目录向上查找
+            return Path(__file__).parent.parent.resolve()
 
-    # 允许的目录列表（可扩展）
-    allowed_dirs: list[Path] = field(default_factory=list)
+    @property
+    def default_work_dir(self) -> Path:
+        try:
+            return get_paths_config().seed_base
+        except RuntimeError:
+            # Fallback: 使用默认 ~/.seed
+            return Path.home() / ".seed"
 
-    def __post_init__(self) -> None:
-        """初始化默认允许目录"""
-        if not self.allowed_dirs:
-            self.allowed_dirs = [
+    @property
+    def allowed_dirs(self) -> list[Path]:
+        try:
+            return get_paths_config().allowed_dirs_resolved
+        except RuntimeError:
+            # Fallback: 使用默认允许目录
+            return [
                 self.default_work_dir,
                 self.project_root,
                 Path.home() / "Documents",
-                Path("E:/projects/wiki"),  # 用户指定的 wiki 目录
             ]
 
 
@@ -127,48 +227,39 @@ class PathValidationConfig:
 class CodeExecutionSecurityConfig:
     """代码执行安全配置"""
 
-    # Shell 黑名单（系统破坏性命令）
-    # 扩展包含：磁盘操作、系统配置、网络工具等
+    # Shell 黑名单
     shell_blacklist: list[str] = field(
         default_factory=lambda: [
-            # 文件/目录删除
             "rm -rf",
             "rm -r",
             "rmdir",
             "del ",
             "format",
-            # 磁盘操作（新增）
             "dd",
             "mkfs",
             "fdisk",
             "parted",
             "gdisk",
             "sfdisk",
-            # 权限提升
             "sudo",
             "su",
             "chmod 777",
             "chown",
-            # 网络工具（潜在数据泄露）
             "wget",
             "curl -o",
             "nc ",
             "netcat",
             "telnet",
-            # 进程终止
             "kill -9",
             "pkill",
             "killall",
-            # 命令注入模式
             "; rm",
             "| rm",
             "& rm",
             "`rm",
             "$(rm",
-            # 敏感文件访问
             "cat /etc/passwd",
             "cat /etc/shadow",
-            # 系统配置修改（新增）
             "sysctl",
             "iptables",
             "ufw",
@@ -177,7 +268,6 @@ class CodeExecutionSecurityConfig:
             "reboot",
             "halt",
             "poweroff",
-            # 包管理器（可能安装恶意软件）
             "apt install",
             "yum install",
             "dnf install",
@@ -186,43 +276,32 @@ class CodeExecutionSecurityConfig:
     )
 
     # PowerShell 黑名单
-    # 扩展包含：磁盘操作、系统配置、远程执行等
     powershell_blacklist: list[str] = field(
         default_factory=lambda: [
-            # 文件删除
             "Remove-Item",
             "Delete-Item",
             "Format-Volume",
-            # 权限/执行策略
             "Set-ExecutionPolicy",
             "Start-Process -Verb RunAs",
-            # 网络下载
             "Download-File",
             "Invoke-WebRequest -OutFile",
-            # 进程终止
             "Stop-Process -Force",
             "Kill-Process",
-            # 系统配置（新增）
             "Set-ItemProperty",
             "New-ItemProperty",
             "Remove-ItemProperty",
             "Disable-ComputerRestore",
             "Clear-EventLog",
-            # 远程执行（新增）
             "Invoke-Command",
             "Enter-PSSession",
             "New-SSHSession",
-            # 磁盘操作（新增）
             "Initialize-Disk",
             "Clear-Disk",
             "Remove-Partition",
         ]
     )
 
-    # 代码长度限制
     max_code_length: int = 10000
-
-    # 默认超时
     default_timeout: int = 60
 
 
@@ -230,14 +309,15 @@ class CodeExecutionSecurityConfig:
 class VisionConfig:
     """视觉处理配置"""
 
-    max_pixels: int = 1_440_000  # 最大像素数
-    max_file_size_mb: int = 20  # 最大文件大小 (MB)
+    max_pixels: int = 1_440_000
+    max_file_size_mb: int = 20
     supported_formats: list[str] = field(
         default_factory=lambda: ["png", "jpg", "jpeg", "gif", "webp"]
     )
 
 
-# 全局配置实例（单例模式）
+# ========== 全局配置实例（单例模式）==========
+
 _memory_graph_config = MemoryGraphConfig()
 _subagent_timeout_config = SubagentTimeoutConfig()
 _ralph_loop_config = RalphLoopConfig()

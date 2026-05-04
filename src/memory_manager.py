@@ -30,8 +30,15 @@ from src.tools.user_modeling import UserModelingLayer
 
 logger = logging.getLogger(__name__)
 
-# 记忆根目录
-MEMORY_ROOT = Path.home() / ".seed" / "memory"
+
+def _get_memory_root() -> Path:
+    """获取记忆根目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().memory_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "memory"
 
 
 class MemoryManager:
@@ -90,10 +97,11 @@ class MemoryManager:
             self._l4_user_modeling.set_llm_gateway(llm_gateway)
             self._l5_archive.set_llm_gateway(llm_gateway)
 
-        # L1-L3 路径
-        self._l1_path = MEMORY_ROOT / "notes.md"
-        self._l2_path = MEMORY_ROOT / "skills"
-        self._l3_path = MEMORY_ROOT / "knowledge"
+        # L1-L3 路径（动态）
+        memory_root = _get_memory_root()
+        self._l1_path = memory_root / "notes.md"
+        self._l2_path = memory_root / "skills"
+        self._l3_path = memory_root / "knowledge"
 
         logger.info("MemoryManager initialized with 5 layers")
 

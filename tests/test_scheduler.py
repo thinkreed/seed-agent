@@ -4,6 +4,8 @@ Tests for src/scheduler.py
 Coverage targets:
 - ScheduledTask class (should_run, mark_run, serialization)
 - TaskScheduler (add_task, get_task, remove_task - mocked)
+
+路径配置已迁移到动态函数，测试使用 mock 路径函数替代。
 """
 
 import os
@@ -26,11 +28,18 @@ def mock_tasks_dir(monkeypatch):
     """Mock tasks directory and file for TaskScheduler tests using monkeypatch."""
     temp_dir = tempfile.mkdtemp()
     tasks_file = Path(temp_dir) / 'scheduled_tasks.json'
+
+    # Mock 动态路径函数
+    def mock_get_tasks_dir():
+        return Path(temp_dir)
     
-    # Use monkeypatch to safely modify module-level constants
-    monkeypatch.setattr(scheduler, 'TASKS_DIR', Path(temp_dir))
-    monkeypatch.setattr(scheduler, 'TASKS_FILE', tasks_file)
-    
+    def mock_get_tasks_file():
+        return tasks_file
+
+    # 使用 monkeypatch 替换动态路径函数
+    monkeypatch.setattr(scheduler, '_get_tasks_dir', mock_get_tasks_dir)
+    monkeypatch.setattr(scheduler, '_get_tasks_file', mock_get_tasks_file)
+
     return temp_dir
 
 # ==================== Tests for ScheduledTask ====================
@@ -105,7 +114,7 @@ class TestScheduledTask:
         before = time.time()
         task.mark_run()
         after = time.time()
-        
+
         assert task.last_run > 0
         assert task.last_run >= before
         assert task.last_run <= after
@@ -155,9 +164,9 @@ class TestTaskScheduler:
     def test_add_task(self, mock_tasks_dir):
         """Test adding a task."""
         scheduler_mock = TaskScheduler()
-        
+
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-        
+
         assert "my_task" in scheduler_mock._tasks
         assert scheduler_mock._tasks["my_task"].interval_seconds == 600
         assert scheduler_mock._tasks["my_task"].enabled is True
@@ -166,7 +175,7 @@ class TestTaskScheduler:
         """Test getting task status."""
         scheduler_mock = TaskScheduler()
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-        
+
         status = scheduler_mock.get_task_status("my_task")
         assert status['task_id'] == "my_task"
         assert status['enabled'] is True
@@ -181,9 +190,9 @@ class TestTaskScheduler:
         """Test removing a task."""
         scheduler_mock = TaskScheduler()
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-        
+
         scheduler_mock.remove_task("my_task")
-        
+
         assert "my_task" not in scheduler_mock._tasks
         # Should return error if called again
         result2 = scheduler_mock.remove_task("my_task")
@@ -192,10 +201,10 @@ class TestTaskScheduler:
     def test_add_task_duplicate(self, mock_tasks_dir):
         """Test adding a duplicate task returns error."""
         scheduler_mock = TaskScheduler()
-        
+
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
         result2 = scheduler_mock.add_task("my_task", "custom", 300, "Do something else")
-        
+
         # Should not update, should return error message
         assert "already exists" in result2
         assert scheduler_mock._tasks["my_task"].interval_seconds == 600
@@ -206,15 +215,15 @@ class TestTaskScheduler:
         scheduler_mock = TaskScheduler()
         # Add a new task
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-        
+
         scheduler_mock._save_tasks()
-        
-        tasks_file = scheduler.TASKS_FILE
+
+        tasks_file = scheduler._get_tasks_file()
         assert tasks_file.exists()
-        
+
         with open(tasks_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
+
         # Should contain builtin tasks + my_task
         task_ids = [t['task_id'] for t in data['tasks']]
         assert "my_task" in task_ids
@@ -223,7 +232,7 @@ class TestTaskScheduler:
 
     def test_load_tasks(self, mock_tasks_dir):
         """Test loading tasks from file."""
-        tasks_file = scheduler.TASKS_FILE
+        tasks_file = scheduler._get_tasks_file()
         # Data must be wrapped in {"tasks": [...]}
         data = {
             "tasks": [{
@@ -235,13 +244,13 @@ class TestTaskScheduler:
                 "enabled": True
             }]
         }
-        
+
         with open(tasks_file, 'w') as f:
             json.dump(data, f)
-            
+
         # Re-initialize to load tasks
         scheduler_mock = TaskScheduler()
-        
+
         assert "saved_task" in scheduler_mock._tasks
         assert scheduler_mock._tasks["saved_task"].prompt == "Saved prompt"
 
@@ -250,7 +259,7 @@ class TestTaskScheduler:
         scheduler_mock = TaskScheduler()
         scheduler_mock.add_task("task_1", "type1", 100, "p1")
         scheduler_mock.add_task("task_2", "type2", 200, "p2")
-        
+
         tasks_list = scheduler_mock.list_tasks()
         # list_tasks returns a formatted string, check if tasks are present
         assert "task_1" in tasks_list
@@ -260,9 +269,9 @@ class TestTaskScheduler:
         """Test enabling/disabling tasks."""
         scheduler_mock = TaskScheduler()
         scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-        
+
         scheduler_mock.disable_task("my_task")
         assert scheduler_mock._tasks["my_task"].enabled is False
-        
+
         scheduler_mock.enable_task("my_task")
         assert scheduler_mock._tasks["my_task"].enabled is True

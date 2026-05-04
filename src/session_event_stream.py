@@ -24,8 +24,15 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# 默认存储路径
-DEFAULT_STORAGE_PATH = Path.home() / ".seed" / "memory" / "events"
+
+def _get_default_storage_path() -> Path:
+    """获取默认存储路径（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().events_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "memory" / "events"
 
 # 事件清理配置
 MAX_IN_MEMORY_EVENTS = 10000  # 内存中最大事件数
@@ -91,7 +98,7 @@ class SessionEventStream:
             storage_path: 事件存储路径，默认 ~/.seed/memory/events
         """
         self.session_id = session_id
-        self._storage_path = storage_path or DEFAULT_STORAGE_PATH
+        self._storage_path = storage_path or _get_default_storage_path()
         self._events: list[dict[str, Any]] = []
         self._event_index: dict[int, dict[str, Any]] = {}  # 事件 ID -> 事件的索引
         self._event_counter: int = 0

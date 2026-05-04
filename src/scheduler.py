@@ -1,7 +1,7 @@
 """定时任务管理模块：Agent 自主创建和管理定时任务
 
 参考 GenericAgent scheduler.py 设计
-任务存储在 ~/.seed/tasks/ 目录
+任务存储路径从 PathsConfig 动态获取
 """
 
 import asyncio
@@ -21,9 +21,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("seed_agent")
 
-# 任务存储路径
-TASKS_DIR = Path.home() / ".seed" / "tasks"
-TASKS_FILE = TASKS_DIR / "scheduled_tasks.json"
+
+def _get_tasks_dir() -> Path:
+    """获取任务存储目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().tasks_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "tasks"
+
+
+def _get_tasks_file() -> Path:
+    """获取任务文件路径"""
+    return _get_tasks_dir() / "scheduled_tasks.json"
 
 
 def _get_scheduler() -> "TaskScheduler":
@@ -110,11 +121,13 @@ class TaskScheduler:
 
     def _load_tasks(self) -> None:
         """加载已保存的任务"""
-        TASKS_DIR.mkdir(parents=True, exist_ok=True)
+        tasks_dir = _get_tasks_dir()
+        tasks_file = _get_tasks_file()
+        tasks_dir.mkdir(parents=True, exist_ok=True)
 
-        if TASKS_FILE.exists():
+        if tasks_file.exists():
             try:
-                with TASKS_FILE.open(encoding="utf-8") as f:
+                with tasks_file.open(encoding="utf-8") as f:
                     data = json.load(f)
                     for task_data in data.get("tasks", []):
                         try:
@@ -128,16 +141,18 @@ class TaskScheduler:
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to load tasks file: {e}, starting fresh")
                 # Corrupted file: backup and start fresh
-                backup_path = TASKS_FILE.with_suffix(".json.bak")
+                backup_path = tasks_file.with_suffix(".json.bak")
                 with contextlib.suppress(OSError):
-                    TASKS_FILE.replace(backup_path)
+                    tasks_file.replace(backup_path)
 
     def _save_tasks(self) -> None:
         """保存任务到文件（原子写入模式）
 
         使用临时文件+原子替换模式，避免写入中途崩溃导致数据损坏。
         """
-        TASKS_DIR.mkdir(parents=True, exist_ok=True)
+        tasks_dir = _get_tasks_dir()
+        tasks_file = _get_tasks_file()
+        tasks_dir.mkdir(parents=True, exist_ok=True)
 
         data = {
             "updated_at": datetime.now(tz=UTC).isoformat(),
@@ -145,13 +160,13 @@ class TaskScheduler:
         }
 
         # 原子写入：先写临时文件，再替换原文件
-        temp_file = TASKS_FILE.with_suffix(".tmp")
+        temp_file = tasks_file.with_suffix(".tmp")
         try:
             with temp_file.open("w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
             # 原子替换（replace 在 POSIX 上是原子操作，Windows 上尽量保证）
-            temp_file.replace(TASKS_FILE)
+            temp_file.replace(tasks_file)
         except OSError as e:
             logger.error(f"Failed to save tasks: {e}")
             # 清理临时文件
@@ -279,7 +294,7 @@ class TaskScheduler:
         self, task: ScheduledTask, result: str, success: bool = True
     ) -> None:
         """记录任务执行日志"""
-        log_file = TASKS_DIR / "execution_log.jsonl"
+        log_file = _get_tasks_dir() / "execution_log.jsonl"
 
         log_entry = {
             "timestamp": datetime.now(tz=UTC).isoformat(),

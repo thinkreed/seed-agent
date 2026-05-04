@@ -26,7 +26,7 @@ from sandbox import (
     PermissionAction,
     SandboxPermission,
     ExecutionResult,
-    DEFAULT_SANDBOX_ROOT,
+    _get_default_sandbox_root,
 )
 
 
@@ -60,7 +60,7 @@ class TestSandboxInit:
         sandbox = Sandbox()
 
         assert sandbox.isolation_level == IsolationLevel.PROCESS
-        assert sandbox._fs_root == DEFAULT_SANDBOX_ROOT
+        assert sandbox._fs_root == _get_default_sandbox_root()
         assert sandbox._network_policy == {"allow": ["*"], "deny": []}
 
     def test_init_custom_isolation(self):

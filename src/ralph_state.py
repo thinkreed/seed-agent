@@ -7,7 +7,7 @@ Ralph Loop 共享状态管理模块
 - 上下文重置 (防止漂移)
 - 关键信息提取
 
-避免代码重复，统一维护。
+路径从 PathsConfig 动态获取。
 """
 
 import json
@@ -15,12 +15,29 @@ import logging
 import time
 from pathlib import Path
 
-from src.shared_config import SEED_DIR
-
 logger = logging.getLogger("seed_agent.ralph")
 
-# 默认状态目录
-RALPH_STATE_DIR = SEED_DIR / "ralph"
+
+def _get_ralph_dir() -> Path:
+    """获取 Ralph 状态目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().ralph_dir
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed" / "ralph"
+
+
+# 默认状态目录（延迟获取）
+RALPH_STATE_DIR = None  # 类型: Path | None
+
+
+def _ensure_ralph_dir() -> Path:
+    """确保 Ralph 状态目录已初始化"""
+    global RALPH_STATE_DIR
+    if RALPH_STATE_DIR is None:
+        RALPH_STATE_DIR = _get_ralph_dir()
+    return RALPH_STATE_DIR
 
 
 class RalphState:
