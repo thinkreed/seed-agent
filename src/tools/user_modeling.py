@@ -190,7 +190,7 @@ class UserModelingLayer:
         if not (0.0 <= confidence <= 1.0):
             return f"Invalid confidence: {confidence} (must be 0.0-1.0)"
 
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(tz=timezone.utc).isoformat()
         data_json = json.dumps(data, ensure_ascii=False)
 
         try:
@@ -768,7 +768,7 @@ class UserModelingLayer:
                 "usual": resolution["value"],
                 "exceptions": {},
                 "confidence": resolution["confidence"],
-                "last_updated": datetime.now().isoformat(),
+                "last_updated": datetime.now(tz=timezone.utc).isoformat(),
             }
 
         # 添加例外
@@ -784,7 +784,7 @@ class UserModelingLayer:
             "usual": existing.get("usual", existing.get("value")),
             "exceptions": exceptions,
             "confidence": min(existing["confidence"], resolution["confidence"]),
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": datetime.now(tz=timezone.utc).isoformat(),
         }
 
     def _apply_value_upgrade(
@@ -796,7 +796,7 @@ class UserModelingLayer:
                 "usual": resolution["value"],
                 "exceptions": {},
                 "confidence": resolution["confidence"],
-                "last_updated": datetime.now().isoformat(),
+                "last_updated": datetime.now(tz=timezone.utc).isoformat(),
             }
 
         # 升级常规值，保留旧值作为历史例外
@@ -812,7 +812,7 @@ class UserModelingLayer:
             "usual": resolution["value"],
             "exceptions": exceptions,
             "confidence": resolution["confidence"],
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": datetime.now(tz=timezone.utc).isoformat(),
         }
 
     def _save_preference(self, key: str, pref_data: dict[str, Any]) -> None:
@@ -846,7 +846,7 @@ class UserModelingLayer:
             "usual": value,
             "exceptions": {},
             "confidence": confidence,
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": datetime.now(tz=timezone.utc).isoformat(),
         }
         self._save_preference(key, pref_data)
 
@@ -858,7 +858,7 @@ class UserModelingLayer:
             SET confidence = ?, last_updated = ?
             WHERE preference_key = ?
         """,
-            (new_confidence, datetime.now().isoformat(), key),
+            (new_confidence, datetime.now(tz=timezone.utc).isoformat(), key),
         )
         self._ensure_conn().commit()
 
@@ -882,7 +882,7 @@ class UserModelingLayer:
             "usual": existing.get("usual", existing.get("value")),
             "exceptions": exceptions,
             "confidence": existing["confidence"],
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": datetime.now(tz=timezone.utc).isoformat(),
         }
         self._save_preference(key, pref_data)
 
@@ -906,7 +906,7 @@ class UserModelingLayer:
             "usual": new_value,
             "exceptions": exceptions,
             "confidence": new_confidence,
-            "last_updated": datetime.now().isoformat(),
+            "last_updated": datetime.now(tz=timezone.utc).isoformat(),
         }
         self._save_preference(key, pref_data)
 
@@ -917,7 +917,7 @@ class UserModelingLayer:
         updates: list[dict[str, Any]],
     ) -> None:
         """记录辩证进化历史"""
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(tz=timezone.utc).isoformat()
 
         conflict_json = json.dumps(conflicts, ensure_ascii=False)
         resolution_json = json.dumps(resolution, ensure_ascii=False)

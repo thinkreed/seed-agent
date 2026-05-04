@@ -538,7 +538,6 @@ class SkillLoader:
             project_root_posix = project_root.as_posix()
             project_root_windows = str(project_root)
             # 匹配 src/xxx.py 格式的路径（使用正则确保精确匹配）
-            import re
             # 替换 E:/projects/seed-agent/src/xxx.py 格式（统一为 POSIX）
             content = re.sub(
                 r'[Ee]:/projects/seed-agent/src/',
@@ -803,7 +802,6 @@ class SkillLoader:
             project_root = Path(__file__).parent.parent.parent
             project_root_posix = project_root.as_posix()
             project_root_windows = str(project_root)
-            import re
             content = re.sub(
                 r'[Ee]:/projects/seed-agent/src/',
                 project_root_posix + '/src/',

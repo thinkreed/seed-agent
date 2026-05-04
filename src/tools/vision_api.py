@@ -3,6 +3,7 @@ Vision API Helper - 视觉识别基础模块
 支持: 窗口截图, 图像编码, 调用多模态大模型 (Claude/OpenAI/DashScope)
 """
 
+import asyncio
 import base64
 import io
 import logging
@@ -107,7 +108,6 @@ async def analyze_image_async(
     ]
 
     cfg_path = config_path or DEFAULT_CONFIG_PATH
-    import asyncio
 
     if not await asyncio.to_thread(Path(cfg_path).exists):
         return f"Error: Config file not found at {cfg_path}"
@@ -205,11 +205,9 @@ def ask_vision(
     messages = _build_vision_messages(b64_img, prompt)
 
     try:
-        import asyncio
-
         from src.client import LLMGateway, RequestPriority
 
-        if not os.path.exists(DEFAULT_CONFIG_PATH):
+        if not Path(DEFAULT_CONFIG_PATH).exists():
             return f"Error: Config not found at {DEFAULT_CONFIG_PATH}"
 
         gateway = LLMGateway(DEFAULT_CONFIG_PATH)
@@ -257,8 +255,6 @@ def _run_vision_in_new_loop(
     gateway, model_id: str, messages: list, timeout: int
 ) -> dict:
     """在独立线程中创建新事件循环执行视觉分析"""
-    import asyncio
-
     from src.client import RequestPriority
 
     loop = asyncio.new_event_loop()

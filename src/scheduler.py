@@ -114,7 +114,7 @@ class TaskScheduler:
 
         if TASKS_FILE.exists():
             try:
-                with open(TASKS_FILE, encoding="utf-8") as f:
+                with TASKS_FILE.open(encoding="utf-8") as f:
                     data = json.load(f)
                     for task_data in data.get("tasks", []):
                         try:
@@ -140,14 +140,14 @@ class TaskScheduler:
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
         data = {
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": datetime.now(tz=timezone.utc).isoformat(),
             "tasks": [t.to_dict() for t in self._tasks.values()],
         }
 
         # 原子写入：先写临时文件，再替换原文件
         temp_file = TASKS_FILE.with_suffix(".tmp")
         try:
-            with open(temp_file, "w", encoding="utf-8") as f:
+            with temp_file.open("w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
             # 原子替换（replace 在 POSIX 上是原子操作，Windows 上尽量保证）
@@ -282,14 +282,14 @@ class TaskScheduler:
         log_file = TASKS_DIR / "execution_log.jsonl"
 
         log_entry = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "task_id": task.task_id,
             "task_type": task.task_type,
             "success": success,
             "result": result[:500],
         }
 
-        with open(log_file, "a", encoding="utf-8") as f:
+        with log_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
     def add_task(
@@ -392,7 +392,7 @@ class TaskScheduler:
             "task_type": task.task_type,
             "interval_seconds": task.interval_seconds,
             "enabled": task.enabled,
-            "last_run": datetime.fromtimestamp(task.last_run).isoformat()
+            "last_run": datetime.fromtimestamp(task.last_run, tz=timezone.utc).isoformat()
             if task.last_run > 0
             else "never",
             "next_run_in": task.interval_seconds - (time.time() - task.last_run)

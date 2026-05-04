@@ -838,8 +838,6 @@ def _archive_session_events(
         归档提示信息 (实际归档需要在异步环境中执行)
     """
     try:
-        import json
-
         events = json.loads(events_json) if events_json else []
 
         if not events:

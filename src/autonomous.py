@@ -12,6 +12,7 @@
 import asyncio
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import Coroutine
@@ -266,8 +267,6 @@ class AutonomousExplorer:
         2. 如果任务指令缺失，动态构建当前任务
         3. 确保始终返回有效内容（非空）
         """
-        import re
-
         # 匹配 SOP 部分
         sop_match = re.search(
             r"(##?\s*自主探索\s*SOP.*?)(?=##?\s*|$)",

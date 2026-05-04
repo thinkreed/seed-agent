@@ -38,6 +38,7 @@ Ask User 机制：
 """
 
 import asyncio
+import json
 import logging
 import time
 from collections.abc import AsyncGenerator, Callable
@@ -375,8 +376,6 @@ class AgentLoop:
             if isinstance(content, str):
                 total += self._encode_text(content)
             if msg.get("tool_calls"):
-                import json
-
                 total += self._encode_text(json.dumps(msg["tool_calls"]))
 
         return total
