@@ -168,7 +168,7 @@ class TaskScheduler:
             # 原子替换（replace 在 POSIX 上是原子操作，Windows 上尽量保证）
             temp_file.replace(tasks_file)
         except OSError as e:
-            logger.error(f"Failed to save tasks: {e}")
+            logger.exception(f"Failed to save tasks: {e}")
             # 清理临时文件
             if temp_file.exists():
                 with contextlib.suppress(OSError):

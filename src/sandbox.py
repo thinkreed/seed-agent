@@ -346,7 +346,7 @@ class Sandbox:
             }
 
         except Exception as e:
-            logger.error(f"Tool execution failed: {tool_name}: {type(e).__name__}: {e}")
+            logger.exception(f"Tool execution failed: {tool_name}: {type(e).__name__}: {e}")
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
@@ -581,7 +581,7 @@ class Sandbox:
                 container.decode() if isinstance(container, bytes) else str(container)
             )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Container execution failed for {tool_name}: {type(e).__name__}: {e}. "
                 "Falling back to PROCESS isolation."
             )

@@ -315,7 +315,7 @@ class MultiBrainOneHandOrchestrator:
             )
         except RuntimeError as e:
             # 运行时错误：严重，需要记录并向上传播
-            logger.error(f"Runtime error during analysis for {perspective}: {e}")
+            logger.exception(f"Runtime error during analysis for {perspective}: {e}")
             agent.status = "failed"
             raise
 
@@ -648,7 +648,7 @@ class OneBrainMultiHandOrchestrator:
             return self._parse_plan(plan_text)
 
         except Exception as e:
-            logger.error(f"Planning failed: {e}")
+            logger.exception(f"Planning failed: {e}")
             # 默认分配：所有环境执行相同任务
             return {
                 str(i): [{"tool": "code_as_policy", "args": {"code": task}}]
@@ -711,7 +711,7 @@ class OneBrainMultiHandOrchestrator:
                     results.append("No result returned")
 
             except Exception as e:
-                logger.error(f"Task execution failed: {e}")
+                logger.exception(f"Task execution failed: {e}")
                 results.append(f"Error: {e}")
 
         return results
@@ -751,7 +751,7 @@ class OneBrainMultiHandOrchestrator:
             }
 
         except Exception as e:
-            logger.error(f"Aggregation failed: {e}")
+            logger.exception(f"Aggregation failed: {e}")
             return {
                 "summary": f"Aggregation failed: {e}",
                 "environments_count": len(results),
@@ -1027,7 +1027,7 @@ class MultiBrainMultiHandOrchestrator:
             }
 
         except Exception as e:
-            logger.error(f"Pair {agent.id} execution failed: {e}")
+            logger.exception(f"Pair {agent.id} execution failed: {e}")
             agent.status = "failed"
             return {
                 "pair_id": agent.id,
@@ -1130,7 +1130,7 @@ class MultiBrainMultiHandOrchestrator:
             )
 
         except Exception as e:
-            logger.error(f"Merge summary failed: {e}")
+            logger.exception(f"Merge summary failed: {e}")
             return f"Generated {len(results)} results"
 
     async def dynamic_task_assignment(self, task: str) -> dict[str, Any]:

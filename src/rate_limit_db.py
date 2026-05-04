@@ -77,7 +77,7 @@ class RateLimitSQLite:
                 self._local.conn.execute("PRAGMA journal_mode=WAL")
                 self._local.conn.execute("PRAGMA busy_timeout=5000")
             except sqlite3.Error as e:
-                logger.error(f"Failed to connect to database: {type(e).__name__}: {e}")
+                logger.exception(f"Failed to connect to database: {type(e).__name__}: {e}")
                 raise
         return self._local.conn
 

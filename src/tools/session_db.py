@@ -848,12 +848,12 @@ class SessionDB:
                 )
             return total_deleted
         except sqlite3.OperationalError as e:
-            logger.error(
+            logger.exception(
                 f"Database operational error during cleanup: {type(e).__name__}: {e}"
             )
             return 0
         except sqlite3.IntegrityError as e:
-            logger.error(
+            logger.exception(
                 f"Database integrity error during cleanup: {type(e).__name__}: {e}"
             )
             return 0
@@ -979,11 +979,11 @@ class SessionDB:
             return f"Session saved: {session_id} ({msg_count} messages)"
         except sqlite3.OperationalError as e:
             self._ensure_conn().rollback()
-            logger.error(f"Database operational error saving session: {e}")
+            logger.exception(f"Database operational error saving session: {e}")
             return f"Error saving session (database issue): {e!s}"
         except sqlite3.IntegrityError as e:
             self._ensure_conn().rollback()
-            logger.error(f"Database integrity error saving session: {e}")
+            logger.exception(f"Database integrity error saving session: {e}")
             return f"Error saving session (integrity issue): {e!s}"
         except Exception as e:
             self._ensure_conn().rollback()
@@ -1030,10 +1030,10 @@ class SessionDB:
 
             return output
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operational error loading session: {e}")
+            logger.exception(f"Database operational error loading session: {e}")
             return f"Error loading session (database issue): {e!s}"
         except Exception as e:
-            logger.error(f"Unexpected error loading session: {type(e).__name__}: {e}")
+            logger.exception(f"Unexpected error loading session: {type(e).__name__}: {e}")
             return f"Error loading session: {type(e).__name__}: {e!s}"
 
     def _find_session(self, session_id: str) -> sqlite3.Row | None:
@@ -1111,10 +1111,10 @@ class SessionDB:
 
             return output
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operational error listing sessions: {e}")
+            logger.exception(f"Database operational error listing sessions: {e}")
             return f"Error listing sessions (database issue): {e!s}"
         except Exception as e:
-            logger.error(f"Unexpected error listing sessions: {type(e).__name__}: {e}")
+            logger.exception(f"Unexpected error listing sessions: {type(e).__name__}: {e}")
             return f"Error listing sessions: {type(e).__name__}: {e!s}"
 
     def search_history(self, keyword: str, limit: int = 20) -> str:
@@ -1173,10 +1173,10 @@ class SessionDB:
             logger.debug(f"FTS search failed, falling back to LIKE search: {e}")
             return self._fallback_search(keyword, limit)
         except sqlite3.DatabaseError as e:
-            logger.error(f"Database error searching history: {e}")
+            logger.exception(f"Database error searching history: {e}")
             return f"Error searching history (database issue): {e!s}"
         except Exception as e:
-            logger.error(f"Unexpected error searching history: {type(e).__name__}: {e}")
+            logger.exception(f"Unexpected error searching history: {type(e).__name__}: {e}")
             return f"Error searching history: {type(e).__name__}: {e!s}"
 
     def _fallback_search(self, keyword: str, limit: int = 20) -> str:
@@ -1210,10 +1210,10 @@ class SessionDB:
 
             return output
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operational error in fallback search: {e}")
+            logger.exception(f"Database operational error in fallback search: {e}")
             return f"Error in fallback search (database issue): {e!s}"
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Unexpected error in fallback search: {type(e).__name__}: {e}"
             )
             return f"Error in fallback search: {type(e).__name__}: {e!s}"
@@ -1379,10 +1379,10 @@ class SessionDB:
                 "has_summary": bool(meta["summary"]),
             }
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operational error getting session stats: {e}")
+            logger.exception(f"Database operational error getting session stats: {e}")
             return {"error": str(e), "error_type": "database_operational"}
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Unexpected error getting session stats: {type(e).__name__}: {e}"
             )
             return {"error": str(e), "error_type": type(e).__name__}
@@ -1396,10 +1396,10 @@ class SessionDB:
             self._ensure_conn().commit()
             return "FTS5 index optimized."
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operational error optimizing index: {e}")
+            logger.exception(f"Database operational error optimizing index: {e}")
             return f"Error optimizing index (database issue): {e!s}"
         except Exception as e:
-            logger.error(f"Unexpected error optimizing index: {type(e).__name__}: {e}")
+            logger.exception(f"Unexpected error optimizing index: {type(e).__name__}: {e}")
             return f"Error optimizing index: {type(e).__name__}: {e!s}"
 
     def rebuild_index(self) -> str:
@@ -1411,10 +1411,10 @@ class SessionDB:
             self._ensure_conn().commit()
             return "FTS5 index rebuilt."
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operational error rebuilding index: {e}")
+            logger.exception(f"Database operational error rebuilding index: {e}")
             return f"Error rebuilding index (database issue): {e!s}"
         except Exception as e:
-            logger.error(f"Unexpected error rebuilding index: {type(e).__name__}: {e}")
+            logger.exception(f"Unexpected error rebuilding index: {type(e).__name__}: {e}")
             return f"Error rebuilding index: {type(e).__name__}: {e!s}"
 
     def _generate_session_filename(self) -> str:

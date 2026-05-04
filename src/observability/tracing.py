@@ -118,9 +118,8 @@ def create_task_with_context(
     # 这是 OpenTelemetry 推荐的方式
     token = context.attach(ctx)
     try:
-        task = asyncio.create_task(coro)
+        return asyncio.create_task(coro)
         # 任务创建后，context 已被继承，可以安全 detach
-        return task
     finally:
         # 使用 finally 确保 detach 总是执行，即使 create_task 抛出异常
         context.detach(token)

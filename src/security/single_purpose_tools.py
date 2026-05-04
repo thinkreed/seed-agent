@@ -379,7 +379,7 @@ class SinglePurposeToolFactory:
             try:
                 return self._execute_tool(tool_name, validated_args)
             except Exception as e:
-                logger.error(f"Tool {tool_name} failed: {e}")
+                logger.exception(f"Tool {tool_name} failed: {e}")
                 return f"[ERROR] {tool_name} failed: {type(e).__name__}: {str(e)[:200]}"
 
         # 设置函数属性

@@ -938,8 +938,7 @@ class IntelligentContextPruner:
         ]
 
         task_lower = task.lower()
-        found = [kw for kw in tech_keywords if kw.lower() in task_lower]
-        return found
+        return [kw for kw in tech_keywords if kw.lower() in task_lower]
 
     def _compute_relevance(
         self, history: list[dict[str, Any]], entities: list[str]
@@ -1066,9 +1065,8 @@ class IntelligentContextPruner:
                 continue
 
         # 按顺序填充
-        scores = [indexed_scores.get(i, 0.5) for i in range(expected_count)]
+        return [indexed_scores.get(i, 0.5) for i in range(expected_count)]
 
-        return scores
 
 
 class ContextEngineering:

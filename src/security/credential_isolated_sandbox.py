@@ -455,7 +455,7 @@ print(result)
             # 清理临时文件
             with contextlib.suppress(OSError):
                 os.unlink(args_file_path)
-            logger.error(f"Container execution failed: {e}")
+            logger.exception(f"Container execution failed: {e}")
             # 降级到进程级隔离
             return await self._execute_in_isolated_process(tool_name, args)
 
@@ -583,7 +583,7 @@ print(result)
                 requester_id=requester_id,
             )
         except Exception as e:
-            logger.error(f"Failed to get credential via proxy: {e}")
+            logger.exception(f"Failed to get credential via proxy: {e}")
             return None
 
     async def execute_external_request_via_proxy(

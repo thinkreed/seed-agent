@@ -205,7 +205,7 @@ class CredentialVault:
                 return key
             except PermissionError as e:
                 # 权限错误不应被静默处理，这可能表示严重的安全问题
-                logger.error(f"Permission denied loading vault key: {e}")
+                logger.exception(f"Permission denied loading vault key: {e}")
                 raise
             except OSError as e:
                 # 其他 I/O 错误（如文件损坏）可以恢复
@@ -222,10 +222,10 @@ class CredentialVault:
             with open(key_path, "w") as f:
                 f.write(key)
         except PermissionError as e:
-            logger.error(f"Permission denied writing vault key: {e}")
+            logger.exception(f"Permission denied writing vault key: {e}")
             raise
         except OSError as e:
-            logger.error(f"Failed to write vault key: {e}")
+            logger.exception(f"Failed to write vault key: {e}")
             raise
 
         # 设置文件权限（仅 owner 可读写）
@@ -669,7 +669,7 @@ class CredentialVault:
                 "Install with: pip install cryptography"
             ) from e
         except Exception as e:
-            logger.error(f"Failed to decrypt credential: {e}")
+            logger.exception(f"Failed to decrypt credential: {e}")
             raise ValueError(f"Decryption failed: {type(e).__name__}") from e
 
     # === 审计日志 ===
@@ -822,10 +822,10 @@ class CredentialVault:
             with open(credentials_file, "w") as f:
                 json.dump(data, f, indent=2)
         except PermissionError as e:
-            logger.error(f"Permission denied writing credentials: {e}")
+            logger.exception(f"Permission denied writing credentials: {e}")
             raise
         except OSError as e:
-            logger.error(f"Failed to persist credentials: {e}")
+            logger.exception(f"Failed to persist credentials: {e}")
             raise
 
         # 设置文件权限
@@ -866,7 +866,7 @@ class CredentialVault:
 
             logger.info(f"Loaded {len(self._credentials)} credentials from vault")
         except Exception as e:
-            logger.error(f"Failed to load credentials: {e}")
+            logger.exception(f"Failed to load credentials: {e}")
             # 初始化为空
             self._credentials = {}
 
@@ -891,7 +891,7 @@ class CredentialVault:
                     }
                     f.write(json.dumps(entry) + "\n")
         except PermissionError as e:
-            logger.error(f"Permission denied writing audit log: {e}")
+            logger.exception(f"Permission denied writing audit log: {e}")
             # 审计日志写入失败不应阻断主流程，但需记录
         except OSError as e:
             logger.warning(f"Failed to persist audit log: {e}")
@@ -924,7 +924,7 @@ class CredentialVault:
 
             logger.info(f"Loaded {len(self._access_logs)} audit log entries")
         except Exception as e:
-            logger.error(f"Failed to load audit logs: {e}")
+            logger.exception(f"Failed to load audit logs: {e}")
 
     # === 清理 ===
 

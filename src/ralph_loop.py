@@ -173,7 +173,7 @@ class RalphLoop:
                 # 已知错误类型：根据严重程度决定是否继续
                 error_type, severity = e.error_type, e.severity
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
-                    logger.error(
+                    logger.exception(
                         f"Critical error at iteration {self._iteration_count}: {e}"
                     )
                     self._cleanup()
@@ -186,7 +186,7 @@ class RalphLoop:
                 # 未知错误：分类后决定处理方式
                 error_type, severity = classify_error(e)
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
-                    logger.error(
+                    logger.exception(
                         f"Severe unclassified error at iteration {self._iteration_count}: {error_type.value}: {e}"
                     )
                     self._cleanup()

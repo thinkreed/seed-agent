@@ -330,7 +330,7 @@ class SubagentInstance:
                 full_error_msg = str(e)  # 保留完整错误信息
                 truncated_msg = full_error_msg[:200]  # 截断用于返回给 LLM
                 # 记录完整错误到日志（便于调试）
-                logger.error(f"Tool {tool_name} failed: {error_type}: {full_error_msg}")
+                logger.exception(f"Tool {tool_name} failed: {error_type}: {full_error_msg}")
                 results.append(
                     {
                         "role": "tool",
@@ -407,7 +407,7 @@ class SubagentInstance:
                 span.set_status(StatusCode.ERROR)
 
         except Exception as e:
-            logger.error(f"Subagent {task_id} failed: {e}")
+            logger.exception(f"Subagent {task_id} failed: {e}")
             self.state.status = "failed"
             self.state.error = str(e)
 

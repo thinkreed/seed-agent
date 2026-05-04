@@ -625,7 +625,7 @@ class LongTermArchiveLayer:
             .fetchall()
         )
 
-        results = [
+        return [
             {
                 "archive_id": row["archive_id"],
                 "session_id": row["session_id"],
@@ -637,7 +637,6 @@ class LongTermArchiveLayer:
             for row in rows
         ]
 
-        return results
 
     def get_archive(self, archive_id: str) -> dict[str, Any] | None:
         """获取完整归档"""

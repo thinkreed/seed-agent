@@ -1044,7 +1044,7 @@ class UserModelingLayer:
             .fetchall()
         )
 
-        history = [
+        return [
             {
                 "id": row["id"],
                 "conflict": json.loads(row["conflict"]),
@@ -1056,7 +1056,6 @@ class UserModelingLayer:
             for row in rows
         ]
 
-        return history
 
     def get_all_preferences(self) -> dict[str, dict[str, Any]]:
         """获取所有偏好"""

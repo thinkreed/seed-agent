@@ -385,7 +385,7 @@ def file_write(path: str, content: str, mode: str = "overwrite") -> str:
     except Exception as e:
         error_type = type(e).__name__
         # 完整错误记录到日志，截断版本返回给用户
-        logger.error(f"Full error writing to '{resolved_path}': {error_type}: {e}")
+        logger.exception(f"Full error writing to '{resolved_path}': {error_type}: {e}")
         error_msg = str(e)[:200]
         return f"Error writing to '{resolved_path}': {error_type} - {error_msg}. Check permissions and disk space."
 
@@ -625,13 +625,13 @@ def code_as_policy(
         )
         return f"Error: Execution timed out ({timeout}s)"
     except FileNotFoundError:
-        exec_logger.error(f"Interpreter not found for '{language}'")
+        exec_logger.exception(f"Interpreter not found for '{language}'")
         return f"Error: Interpreter not found for '{language}'. Please ensure it's installed."
     except PermissionError as e:
-        exec_logger.error(f"Permission denied for '{language}': {e}")
+        exec_logger.exception(f"Permission denied for '{language}': {e}")
         return f"Error: Permission denied executing '{language}' code."
     except OSError as e:
-        exec_logger.error(f"OS error: {type(e).__name__}: {e}")
+        exec_logger.exception(f"OS error: {type(e).__name__}: {e}")
         return f"Error: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
         exec_logger.exception(f"Code execution error: {e!s}")
@@ -726,13 +726,13 @@ async def code_as_policy_async(
         return output if output.strip() else f"Code executed successfully ({language})"
 
     except FileNotFoundError:
-        exec_logger.error(f"Interpreter not found for '{language}'")
+        exec_logger.exception(f"Interpreter not found for '{language}'")
         return f"Error: Interpreter not found for '{language}'. Please ensure it's installed."
     except PermissionError as e:
-        exec_logger.error(f"Permission denied for '{language}': {e}")
+        exec_logger.exception(f"Permission denied for '{language}': {e}")
         return f"Error: Permission denied executing '{language}' code."
     except OSError as e:
-        exec_logger.error(f"OS error: {type(e).__name__}: {e}")
+        exec_logger.exception(f"OS error: {type(e).__name__}: {e}")
         return f"Error: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
         exec_logger.exception(f"Async code execution error: {e!s}")

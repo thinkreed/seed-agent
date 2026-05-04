@@ -73,7 +73,7 @@ def open_process(pid: int) -> int | None:
             return None
         return handle
     except Exception as e:
-        logger.error(f"OpenProcess error: {e}")
+        logger.exception(f"OpenProcess error: {e}")
         return None
 
 
@@ -169,7 +169,7 @@ def _prepare_search_pattern(pattern: str, mode: str) -> bytes | None:
         try:
             return bytes.fromhex(pattern.replace(" ", ""))
         except ValueError:
-            logger.error(f"Invalid hex pattern: {pattern}")
+            logger.exception(f"Invalid hex pattern: {pattern}")
             return None
     logger.error(f"Unknown mode: {mode}")
     return None
@@ -263,7 +263,7 @@ def scan_memory(
         logger.info(f"Found {len(results)} matches")
         return results
     except Exception as e:
-        logger.error(f"Scan error: {e}")
+        logger.exception(f"Scan error: {e}")
         return []
     finally:
         close_process(handle)
