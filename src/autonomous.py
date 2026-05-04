@@ -615,6 +615,8 @@ class AutonomousExplorer:
         """构建任务指令部分"""
         # 获取 SEED_DIR 的绝对路径（用于明确告知 LLM）
         seed_dir_absolute = str(SEED_DIR)
+        # 获取项目目录（PROJECT_ROOT）的绝对路径
+        project_root_absolute = str(PROJECT_ROOT)
 
         prompt_parts = [
             "# 自主探索任务触发",
@@ -626,12 +628,24 @@ class AutonomousExplorer:
             f"- 工作目录: {seed_dir_absolute}",
             "",
             "## 重要路径说明（使用绝对路径）",
+            "",
+            "### 记忆系统路径（位于用户目录）",
             f"- 记忆目录: {os.path.join(seed_dir_absolute, 'memory')}",
             f"- Skills目录: {os.path.join(seed_dir_absolute, 'memory', 'skills')}",
             f"- TODO文件: {os.path.join(seed_dir_absolute, 'TODO.md')}",
             f"- 日志目录: {os.path.join(seed_dir_absolute, 'logs')}",
             "",
-            "**关键提示**: 所有文件操作必须使用上述绝对路径，不要使用相对路径如 `.seed` 或 `~/.seed`。",
+            "### 项目源码路径（位于项目目录）",
+            f"- 项目根目录: {project_root_absolute}",
+            f"- 源码目录: {os.path.join(project_root_absolute, 'src')}",
+            f"- Agent模块: {os.path.join(project_root_absolute, 'src', 'agent_loop.py')}",
+            f"- LLM Gateway: {os.path.join(project_root_absolute, 'src', 'client.py')}",
+            f"- 工具模块: {os.path.join(project_root_absolute, 'src', 'tools')}",
+            "",
+            "**关键提示**: ",
+            "1. 记忆系统文件（Skills、TODO等）使用 `.seed` 目录下的绝对路径",
+            "2. 项目源码文件（src/*.py）使用项目目录下的绝对路径",
+            "3. 不要混淆两者：`src/client.py` 应为 `{os.path.join(project_root_absolute, 'src', 'client.py')}`，而非 `{os.path.join(seed_dir_absolute, 'src', 'client.py')}`",
             "",
         ]
 

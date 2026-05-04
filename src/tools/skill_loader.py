@@ -516,8 +516,8 @@ class SkillLoader:
         if symlink_check:
             return f"[Security Error] {symlink_check}"
 
-        # 路径展开：将 ~/.seed 替换为实际的 SEED_DIR 绝对路径
-        # 这对于 Windows 系统特别重要，因为 LLM 可能误解 ~ 为项目目录
+        # 路径展开：将相对路径替换为实际的绝对路径
+        # 这对于 Windows 系统特别重要，因为 LLM 可能误解路径
         try:
             from src.ralph_state import SEED_DIR
             seed_dir_str = str(SEED_DIR)
@@ -528,6 +528,44 @@ class SkillLoader:
             content = content.replace("~", home_dir)
         except ImportError:
             pass  # 如果无法导入 SEED_DIR，保持原路径
+
+        # 项目源码路径展开：将 src/*.py 替换为项目目录的绝对路径
+        # 防止 LLM 误解为 ~/.seed/src/*.py
+        try:
+            # PROJECT_ROOT 是当前文件所在目录的父目录的父目录
+            # skill_loader.py 在 src/tools/，所以 PROJECT_ROOT 是 ../..
+            project_root = Path(__file__).parent.parent.parent
+            # 使用 POSIX 路径格式（/）避免 Windows 反斜杠转义问题
+            project_root_posix = project_root.as_posix()
+            project_root_windows = str(project_root)
+            # 匹配 src/xxx.py 格式的路径（使用正则确保精确匹配）
+            import re
+            # 替换 E:/projects/seed-agent/src/xxx.py 格式（统一为 POSIX）
+            content = re.sub(
+                r'[Ee]:/projects/seed-agent/src/',
+                project_root_posix + '/src/',
+                content
+            )
+            # 替换 Windows 路径格式
+            content = re.sub(
+                r'E:\\projects\\seed-agent\\src\\',
+                re.escape(project_root_windows) + '\\src\\',
+                content
+            )
+            # 替换相对路径 src/xxx.py（非绝对路径形式）
+            # 注意：只替换 Markdown 中的路径引用，避免破坏其他文本
+            content = re.sub(
+                r'(?<![/\w])src/([a-zA-Z0-9_\-]+\.py)',
+                project_root_posix + '/src/' + r'\1',
+                content
+            )
+            content = re.sub(
+                r'(?<![\\\w])src\\([a-zA-Z0-9_\-]+\.py)',
+                project_root_posix + '/src/' + r'\1',
+                content
+            )
+        except Exception:
+            pass  # 路径展开失败时保持原路径
 
         # Context Fencing
         fenced_content = f"<skill_content name='{name}'>\n{content}\n</skill_content>"
@@ -759,6 +797,35 @@ class SkillLoader:
             home_dir = os.path.expanduser("~")
             content = content.replace("~", home_dir)
         except ImportError:
+            pass
+
+        # 项目源码路径展开：将 src/*.py 替换为项目目录的绝对路径
+        try:
+            project_root = Path(__file__).parent.parent.parent
+            project_root_posix = project_root.as_posix()
+            project_root_windows = str(project_root)
+            import re
+            content = re.sub(
+                r'[Ee]:/projects/seed-agent/src/',
+                project_root_posix + '/src/',
+                content
+            )
+            content = re.sub(
+                r'E:\\projects\\seed-agent\\src\\',
+                re.escape(project_root_windows) + '\\src\\',
+                content
+            )
+            content = re.sub(
+                r'(?<![/\w])src/([a-zA-Z0-9_\-]+\.py)',
+                project_root_posix + '/src/' + r'\1',
+                content
+            )
+            content = re.sub(
+                r'(?<![\\\w])src\\([a-zA-Z0-9_\-]+\.py)',
+                project_root_posix + '/src/' + r'\1',
+                content
+            )
+        except Exception:
             pass
 
         gene_fields = self._extract_gene_fields(content)
