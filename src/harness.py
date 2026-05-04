@@ -212,7 +212,10 @@ class Harness:
         # 从配置读取默认响应（如果未提供）
         if ask_user_skip_response is None:
             from src.shared_config import get_autonomous_config
-            self._ask_user_skip_response = get_autonomous_config().ask_user_skip_response
+
+            self._ask_user_skip_response = (
+                get_autonomous_config().ask_user_skip_response
+            )
         else:
             self._ask_user_skip_response = ask_user_skip_response
 
@@ -676,8 +679,8 @@ class Harness:
                     if response:
                         choices = response.get("choices", [])
                         if choices:
-                            final_response = choices[0].get("message", {}).get(
-                                "content", ""
+                            final_response = (
+                                choices[0].get("message", {}).get("content", "")
                             )
                     break
 
@@ -690,7 +693,8 @@ class Harness:
 
             # 3. 触发 session_end 钩子（成功）
             await self._trigger_hook(
-                HookPoint.SESSION_END, self._build_session_end_ctx("completed", final_response=final_response)
+                HookPoint.SESSION_END,
+                self._build_session_end_ctx("completed", final_response=final_response),
             )
 
             self.session.record_session_end("completed")
@@ -705,7 +709,8 @@ class Harness:
         except Exception as e:
             # 触发 session_end 钩子（错误）
             await self._trigger_hook(
-                HookPoint.SESSION_END, self._build_session_end_ctx("error", error=str(e))
+                HookPoint.SESSION_END,
+                self._build_session_end_ctx("error", error=str(e)),
             )
             self.session.record_session_end("error")
             raise
@@ -828,8 +833,8 @@ class Harness:
                     if resp:
                         choices = resp.get("choices", [])
                         if choices:
-                            final_response = choices[0].get("message", {}).get(
-                                "content", ""
+                            final_response = (
+                                choices[0].get("message", {}).get("content", "")
                             )
                     break
 
@@ -839,7 +844,8 @@ class Harness:
 
             # 触发 session_end 钩子（成功）
             await self._trigger_hook(
-                HookPoint.SESSION_END, self._build_session_end_ctx("completed", final_response=final_response)
+                HookPoint.SESSION_END,
+                self._build_session_end_ctx("completed", final_response=final_response),
             )
 
             self.session.record_session_end("completed")
@@ -853,7 +859,8 @@ class Harness:
 
         except Exception as e:
             await self._trigger_hook(
-                HookPoint.SESSION_END, self._build_session_end_ctx("error", error=str(e))
+                HookPoint.SESSION_END,
+                self._build_session_end_ctx("error", error=str(e)),
             )
             self.session.record_session_end("error")
             raise
@@ -900,13 +907,21 @@ class Harness:
                 if self._check_cancelled(signal):
                     self.session.emit_event(
                         EventType.EXECUTION_CANCEL,
-                        {"reason": self._get_cancel_reason(signal), "iteration": iteration},
+                        {
+                            "reason": self._get_cancel_reason(signal),
+                            "iteration": iteration,
+                        },
                     )
-                    yield {"type": "cancelled", "reason": self._get_cancel_reason(signal)}
+                    yield {
+                        "type": "cancelled",
+                        "reason": self._get_cancel_reason(signal),
+                    }
                     return
 
                 iteration += 1
-                logger.debug(f"stream_conversation iteration {iteration}/{self.max_iterations}")
+                logger.debug(
+                    f"stream_conversation iteration {iteration}/{self.max_iterations}"
+                )
 
                 # 3. 触发 llm_call_before 钩子
                 context = self._build_context_from_session()
@@ -933,7 +948,10 @@ class Harness:
 
                 # 5. 再次检查取消信号（LLM 调用前）
                 if self._check_cancelled(signal):
-                    yield {"type": "cancelled", "reason": self._get_cancel_reason(signal)}
+                    yield {
+                        "type": "cancelled",
+                        "reason": self._get_cancel_reason(signal),
+                    }
                     return
 
                 # 6. 流式推理
@@ -1043,23 +1061,34 @@ class Harness:
                     response_after_ctx = {
                         "session": self.session,
                         "harness": self,
-                        "response": {"choices": [{"message": {"content": full_content}}]},
+                        "response": {
+                            "choices": [{"message": {"content": full_content}}]
+                        },
                         "should_continue": True,
                     }
-                    await self._trigger_hook(HookPoint.RESPONSE_AFTER, response_after_ctx)
+                    await self._trigger_hook(
+                        HookPoint.RESPONSE_AFTER, response_after_ctx
+                    )
                 else:
                     # 触发 response_after 钩子（完成）
                     response_after_ctx = {
                         "session": self.session,
                         "harness": self,
-                        "response": {"choices": [{"message": {"content": full_content}}]},
+                        "response": {
+                            "choices": [{"message": {"content": full_content}}]
+                        },
                         "should_continue": False,
                     }
-                    await self._trigger_hook(HookPoint.RESPONSE_AFTER, response_after_ctx)
+                    await self._trigger_hook(
+                        HookPoint.RESPONSE_AFTER, response_after_ctx
+                    )
 
                     # 触发 session_end 钩子（成功）
                     await self._trigger_hook(
-                        HookPoint.SESSION_END, self._build_session_end_ctx("completed", final_response=full_content)
+                        HookPoint.SESSION_END,
+                        self._build_session_end_ctx(
+                            "completed", final_response=full_content
+                        ),
                     )
 
                     self.session.record_session_end("completed")
@@ -1073,7 +1102,8 @@ class Harness:
         except Exception as e:
             # 触发 session_end 钩子（错误）
             await self._trigger_hook(
-                HookPoint.SESSION_END, self._build_session_end_ctx("error", error=str(e))
+                HookPoint.SESSION_END,
+                self._build_session_end_ctx("error", error=str(e)),
             )
             self.session.record_session_end("error")
             yield {"type": "error", "content": str(e)}
@@ -1146,13 +1176,21 @@ class Harness:
                 if self._check_cancelled(signal):
                     self.session.emit_event(
                         EventType.EXECUTION_CANCEL,
-                        {"reason": self._get_cancel_reason(signal), "iteration": iteration},
+                        {
+                            "reason": self._get_cancel_reason(signal),
+                            "iteration": iteration,
+                        },
                     )
-                    yield {"type": "cancelled", "reason": self._get_cancel_reason(signal)}
+                    yield {
+                        "type": "cancelled",
+                        "reason": self._get_cancel_reason(signal),
+                    }
                     return
 
                 iteration += 1
-                logger.debug(f"stream_resume iteration {iteration}/{self.max_iterations}")
+                logger.debug(
+                    f"stream_resume iteration {iteration}/{self.max_iterations}"
+                )
 
                 # 构建上下文
                 context = self._build_context_from_session()
@@ -1258,7 +1296,10 @@ class Harness:
                 else:
                     # 触发 session_end 钩子（成功）
                     await self._trigger_hook(
-                        HookPoint.SESSION_END, self._build_session_end_ctx("completed", final_response=full_content)
+                        HookPoint.SESSION_END,
+                        self._build_session_end_ctx(
+                            "completed", final_response=full_content
+                        ),
                     )
 
                     self.session.record_session_end("completed")
@@ -1270,7 +1311,8 @@ class Harness:
 
         except Exception as e:
             await self._trigger_hook(
-                HookPoint.SESSION_END, self._build_session_end_ctx("error", error=str(e))
+                HookPoint.SESSION_END,
+                self._build_session_end_ctx("error", error=str(e)),
             )
             self.session.record_session_end("error")
             yield {"type": "error", "content": str(e)}
@@ -1852,7 +1894,7 @@ class HarnessManager:
         self._gateway_config_path = gateway_config_path
         self._harnesses: dict[str, Harness] = {}
         self._sandboxes: dict[str, Sandbox] = {}
-        self._gateway: "LLMGateway | None" = None
+        self._gateway: LLMGateway | None = None
 
         logger.info("HarnessManager initialized")
 

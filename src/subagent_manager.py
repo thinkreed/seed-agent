@@ -17,8 +17,8 @@ import asyncio
 import logging
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from src.client import LLMGateway
 from src.subagent import (
@@ -32,7 +32,9 @@ from src.subagent import (
 logger = logging.getLogger(__name__)
 
 
-def _safe_int(value: int | str | float | None, default: int | None = None, min_val: int = 1) -> int | None:
+def _safe_int(
+    value: int | str | float | None, default: int | None = None, min_val: int = 1
+) -> int | None:
     """安全转换整数（用于 dataclass __post_init__）
 
     Args:
@@ -48,11 +50,15 @@ def _safe_int(value: int | str | float | None, default: int | None = None, min_v
     try:
         result = int(value) if isinstance(value, str) else int(value)
         if result < min_val:
-            logger.warning(f"Converted value {result} < min_val {min_val}, using default {default}")
+            logger.warning(
+                f"Converted value {result} < min_val {min_val}, using default {default}"
+            )
             return default
         return result
     except (ValueError, TypeError) as e:
-        logger.warning(f"Failed to convert '{value}' to int: {type(e).__name__}, using default {default}")
+        logger.warning(
+            f"Failed to convert '{value}' to int: {type(e).__name__}, using default {default}"
+        )
         return default
 
 
@@ -86,7 +92,9 @@ class SubagentTask:
 
         # max_iterations 转换
         if self.max_iterations is not None:
-            self.max_iterations = _safe_int(self.max_iterations, default=None, min_val=1)
+            self.max_iterations = _safe_int(
+                self.max_iterations, default=None, min_val=1
+            )
 
         # priority 转换
         self.priority = _safe_int(self.priority, default=0, min_val=0)
@@ -379,7 +387,7 @@ class SubagentManager:
                     self._result_condition.wait_for(lambda: task_id in self._results),
                     timeout=timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return None
             return self._results.get(task_id)
 

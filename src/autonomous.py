@@ -15,9 +15,9 @@ import os
 import re
 import threading
 import time
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -388,6 +388,7 @@ class AutonomousExplorer:
         # === 新增：启用 autonomous_mode ===
         # 从配置读取 Ask User 跳过响应
         from src.shared_config import get_autonomous_config
+
         autonomous_config = get_autonomous_config()
         self.agent.set_autonomous_mode(
             enabled=True,
@@ -457,7 +458,10 @@ class AutonomousExplorer:
         """
         now = time.time()
         # 缓存有效，直接返回
-        if self._todo_cache is not None and now - self._todo_cache_time < self._todo_cache_ttl:
+        if (
+            self._todo_cache is not None
+            and now - self._todo_cache_time < self._todo_cache_ttl
+        ):
             return self._todo_cache
 
         todo_path = SEED_DIR / "TODO.md"
@@ -548,7 +552,7 @@ class AutonomousExplorer:
                 # 成功时重置失败计数
                 consecutive_failures = 0
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # === 超时处理 ===
                 logger.warning(
                     f"[Ralph Loop] Iteration {self._iteration_count}: "
@@ -588,7 +592,8 @@ class AutonomousExplorer:
             if consecutive_failures >= failure_threshold:
                 # 计算退避时间（指数增长，上限 max_backoff）
                 backoff = min(
-                    backoff_duration * (2 ** (consecutive_failures - failure_threshold)),
+                    backoff_duration
+                    * (2 ** (consecutive_failures - failure_threshold)),
                     max_backoff,
                 )
                 logger.warning(

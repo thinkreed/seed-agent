@@ -9,7 +9,7 @@ import contextlib
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -140,7 +140,7 @@ class TaskScheduler:
         TASKS_DIR.mkdir(parents=True, exist_ok=True)
 
         data = {
-            "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+            "updated_at": datetime.now(tz=UTC).isoformat(),
             "tasks": [t.to_dict() for t in self._tasks.values()],
         }
 
@@ -268,7 +268,7 @@ class TaskScheduler:
             logger.info(f"Task {task.task_id} cancelled")
             self._log_task_execution(task, "Cancelled", success=False)
             raise  # CancelledError 应传播
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             logger.warning(f"Task {task.task_id} timed out: {e}")
             self._log_task_execution(task, f"Timeout: {e!s}", success=False)
         except Exception as e:
@@ -282,7 +282,7 @@ class TaskScheduler:
         log_file = TASKS_DIR / "execution_log.jsonl"
 
         log_entry = {
-            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
             "task_id": task.task_id,
             "task_type": task.task_type,
             "success": success,
@@ -392,7 +392,7 @@ class TaskScheduler:
             "task_type": task.task_type,
             "interval_seconds": task.interval_seconds,
             "enabled": task.enabled,
-            "last_run": datetime.fromtimestamp(task.last_run, tz=timezone.utc).isoformat()
+            "last_run": datetime.fromtimestamp(task.last_run, tz=UTC).isoformat()
             if task.last_run > 0
             else "never",
             "next_run_in": task.interval_seconds - (time.time() - task.last_run)

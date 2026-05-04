@@ -18,7 +18,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 
 from src.client import LLMGateway
 
@@ -47,7 +47,7 @@ class SubagentType(Enum):
     PLAN = "plan"  # 规划分析：只读 + 记忆写入
 
 
-class SubagentStatus(str, Enum):
+class SubagentStatus(StrEnum):
     """Subagent 状态枚举"""
 
     PENDING = "pending"  # 等待执行
@@ -395,7 +395,7 @@ class SubagentInstance:
                 span.set_attribute("seed.subagent.duration_ms", duration_ms)
                 span.set_status(StatusCode.OK)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"Subagent {task_id} timed out after {self.timeout}s")
             self.state.status = "timeout"
             self.state.error = f"Execution timed out after {self.timeout} seconds"

@@ -29,7 +29,7 @@ import fnmatch
 import json
 import logging
 import os
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_SANDBOX_ROOT = Path.home() / ".seed" / "sandbox"
 
 
-class IsolationLevel(str, Enum):
+class IsolationLevel(StrEnum):
     """隔离级别"""
 
     PROCESS = "process"  # 进程级隔离 (子进程执行)
@@ -50,7 +50,7 @@ class IsolationLevel(str, Enum):
     VM = "vm"  # 虚拟机级隔离 (最强)
 
 
-class PermissionAction(str, Enum):
+class PermissionAction(StrEnum):
     """权限动作"""
 
     ALLOW = "allow"
@@ -135,22 +135,35 @@ class Sandbox:
     # 默认权限配置（使用工厂方法简化初始化）
     _DEFAULT_TOOL_NAMES = [
         # 文件操作
-        "file_read", "file_write", "file_edit", "list_directory",
+        "file_read",
+        "file_write",
+        "file_edit",
+        "list_directory",
         # 代码执行
-        "run_shell_command", "code_as_policy",
+        "run_shell_command",
+        "code_as_policy",
         # 记忆操作
-        "save_memory", "load_memory", "search_memory",
+        "save_memory",
+        "load_memory",
+        "search_memory",
         # 用户交互
         "ask_user_question",
         # 技能操作
         "load_skill",
         # 子代理
-        "spawn_subagent", "wait_for_subagent", "aggregate_subagent_results",
-        "list_subagents", "kill_subagent",
+        "spawn_subagent",
+        "wait_for_subagent",
+        "aggregate_subagent_results",
+        "list_subagents",
+        "kill_subagent",
         # Ralph Loop
-        "start_ralph_loop", "check_ralph_status", "mark_ralph_complete",
+        "start_ralph_loop",
+        "check_ralph_status",
+        "mark_ralph_complete",
         # Scheduler
-        "create_scheduled_task", "remove_scheduled_task", "list_scheduled_tasks",
+        "create_scheduled_task",
+        "remove_scheduled_task",
+        "list_scheduled_tasks",
     ]
 
     DEFAULT_PERMISSIONS: dict[str, SandboxPermission] = {

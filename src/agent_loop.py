@@ -630,7 +630,9 @@ class AgentLoop:
                     self._pending_user_response = None
 
                     # ✅ 恢复流式执行
-                    async for resume_chunk in self.harness.stream_resume_with_user_response(
+                    async for (
+                        resume_chunk
+                    ) in self.harness.stream_resume_with_user_response(
                         user_response, priority, signal
                     ):
                         resume_type = resume_chunk.get("type")
@@ -646,7 +648,9 @@ class AgentLoop:
                             self._user_input_event.clear()
                             self._pending_user_response = None
                             # 递归继续
-                            async for inner_chunk in self.harness.stream_resume_with_user_response(
+                            async for (
+                                inner_chunk
+                            ) in self.harness.stream_resume_with_user_response(
                                 user_response, priority, signal
                             ):
                                 inner_type = inner_chunk.get("type")
@@ -660,9 +664,7 @@ class AgentLoop:
                             await self._maybe_summarize()
                             self._evaluate_and_record_skill_outcomes(final_success=True)
                             yield resume_chunk
-                        elif resume_type == "cancelled":
-                            yield resume_chunk
-                        elif resume_type == "error":
+                        elif resume_type == "cancelled" or resume_type == "error":
                             yield resume_chunk
                         else:
                             # chunk, tool_start, tool_end
@@ -675,11 +677,7 @@ class AgentLoop:
                     yield chunk
                     return
 
-                elif chunk_type == "cancelled":
-                    yield chunk
-                    return
-
-                elif chunk_type == "error":
+                elif chunk_type == "cancelled" or chunk_type == "error":
                     yield chunk
                     return
 

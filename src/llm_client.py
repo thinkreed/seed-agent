@@ -58,6 +58,7 @@ def _parse_model_id(model_id: str) -> tuple[str, str]:
         return parts[0], parts[1]
     return "unknown", model_id
 
+
 try:
     from opentelemetry.trace import Span
 except ImportError:

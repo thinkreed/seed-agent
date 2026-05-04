@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import time
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,7 @@ MAX_IN_MEMORY_EVENTS = 10000  # 内存中最大事件数
 MAX_EVENT_AGE_DAYS = 30  # 事件最大保留天数
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     """事件类型枚举"""
 
     # 对话事件

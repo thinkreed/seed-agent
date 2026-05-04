@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.tools import ToolRegistry
-from typing import Any, Set, TypedDict
+from typing import Any, TypedDict
 
 import yaml  # type: ignore[import-untyped]
 
@@ -299,7 +299,7 @@ class SkillLoader:
         return result
 
     def should_show_skill(
-        self, name: str, available_tools: Set[str] | None = None
+        self, name: str, available_tools: set[str] | None = None
     ) -> bool:
         """
         条件激活: 判断 skill 是否应该在当前环境下显示
@@ -333,14 +333,11 @@ class SkillLoader:
 
         # fallback_for_tools 检查
         fallback = meta.get("fallback_for_tools", [])
-        if (
+        return not (
             fallback
             and available_tools is not None
             and any(tool in available_tools for tool in fallback)
-        ):
-            return False
-
-        return True
+        )
 
     @staticmethod
     def _render_category(
@@ -355,7 +352,7 @@ class SkillLoader:
         lines.extend(["</category>", ""])
         return lines
 
-    def get_skills_prompt(self, available_tools: Set[str] | None = None) -> str:
+    def get_skills_prompt(self, available_tools: set[str] | None = None) -> str:
         """生成 Tier 1 索引 - 注入到 System Prompt"""
         visible_skills = {
             name: meta
@@ -451,7 +448,7 @@ class SkillLoader:
         return score
 
     def match_skill(
-        self, query: str, available_tools: Set[str] | None = None
+        self, query: str, available_tools: set[str] | None = None
     ) -> str | None:
         """
         根据查询匹配最相关的 skill
@@ -526,6 +523,7 @@ class SkillLoader:
         # 这对于 Windows 系统特别重要，因为 LLM 可能误解路径
         try:
             from src.ralph_state import SEED_DIR
+
             seed_dir_str = str(SEED_DIR)
             content = content.replace("~/.seed", seed_dir_str)
             content = content.replace("~\\seed", seed_dir_str)
@@ -547,27 +545,25 @@ class SkillLoader:
             # 匹配 src/xxx.py 格式的路径（使用正则确保精确匹配）
             # 替换 E:/projects/seed-agent/src/xxx.py 格式（统一为 POSIX）
             content = re.sub(
-                r'[Ee]:/projects/seed-agent/src/',
-                project_root_posix + '/src/',
-                content
+                r"[Ee]:/projects/seed-agent/src/", project_root_posix + "/src/", content
             )
             # 替换 Windows 路径格式
             content = re.sub(
-                r'E:\\projects\\seed-agent\\src\\',
-                re.escape(project_root_windows) + '\\src\\',
-                content
+                r"E:\\projects\\seed-agent\\src\\",
+                re.escape(project_root_windows) + "\\src\\",
+                content,
             )
             # 替换相对路径 src/xxx.py（非绝对路径形式）
             # 注意：只替换 Markdown 中的路径引用，避免破坏其他文本
             content = re.sub(
-                r'(?<![/\w])src/([a-zA-Z0-9_\-]+\.py)',
-                project_root_posix + '/src/' + r'\1',
-                content
+                r"(?<![/\w])src/([a-zA-Z0-9_\-]+\.py)",
+                project_root_posix + "/src/" + r"\1",
+                content,
             )
             content = re.sub(
-                r'(?<![\\\w])src\\([a-zA-Z0-9_\-]+\.py)',
-                project_root_posix + '/src/' + r'\1',
-                content
+                r"(?<![\\\w])src\\([a-zA-Z0-9_\-]+\.py)",
+                project_root_posix + "/src/" + r"\1",
+                content,
             )
         except Exception as e:
             logger.debug(f"Path regex replacement failed for skill '{name}': {e}")
@@ -629,7 +625,7 @@ class SkillLoader:
     # ==================== Memory Graph 选择算法 ====================
 
     def select_best_skill(
-        self, signals: list[str], available_tools: Set[str] | None = None
+        self, signals: list[str], available_tools: set[str] | None = None
     ) -> str | None:
         """Memory Graph 增强的 Skill 选择算法"""
         if not MEMORY_GRAPH_CONFIG.get("enabled", True):
@@ -796,6 +792,7 @@ class SkillLoader:
         # 路径展开：将 ~/.seed 替换为实际的 SEED_DIR 绝对路径
         try:
             from src.ralph_state import SEED_DIR
+
             seed_dir_str = str(SEED_DIR)
             content = content.replace("~/.seed", seed_dir_str)
             content = content.replace("~\\seed", seed_dir_str)
@@ -810,24 +807,22 @@ class SkillLoader:
             project_root_posix = project_root.as_posix()
             project_root_windows = str(project_root)
             content = re.sub(
-                r'[Ee]:/projects/seed-agent/src/',
-                project_root_posix + '/src/',
-                content
+                r"[Ee]:/projects/seed-agent/src/", project_root_posix + "/src/", content
             )
             content = re.sub(
-                r'E:\\projects\\seed-agent\\src\\',
-                re.escape(project_root_windows) + '\\src\\',
-                content
+                r"E:\\projects\\seed-agent\\src\\",
+                re.escape(project_root_windows) + "\\src\\",
+                content,
             )
             content = re.sub(
-                r'(?<![/\w])src/([a-zA-Z0-9_\-]+\.py)',
-                project_root_posix + '/src/' + r'\1',
-                content
+                r"(?<![/\w])src/([a-zA-Z0-9_\-]+\.py)",
+                project_root_posix + "/src/" + r"\1",
+                content,
             )
             content = re.sub(
-                r'(?<![\\\w])src\\([a-zA-Z0-9_\-]+\.py)',
-                project_root_posix + '/src/' + r'\1',
-                content
+                r"(?<![\\\w])src\\([a-zA-Z0-9_\-]+\.py)",
+                project_root_posix + "/src/" + r"\1",
+                content,
             )
         except Exception as e:
             logger.debug(f"Path regex replacement failed for gene '{name}': {e}")

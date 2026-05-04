@@ -13,12 +13,15 @@ Metrics 类型:
 """
 
 import threading
+from typing import TYPE_CHECKING
 
 # 类型注解使用内置类型
 from opentelemetry import metrics
-from opentelemetry.util.types import Attributes
 
 from .setup import get_meter
+
+if TYPE_CHECKING:
+    from opentelemetry.util.types import Attributes
 
 # Histogram buckets (延迟分布)
 DURATION_BUCKETS = [100, 500, 1000, 2000, 5000, 10000]  # ms

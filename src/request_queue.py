@@ -12,7 +12,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Deque
+from typing import Any
 
 # Auto-adjust thresholds
 _MAX_CRITICAL_DISPATCH_RATE = 50.0
@@ -95,7 +95,7 @@ class TurnTicket:
         """
         try:
             await asyncio.wait_for(self._turn_event.wait(), timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise TurnWaitTimeout(self.id, timeout, {})
 
         if self._cancelled:
@@ -249,10 +249,10 @@ class RequestQueue:
         self.config = config or QueueConfig()
 
         # CRITICAL 独立队列
-        self._critical_queue: Deque[TurnTicket] = deque()
+        self._critical_queue: deque[TurnTicket] = deque()
 
         # 普通队列（HIGH/NORMAL/LOW 共享）
-        self._normal_queues: dict[RequestPriority, Deque[TurnTicket]] = {
+        self._normal_queues: dict[RequestPriority, deque[TurnTicket]] = {
             RequestPriority.HIGH: deque(),
             RequestPriority.NORMAL: deque(),
             RequestPriority.LOW: deque(),

@@ -46,7 +46,9 @@ def safe_int_convert(value: Any, default: int, min_val: int = 1) -> int:
             return default
         return result
     except (ValueError, TypeError) as e:
-        logger.warning(f"Failed to convert {value!r} to int: {e}, using default {default}")
+        logger.warning(
+            f"Failed to convert {value!r} to int: {e}, using default {default}"
+        )
         return default
 
 

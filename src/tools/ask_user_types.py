@@ -25,7 +25,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class QuestionType(Enum):
@@ -48,8 +48,8 @@ class QuestionOption:
     """
 
     label: str
-    value: Optional[str] = None
-    description: Optional[str] = None
+    value: str | None = None
+    description: str | None = None
 
     def __post_init__(self):
         """确保 value 有默认值"""
@@ -84,7 +84,7 @@ class Question:
     question_type: QuestionType = QuestionType.SINGLE_SELECT
     multi_select: bool = False
     allow_custom: bool = True
-    default: Optional[str] = None
+    default: str | None = None
 
     def __post_init__(self):
         """验证问题结构"""
@@ -138,7 +138,7 @@ class UserResponse:
 
     question_id: str
     selected: list[str] = field(default_factory=list)
-    custom_input: Optional[str] = None
+    custom_input: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典"""
@@ -185,8 +185,8 @@ class AskUserRequest:
     def from_simple(
         cls,
         question: str,
-        options: Optional[list[str]] = None,
-        header: Optional[str] = None,
+        options: list[str] | None = None,
+        header: str | None = None,
         session_id: str = "",
         multi_select: bool = False,
     ) -> AskUserRequest:
@@ -281,7 +281,7 @@ class AskUserResult:
             values.extend(response.selected)
         return values
 
-    def get_first_selected(self) -> Optional[str]:
+    def get_first_selected(self) -> str | None:
         """获取第一个选中的值
 
         Returns:
@@ -305,9 +305,9 @@ class AskUserState:
         _lock: 线程锁保护并发访问
     """
 
-    pending_request: Optional[AskUserRequest] = None
+    pending_request: AskUserRequest | None = None
     waiting_event: asyncio.Event = field(default_factory=asyncio.Event)
-    response: Optional[AskUserResult] = None
+    response: AskUserResult | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def set_request(self, request: AskUserRequest) -> None:
@@ -346,7 +346,7 @@ class AskUserState:
 
 
 # 全局状态管理器（单例）及线程锁
-_global_ask_user_state: Optional[AskUserState] = None
+_global_ask_user_state: AskUserState | None = None
 _global_state_lock: threading.Lock = threading.Lock()
 
 

@@ -15,13 +15,13 @@
 import logging
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     """风险等级"""
 
     SAFE = "safe"
@@ -30,7 +30,7 @@ class RiskLevel(str, Enum):
     DANGEROUS = "dangerous"
 
 
-class RiskAction(str, Enum):
+class RiskAction(StrEnum):
     """风险处理策略"""
 
     AUTO_EXECUTE = "auto_execute"

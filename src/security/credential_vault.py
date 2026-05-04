@@ -24,7 +24,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_VAULT_PATH = Path.home() / ".seed" / "vault"
 
 
-class CredentialType(str, Enum):
+class CredentialType(StrEnum):
     """凭证类型"""
 
     API_KEY = "api_key"
@@ -44,7 +44,7 @@ class CredentialType(str, Enum):
     CLOUD_CREDENTIALS = "cloud_credentials"
 
 
-class CredentialScope(str, Enum):
+class CredentialScope(StrEnum):
     """凭证作用域"""
 
     API_CALL = "api_call"  # 仅允许 API 调用

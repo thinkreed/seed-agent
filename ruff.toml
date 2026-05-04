@@ -1,0 +1,63 @@
+# Ruff configuration for seed-agent project
+
+# Target Python version
+target-version = "py311"
+
+# Line length limit
+line-length = 88
+
+# Exclude directories
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "core_principles",
+    "golden_rules",
+]
+
+[lint]
+# Enabled rules
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "RUF",    # Ruff-specific rules
+]
+
+# Ignored rules
+ignore = [
+    "E501",   # Line too long (handled manually)
+    "RUF001", # String contains ambiguous characters (Chinese fullwidth - intentional)
+    "RUF002", # Docstring contains ambiguous characters (Chinese fullwidth - intentional)
+    "RUF003", # Comment contains ambiguous characters (Chinese fullwidth - intentional)
+    "RUF006", # Store reference to asyncio.create_task (design choice for fire-and-forget tasks)
+    "RUF012", # Mutable class attribute defaults (design choice, intentional class-level constants)
+    "S101",   # Use of assert detected
+    "S603",   # subprocess call without shell=True (design choice)
+    "PLW1510",# subprocess.run without explicit check (design choice)
+    "BLE001", # Do not catch blind exception (design choice)
+    "G004",   # Logging statement uses f-string (modern Python style)
+    "PLC0415",# Import should be at top-level (deferred imports avoid circular deps)
+    "TRY300", # Consider else block (style preference)
+    "TRY301", # Abstract raise to inner function (style preference)
+    "SIM105", # Use contextlib.suppress (not suitable for __del__)
+    "TC003",  # Move standard library import into type-checking block (design choice)
+    "RUF034", # Useless if-else condition (intentional type conversion)
+    "RUF005", # Consider unpacking instead of concatenation (style preference)
+    "B904",   # raise ... from err (handled manually for specific cases)
+]
+
+# Per-file ignores
+[lint.per-file-ignores]
+"src/tools/vision_api.py" = ["PLR0911"]  # Too many return statements (acceptable)
+
+# isort configuration
+[lint.isort]
+known-first-party = ["src"]

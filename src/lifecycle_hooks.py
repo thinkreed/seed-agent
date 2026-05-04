@@ -18,13 +18,13 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any, overload
 
 logger = logging.getLogger(__name__)
 
 
-class HookPoint(str, Enum):
+class HookPoint(StrEnum):
     """钩子节点枚举
 
     定义智能体生命周期的所有关键节点

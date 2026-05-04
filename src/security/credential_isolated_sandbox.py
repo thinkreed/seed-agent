@@ -35,9 +35,7 @@ from src.tools.utils import is_parse_failed, parse_tool_arguments
 _RE_SK_KEY = re.compile(r"sk-[a-zA-Z0-9]{20,}")
 _RE_BEARER = re.compile(r"Bearer\s+[a-zA-Z0-9_-]{20,}")
 _RE_AWS_KEY = re.compile(r"AKIA[A-Z0-9]{16}")
-_RE_API_KEY_GENERIC = re.compile(
-    r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}'
-)
+_RE_API_KEY_GENERIC = re.compile(r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}')
 
 logger = logging.getLogger(__name__)
 
@@ -362,16 +360,18 @@ print(result)
             # 过滤输出中的凭证
             return self._sanitize_output(result)
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # 清理临时文件
             with contextlib.suppress(OSError):
                 os.unlink(args_file_path)
-            raise RuntimeError("Subprocess execution timeout")
+            raise RuntimeError("Subprocess execution timeout") from None
         except Exception as e:
             # 清理临时文件
             with contextlib.suppress(OSError):
                 os.unlink(args_file_path)
-            raise RuntimeError(f"Subprocess execution failed: {type(e).__name__}")
+            raise RuntimeError(
+                f"Subprocess execution failed: {type(e).__name__}"
+            ) from e
 
     async def _execute_in_isolated_container(
         self,
@@ -401,6 +401,7 @@ print(result)
         # 安全：使用临时文件传递参数，而非 f-string 嵌入
         # 避免 args_json 包含特殊字符导致的命令注入
         import tempfile
+
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False
         ) as args_file:

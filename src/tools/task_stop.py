@@ -17,7 +17,6 @@ TaskStop 工具模块
 """
 
 import logging
-from typing import Optional
 
 from src.background_task_registry import (
     CANCEL_GRACE_SECONDS,
@@ -103,7 +102,7 @@ def task_status(task_id: str) -> str:
     return result
 
 
-def list_tasks(status: Optional[str] = None) -> str:
+def list_tasks(status: str | None = None) -> str:
     """列出所有任务
 
     Args:

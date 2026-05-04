@@ -14,10 +14,10 @@ import logging
 import re
 import time
 import uuid
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from src.errors import ConfigurationError, ErrorSeverity, SeedAgentError, classify_error
 
@@ -291,7 +291,7 @@ class RalphLoop:
 
             logger.info(f"Test pass rate: {pass_rate}% (required: {required_rate}%)")
             return pass_rate >= required_rate
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Test execution timed out")
             # 终止超时进程（使用辅助方法）
             await self._terminate_process(proc)
@@ -328,7 +328,7 @@ class RalphLoop:
                 # 等待最多 3 秒
                 await asyncio.wait_for(proc.wait(), timeout=3)
                 logger.debug(f"Process {proc.pid} terminated gracefully")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # 2. 优雅终止超时，强制终止 (SIGKILL)
                 logger.warning(
                     f"Process {proc.pid} did not terminate gracefully, killing"
@@ -435,7 +435,7 @@ class RalphLoop:
             if is_clean:
                 logger.info("Git working directory is clean")
             return is_clean
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("Git status check timed out")
             # 终止超时进程
             await self._terminate_process(proc)

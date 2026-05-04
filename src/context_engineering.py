@@ -20,7 +20,7 @@
 import logging
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ _RE_STOP_WORDS = {"the", "for", "and", "with", "this", "that"}
 RELEVANCE_THRESHOLD = 0.3
 
 
-class CompressionTier(str, Enum):
+class CompressionTier(StrEnum):
     """压缩层级枚举"""
 
     TIER_1_FULL = "tier_1_full"  # 最新完整保留
@@ -869,7 +869,7 @@ class IntelligentContextPruner:
         # 1. 文件路径 (如 "src/agent_loop.py")
         file_patterns = _RE_FILE_PATTERN.findall(task)
         for p in file_patterns:
-            if "/" in p or "." in p and len(p) > 5:
+            if "/" in p or ("." in p and len(p) > 5):
                 entities.append(p)
 
         # 2. 函数/类名 (如 "AgentLoop", "_execute_tool")

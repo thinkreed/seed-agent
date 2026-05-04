@@ -78,7 +78,11 @@ def spawn_subagent(
         return f"Error: Unknown subagent type '{type}'. Supported: explore, review, implement, plan"
 
     # 类型安全转换：timeout 必须是整数
-    safe_timeout = _safe_int_convert(timeout, default=300, min_val=1) if timeout is not None else None
+    safe_timeout = (
+        _safe_int_convert(timeout, default=300, min_val=1)
+        if timeout is not None
+        else None
+    )
 
     # 创建任务
     custom_tools_set = set(custom_tools) if custom_tools else None
@@ -164,7 +168,7 @@ async def wait_for_subagent_async(
 
         return result.summary if result else f"Error: No result for task {task_id}"
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return f"Error: Timeout waiting for subagent {task_id}"
     except Exception as e:
         return f"Error: {e!s}"

@@ -17,7 +17,8 @@
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from src.harness import Harness
 from src.security.credential_isolated_sandbox import CredentialIsolatedSandbox

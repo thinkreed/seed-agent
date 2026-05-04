@@ -119,6 +119,7 @@ class PathValidationConfig:
                 self.default_work_dir,
                 self.project_root,
                 Path.home() / "Documents",
+                Path("E:/projects/wiki"),  # 用户指定的 wiki 目录
             ]
 
 

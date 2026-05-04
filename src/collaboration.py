@@ -21,10 +21,11 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Callable
+from enum import StrEnum
+from typing import Any
 
 from src.llm_client import LLMClient
 from src.sandbox import IsolationLevel, Sandbox
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 MAX_DYNAMIC_ITERATIONS = 10  # 动态任务分配最大迭代
 
 
-class CollaborationMode(str, Enum):
+class CollaborationMode(StrEnum):
     """协作模式枚举"""
 
     MULTI_BRAIN_ONE_HAND = "multi_brain_one_hand"  # 多脑一手
@@ -262,7 +263,9 @@ class MultiBrainOneHandOrchestrator:
             )
             choices = response.get("choices", [])
             if not choices:
-                logger.warning(f"Analysis for {perspective}: LLM returned empty choices")
+                logger.warning(
+                    f"Analysis for {perspective}: LLM returned empty choices"
+                )
                 agent.status = "failed"
                 return AnalysisResult(
                     perspective=perspective,
@@ -285,7 +288,9 @@ class MultiBrainOneHandOrchestrator:
 
         except (ConnectionError, TimeoutError, OSError) as e:
             # 网络/连接错误：可恢复，记录警告
-            logger.warning(f"Network error during analysis for {perspective}: {type(e).__name__}: {e}")
+            logger.warning(
+                f"Network error during analysis for {perspective}: {type(e).__name__}: {e}"
+            )
             agent.status = "failed"
             return AnalysisResult(
                 perspective=perspective,
@@ -295,7 +300,9 @@ class MultiBrainOneHandOrchestrator:
             )
         except (ValueError, KeyError) as e:
             # 数据解析错误：记录警告
-            logger.warning(f"Parse error during analysis for {perspective}: {type(e).__name__}: {e}")
+            logger.warning(
+                f"Parse error during analysis for {perspective}: {type(e).__name__}: {e}"
+            )
             agent.status = "failed"
             return AnalysisResult(
                 perspective=perspective,
@@ -323,9 +330,13 @@ class MultiBrainOneHandOrchestrator:
         """解析建议列表"""
         suggestions = []
         for line in text.split("\n"):
-            if "建议" in line or "suggestion" in line.lower() or "改进" in line:
-                suggestions.append(line.strip())
-            elif line.strip().startswith("1. ") or line.strip().startswith("2. "):
+            if (
+                "建议" in line
+                or "suggestion" in line.lower()
+                or "改进" in line
+                or line.strip().startswith("1. ")
+                or line.strip().startswith("2. ")
+            ):
                 suggestions.append(line.strip())
         return suggestions[:10]
 

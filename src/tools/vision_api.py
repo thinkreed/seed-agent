@@ -284,7 +284,9 @@ if __name__ == "__main__":
         print(f"Captured image: {img.size}")
 
         async def test(captured_img: "Image.Image"):
-            result = await analyze_image_async(captured_img, "Describe this screen in detail")
+            result = await analyze_image_async(
+                captured_img, "Describe this screen in detail"
+            )
             print(f"Result: {result}")
 
         asyncio.run(test(img))

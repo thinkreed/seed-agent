@@ -22,8 +22,9 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from src.security.credential_vault import CredentialScope, CredentialVault
 
@@ -259,7 +260,7 @@ class CredentialProxy:
                         "duration_ms": duration_ms,
                     }
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     duration_ms = (time.time() - start_time) * 1000
 
                     # 记录超时审计
@@ -458,11 +459,11 @@ class CredentialProxy:
                 from anthropic import AsyncAnthropic
 
                 client = AsyncAnthropic(api_key=credential)
-            except ImportError:
+            except ImportError as e:
                 raise ValueError(
                     "anthropic package not installed. "
                     "Install with: pip install anthropic"
-                )
+                ) from e
         else:
             raise ValueError(f"Unsupported client class: {client_class}")
 

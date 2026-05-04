@@ -17,7 +17,6 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 from . import ToolRegistry
 from .ask_user_types import (
@@ -701,7 +700,7 @@ async def code_as_policy_async(
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Kill process on timeout
             try:
                 proc.kill()
@@ -717,7 +716,9 @@ async def code_as_policy_async(
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-        exec_logger.info(f"Async code execution completed: returncode={proc.returncode}")
+        exec_logger.info(
+            f"Async code execution completed: returncode={proc.returncode}"
+        )
 
         # Build result
         output = stdout
@@ -743,8 +744,8 @@ async def code_as_policy_async(
 
 def ask_user(
     question: str,
-    options: Optional[list[str]] = None,
-    header: Optional[str] = None,
+    options: list[str] | None = None,
+    header: str | None = None,
     multi_select: bool = False,
 ) -> str:
     """
@@ -809,7 +810,7 @@ def inject_user_response(response: AskUserResult) -> None:
     state.inject_response(response)
 
 
-def get_pending_ask_user_request() -> Optional[AskUserRequest]:
+def get_pending_ask_user_request() -> AskUserRequest | None:
     """获取当前等待中的 ask_user 请求"""
     state = get_ask_user_state()
     return state.pending_request

@@ -23,7 +23,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from src.abort_signal import AbortController
 
@@ -53,10 +53,10 @@ class BackgroundTaskEntry:
     status: TaskStatus
     abort_controller: AbortController
     created_at: datetime = field(default_factory=datetime.now)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-    result: Optional[str] = None
-    error: Optional[str] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    result: str | None = None
+    error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -325,7 +325,7 @@ class BackgroundTaskRegistry:
         logger.info(f"Cancelled {len(tasks_to_cancel)} running tasks")
         return len(tasks_to_cancel)
 
-    def get_status(self, task_id: str) -> Optional[TaskStatus]:
+    def get_status(self, task_id: str) -> TaskStatus | None:
         """获取任务状态
 
         Args:
@@ -337,7 +337,7 @@ class BackgroundTaskRegistry:
         entry = self._tasks.get(task_id)
         return entry.status if entry else None
 
-    def get_entry(self, task_id: str) -> Optional[BackgroundTaskEntry]:
+    def get_entry(self, task_id: str) -> BackgroundTaskEntry | None:
         """获取任务条目
 
         Args:
@@ -348,7 +348,7 @@ class BackgroundTaskRegistry:
         """
         return self._tasks.get(task_id)
 
-    def get_abort_controller(self, task_id: str) -> Optional[AbortController]:
+    def get_abort_controller(self, task_id: str) -> AbortController | None:
         """获取任务的取消控制器
 
         Args:
@@ -362,7 +362,7 @@ class BackgroundTaskRegistry:
 
     def list_tasks(
         self,
-        status: Optional[TaskStatus] = None,
+        status: TaskStatus | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         """列出任务
@@ -393,7 +393,7 @@ class BackgroundTaskRegistry:
         """是否可以启动新任务"""
         return self.get_running_count() < self._max_concurrent
 
-    def cleanup(self, task_id: Optional[str] = None) -> int:
+    def cleanup(self, task_id: str | None = None) -> int:
         """清理任务资源（线程安全）
 
         Args:
@@ -446,7 +446,7 @@ class BackgroundTaskRegistry:
 
 
 # 全局注册表
-_global_registry: Optional[BackgroundTaskRegistry] = None
+_global_registry: BackgroundTaskRegistry | None = None
 
 
 def get_background_task_registry() -> BackgroundTaskRegistry:

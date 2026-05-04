@@ -16,14 +16,15 @@ import fnmatch
 import logging
 import os
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Callable
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class SinglePurposeToolRisk(str, Enum):
+class SinglePurposeToolRisk(StrEnum):
     """单用途工具风险等级"""
 
     SAFE = "safe"
@@ -494,8 +495,8 @@ class SinglePurposeToolFactory:
             elif expected_type == "integer" and not isinstance(value, int):
                 try:
                     value = int(value)
-                except ValueError:
-                    raise ValueError(f"Argument {arg_name} must be integer")
+                except ValueError as e:
+                    raise ValueError(f"Argument {arg_name} must be integer") from e
             elif expected_type == "boolean" and not isinstance(value, bool):
                 value = str(value).lower() in ("true", "yes", "1")
 

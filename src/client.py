@@ -27,9 +27,9 @@ import logging
 import os
 import random
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
 

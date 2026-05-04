@@ -282,7 +282,9 @@ class SemanticIndex:
                 # Manually set fitted attributes
                 svd_model.components_ = svd_data["components"]
                 svd_model.explained_variance_ = svd_data["explained_variance"]
-                svd_model.explained_variance_ratio_ = svd_data["explained_variance_ratio"]
+                svd_model.explained_variance_ratio_ = svd_data[
+                    "explained_variance_ratio"
+                ]
                 svd_model.singular_values_ = svd_data["singular_values"]
                 idx.svd = svd_model
             except (OSError, KeyError, ValueError):

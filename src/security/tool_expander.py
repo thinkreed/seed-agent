@@ -16,13 +16,13 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-class ToolTier(str, Enum):
+class ToolTier(StrEnum):
     """工具层级"""
 
     TIER_0_MINIMAL = "tier_0_minimal"
