@@ -1003,7 +1003,8 @@ class SessionDB:
 
             actual_id = row["session_id"]
             msg_count = row["message_count"]
-            summary: str | None = row["summary"] if "summary" in row.keys() else None
+            # SQLite Row 不支持 .get()，使用 keys() 检查
+            summary: str | None = row["summary"] if "summary" in tuple(row.keys()) else None
 
             messages = (
                 self._ensure_conn()

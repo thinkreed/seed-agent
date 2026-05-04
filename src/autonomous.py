@@ -12,6 +12,7 @@
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -24,16 +25,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
 
-import contextlib
-
 from src.ralph_state import (
     RalphState,
+    _ensure_ralph_dir,
     check_safety_limits,
     cleanup_state_file,
     extract_critical_context,
     load_or_init_state,
     persist_state,
-    _ensure_ralph_dir,
 )
 from src.session_event_stream import EventType
 

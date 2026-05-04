@@ -228,10 +228,11 @@ def ask_vision(
     try:
         from src.client import LLMGateway, RequestPriority
 
-        if not Path(DEFAULT_CONFIG_PATH).exists():
-            return f"Error: Config not found at {DEFAULT_CONFIG_PATH}"
+        config_path = _ensure_config_path()
+        if not config_path.exists():
+            return f"Error: Config not found at {config_path}"
 
-        gateway = LLMGateway(str(DEFAULT_CONFIG_PATH))
+        gateway = LLMGateway(str(config_path))
 
         # 智能检测当前是否在异步事件循环中
         try:

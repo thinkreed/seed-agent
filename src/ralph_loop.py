@@ -20,10 +20,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.errors import ConfigurationError, ErrorSeverity, SeedAgentError, classify_error
-
-if TYPE_CHECKING:
-    from src.agent_loop import AgentLoop
-
 from src.ralph_state import (
     check_safety_limits,
     cleanup_state_file,
@@ -32,8 +28,10 @@ from src.ralph_state import (
     load_or_init_state,
     persist_state,
     reset_context,
-    _ensure_ralph_dir,
 )
+
+if TYPE_CHECKING:
+    from src.agent_loop import AgentLoop
 
 # 预编译正则表达式（性能优化）
 _PASSED_PATTERN = re.compile(r"(\d+)\s+passed")
@@ -41,6 +39,16 @@ _FAILED_PATTERN = re.compile(r"(\d+)\s+failed")
 _ERROR_PATTERN = re.compile(r"(\d+)\s+error")
 
 logger = logging.getLogger("seed_agent.ralph")
+
+
+def _get_seed_dir() -> Path:
+    """获取主工作目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().seed_base
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed"
 
 
 class CompletionType(Enum):
@@ -123,7 +131,7 @@ class RalphLoop:
             if task_prompt_path
             else f"auto_{uuid.uuid4().hex[:8]}"
         )
-        self._state_file: Path = SEED_DIR / "ralph" / f"task_{state_name}_state.json"
+        self._state_file: Path = _get_seed_dir() / "ralph" / f"task_{state_name}_state.json"
         self._is_running: bool = False
 
     # === 核心方法 ===
@@ -267,7 +275,7 @@ class RalphLoop:
 
         required_rate = self.completion_criteria.get("pass_rate", 100)
         test_command = self.completion_criteria.get("test_command", "pytest tests/ -v")
-        cwd = self.completion_criteria.get("cwd", str(SEED_DIR))
+        cwd = self.completion_criteria.get("cwd", str(_get_seed_dir()))
 
         proc: asyncio.subprocess.Process | None = None
         try:
@@ -391,7 +399,7 @@ class RalphLoop:
         if not self.completion_criteria:
             return False
         marker_path = Path(
-            self.completion_criteria.get("marker_path", SEED_DIR / "completion_marker")
+            self.completion_criteria.get("marker_path", _get_seed_dir() / "completion_marker")
         )
         marker_content = self.completion_criteria.get("marker_content", "DONE")
 
@@ -415,7 +423,7 @@ class RalphLoop:
         """检查 Git 工作区状态（异步版本，不阻塞事件循环）"""
         if not self.completion_criteria:
             return False
-        repo_path = self.completion_criteria.get("repo_path", str(SEED_DIR))
+        repo_path = self.completion_criteria.get("repo_path", str(_get_seed_dir()))
 
         proc: asyncio.subprocess.Process | None = None
         try:
@@ -575,7 +583,7 @@ class RalphLoop:
             agent_loop=agent_loop,
             completion_type=CompletionType.MARKER_FILE,
             completion_criteria={
-                "marker_path": str(marker_path or SEED_DIR / "completion_marker"),
+                "marker_path": str(marker_path or _get_seed_dir() / "completion_marker"),
                 "marker_content": marker_content,
             },
             task_prompt_path=task_prompt_path,
@@ -616,7 +624,7 @@ async def create_ralph_loop(
     # 解析任务文件路径
     task_path = Path(task_file)
     if not task_path.is_absolute():
-        task_path = SEED_DIR / "tasks" / task_file
+        task_path = _get_seed_dir() / "tasks" / task_file
 
     return RalphLoop(
         agent_loop=agent_loop,

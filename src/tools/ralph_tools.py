@@ -38,6 +38,16 @@ def _get_ralph_state_dir() -> Path:
     return _ensure_ralph_dir()
 
 
+def _get_seed_dir() -> Path:
+    """获取主工作目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().seed_base
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed"
+
+
 # 兼容别名（使用 utils.py 的公共函数）
 _safe_int_convert = safe_int_convert
 
@@ -87,7 +97,7 @@ def start_ralph_loop(
     # 解析任务文件路径
     task_path = Path(task_prompt_file)
     if not task_path.is_absolute():
-        task_path = SEED_DIR / "tasks" / task_prompt_file
+        task_path = _get_seed_dir() / "tasks" / task_prompt_file
 
     # 确保任务目录存在
     task_path.parent.mkdir(parents=True, exist_ok=True)

@@ -541,16 +541,15 @@ class SkillLoader:
         # 路径展开：将相对路径替换为实际的绝对路径
         # 这对于 Windows 系统特别重要，因为 LLM 可能误解路径
         try:
-            from src.ralph_state import SEED_DIR
-
-            seed_dir_str = str(SEED_DIR)
+            from src.shared_config import get_paths_config
+            seed_dir_str = str(get_paths_config().seed_base)
             content = content.replace("~/.seed", seed_dir_str)
             content = content.replace("~\\seed", seed_dir_str)
             # 展开 ~ 为用户主目录
             home_dir = os.path.expanduser("~")
             content = content.replace("~", home_dir)
-        except ImportError:
-            pass  # 如果无法导入 SEED_DIR，保持原路径
+        except RuntimeError:
+            pass  # 如果 PathsConfig 未初始化，保持原路径
 
         # 项目源码路径展开：将 src/*.py 替换为项目目录的绝对路径
         # 防止 LLM 误解为 ~/.seed/src/*.py
@@ -810,14 +809,13 @@ class SkillLoader:
 
         # 路径展开：将 ~/.seed 替换为实际的 SEED_DIR 绝对路径
         try:
-            from src.ralph_state import SEED_DIR
-
-            seed_dir_str = str(SEED_DIR)
+            from src.shared_config import get_paths_config
+            seed_dir_str = str(get_paths_config().seed_base)
             content = content.replace("~/.seed", seed_dir_str)
             content = content.replace("~\\seed", seed_dir_str)
             home_dir = os.path.expanduser("~")
             content = content.replace("~", home_dir)
-        except ImportError:
+        except RuntimeError:
             pass
 
         # 项目源码路径展开：将 src/*.py 替换为项目目录的绝对路径

@@ -109,12 +109,12 @@ def load_snapshot(skills_dir: Path) -> dict | None:
         加载后会自动将 triggers_lower 和 desc_words 从 list 转回 set，
         以支持内存中的 O(1) 快速查找。
     """
-    _ensure_cache_paths()
+    _cache_dir, snapshot_path = _ensure_cache_paths()
     try:
-        if not SNAPSHOT_PATH.exists():
+        if not snapshot_path.exists():
             return None
 
-        with open(SNAPSHOT_PATH, encoding="utf-8") as f:
+        with open(snapshot_path, encoding="utf-8") as f:
             snapshot = json.load(f)
 
         # 检查 manifest 是否匹配
@@ -175,9 +175,9 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
         skills_meta 中的 set 类型字段（如 triggers_lower, desc_words）
         会自动转换为 list 以支持 JSON 序列化。
     """
-    _ensure_cache_paths()
+    cache_dir, snapshot_path = _ensure_cache_paths()
     try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
         # 转换 set 为 list（JSON 序列化兼容）
         serializable_meta = _convert_sets_to_lists(skills_meta)
@@ -189,10 +189,10 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
         }
 
         # 原子写入
-        tmp_path = SNAPSHOT_PATH.with_suffix(".tmp")
+        tmp_path = snapshot_path.with_suffix(".tmp")
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, SNAPSHOT_PATH)
+        os.replace(tmp_path, snapshot_path)
 
         logger.debug(f"Skill cache snapshot saved: {len(skills_meta)} skills")
     except OSError as e:
@@ -201,10 +201,10 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
 
 def clear_snapshot() -> None:
     """清除磁盘快照 (在 skill 被 patch 后调用)"""
-    _ensure_cache_paths()
+    _cache_dir, snapshot_path = _ensure_cache_paths()
     try:
-        if SNAPSHOT_PATH.exists():
-            SNAPSHOT_PATH.unlink()
+        if snapshot_path.exists():
+            snapshot_path.unlink()
             logger.debug("Skill cache snapshot cleared")
     except OSError as e:
         logger.warning(f"Failed to clear skill cache snapshot: {type(e).__name__}: {e}")
