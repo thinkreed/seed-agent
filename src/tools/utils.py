@@ -18,6 +18,38 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 _MAX_BACKGROUND_TASKS = 100  # 最大后台任务数，防止内存泄漏
 
 
+def safe_int_convert(value: Any, default: int, min_val: int = 1) -> int:
+    """安全地将值转换为整数
+
+    用于处理 LLM 返回字符串类型数值参数的情况：
+    - LLM 可能返回 "timeout": "300" (JSON 字符串)
+    - asyncio.wait_for 内部会执行 timeout <= 0 比较
+    - 字符串与整数比较会导致 TypeError
+
+    Args:
+        value: 要转换的值（可能是 str, int, float, None 等）
+        default: 转换失败时的默认值
+        min_val: 最小有效值
+
+    Returns:
+        int: 转换后的整数，或默认值
+    """
+    if value is None:
+        return default
+
+    try:
+        result = int(value)
+        if result < min_val:
+            logger.warning(
+                f"Converted value {result} < min_val {min_val}, using default {default}"
+            )
+            return default
+        return result
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to convert {value!r} to int: {e}, using default {default}")
+        return default
+
+
 def add_background_task(task: asyncio.Task[Any]) -> None:
     """安全添加后台任务，超过限制时自动清理已完成任务
 

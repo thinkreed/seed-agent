@@ -95,7 +95,7 @@ def task_status(task_id: str) -> str:
         result += f"Completed: {status_info['completed_at']}\n"
 
     if entry.result:
-        result += f"Result: {entry.result[:200]}...\n"
+        result += f"Result: {(entry.result or '')[:200]}...\n"
 
     if entry.error:
         result += f"Error: {entry.error}\n"

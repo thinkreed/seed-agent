@@ -470,8 +470,10 @@ class TestLoadConfig(unittest.TestCase):
 
     def test_default_config_path(self):
         """测试默认配置路径常量"""
-        expected = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
+        expected = Path.home() / ".seed" / "config.json"
         self.assertEqual(DEFAULT_CONFIG_PATH, expected)
+        # 验证可以正确转换为字符串
+        self.assertEqual(str(DEFAULT_CONFIG_PATH), str(expected))
 
 
 if __name__ == '__main__':

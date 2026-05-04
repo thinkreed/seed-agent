@@ -18,7 +18,7 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
-from src.tools.utils import add_background_task
+from src.tools.utils import add_background_task, safe_int_convert
 
 if TYPE_CHECKING:
     from src.subagent_manager import SubagentManager
@@ -32,35 +32,8 @@ _subagent_manager: "SubagentManager | None" = None
 # 线程安全锁（保护全局状态）
 _manager_lock = threading.Lock()
 
-
-def _safe_int_convert(value, default: int, min_val: int = 1) -> int:
-    """安全地将值转换为整数
-
-    Args:
-        value: 要转换的值（可能是 str, int, float, None 等）
-        default: 转换失败时的默认值
-        min_val: 最小有效值
-
-    Returns:
-        int: 转换后的整数，或默认值
-
-    用于处理 LLM 返回字符串类型数值参数的情况：
-    - LLM 可能返回 "timeout": "300" (JSON 字符串)
-    - asyncio.wait_for 内部会执行 timeout <= 0 比较
-    - 字符串与整数比较会导致 TypeError
-    """
-    if value is None:
-        return default
-
-    try:
-        result = int(value) if isinstance(value, str) else int(value)
-        if result < min_val:
-            logger.warning(f"Converted value {result} < min_val {min_val}, using default {default}")
-            return default
-        return result
-    except (ValueError, TypeError) as e:
-        logger.warning(f"Failed to convert '{value}' to int: {type(e).__name__}, using default {default}")
-        return default
+# 兼容别名（使用 utils.py 的公共函数）
+_safe_int_convert = safe_int_convert
 
 
 def init_subagent_manager(manager: "SubagentManager") -> None:

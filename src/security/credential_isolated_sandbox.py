@@ -372,6 +372,7 @@ print(result)
         """Docker 容器级隔离执行（无凭证）
 
         创建临时容器执行，不传递任何环境变量。
+        使用临时文件传递参数，避免命令注入风险。
 
         Args:
             tool_name: 工具名称
@@ -388,18 +389,42 @@ print(result)
 
         client = docker.from_env()
 
-        # 构建执行命令
-        args_json = json.dumps(args)
-        cmd = f"python -c 'from src.tools.builtin_tools import {tool_name}; print({tool_name}(**json.loads(\"{args_json}\")))'"
+        # 安全：使用临时文件传递参数，而非 f-string 嵌入
+        # 避免 args_json 包含特殊字符导致的命令注入
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False
+        ) as args_file:
+            json.dump(args, args_file)
+            args_file_path = args_file.name
+
+        # 安全的执行脚本（参数从挂载的文件读取）
+        # 白名单验证 tool_name，只允许字母、数字和下划线
+        if not tool_name.replace("_", "").replace("-", "").isalnum():
+            logger.error(f"Invalid tool_name: {tool_name}")
+            with contextlib.suppress(OSError):
+                os.unlink(args_file_path)
+            return f"[BLOCKED] Invalid tool name: {tool_name}"
+
+        # 使用挂载卷传递参数文件
+        safe_cmd = f"""
+import json
+with open('/tmp/args.json') as f:
+    args = json.load(f)
+from src.tools.builtin_tools import {tool_name}
+result = {tool_name}(**args)
+print(result)
+"""
 
         try:
             # 创建临时容器（不传递环境变量）
             container = client.containers.run(
                 "seed-agent-sandbox:latest",
-                cmd,
+                ["python", "-c", safe_cmd],
                 volumes={
                     str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
                     str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
+                    args_file_path: {"bind": "/tmp/args.json", "mode": "ro"},
                 },
                 environment={},  # 不传递任何环境变量（关键）
                 remove=True,
@@ -407,12 +432,19 @@ print(result)
                 stderr=True,
             )
 
+            # 清理临时文件
+            with contextlib.suppress(OSError):
+                os.unlink(args_file_path)
+
             result = (
                 container.decode() if isinstance(container, bytes) else str(container)
             )
             return self._sanitize_output(result)
 
         except Exception as e:
+            # 清理临时文件
+            with contextlib.suppress(OSError):
+                os.unlink(args_file_path)
             logger.error(f"Container execution failed: {e}")
             # 降级到进程级隔离
             return await self._execute_in_isolated_process(tool_name, args)

@@ -154,6 +154,10 @@ def _sanitize_fts_query(query: str) -> str:
     return query.strip()
 
 
+# 公共导出别名（供其他模块复用）
+sanitize_fts_query = _sanitize_fts_query
+
+
 class BannedSkillInfo(TypedDict):
     """禁用 Skill 信息类型定义"""
 

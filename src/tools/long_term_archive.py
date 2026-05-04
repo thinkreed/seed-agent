@@ -40,6 +40,27 @@ except ImportError:
 ARCHIVE_DB_PATH = Path.home() / ".seed" / "memory" / "archives.db"
 
 
+# 导入 session_db 的公共函数
+# 使用延迟导入避免循环依赖，在首次使用时导入
+_sanitize_fts_query_cached: Any = None
+
+
+def _get_sanitize_fts_query():
+    """延迟获取 FTS 查询清理函数"""
+    global _sanitize_fts_query_cached
+    if _sanitize_fts_query_cached is None:
+        from src.tools.session_db import sanitize_fts_query
+
+        _sanitize_fts_query_cached = sanitize_fts_query
+    return _sanitize_fts_query_cached
+
+
+# 兼容别名（延迟获取）
+def _sanitize_fts_query_alias(query: str) -> str:
+    """兼容别名，使用公共函数"""
+    return _get_sanitize_fts_query()(query)
+
+
 # 导入 session_db 的分词缓存函数（延迟导入避免循环依赖）
 def _get_tokenize_func():
     """延迟获取分词函数，避免模块加载时的循环依赖"""
@@ -477,7 +498,7 @@ class LongTermArchiveLayer:
             }]
         """
         # FTS5 搜索
-        fts_query = self._sanitize_fts_query(keyword)
+        fts_query = _sanitize_fts_query_alias(keyword)
         if not fts_query:
             return []
 
@@ -529,29 +550,8 @@ class LongTermArchiveLayer:
             return []
 
     def _sanitize_fts_query(self, query: str) -> str:
-        """清理 FTS5 查询字符串"""
-        if not query:
-            return ""
-
-        # 限制长度
-        if len(query) > 200:
-            query = query[:200]
-
-        # 使用 tokenize_for_fts5 进行分词（带缓存）
-        tokenize = _get_tokenize_func()
-        query = tokenize(query)
-
-        # 移除 FTS5 特殊字符
-        special_chars = '"():*^#&|-!~'
-        for char in special_chars:
-            query = query.replace(char, "")
-
-        # 移除 FTS5 关键字
-        keywords = ["AND", "OR", "NOT", "NEAR", "ORDER", "BY", "LIMIT", "OFFSET"]
-        for kw in keywords:
-            query = query.replace(kw, "")
-
-        return query.strip()
+        """清理 FTS5 查询字符串（兼容别名）"""
+        return _sanitize_fts_query_alias(query)
 
     def _extract_matched_snippet(self, content: str, keyword: str) -> str:
         """提取匹配片段"""

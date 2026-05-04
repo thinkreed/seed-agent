@@ -46,6 +46,7 @@ import asyncio
 import json
 import logging
 import time
+from collections import deque
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, TypedDict
 
@@ -209,11 +210,11 @@ class Harness:
         # 当前任务（用于智能裁剪）
         self._current_task: str | None = None
 
-        # 执行指标
-        self._metrics: list[ToolExecutionMetrics] = []
+        # 执行指标（使用 deque 限制容量，防止内存溢出）
+        self._metrics: deque[ToolExecutionMetrics] = deque(maxlen=1000)
 
-        # 钩子执行报告（用于调试）
-        self._hook_reports: list[HookTriggerReport] = []
+        # 钩子执行报告（用于调试，同样限制容量）
+        self._hook_reports: deque[HookTriggerReport] = deque(maxlen=500)
 
         # Ask User 等待状态
         self._waiting_for_user: bool = False
@@ -1676,7 +1677,7 @@ class Harness:
 
     def get_metrics(self) -> list[ToolExecutionMetrics]:
         """获取工具执行指标"""
-        return self._metrics.copy()
+        return list(self._metrics)
 
     def clear_metrics(self) -> None:
         """清空指标"""
@@ -1705,7 +1706,7 @@ class Harness:
 
     def get_hook_reports(self) -> list[HookTriggerReport]:
         """获取钩子执行报告"""
-        return self._hook_reports.copy()
+        return list(self._hook_reports)
 
     def clear_hook_reports(self) -> None:
         """清空钩子报告"""

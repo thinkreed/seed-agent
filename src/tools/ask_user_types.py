@@ -20,6 +20,7 @@ Ask User 数据类型定义
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -301,11 +302,13 @@ class AskUserState:
         pending_request: 当前等待中的请求
         waiting_event: asyncio.Event 用于等待响应
         response: 用户响应（注入后设置）
+        _lock: 线程锁保护并发访问
     """
 
     pending_request: Optional[AskUserRequest] = None
     waiting_event: asyncio.Event = field(default_factory=asyncio.Event)
     response: Optional[AskUserResult] = None
+    _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def set_request(self, request: AskUserRequest) -> None:
         """设置等待请求
@@ -313,9 +316,10 @@ class AskUserState:
         Args:
             request: Ask User 请求
         """
-        self.pending_request = request
-        self.response = None
-        self.waiting_event.clear()
+        with self._lock:
+            self.pending_request = request
+            self.response = None
+            self.waiting_event.clear()
 
     def inject_response(self, response: AskUserResult) -> None:
         """注入用户响应
@@ -323,36 +327,42 @@ class AskUserState:
         Args:
             response: 用户响应结果
         """
-        self.response = response
-        self.pending_request = None
-        self.waiting_event.set()
+        with self._lock:
+            self.response = response
+            self.pending_request = None
+            self.waiting_event.set()
 
     def clear(self) -> None:
         """清理状态"""
-        self.pending_request = None
-        self.response = None
-        self.waiting_event.clear()
+        with self._lock:
+            self.pending_request = None
+            self.response = None
+            self.waiting_event.clear()
 
     def is_waiting(self) -> bool:
         """是否正在等待"""
-        return self.pending_request is not None
+        with self._lock:
+            return self.pending_request is not None
 
 
-# 全局状态管理器（单例）
+# 全局状态管理器（单例）及线程锁
 _global_ask_user_state: Optional[AskUserState] = None
+_global_state_lock: threading.Lock = threading.Lock()
 
 
 def get_ask_user_state() -> AskUserState:
-    """获取全局 Ask User 状态管理器"""
+    """获取全局 Ask User 状态管理器（线程安全）"""
     global _global_ask_user_state
-    if _global_ask_user_state is None:
-        _global_ask_user_state = AskUserState()
-    return _global_ask_user_state
+    with _global_state_lock:
+        if _global_ask_user_state is None:
+            _global_ask_user_state = AskUserState()
+        return _global_ask_user_state
 
 
 def reset_ask_user_state() -> None:
-    """重置全局状态管理器"""
+    """重置全局状态管理器（线程安全）"""
     global _global_ask_user_state
-    if _global_ask_user_state:
-        _global_ask_user_state.clear()
-    _global_ask_user_state = AskUserState()
+    with _global_state_lock:
+        if _global_ask_user_state:
+            _global_ask_user_state.clear()
+        _global_ask_user_state = AskUserState()
