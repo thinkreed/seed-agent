@@ -21,6 +21,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,14 @@ from src.sandbox import IsolationLevel
 from src.security.credential_proxy import CredentialProxy
 from src.security.secure_sandbox import SecureExecutionResult, SecureSandbox
 from src.tools.utils import is_parse_failed, parse_tool_arguments
+
+# 预编译正则表达式（性能优化）- 用于输出清洗
+_RE_SK_KEY = re.compile(r"sk-[a-zA-Z0-9]{20,}")
+_RE_BEARER = re.compile(r"Bearer\s+[a-zA-Z0-9_-]{20,}")
+_RE_AWS_KEY = re.compile(r"AKIA[A-Z0-9]{16}")
+_RE_API_KEY_GENERIC = re.compile(
+    r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}'
+)
 
 logger = logging.getLogger(__name__)
 
@@ -524,24 +533,18 @@ print(result)
         Returns:
             过滤后的输出
         """
-        # 过滤 API Key 模式
-        import re
-
+        # 过滤 API Key 模式 - 使用预编译正则
         # sk-* 模式 (OpenAI)
-        output = re.sub(r"sk-[a-zA-Z0-9]{20,}", "[REDACTED_API_KEY]", output)
+        output = _RE_SK_KEY.sub("[REDACTED_API_KEY]", output)
 
         # Bearer * 模式
-        output = re.sub(r"Bearer\s+[a-zA-Z0-9_-]{20,}", "Bearer [REDACTED]", output)
+        output = _RE_BEARER.sub("Bearer [REDACTED]", output)
 
         # AWS Access Key 模式
-        output = re.sub(r"AKIA[A-Z0-9]{16}", "[REDACTED_AWS_KEY]", output)
+        output = _RE_AWS_KEY.sub("[REDACTED_AWS_KEY]", output)
 
         # 通用 API Key 模式
-        return re.sub(
-            r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}',
-            "api_key=[REDACTED]",
-            output,
-        )
+        return _RE_API_KEY_GENERIC.sub("api_key=[REDACTED]", output)
 
     # === 凭证代理集成 ===
 

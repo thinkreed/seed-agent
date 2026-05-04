@@ -29,6 +29,11 @@ from src.session_event_stream import EventType, SessionEventStream
 
 logger = logging.getLogger(__name__)
 
+# 预编译正则表达式（性能优化）
+_RE_FILE_PATTERN = re.compile(r"[a-zA-Z_./]+\.[a-zA-Z]+")
+_RE_CODE_PATTERN = re.compile(r"[A-Z][a-zA-Z0-9]*|[a-z_][a-z0-9_]*")
+_RE_STOP_WORDS = {"the", "for", "and", "with", "this", "that"}
+
 # 相关性阈值
 RELEVANCE_THRESHOLD = 0.3
 
@@ -862,16 +867,16 @@ class IntelligentContextPruner:
         entities: list[str] = []
 
         # 1. 文件路径 (如 "src/agent_loop.py")
-        file_patterns = re.findall(r"[a-zA-Z_./]+\.[a-zA-Z]+", task)
+        file_patterns = _RE_FILE_PATTERN.findall(task)
         for p in file_patterns:
             if "/" in p or "." in p and len(p) > 5:
                 entities.append(p)
 
         # 2. 函数/类名 (如 "AgentLoop", "_execute_tool")
         # 匹配 CamelCase 和 snake_case
-        code_patterns = re.findall(r"[A-Z][a-zA-Z0-9]*|[a-z_][a-z0-9_]*", task)
+        code_patterns = _RE_CODE_PATTERN.findall(task)
         for p in code_patterns:
-            if len(p) > 3 and p not in ["the", "for", "and", "with", "this", "that"]:
+            if len(p) > 3 and p not in _RE_STOP_WORDS:
                 entities.append(p)
 
         # 3. 关键词 (如 "重构", "优化", "bug", "fix")

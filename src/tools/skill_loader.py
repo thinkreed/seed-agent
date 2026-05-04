@@ -59,6 +59,11 @@ from .skill_security import (
     validate_skill_structure,
 )
 
+# 预编译正则表达式（性能优化）
+_RE_EN_WORD = re.compile(r"[a-zA-Z0-9_]+")
+_RE_EN_WORD_HYPHEN = re.compile(r"[a-zA-Z0-9_-]+")
+_RE_CN_WORD = re.compile(r"[\u4e00-\u9fa5]+")
+
 logger = logging.getLogger(__name__)
 
 # 兼容性导出：保持原有私有函数名可用
@@ -249,8 +254,9 @@ class SkillLoader:
                 }
                 # 预处理：description 关键词集合（避免每次匹配时重新计算）
                 desc = self._skills_meta[meta["name"]]["description"]
-                desc_words = set(re.findall(r"[a-zA-Z0-9_]+", desc.lower()))
-                desc_words.update(re.findall(r"[\u4e00-\u9fa5]+", desc.lower()))
+                desc_lower = desc.lower()
+                desc_words = set(_RE_EN_WORD.findall(desc_lower))
+                desc_words.update(_RE_CN_WORD.findall(desc_lower))
                 self._skills_meta[meta["name"]]["desc_words"] = desc_words
             except Exception as e:
                 logger.debug(
@@ -388,8 +394,8 @@ class SkillLoader:
     def _tokenize_query(self, query: str) -> list[str]:
         """分词: 英文单词 + 中文字符串"""
         query_lower = query.lower()
-        en_words = re.findall(r"[a-zA-Z0-9_-]+", query_lower)
-        cn_words = re.findall(r"[\u4e00-\u9fa5]+", query_lower)
+        en_words = _RE_EN_WORD_HYPHEN.findall(query_lower)
+        cn_words = _RE_CN_WORD.findall(query_lower)
         words = en_words + cn_words
         return words or [query_lower]
 
