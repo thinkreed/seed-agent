@@ -7,6 +7,10 @@ SubagentManager - 子代理生命周期管理和调度
 - 结果收集与过滤
 - 超时管理
 - 资源限制（同时运行的 subagent 数量）
+
+类型安全:
+- SubagentTask.__post_init__ 验证数值参数类型
+- 防止字符串类型数值传入 asyncio.wait_for
 """
 
 import asyncio
@@ -28,9 +32,36 @@ from src.subagent import (
 logger = logging.getLogger(__name__)
 
 
+def _safe_int(value, default=None, min_val=1):
+    """安全转换整数（用于 dataclass __post_init__）
+
+    Args:
+        value: 要转换的值（可能是 str, int, float, None 等）
+        default: 转换失败时的默认值
+        min_val: 最小有效值
+
+    Returns:
+        int | None: 转换后的整数，或默认值
+    """
+    if value is None:
+        return default
+    try:
+        result = int(value) if isinstance(value, str) else int(value)
+        if result < min_val:
+            logger.warning(f"Converted value {result} < min_val {min_val}, using default {default}")
+            return default
+        return result
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to convert '{value}' to int: {type(e).__name__}, using default {default}")
+        return default
+
+
 @dataclass
 class SubagentTask:
-    """Subagent 任务定义"""
+    """Subagent 任务定义
+
+    类型安全: __post_init__ 确保数值参数为整数类型
+    """
 
     id: str
     subagent_type: SubagentType
@@ -40,6 +71,25 @@ class SubagentTask:
     max_iterations: int | None = None
     timeout: int | None = None
     priority: int = 0  # 优先级，数值越高越先执行
+
+    def __post_init__(self):
+        """创建后类型验证和转换
+
+        处理 LLM 返回字符串类型数值参数的情况：
+        - LLM 可能返回 "timeout": "300" (JSON 字符串)
+        - asyncio.wait_for 内部会执行 timeout <= 0 比较
+        - 字符串与整数比较会导致 TypeError
+        """
+        # timeout 转换
+        if self.timeout is not None:
+            self.timeout = _safe_int(self.timeout, default=None, min_val=1)
+
+        # max_iterations 转换
+        if self.max_iterations is not None:
+            self.max_iterations = _safe_int(self.max_iterations, default=None, min_val=1)
+
+        # priority 转换
+        self.priority = _safe_int(self.priority, default=0, min_val=0)
 
 
 class SubagentManager:

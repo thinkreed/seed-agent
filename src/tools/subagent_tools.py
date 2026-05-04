@@ -7,6 +7,10 @@ Subagent 工具集 - 为 AgentLoop 提供 Subagent 操作接口
 - aggregate_subagent_results: 聚合多个子代理结果
 - list_subagents: 列出所有子代理状态
 - kill_subagent: 终止子代理
+
+类型安全:
+- 所有数值参数在入口处强制转换为整数
+- 防止 LLM 返回字符串类型数值导致的类型比较错误
 """
 
 import asyncio
@@ -27,6 +31,36 @@ _subagent_manager: "SubagentManager | None" = None
 
 # 线程安全锁（保护全局状态）
 _manager_lock = threading.Lock()
+
+
+def _safe_int_convert(value, default: int, min_val: int = 1) -> int:
+    """安全地将值转换为整数
+
+    Args:
+        value: 要转换的值（可能是 str, int, float, None 等）
+        default: 转换失败时的默认值
+        min_val: 最小有效值
+
+    Returns:
+        int: 转换后的整数，或默认值
+
+    用于处理 LLM 返回字符串类型数值参数的情况：
+    - LLM 可能返回 "timeout": "300" (JSON 字符串)
+    - asyncio.wait_for 内部会执行 timeout <= 0 比较
+    - 字符串与整数比较会导致 TypeError
+    """
+    if value is None:
+        return default
+
+    try:
+        result = int(value) if isinstance(value, str) else int(value)
+        if result < min_val:
+            logger.warning(f"Converted value {result} < min_val {min_val}, using default {default}")
+            return default
+        return result
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to convert '{value}' to int: {type(e).__name__}, using default {default}")
+        return default
 
 
 def init_subagent_manager(manager: "SubagentManager") -> None:
@@ -70,13 +104,16 @@ def spawn_subagent(
     if subagent_type is None:
         return f"Error: Unknown subagent type '{type}'. Supported: explore, review, implement, plan"
 
+    # 类型安全转换：timeout 必须是整数
+    safe_timeout = _safe_int_convert(timeout, default=300, min_val=1) if timeout is not None else None
+
     # 创建任务
     custom_tools_set = set(custom_tools) if custom_tools else None
     task_id = _subagent_manager.create_task(
         subagent_type=subagent_type,
         prompt=prompt,
         custom_tools=custom_tools_set,
-        timeout=timeout,
+        timeout=safe_timeout,
     )
 
     # 尝试启动异步执行（仅在事件循环存在时）
@@ -126,9 +163,14 @@ async def wait_for_subagent_async(
         # 任务已完成
         return result.summary
 
+    # 类型安全转换：timeout 必须是正数
+    safe_timeout = None
+    if timeout is not None:
+        safe_timeout = _safe_int_convert(timeout, default=60, min_val=1)
+
     # 等待任务完成
     try:
-        if timeout:
+        if safe_timeout:
             # 使用 asyncio.wait_for 设置超时
             async def wait_loop():
                 while True:
@@ -137,7 +179,7 @@ async def wait_for_subagent_async(
                         return res
                     await asyncio.sleep(0.5)
 
-            result = await asyncio.wait_for(wait_loop(), timeout=timeout)
+            result = await asyncio.wait_for(wait_loop(), timeout=safe_timeout)
         else:
             # 无限等待
             while True:
@@ -175,6 +217,9 @@ def wait_for_subagent(
     if _subagent_manager is None:
         return "Error: SubagentManager not initialized"
 
+    # 类型安全转换：timeout 仅用于提示信息，实际等待在异步版本
+    # 这里不强制转换，因为同步版本不实际执行等待
+
     result = _subagent_manager.get_result(task_id)
     if result:
         return result.summary
@@ -209,10 +254,13 @@ def aggregate_subagent_results(
     if _subagent_manager is None:
         return "Error: SubagentManager not initialized"
 
+    # 类型安全转换：max_length 必须是正整数
+    safe_max_length = _safe_int_convert(max_length, default=2000, min_val=1)
+
     return _subagent_manager.aggregate_results(
         task_ids=task_ids,
         include_errors=include_errors,
-        max_length=max_length,
+        max_length=safe_max_length,
     )
 
 
@@ -331,10 +379,14 @@ def spawn_parallel_subagents(
         if subagent_type is None:
             return f"Error: Unknown type '{type_str}' in task spec"
 
+        # 类型安全转换：timeout 必须是整数
+        raw_timeout = task_spec.get("timeout", 300)
+        safe_timeout = _safe_int_convert(raw_timeout, default=300, min_val=1)
+
         task_id = _subagent_manager.create_task(
             subagent_type=subagent_type,
             prompt=task_spec.get("prompt", ""),
-            timeout=task_spec.get("timeout", 300),
+            timeout=safe_timeout,
         )
         task_ids.append(task_id)
 

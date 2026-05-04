@@ -198,7 +198,7 @@ class TestSubagentInstance(unittest.TestCase):
 
     def test_instance_type_based_defaults(self):
         """测试基于类型的默认超时配置"""
-        from subagent import DEFAULT_TIMEOUTS
+        from src.subagent import DEFAULT_TIMEOUTS
 
         # EXPLORE: 180s, REVIEW: 600s, IMPLEMENT: 900s, PLAN: 300s
         for sub_type, expected_timeout in DEFAULT_TIMEOUTS.items():
@@ -485,7 +485,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def setUp(self):
         """测试前设置"""
-        from tools.subagent_tools import init_subagent_manager
+        from src.tools.subagent_tools import init_subagent_manager
 
         self.gateway_mock = Mock()
         self.gateway_mock.config = Mock()
@@ -498,7 +498,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def test_spawn_subagent(self):
         """测试 spawn_subagent 工具"""
-        from tools.subagent_tools import spawn_subagent
+        from src.tools.subagent_tools import spawn_subagent
 
         result = spawn_subagent(
             type="explore",
@@ -510,7 +510,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def test_spawn_subagent_invalid_type(self):
         """测试无效类型"""
-        from tools.subagent_tools import spawn_subagent
+        from src.tools.subagent_tools import spawn_subagent
 
         result = spawn_subagent(
             type="invalid_type",
@@ -522,7 +522,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def test_list_subagents(self):
         """测试列出子代理"""
-        from tools.subagent_tools import list_subagents, spawn_subagent
+        from src.tools.subagent_tools import list_subagents, spawn_subagent
 
         spawn_subagent("explore", "Test 1")
         spawn_subagent("review", "Test 2")
@@ -535,7 +535,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def test_list_subagents_empty(self):
         """测试空列表"""
-        from tools.subagent_tools import list_subagents
+        from src.tools.subagent_tools import list_subagents
 
         self.manager.cleanup()
         result = list_subagents()
@@ -544,7 +544,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def test_get_subagent_status(self):
         """测试获取状态"""
-        from tools.subagent_tools import get_subagent_status, spawn_subagent
+        from src.tools.subagent_tools import get_subagent_status, spawn_subagent
 
         task_id_result = spawn_subagent("explore", "Test")
         # 提取 task_id
@@ -557,7 +557,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def test_kill_subagent(self):
         """测试终止子代理"""
-        from tools.subagent_tools import kill_subagent, spawn_subagent
+        from src.tools.subagent_tools import kill_subagent, spawn_subagent
 
         task_id_result = spawn_subagent("explore", "Test")
         task_id = task_id_result.split("\n")[0].split(": ")[1]
@@ -569,7 +569,7 @@ class TestSubagentTools(unittest.TestCase):
 
     def test_spawn_parallel_subagents(self):
         """测试并行启动"""
-        from tools.subagent_tools import spawn_parallel_subagents
+        from src.tools.subagent_tools import spawn_parallel_subagents
 
         tasks = [
             {"type": "explore", "prompt": "Task 1"},
@@ -579,6 +579,294 @@ class TestSubagentTools(unittest.TestCase):
         result = spawn_parallel_subagents(tasks)
 
         self.assertIn("Created 2 subagent tasks", result)
+
+
+class TestTypeSafetyConversion(unittest.TestCase):
+    """测试类型安全转换功能
+
+    测试 LLM 返回字符串类型数值参数时的处理：
+    - 字符串 timeout -> 整数 timeout
+    - 无效字符串 -> 默认值
+    - 负数 -> 默认值
+    """
+
+    def setUp(self):
+        """测试前设置"""
+        from src.tools.subagent_tools import init_subagent_manager, _safe_int_convert
+
+        self.gateway_mock = Mock()
+        self.gateway_mock.config = Mock()
+        self.gateway_mock.config.agents = {'defaults': Mock()}
+        self.gateway_mock.config.agents['defaults'].defaults = Mock()
+        self.gateway_mock.config.agents['defaults'].defaults.primary = "test/test-model"
+
+        self.manager = SubagentManager(gateway=self.gateway_mock)
+        init_subagent_manager(self.manager)
+        self._safe_int_convert = _safe_int_convert
+
+    def test_safe_int_convert_valid_string(self):
+        """测试有效字符串转换为整数"""
+        result = self._safe_int_convert("300", default=100)
+        self.assertEqual(result, 300)
+
+        result = self._safe_int_convert("60", default=30)
+        self.assertEqual(result, 60)
+
+    def test_safe_int_convert_valid_int(self):
+        """测试整数直接返回"""
+        result = self._safe_int_convert(300, default=100)
+        self.assertEqual(result, 300)
+
+        result = self._safe_int_convert(60, default=30)
+        self.assertEqual(result, 60)
+
+    def test_safe_int_convert_invalid_string(self):
+        """测试无效字符串返回默认值"""
+        result = self._safe_int_convert("abc", default=100)
+        self.assertEqual(result, 100)
+
+        result = self._safe_int_convert("not_a_number", default=300)
+        self.assertEqual(result, 300)
+
+    def test_safe_int_convert_none(self):
+        """测试 None 返回默认值"""
+        result = self._safe_int_convert(None, default=100)
+        self.assertEqual(result, 100)
+
+    def test_safe_int_convert_negative(self):
+        """测试负数返回默认值（min_val=1）"""
+        result = self._safe_int_convert("-5", default=100)
+        self.assertEqual(result, 100)
+
+        result = self._safe_int_convert(-10, default=300)
+        self.assertEqual(result, 300)
+
+    def test_safe_int_convert_zero(self):
+        """测试零返回默认值（min_val=1）"""
+        result = self._safe_int_convert("0", default=100, min_val=1)
+        self.assertEqual(result, 100)
+
+        result = self._safe_int_convert(0, default=300, min_val=1)
+        self.assertEqual(result, 300)
+
+    def test_safe_int_convert_zero_allowed(self):
+        """测试零允许（min_val=0）"""
+        result = self._safe_int_convert("0", default=100, min_val=0)
+        self.assertEqual(result, 0)
+
+        result = self._safe_int_convert(0, default=300, min_val=0)
+        self.assertEqual(result, 0)
+
+    def test_spawn_subagent_with_string_timeout(self):
+        """测试 spawn_subagent 接收字符串 timeout"""
+        from src.tools.subagent_tools import spawn_subagent
+
+        result = spawn_subagent(
+            type="explore",
+            prompt="Test prompt",
+            timeout="60",  # 字符串 timeout
+        )
+
+        self.assertIn("task created", result.lower())
+        self.assertNotIn("Error", result)
+
+        # 验证任务被正确创建且 timeout 为整数
+        # 提取 task_id
+        task_id = result.split("\n")[0].split(": ")[1]
+        task = self.manager._tasks.get(task_id)
+        if task:
+            self.assertIsInstance(task.timeout, int)
+            self.assertEqual(task.timeout, 60)
+
+    def test_spawn_subagent_with_invalid_timeout(self):
+        """测试 spawn_subagent 接收无效 timeout"""
+        from src.tools.subagent_tools import spawn_subagent
+
+        result = spawn_subagent(
+            type="explore",
+            prompt="Test prompt",
+            timeout="invalid",  # 无效字符串
+        )
+
+        # 应使用默认值，不报错
+        self.assertIn("task created", result.lower())
+        self.assertNotIn("'<=', not supported", result)
+
+    def test_spawn_subagent_with_negative_timeout(self):
+        """测试 spawn_subagent 接收负数 timeout"""
+        from src.tools.subagent_tools import spawn_subagent
+
+        result = spawn_subagent(
+            type="explore",
+            prompt="Test prompt",
+            timeout="-100",  # 负数
+        )
+
+        # 应使用默认值
+        self.assertIn("task created", result.lower())
+
+    def test_spawn_parallel_subagents_with_string_timeout(self):
+        """测试 spawn_parallel_subagents 接收字符串 timeout"""
+        from src.tools.subagent_tools import spawn_parallel_subagents
+
+        tasks = [
+            {"type": "explore", "prompt": "Task 1", "timeout": "120"},
+            {"type": "review", "prompt": "Task 2", "timeout": "300"},
+        ]
+
+        result = spawn_parallel_subagents(tasks)
+
+        self.assertIn("Created 2 subagent tasks", result)
+        self.assertNotIn("Error", result)
+
+    def test_spawn_parallel_subagents_with_invalid_timeout(self):
+        """测试 spawn_parallel_subagents 接收无效 timeout"""
+        from src.tools.subagent_tools import spawn_parallel_subagents
+
+        tasks = [
+            {"type": "explore", "prompt": "Task 1", "timeout": "invalid"},
+            {"type": "review", "prompt": "Task 2", "timeout": "-50"},
+        ]
+
+        result = spawn_parallel_subagents(tasks)
+
+        # 应使用默认值
+        self.assertIn("Created 2 subagent tasks", result)
+
+    def test_aggregate_subagent_results_with_string_max_length(self):
+        """测试 aggregate_subagent_results 接收字符串 max_length"""
+        from src.tools.subagent_tools import aggregate_subagent_results
+
+        # 创建一些任务和结果
+        task_id = self.manager.create_task(SubagentType.EXPLORE, "Test")
+        state = SubagentState(
+            id=task_id,
+            subagent_type=SubagentType.EXPLORE,
+            status="completed",
+            prompt="Test",
+            result="Result content",
+        )
+        self.manager._results[task_id] = SubagentResult(state)
+
+        result = aggregate_subagent_results(
+            task_ids=[task_id],
+            max_length="100",  # 字符串 max_length
+        )
+
+        self.assertIn("SUCCESS", result)
+        self.assertNotIn("Error", result)
+
+    def test_aggregate_subagent_results_with_invalid_max_length(self):
+        """测试 aggregate_subagent_results 接收无效 max_length"""
+        from src.tools.subagent_tools import aggregate_subagent_results
+
+        task_id = self.manager.create_task(SubagentType.EXPLORE, "Test")
+        state = SubagentState(
+            id=task_id,
+            subagent_type=SubagentType.EXPLORE,
+            status="completed",
+            prompt="Test",
+            result="Result",
+        )
+        self.manager._results[task_id] = SubagentResult(state)
+
+        result = aggregate_subagent_results(
+            task_ids=[task_id],
+            max_length="invalid",  # 无效字符串
+        )
+
+        # 应使用默认值
+        self.assertIn("SUCCESS", result)
+
+
+class TestSubagentTaskTypeSafety(unittest.TestCase):
+    """测试 SubagentTask 的类型安全（__post_init__）"""
+
+    def test_subagent_task_string_timeout_conversion(self):
+        """测试 SubagentTask 自动转换字符串 timeout"""
+        from src.subagent_manager import SubagentTask
+
+        task = SubagentTask(
+            id="test-1",
+            subagent_type=SubagentType.EXPLORE,
+            prompt="Test",
+            timeout="300",  # 字符串 timeout
+        )
+
+        # __post_init__ 应自动转换为整数
+        self.assertIsInstance(task.timeout, int)
+        self.assertEqual(task.timeout, 300)
+
+    def test_subagent_task_invalid_timeout_conversion(self):
+        """测试 SubagentTask 处理无效 timeout"""
+        from src.subagent_manager import SubagentTask
+
+        task = SubagentTask(
+            id="test-2",
+            subagent_type=SubagentType.EXPLORE,
+            prompt="Test",
+            timeout="invalid",  # 无效字符串
+        )
+
+        # __post_init__ 应返回 None（default=None）
+        self.assertIsNone(task.timeout)
+
+    def test_subagent_task_negative_timeout_conversion(self):
+        """测试 SubagentTask 处理负数 timeout"""
+        from src.subagent_manager import SubagentTask
+
+        task = SubagentTask(
+            id="test-3",
+            subagent_type=SubagentType.EXPLORE,
+            prompt="Test",
+            timeout="-100",  # 负数
+        )
+
+        # __post_init__ 应返回 None（min_val=1）
+        self.assertIsNone(task.timeout)
+
+    def test_subagent_task_string_max_iterations_conversion(self):
+        """测试 SubagentTask 自动转换字符串 max_iterations"""
+        from src.subagent_manager import SubagentTask
+
+        task = SubagentTask(
+            id="test-4",
+            subagent_type=SubagentType.EXPLORE,
+            prompt="Test",
+            max_iterations="20",  # 字符串
+        )
+
+        self.assertIsInstance(task.max_iterations, int)
+        self.assertEqual(task.max_iterations, 20)
+
+    def test_subagent_task_string_priority_conversion(self):
+        """测试 SubagentTask 自动转换字符串 priority"""
+        from src.subagent_manager import SubagentTask
+
+        task = SubagentTask(
+            id="test-5",
+            subagent_type=SubagentType.EXPLORE,
+            prompt="Test",
+            priority="10",  # 字符串
+        )
+
+        self.assertIsInstance(task.priority, int)
+        self.assertEqual(task.priority, 10)
+
+    def test_subagent_task_negative_priority_conversion(self):
+        """测试 SubagentTask 处理负数 priority"""
+        from src.subagent_manager import SubagentTask
+
+        task = SubagentTask(
+            id="test-6",
+            subagent_type=SubagentType.EXPLORE,
+            prompt="Test",
+            priority="-5",  # 负数（min_val=0 允许）
+        )
+
+        # min_val=0 允许负数... 不，min_val=0 检查的是 < min_val
+        # -5 < 0，所以返回默认值 0
+        self.assertEqual(task.priority, 0)
 
 
 if __name__ == "__main__":
