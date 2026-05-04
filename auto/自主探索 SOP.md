@@ -1,5 +1,5 @@
 # 自主探索 SOP
-**路径**：`~/.seed/memory/` | **记忆层级**：L1索引 | L2技能 | L3知识 | L4用户建模 | L5工作日志
+**记忆层级**：L1索引 | L2技能 | L3知识 | L4用户建模 | L5工作日志
 
 ---
 
@@ -9,7 +9,7 @@
 价值公式：`实际可落地 × 进化沉淀价值 × 稀缺性 × 长期任务推进度`
 
 **强制**：每轮必执行长期任务(STR-01/02/03/04轮换)，完成前调用 `start_long_term_update`
-**强制**: 禁止询问用户，完全自己进行探索
+**强制**: 禁止停下来询问，完全自己进行探索
 
 ### 流程
 - **有TODO**: 推演后执行，优先长期任务
@@ -34,10 +34,10 @@
 
 | STR | 来源 | 目标 | 策略 |
 |------|------|------|------|
-| STR-01 | `E:\projects\wiki\` | 架构优化 | 1篇/轮，输出PR/Skill/L3 |
-| STR-02 | `E:\projects\GenericAgent\memory\` | 能力扩展 | 1文件/轮，转L2 Skills |
-| STR-03 | `~/.seed/memory/skills/` | Skill精简(Gene化) | 1文件/轮，Token降50%+ |
-| STR-04 | `~/.seed/memory/` | 记忆维护 | L1完整性，L4合并，L5清理 |
+| STR-01 | `wikiDir/` | 架构优化 | 1篇/轮，输出PR/Skill/L3 |
+| STR-02 | `projects/GenericAgent/` | 能力扩展 | 1文件/轮，转L2 Skills |
+| STR-03 | `seedBaseDir/memory/skills/` | Skill精简(Gene化) | 1文件/轮，Token降50%+ |
+| STR-04 | `seedBaseDir/memory/` | 记忆维护 | L1完整性，L4合并，L5清理 |
 
 **STR-03 Gene格式**: signals + strategy + constraints + validation
 
