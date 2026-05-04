@@ -356,8 +356,8 @@ class RalphLoop:
                 if proc.returncode is None:
                     proc.kill()
                     await proc.wait()
-            except (ProcessLookupError, OSError):
-                pass
+            except (ProcessLookupError, OSError) as e:
+                logger.debug(f"Process already terminated during cleanup: {e}")
             # 不 raise，因为这是清理操作
 
     def _parse_test_pass_rate(self, output: str | bytes) -> float:

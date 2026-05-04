@@ -665,8 +665,8 @@ class OneBrainMultiHandOrchestrator:
             if start >= 0 and end > start:
                 json_str = plan_text[start:end]
                 return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            logger.debug(f"Plan JSON parse failed: {e}")
 
         # 解析失败，使用默认分配
         logger.warning("Failed to parse plan JSON, using default")

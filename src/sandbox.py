@@ -427,14 +427,14 @@ class Sandbox:
             rel_to_workspace = host_path_obj.relative_to(self._workspace_path.resolve())
             return f"/workspace/{rel_to_workspace}"
         except ValueError:
-            pass
+            logger.debug(f"Path not in workspace: {host_path_obj}")
 
         # 检查是否在沙盒目录下
         try:
             rel_to_sandbox = host_path_obj.relative_to(self._fs_root.resolve())
             return f"/sandbox/{rel_to_sandbox}"
         except ValueError:
-            pass
+            logger.debug(f"Path not in sandbox root: {host_path_obj}")
 
         # 其他路径直接返回
         return host_path

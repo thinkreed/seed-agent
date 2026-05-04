@@ -256,10 +256,14 @@ class FallbackChain:
             # 无可用 fallback
             self._active_provider = None
             self._status = "unavailable"
+            remaining_providers = len(self._providers)
             # 移除失败的 provider 防止 get_active_client 重新选中
             if failed_provider in self._providers:
                 self._providers.remove(failed_provider)
-            logger.error("All providers failed, no fallback available")
+            logger.error(
+                f"All providers failed: failed_provider={failed_provider}, "
+                f"remaining={remaining_providers - 1}, provider_chain={self._providers}"
+            )
 
     async def mark_healthy(self, provider: str):
         """标记 provider 健康（异步版本，线程安全）"""
@@ -997,7 +1001,20 @@ class LLMGateway:
                 if fallback_success and fallback_result:
                     return fallback_result
 
-            raise RuntimeError("All providers failed")
+            # 获取失败上下文
+            if self._fallback_chain:
+                failed_count = len(self._fallback_chain._clients) - len(
+                    self._fallback_chain._providers
+                )
+                remaining_providers = list(self._fallback_chain._providers)
+            else:
+                failed_count = 1
+                remaining_providers = []
+            raise RuntimeError(
+                f"All providers failed: model={model_id}, "
+                f"failed_count={failed_count}, "
+                f"remaining_providers={remaining_providers}"
+            )
 
         except Exception as e:
             self._handle_llm_error(span, active_provider, model_id, start_time, e)
