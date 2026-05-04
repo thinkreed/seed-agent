@@ -260,7 +260,7 @@ class SkillLoader:
 
         save_snapshot(self.skills_dir, self._skills_meta)
 
-    def _normalize_triggers(self, triggers) -> list[str]:
+    def _normalize_triggers(self, triggers: str | list[Any] | None) -> list[str]:
         """规范化 triggers (字符串、列表或嵌套列表)"""
         if isinstance(triggers, str):
             return self._normalize_str_list(triggers)
