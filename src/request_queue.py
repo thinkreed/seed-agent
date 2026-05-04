@@ -96,7 +96,7 @@ class TurnTicket:
         try:
             await asyncio.wait_for(self._turn_event.wait(), timeout)
         except TimeoutError:
-            raise TurnWaitTimeout(self.id, timeout, {})
+            raise TurnWaitTimeout(self.id, timeout, {}) from None
 
         if self._cancelled:
             raise asyncio.CancelledError(self._cancel_reason)

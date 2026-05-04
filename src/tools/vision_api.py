@@ -300,17 +300,18 @@ if __name__ == "__main__":
     import asyncio
 
     logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
     img = capture_window()
     if img is not None:
-        print(f"Captured image: {img.size}")
+        logger.info(f"Captured image: {img.size}")
 
         async def test(captured_img: "Image.Image"):
             result = await analyze_image_async(
                 captured_img, "Describe this screen in detail"
             )
-            print(f"Result: {result}")
+            logger.info(f"Result: {result}")
 
         asyncio.run(test(img))
     else:
-        print("Failed to capture screen")
+        logger.warning("Failed to capture screen")

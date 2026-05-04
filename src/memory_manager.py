@@ -134,10 +134,7 @@ class MemoryManager:
     def get_l3_knowledge(self) -> list[str]:
         """获取 L3 知识列表"""
         if self._l3_path.exists():
-            knowledge = []
-            for f in self._l3_path.glob("*.md"):
-                knowledge.append(f.stem)
-            return knowledge
+            return [f.stem for f in self._l3_path.glob("*.md")]
         return []
 
     def get_l4_user_profile(self) -> str:

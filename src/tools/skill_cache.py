@@ -87,7 +87,7 @@ def _convert_lists_to_sets_for_meta(skills_meta: dict) -> dict:
     """
     set_fields = {"triggers_lower", "desc_words"}  # 需要转为 set 的字段名
 
-    for _, meta in skills_meta.items():
+    for meta in skills_meta.values():
         for field in set_fields:
             if field in meta and isinstance(meta[field], list):
                 meta[field] = set(meta[field])

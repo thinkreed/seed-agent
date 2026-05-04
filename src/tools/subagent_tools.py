@@ -260,11 +260,11 @@ def list_subagents(status: str | None = None) -> str:
         return "No subagent tasks found."
 
     lines = ["Subagent Tasks:"]
-    for task in tasks:
-        lines.append(
-            f"  [{task['id']}] {task['type']} - {task['status']}\n"
-            f"    Prompt: {task['prompt_preview']}"
-        )
+    lines.extend(
+        f"  [{task['id']}] {task['type']} - {task['status']}\n"
+        f"    Prompt: {task['prompt_preview']}"
+        for task in tasks
+    )
 
     return "\n".join(lines)
 

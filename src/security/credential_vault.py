@@ -45,9 +45,9 @@ class CredentialType(StrEnum):
     """凭证类型"""
 
     API_KEY = "api_key"
-    OAUTH_TOKEN = "oauth_token"
+    OAUTH_TOKEN = "oauth_token"  # 凭证类型名称，非实际密码
     SSH_KEY = "ssh_key"
-    DATABASE_PASSWORD = "database_password"
+    DATABASE_PASSWORD = "database_password"  # 凭证类型名称，非实际密码
     CLOUD_CREDENTIALS = "cloud_credentials"
 
 

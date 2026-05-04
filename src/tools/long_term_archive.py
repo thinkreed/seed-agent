@@ -625,18 +625,17 @@ class LongTermArchiveLayer:
             .fetchall()
         )
 
-        results = []
-        for row in rows:
-            results.append(
-                {
-                    "archive_id": row["archive_id"],
-                    "session_id": row["session_id"],
-                    "summary": row["summary"],
-                    "key_findings": json.loads(row["key_findings"] or "[]"),
-                    "timestamp": row["created_at"],
-                    "events_count": row["events_count"],
-                }
-            )
+        results = [
+            {
+                "archive_id": row["archive_id"],
+                "session_id": row["session_id"],
+                "summary": row["summary"],
+                "key_findings": json.loads(row["key_findings"] or "[]"),
+                "timestamp": row["created_at"],
+                "events_count": row["events_count"],
+            }
+            for row in rows
+        ]
 
         return results
 
@@ -673,16 +672,15 @@ class LongTermArchiveLayer:
             .fetchall()
         )
 
-        events = []
-        for er in event_rows:
-            events.append(
-                {
-                    "id": er["event_id"],
-                    "type": er["event_type"],
-                    "data": json.loads(er["event_data"] or "{}"),
-                    "timestamp": er["timestamp"],
-                }
-            )
+        events = [
+            {
+                "id": er["event_id"],
+                "type": er["event_type"],
+                "data": json.loads(er["event_data"] or "{}"),
+                "timestamp": er["timestamp"],
+            }
+            for er in event_rows
+        ]
 
         return {
             "archive_id": row["archive_id"],
@@ -833,7 +831,7 @@ class LongTermArchiveLayer:
                 additional_rows = (
                     self._ensure_conn()
                     .execute(
-                        f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
+                        f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",  # placeholders are "?" safe placeholders
                         (*already_deleted_ids, remaining_to_delete),
                     )
                     .fetchall()

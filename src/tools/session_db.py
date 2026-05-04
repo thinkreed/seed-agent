@@ -1426,13 +1426,10 @@ class SessionDB:
 
     def __del__(self) -> None:
         # __del__ 中不应抛出异常，静默关闭
-        # 注意：在 __del__ 中调用 logger 或其他模块是不安全的
-        # S110/SIM105: __del__ 中不应使用 contextlib.suppress
-        # 因为 Python 解释器可能已在关闭过程中
         try:
             self.close()
-        except Exception:
-            pass  # 静默忽略，避免 Python 解释器关闭时的警告
+        except Exception as e:
+            logger.debug(f"Exception during __del__ cleanup: {e}")
 
 
 # ==================== 模块级便捷函数 ====================

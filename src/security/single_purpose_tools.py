@@ -598,22 +598,17 @@ class SinglePurposeToolFactory:
 
                     rel_root = os.path.relpath(root, path)
                     lines.append(f"{rel_root}/")
-                    for d in dirs:
-                        lines.append(f"  {d}/")
-                    for f in files:
-                        lines.append(f"  {f}")
+                    lines.extend(f"  {d}/" for d in dirs)
+                    lines.extend(f"  {f}" for f in files)
                 return "\n".join(lines)
             items = os.listdir(path)
             if not show_hidden:
                 items = [i for i in items if not i.startswith(".")]
 
-            lines = []
-            for item in sorted(items):
-                full_path = os.path.join(path, item)
-                if os.path.isdir(full_path):
-                    lines.append(f"{item}/")
-                else:
-                    lines.append(item)
+            lines = [
+                f"{item}/" if os.path.isdir(os.path.join(path, item)) else item
+                for item in sorted(items)
+            ]
             return "\n".join(lines)
 
         except FileNotFoundError:
@@ -628,16 +623,18 @@ class SinglePurposeToolFactory:
         max_depth = args.get("max_depth", 10)
 
         try:
-            matches = []
+            matches: list[str] = []
             for root, dirs, files in os.walk(path):
                 depth = root[len(path) :].count(os.sep)
                 if depth > max_depth:
                     dirs[:] = []  # 不再深入
                     continue
 
-                for f in files:
-                    if pattern in f or f.endswith(pattern):
-                        matches.append(os.path.join(root, f))
+                matches.extend(
+                    os.path.join(root, f)
+                    for f in files
+                    if pattern in f or f.endswith(pattern)
+                )
 
             if not matches:
                 return f"No files matching '{pattern}' found in {path}"

@@ -331,16 +331,17 @@ class MultiBrainOneHandOrchestrator:
 
     def _parse_suggestions(self, text: str) -> list[str]:
         """解析建议列表"""
-        suggestions = []
-        for line in text.split("\n"):
+        suggestions = [
+            line.strip()
+            for line in text.split("\n")
             if (
                 "建议" in line
                 or "suggestion" in line.lower()
                 or "改进" in line
                 or line.strip().startswith("1. ")
                 or line.strip().startswith("2. ")
-            ):
-                suggestions.append(line.strip())
+            )
+        ]
         return suggestions[:10]
 
     async def collaborative_improve(self, target: str) -> dict[str, Any]:
@@ -464,16 +465,14 @@ class MultiBrainOneHandOrchestrator:
         Returns:
             执行结果
         """
-        results = []
-        for action in actions:
-            # 这里简化处理，实际需要更复杂的代码修改逻辑
-            results.append(
-                {
-                    "action": action,
-                    "status": "suggested",
-                    "message": f"建议执行: {action['description']}",
-                }
-            )
+        results = [
+            {
+                "action": action,
+                "status": "suggested",
+                "message": f"建议执行: {action['description']}",
+            }
+            for action in actions
+        ]
 
         return {
             "status": "completed",

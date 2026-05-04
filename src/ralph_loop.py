@@ -54,7 +54,7 @@ def _get_seed_dir() -> Path:
 class CompletionType(Enum):
     """完成验证类型"""
 
-    TEST_PASS = "test_pass"  # 测试通过
+    TEST_PASS = "test_pass"  # 测试通过（类型名称，非密码）
     FILE_EXISTS = "file_exists"  # 目标文件存在
     MARKER_FILE = "marker_file"  # 完成标志文件
     GIT_CLEAN = "git_clean"  # Git 工作区干净

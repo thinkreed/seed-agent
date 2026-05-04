@@ -374,10 +374,11 @@ class BackgroundTaskRegistry:
         Returns:
             任务列表
         """
-        result = []
-        for entry in self._tasks.values():
-            if status is None or entry.status == status:
-                result.append(entry.to_dict())
+        result = [
+            entry.to_dict()
+            for entry in self._tasks.values()
+            if status is None or entry.status == status
+        ]
 
         # 按创建时间排序，最新的在前
         result.sort(key=lambda x: x["created_at"], reverse=True)

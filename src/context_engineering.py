@@ -570,10 +570,11 @@ class ProgressiveContextCompressor:
         keywords = ["完成", "成功", "错误", "Error", "result", "输出", "创建", "修改"]
         sentences = content.split("\n")
 
-        key_sentences = []
-        for sentence in sentences:
-            if any(kw in sentence for kw in keywords):
-                key_sentences.append(sentence[:max_len])
+        key_sentences = [
+            sentence[:max_len]
+            for sentence in sentences
+            if any(kw in sentence for kw in keywords)
+        ]
 
         if key_sentences:
             return "\n".join(key_sentences[:3])
@@ -868,16 +869,18 @@ class IntelligentContextPruner:
 
         # 1. 文件路径 (如 "src/agent_loop.py")
         file_patterns = _RE_FILE_PATTERN.findall(task)
-        for p in file_patterns:
-            if "/" in p or ("." in p and len(p) > 5):
-                entities.append(p)
+        entities.extend(
+            p
+            for p in file_patterns
+            if "/" in p or ("." in p and len(p) > 5)
+        )
 
         # 2. 函数/类名 (如 "AgentLoop", "_execute_tool")
         # 匹配 CamelCase 和 snake_case
         code_patterns = _RE_CODE_PATTERN.findall(task)
-        for p in code_patterns:
-            if len(p) > 3 and p not in _RE_STOP_WORDS:
-                entities.append(p)
+        entities.extend(
+            p for p in code_patterns if len(p) > 3 and p not in _RE_STOP_WORDS
+        )
 
         # 3. 关键词 (如 "重构", "优化", "bug", "fix")
         keywords = self._extract_keywords(task)
@@ -934,12 +937,8 @@ class IntelligentContextPruner:
             "分析",
         ]
 
-        found = []
         task_lower = task.lower()
-        for kw in tech_keywords:
-            if kw.lower() in task_lower:
-                found.append(kw)
-
+        found = [kw for kw in tech_keywords if kw.lower() in task_lower]
         return found
 
     def _compute_relevance(
@@ -1051,8 +1050,6 @@ class IntelligentContextPruner:
         self, result_text: str, expected_count: int
     ) -> list[float]:
         """解析相关性分数"""
-        scores: list[float] = []
-
         # 提取数字分数
         pattern = r"(\d+):\s*([\d.]+)"
         matches = re.findall(pattern, result_text)
@@ -1069,8 +1066,7 @@ class IntelligentContextPruner:
                 continue
 
         # 按顺序填充
-        for i in range(expected_count):
-            scores.append(indexed_scores.get(i, 0.5))  # 默认中等相关性
+        scores = [indexed_scores.get(i, 0.5) for i in range(expected_count)]
 
         return scores
 

@@ -60,9 +60,11 @@ def _check_endpoint_health(endpoint: str) -> bool:
 
     try:
         # 使用 HEAD 请求（更快）
+        # Note: Only checks localhost OTLP endpoint, not arbitrary URLs
         url = endpoint.rstrip("/")
         req = urllib.request.Request(url, method="HEAD")
         urllib.request.urlopen(req, timeout=_ENDPOINT_CHECK_TIMEOUT)
+        # Note: HEAD response indicates collector status
         # 任何响应（包括 404）都表示 collector 运行
         with _endpoint_health_cache_lock:
             _endpoint_health_cache[endpoint] = True

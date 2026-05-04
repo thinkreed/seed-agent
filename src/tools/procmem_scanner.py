@@ -282,21 +282,22 @@ def _region_type_name(type_: int) -> str:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
-    print("Memory Scanner - Real Implementation")
-    print(f"Running as Admin: {is_admin()}")
+    logger.info("Memory Scanner - Real Implementation")
+    logger.info(f"Running as Admin: {is_admin()}")
 
     if not is_admin():
-        print("Please run as Administrator for full functionality.")
+        logger.warning("Please run as Administrator for full functionality.")
 
     # 示例：扫描自身进程
     current_pid = os.getpid()
-    print(f"Current PID: {current_pid}")
+    logger.info(f"Current PID: {current_pid}")
 
     results = scan_memory(current_pid, "Python", mode="string", max_results=5)
     if results:
         for r in results:
-            print(f"  Found at {r['address_hex']} in {r['region_type']} region")
-            print(f"  Context: {r['context_hex'][:64]}...")
+            logger.info(f"  Found at {r['address_hex']} in {r['region_type']} region")
+            logger.info(f"  Context: {r['context_hex'][:64]}...")
     else:
-        print("  No matches found.")
+        logger.info("  No matches found.")

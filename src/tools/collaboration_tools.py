@@ -716,7 +716,7 @@ def register_message_handler(
             f"Message received: {msg.get('type', 'unknown')} - {msg.get('content', '')[:100]}"
         ),
         "count": lambda msg: None,  # 仅计数，由 message_bus 内部实现
-        "echo": lambda msg: print(
+        "echo": lambda msg: logger.info(
             f"[Message] {msg.get('type', 'unknown')}: {msg.get('content', '')}"
         ),
     }

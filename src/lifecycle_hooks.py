@@ -376,7 +376,7 @@ class LifecycleHookRegistry:
         Returns:
             是否成功注销
         """
-        for _, hooks in self._hooks.items():
+        for hooks in self._hooks.values():
             for i, (_, _, id_) in enumerate(hooks):
                 if id_ == hook_id:
                     hooks.pop(i)

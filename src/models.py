@@ -424,11 +424,11 @@ def load_config(config_path: str | None = None) -> FullConfig:
         raise ValueError(
             f"Configuration file not found: {config_path}\n"
             f"Please create the file or set SEED_HOME environment variable."
-        )
+        ) from None
     except json.JSONDecodeError as e:
-        raise ValueError(f"Invalid JSON in config file {config_path}: {e}")
+        raise ValueError(f"Invalid JSON in config file {config_path}: {e}") from e
     except Exception as e:
-        raise ValueError(f"Failed to load config file {config_path}: {e}")
+        raise ValueError(f"Failed to load config file {config_path}: {e}") from e
 
     # 执行配置迁移
     data = _migrate_to_v3(data)
@@ -437,4 +437,4 @@ def load_config(config_path: str | None = None) -> FullConfig:
     try:
         return FullConfig(**data)
     except ValidationError as e:
-        raise ValueError(f"Config validation failed: {e}")
+        raise ValueError(f"Config validation failed: {e}") from e

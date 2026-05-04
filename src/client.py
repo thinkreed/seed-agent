@@ -372,7 +372,7 @@ class LLMGateway:
     def _init_rate_limiting(self) -> None:
         """从配置初始化限流组件"""
         # 获取第一个有 rateLimit 配置的 provider
-        for _, provider_cfg in self.config.models.items():
+        for provider_cfg in self.config.models.values():
             if provider_cfg.rateLimit:
                 self._rate_config = provider_cfg.rateLimit
                 break
@@ -1178,6 +1178,7 @@ class LLMGateway:
 
         # 2. Default exponential backoff with Jitter: 1s, 2s, 4s (+/- 20%)
         # Jitter prevents "thundering herd" problem
+        # Note: random.uniform is used for retry timing, not cryptographic purposes
         base_wait = 2**attempt
         jitter = random.uniform(-0.2, 0.2) * base_wait
         # 确保等待时间非负且有最小值
@@ -1247,11 +1248,11 @@ class LLMGateway:
                 self._handle_llm_error(
                     span, active_provider, model_id, start_time, last_error
                 )
-                raise last_error
+                raise last_error from last_error
 
         except Exception as e:
             self._handle_llm_error(span, active_provider, model_id, start_time, e)
-            raise
+            raise e from e
         finally:
             if span:
                 span.end()

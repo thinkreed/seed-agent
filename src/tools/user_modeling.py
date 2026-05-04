@@ -417,6 +417,7 @@ class UserModelingLayer:
         if ids:
             # 使用参数化查询防止 SQL 注入，placeholders 只是占位符
             placeholders = ",".join("?" * len(ids))
+            # Note: placeholders are "?" safe placeholders, ids passed as parameters
             self._ensure_conn().execute(
                 f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",
                 ids,
@@ -521,6 +522,7 @@ class UserModelingLayer:
             return {}
 
         # 使用单个查询获取所有偏好
+        # Note: placeholders are "?" safe placeholders, values passed as parameters
         placeholders = ",".join("?" * len(keys))
         rows = (
             self._ensure_conn()
@@ -1042,18 +1044,17 @@ class UserModelingLayer:
             .fetchall()
         )
 
-        history = []
-        for row in rows:
-            history.append(
-                {
-                    "id": row["id"],
-                    "conflict": json.loads(row["conflict"]),
-                    "resolution": json.loads(row["resolution"]),
-                    "update": json.loads(row["update_record"]),
-                    "timestamp": row["timestamp"],
-                    "reasoning_log": row["reasoning_log"],
-                }
-            )
+        history = [
+            {
+                "id": row["id"],
+                "conflict": json.loads(row["conflict"]),
+                "resolution": json.loads(row["resolution"]),
+                "update": json.loads(row["update_record"]),
+                "timestamp": row["timestamp"],
+                "reasoning_log": row["reasoning_log"],
+            }
+            for row in rows
+        ]
 
         return history
 
