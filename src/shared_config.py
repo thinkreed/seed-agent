@@ -115,6 +115,60 @@ def get_wiki_dir() -> Path | None:
     return get_paths_config().wiki_dir
 
 
+# ========== 带 Fallback 的路径函数（用于初始化前场景） ==========
+
+
+def get_seed_dir_with_fallback() -> Path:
+    """获取主工作目录（带 fallback）
+
+    用于 PathsConfig 未初始化时的场景（如模块导入时）
+    """
+    try:
+        return get_paths_config().seed_base
+    except RuntimeError:
+        return Path.home() / ".seed"
+
+
+def get_memory_dir_with_fallback() -> Path:
+    """获取记忆目录（带 fallback）"""
+    try:
+        return get_paths_config().memory_dir
+    except RuntimeError:
+        return Path.home() / ".seed" / "memory"
+
+
+def get_ralph_dir_with_fallback() -> Path:
+    """获取 Ralph Loop 目录（带 fallback）"""
+    try:
+        return get_paths_config().ralph_dir
+    except RuntimeError:
+        return Path.home() / ".seed" / "ralph"
+
+
+def get_tasks_dir_with_fallback() -> Path:
+    """获取任务目录（带 fallback）"""
+    try:
+        return get_paths_config().tasks_dir
+    except RuntimeError:
+        return Path.home() / ".seed" / "tasks"
+
+
+def get_cache_dir_with_fallback() -> Path:
+    """获取缓存目录（带 fallback）"""
+    try:
+        return get_paths_config().cache_dir
+    except RuntimeError:
+        return Path.home() / ".seed" / "cache"
+
+
+def get_sandbox_dir_with_fallback() -> Path:
+    """获取沙盒目录（带 fallback）"""
+    try:
+        return get_paths_config().sandbox_dir
+    except RuntimeError:
+        return Path.home() / ".seed" / "sandbox"
+
+
 # ========== 其他配置类（保持不变）==========
 
 

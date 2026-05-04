@@ -15,28 +15,20 @@ import logging
 import time
 from pathlib import Path
 
+from src.shared_config import get_ralph_dir_with_fallback
+
 logger = logging.getLogger("seed_agent.ralph")
 
 
-def _get_ralph_dir() -> Path:
-    """获取 Ralph 状态目录（动态）"""
-    try:
-        from src.shared_config import get_paths_config
-        return get_paths_config().ralph_dir
-    except RuntimeError:
-        # PathsConfig 未初始化时使用 fallback
-        return Path.home() / ".seed" / "ralph"
-
-
 # 默认状态目录（延迟获取）
-RALPH_STATE_DIR = None  # 类型: Path | None
+RALPH_STATE_DIR: Path | None = None
 
 
 def _ensure_ralph_dir() -> Path:
     """确保 Ralph 状态目录已初始化"""
     global RALPH_STATE_DIR
     if RALPH_STATE_DIR is None:
-        RALPH_STATE_DIR = _get_ralph_dir()
+        RALPH_STATE_DIR = get_ralph_dir_with_fallback()
     return RALPH_STATE_DIR
 
 

@@ -35,6 +35,7 @@ from src.ralph_state import (
     persist_state,
 )
 from src.session_event_stream import EventType
+from src.shared_config import get_seed_dir_with_fallback
 
 logger = logging.getLogger("seed_agent")
 
@@ -49,25 +50,15 @@ def _get_completion_promise_file() -> Path:
     return _ensure_ralph_dir().parent / "completion_promise"
 
 
-def _get_seed_dir() -> Path:
-    """获取主工作目录（动态）"""
-    try:
-        from src.shared_config import get_paths_config
-        return get_paths_config().seed_base
-    except RuntimeError:
-        # PathsConfig 未初始化时使用 fallback
-        return Path.home() / ".seed"
-
-
 # 默认主工作目录（延迟获取）
-SEED_DIR = None  # 类型: Path | None
+SEED_DIR: Path | None = None
 
 
 def _ensure_seed_dir() -> Path:
     """确保主工作目录已初始化"""
     global SEED_DIR
     if SEED_DIR is None:
-        SEED_DIR = _get_seed_dir()
+        SEED_DIR = get_seed_dir_with_fallback()
     return SEED_DIR
 
 

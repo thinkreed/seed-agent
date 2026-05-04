@@ -29,6 +29,7 @@ from src.ralph_state import (
     persist_state,
     reset_context,
 )
+from src.shared_config import get_seed_dir_with_fallback
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -39,16 +40,6 @@ _FAILED_PATTERN = re.compile(r"(\d+)\s+failed")
 _ERROR_PATTERN = re.compile(r"(\d+)\s+error")
 
 logger = logging.getLogger("seed_agent.ralph")
-
-
-def _get_seed_dir() -> Path:
-    """获取主工作目录（动态）"""
-    try:
-        from src.shared_config import get_paths_config
-        return get_paths_config().seed_base
-    except RuntimeError:
-        # PathsConfig 未初始化时使用 fallback
-        return Path.home() / ".seed"
 
 
 class CompletionType(Enum):
@@ -131,7 +122,7 @@ class RalphLoop:
             if task_prompt_path
             else f"auto_{uuid.uuid4().hex[:8]}"
         )
-        self._state_file: Path = _get_seed_dir() / "ralph" / f"task_{state_name}_state.json"
+        self._state_file: Path = get_seed_dir_with_fallback() / "ralph" / f"task_{state_name}_state.json"
         self._is_running: bool = False
 
     # === 核心方法 ===
@@ -275,7 +266,7 @@ class RalphLoop:
 
         required_rate = self.completion_criteria.get("pass_rate", 100)
         test_command = self.completion_criteria.get("test_command", "pytest tests/ -v")
-        cwd = self.completion_criteria.get("cwd", str(_get_seed_dir()))
+        cwd = self.completion_criteria.get("cwd", str(get_seed_dir_with_fallback()))
 
         proc: asyncio.subprocess.Process | None = None
         try:
@@ -399,7 +390,7 @@ class RalphLoop:
         if not self.completion_criteria:
             return False
         marker_path = Path(
-            self.completion_criteria.get("marker_path", _get_seed_dir() / "completion_marker")
+            self.completion_criteria.get("marker_path", get_seed_dir_with_fallback() / "completion_marker")
         )
         marker_content = self.completion_criteria.get("marker_content", "DONE")
 
@@ -423,7 +414,7 @@ class RalphLoop:
         """检查 Git 工作区状态（异步版本，不阻塞事件循环）"""
         if not self.completion_criteria:
             return False
-        repo_path = self.completion_criteria.get("repo_path", str(_get_seed_dir()))
+        repo_path = self.completion_criteria.get("repo_path", str(get_seed_dir_with_fallback()))
 
         proc: asyncio.subprocess.Process | None = None
         try:
@@ -583,7 +574,7 @@ class RalphLoop:
             agent_loop=agent_loop,
             completion_type=CompletionType.MARKER_FILE,
             completion_criteria={
-                "marker_path": str(marker_path or _get_seed_dir() / "completion_marker"),
+                "marker_path": str(marker_path or get_seed_dir_with_fallback() / "completion_marker"),
                 "marker_content": marker_content,
             },
             task_prompt_path=task_prompt_path,
@@ -624,7 +615,7 @@ async def create_ralph_loop(
     # 解析任务文件路径
     task_path = Path(task_file)
     if not task_path.is_absolute():
-        task_path = _get_seed_dir() / "tasks" / task_file
+        task_path = get_seed_dir_with_fallback() / "tasks" / task_file
 
     return RalphLoop(
         agent_loop=agent_loop,
