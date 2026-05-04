@@ -37,9 +37,10 @@ _safe_int_convert = safe_int_convert
 
 
 def init_subagent_manager(manager: "SubagentManager") -> None:
-    """初始化全局 SubagentManager"""
+    """初始化全局 SubagentManager（线程安全）"""
     global _subagent_manager
-    _subagent_manager = manager
+    with _manager_lock:
+        _subagent_manager = manager
 
 
 def spawn_subagent(

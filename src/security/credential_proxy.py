@@ -609,15 +609,28 @@ class CredentialProxy:
         ]
 
     def get_request_stats(self) -> dict[str, Any]:
-        """获取请求统计信息"""
+        """获取请求统计信息（单次遍历优化）"""
         total_requests = len(self._request_logs)
-        successful = sum(1 for log in self._request_logs if log.status == "success")
-        failed = sum(1 for log in self._request_logs if log.status == "failed")
-        timeouts = sum(1 for log in self._request_logs if log.status == "timeout")
-
-        # 按 Provider 统计
+        successful = 0
+        failed = 0
+        timeouts = 0
+        total_duration = 0.0
         by_provider: dict[str, dict[str, int]] = {}
+
+        # 单次遍历计算所有统计值
         for log in self._request_logs:
+            # 状态统计
+            if log.status == "success":
+                successful += 1
+            elif log.status == "failed":
+                failed += 1
+            elif log.status == "timeout":
+                timeouts += 1
+
+            # 耗时累计
+            total_duration += log.duration_ms
+
+            # 按 Provider 统计
             if log.provider not in by_provider:
                 by_provider[log.provider] = {
                     "total": 0,
@@ -628,9 +641,7 @@ class CredentialProxy:
             by_provider[log.provider]["total"] += 1
             by_provider[log.provider][log.status] += 1
 
-        # 平均耗时
-        durations = [log.duration_ms for log in self._request_logs]
-        avg_duration = sum(durations) / len(durations) if durations else 0.0
+        avg_duration = total_duration / total_requests if total_requests else 0.0
 
         return {
             "total_requests": total_requests,

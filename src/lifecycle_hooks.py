@@ -15,6 +15,7 @@
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -724,13 +725,16 @@ class LifecycleHookRegistry:
 # === 全局注册中心 ===
 
 _global_registry_instance: LifecycleHookRegistry | None = None
+_registry_lock = threading.Lock()
 
 
 def get_global_registry() -> LifecycleHookRegistry:
-    """获取全局钩子注册中心"""
+    """获取全局钩子注册中心（线程安全）"""
     global _global_registry_instance
     if _global_registry_instance is None:
-        _global_registry_instance = LifecycleHookRegistry()
+        with _registry_lock:
+            if _global_registry_instance is None:
+                _global_registry_instance = LifecycleHookRegistry()
     return _global_registry_instance
 
 

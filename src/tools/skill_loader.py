@@ -816,7 +816,7 @@ class SkillLoader:
             home_dir = os.path.expanduser("~")
             content = content.replace("~", home_dir)
         except RuntimeError:
-            pass
+            pass  # 如果 PathsConfig 未初始化，保持原路径
 
         # 项目源码路径展开：将 src/*.py 替换为项目目录的绝对路径
         try:

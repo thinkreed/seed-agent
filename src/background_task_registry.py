@@ -448,13 +448,16 @@ class BackgroundTaskRegistry:
 
 # 全局注册表
 _global_registry: BackgroundTaskRegistry | None = None
+_registry_lock = threading.Lock()
 
 
 def get_background_task_registry() -> BackgroundTaskRegistry:
-    """获取全局后台任务注册表"""
+    """获取全局后台任务注册表（线程安全）"""
     global _global_registry
     if _global_registry is None:
-        _global_registry = BackgroundTaskRegistry()
+        with _registry_lock:
+            if _global_registry is None:
+                _global_registry = BackgroundTaskRegistry()
     return _global_registry
 
 

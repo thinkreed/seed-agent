@@ -7,7 +7,10 @@
 3. 可疑二进制文件检测
 """
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Prompt Injection 检测模式 (参考 Hermes skills_guard.py)
 INJECTION_PATTERNS = [
@@ -74,8 +77,8 @@ def validate_skill_structure(skill_dir: Path) -> str | None:
             if item.is_file() and item.suffix.lower() in SUSPICIOUS_EXTENSIONS:
                 return f"Suspicious binary file: {item}"
 
-    except (OSError, PermissionError):
-        pass
+    except (OSError, PermissionError) as e:
+        logger.debug(f"Directory traversal check failed: {e}")
 
     return None
 

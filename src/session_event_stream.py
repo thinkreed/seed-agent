@@ -165,19 +165,22 @@ class SessionEventStream:
         Returns:
             事件列表
         """
-        # 按事件 ID 过滤（事件 ID 从 1 开始）
-        if start_id > 0:
-            events = [e for e in self._events if e["id"] >= start_id]
-        else:
-            events = self._events.copy()
-
-        if end_id is not None:
-            events = [e for e in events if e["id"] <= end_id]
-
-        # 类型过滤
+        # 合并多次过滤为单次遍历
+        type_values = None
         if event_types:
             type_values = [t if isinstance(t, str) else t.value for t in event_types]
-            events = [e for e in events if e["type"] in type_values]
+
+        events = []
+        for e in self._events:
+            # ID 过滤
+            if start_id > 0 and e["id"] < start_id:
+                continue
+            if end_id is not None and e["id"] > end_id:
+                continue
+            # 类型过滤
+            if type_values and e["type"] not in type_values:
+                continue
+            events.append(e)
 
         return events
 
