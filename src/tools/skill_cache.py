@@ -109,6 +109,7 @@ def load_snapshot(skills_dir: Path) -> dict | None:
         加载后会自动将 triggers_lower 和 desc_words 从 list 转回 set，
         以支持内存中的 O(1) 快速查找。
     """
+    _ensure_cache_paths()
     try:
         if not SNAPSHOT_PATH.exists():
             return None
@@ -174,6 +175,7 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
         skills_meta 中的 set 类型字段（如 triggers_lower, desc_words）
         会自动转换为 list 以支持 JSON 序列化。
     """
+    _ensure_cache_paths()
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -199,6 +201,7 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
 
 def clear_snapshot() -> None:
     """清除磁盘快照 (在 skill 被 patch 后调用)"""
+    _ensure_cache_paths()
     try:
         if SNAPSHOT_PATH.exists():
             SNAPSHOT_PATH.unlink()

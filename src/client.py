@@ -432,7 +432,7 @@ class LLMGateway:
     def _init_state_persistence(self) -> None:
         """初始化状态持久化"""
         self._state_db = RateLimitSQLite()
-        logger.info(f"State persistence initialized: {self._state_db.DB_PATH}")
+        logger.info(f"State persistence initialized: {self._state_db._db_path}")
 
     async def restore_state(self) -> None:
         """从持久化恢复限流状态"""

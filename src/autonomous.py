@@ -50,6 +50,28 @@ def _get_completion_promise_file() -> Path:
     return _ensure_ralph_dir().parent / "completion_promise"
 
 
+def _get_seed_dir() -> Path:
+    """获取主工作目录（动态）"""
+    try:
+        from src.shared_config import get_paths_config
+        return get_paths_config().seed_base
+    except RuntimeError:
+        # PathsConfig 未初始化时使用 fallback
+        return Path.home() / ".seed"
+
+
+# 默认主工作目录（延迟获取）
+SEED_DIR = None  # 类型: Path | None
+
+
+def _ensure_seed_dir() -> Path:
+    """确保主工作目录已初始化"""
+    global SEED_DIR
+    if SEED_DIR is None:
+        SEED_DIR = _get_seed_dir()
+    return SEED_DIR
+
+
 # Ralph Loop 增强配置
 CONTEXT_RESET_ENABLED = True  # 默认开启
 CONTEXT_RESET_INTERVAL = 5  # 每5轮迭代重置
@@ -114,7 +136,7 @@ class AutonomousExplorer:
         self._todo_cache_time: float = 0.0
         self._todo_cache_ttl: float = 30.0  # 缓存有效期（秒）
         # 使用固定状态文件名，进程重启后可恢复
-        self._state_file: Path = SEED_DIR / "ralph" / self.STATE_FILE_NAME
+        self._state_file: Path = _ensure_seed_dir() / "ralph" / self.STATE_FILE_NAME
         # 从配置读取 IDLE_TIMEOUT
         from src.shared_config import get_autonomous_config
 
@@ -471,7 +493,7 @@ class AutonomousExplorer:
         ):
             return self._todo_cache
 
-        todo_path = SEED_DIR / "TODO.md"
+        todo_path = _ensure_seed_dir() / "TODO.md"
         if todo_path.exists():
             try:
                 with open(todo_path, encoding="utf-8") as f:
@@ -696,7 +718,7 @@ class AutonomousExplorer:
         # 将 SOP 中的 ~/.seed 替换为实际的 SEED_DIR 绝对路径
         sop_content_expanded = self._sop_content or ""
         if sop_content_expanded:
-            seed_dir_str = str(SEED_DIR)
+            seed_dir_str = str(_ensure_seed_dir())
             # 替换所有 ~/.seed 相关路径
             sop_content_expanded = sop_content_expanded.replace("~/.seed", seed_dir_str)
             sop_content_expanded = sop_content_expanded.replace("~\\seed", seed_dir_str)
@@ -752,7 +774,7 @@ class AutonomousExplorer:
     def _build_task_instruction(self, todo_content: str, has_todo: bool) -> str:
         """构建任务指令部分"""
         # 获取 SEED_DIR 的绝对路径（用于明确告知 LLM）
-        seed_dir_absolute = str(SEED_DIR)
+        seed_dir_absolute = str(_ensure_seed_dir())
         # 获取项目目录（PROJECT_ROOT）的绝对路径
         project_root_absolute = str(PROJECT_ROOT)
 
