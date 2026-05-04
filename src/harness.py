@@ -743,95 +743,432 @@ class Harness:
             raise
 
     async def stream_conversation(
-        self, initial_prompt: str, priority: int = RequestPriority.CRITICAL
+        self,
+        initial_prompt: str,
+        priority: int = RequestPriority.CRITICAL,
+        signal: AbortSignal | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """流式执行对话
+        """流式执行对话（支持取消信号、Ask User、生命周期钩子）
 
         Args:
             initial_prompt: 用户输入
             priority: 请求优先级
+            signal: 取消信号（可选）
 
         Yields:
             流式响应 chunk:
                 - {"type": "chunk", "content": "..."} - 文本片段
                 - {"type": "tool_start", "tool_name": "..."} - 工具开始
                 - {"type": "tool_end", "result": "..."} - 工具结束
+                - {"type": "awaiting_user_input", "request": {...}} - 等待用户输入
+                - {"type": "cancelled", "reason": "..."} - 执行取消
                 - {"type": "final", "content": "..."} - 最终响应
                 - {"type": "error", "content": "..."} - 错误
         """
-        # 记录初始输入
+        # 1. 触发 session_start 钩子
+        session_start_ctx = {
+            "session": self.session,
+            "harness": self,
+            "session_id": self.session.session_id,
+            "initial_prompt": initial_prompt,
+        }
+        await self._trigger_hook(HookPoint.SESSION_START, session_start_ctx)
+
+        # 2. 记录初始输入
         self.session.emit_event(EventType.USER_INPUT, {"content": initial_prompt})
 
         iteration = 0
-        while iteration < self.max_iterations:
-            iteration += 1
-
-            # 构建上下文
-            context = self._build_context_from_session()
-            tools = self.sandbox.get_tool_schemas()
-
-            # 流式推理
-            full_content = ""
-            tool_calls_accumulator: dict[int, dict] = {}
-
-            async for chunk in self.llm_client.stream_reason(
-                context, tools=tools, priority=priority
-            ):
-                delta = chunk["choices"][0].get("delta", {})
-                content = delta.get("content")
-                if content:
-                    full_content += content
-                    yield {"type": "chunk", "content": content}
-
-                tc_list = delta.get("tool_calls")
-                if tc_list:
-                    self._process_tool_delta(tc_list, tool_calls_accumulator)
-                    # 发送工具开始通知
-                    for tc in tc_list:
-                        if tc.get("function", {}).get("name"):
-                            yield {
-                                "type": "tool_start",
-                                "tool_name": tc["function"]["name"],
-                            }
-
-            # 累积工具调用
-            tool_calls = (
-                [
-                    tool_calls_accumulator[i]
-                    for i in sorted(tool_calls_accumulator.keys())
-                ]
-                if tool_calls_accumulator
-                else []
-            )
-
-            # 记录响应
-            llm_data: dict[str, Any] = {}
-            if full_content:
-                llm_data["content"] = full_content
-            if tool_calls:
-                llm_data["tool_calls"] = tool_calls
-
-            self.session.emit_event(EventType.LLM_RESPONSE, llm_data)
-
-            # 执行工具或完成
-            if tool_calls:
-                tool_results = await self._route_tool_calls(tool_calls)
-                for result in tool_results:
+        try:
+            while iteration < self.max_iterations:
+                # 每轮开始检查取消信号
+                if signal and signal.aborted:
                     self.session.emit_event(
-                        EventType.TOOL_RESULT,
-                        {
-                            "tool_call_id": result["tool_call_id"],
-                            "content": result["content"],
-                        },
+                        EventType.EXECUTION_CANCEL,
+                        {"reason": signal.reason, "iteration": iteration},
                     )
-                    yield {"type": "tool_end", "result": result["content"]}
-            else:
-                self.session.record_session_end("completed")
-                yield {"type": "final", "content": full_content}
-                return
+                    yield {"type": "cancelled", "reason": signal.reason}
+                    return
 
-        self.session.record_session_end("max_iterations_exceeded")
-        raise MaxIterationsExceeded(iteration)
+                iteration += 1
+                logger.debug(f"stream_conversation iteration {iteration}/{self.max_iterations}")
+
+                # 3. 触发 llm_call_before 钩子
+                context = self._build_context_from_session()
+                tools = self.sandbox.get_tool_schemas()
+
+                llm_before_ctx = {
+                    "session": self.session,
+                    "harness": self,
+                    "messages": context,
+                    "model_id": self.llm_client.model_id,
+                    "context_window": self._context_window,
+                    "tools": tools,
+                }
+                await self._trigger_hook(HookPoint.LLM_CALL_BEFORE, llm_before_ctx)
+
+                # 4. 触发 response_before 钩子
+                response_before_ctx = {
+                    "session": self.session,
+                    "harness": self,
+                    "iteration": iteration,
+                    "max_iterations": self.max_iterations,
+                }
+                await self._trigger_hook(HookPoint.RESPONSE_BEFORE, response_before_ctx)
+
+                # 5. 再次检查取消信号（LLM 调用前）
+                if signal and signal.aborted:
+                    yield {"type": "cancelled", "reason": signal.reason}
+                    return
+
+                # 6. 流式推理
+                start_time = time.time()
+                full_content = ""
+                tool_calls_accumulator: dict[int, dict] = {}
+
+                async for chunk in self.llm_client.stream_reason(
+                    context, tools=tools, priority=priority
+                ):
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content")
+                    if content:
+                        full_content += content
+                        yield {"type": "chunk", "content": content}
+
+                    tc_list = delta.get("tool_calls")
+                    if tc_list:
+                        self._process_tool_delta(tc_list, tool_calls_accumulator)
+                        # 发送工具开始通知
+                        for tc in tc_list:
+                            if tc.get("function", {}).get("name"):
+                                yield {
+                                    "type": "tool_start",
+                                    "tool_name": tc["function"]["name"],
+                                }
+
+                duration_ms = (time.time() - start_time) * 1000
+
+                # 7. 触发 llm_call_after 钩子
+                llm_after_ctx = {
+                    "session": self.session,
+                    "harness": self,
+                    "response": {"choices": [{"message": {"content": full_content}}]},
+                    "duration_ms": duration_ms,
+                }
+                await self._trigger_hook(HookPoint.LLM_CALL_AFTER, llm_after_ctx)
+
+                # 8. 累积工具调用
+                tool_calls = (
+                    [
+                        tool_calls_accumulator[i]
+                        for i in sorted(tool_calls_accumulator.keys())
+                    ]
+                    if tool_calls_accumulator
+                    else []
+                )
+
+                # 9. 记录响应
+                llm_data: dict[str, Any] = {}
+                if full_content:
+                    llm_data["content"] = full_content
+                if tool_calls:
+                    llm_data["tool_calls"] = tool_calls
+
+                self.session.emit_event(EventType.LLM_RESPONSE, llm_data)
+
+                # 10. 执行工具或完成
+                if tool_calls:
+                    tool_results = await self._route_tool_calls_with_hooks(tool_calls)
+
+                    # **关键：检查是否触发了 ask_user 等待**
+                    pending_request = get_pending_ask_user_request()
+                    if pending_request:
+                        # 发送等待事件到 Session
+                        self.session.emit_event(
+                            EventType.USER_WAITING,
+                            {
+                                "request": pending_request.to_dict(),
+                                "tool_call_id": tool_calls[0].get("id"),
+                            },
+                        )
+
+                        # 设置等待状态
+                        self._waiting_for_user = True
+                        self._pending_tool_call_id = tool_calls[0].get("id")
+
+                        # 触发 SESSION_PAUSE 钩子
+                        await self._trigger_hook(
+                            HookPoint.SESSION_PAUSE,
+                            {
+                                "reason": "user_input_required",
+                                "request": pending_request.to_dict(),
+                            },
+                        )
+
+                        yield {
+                            "type": "awaiting_user_input",
+                            "request": pending_request.to_dict(),
+                        }
+                        return  # 等待用户响应后恢复
+
+                    for result in tool_results:
+                        self.session.emit_event(
+                            EventType.TOOL_RESULT,
+                            {
+                                "tool_call_id": result["tool_call_id"],
+                                "content": result["content"],
+                            },
+                        )
+                        yield {"type": "tool_end", "result": result["content"]}
+
+                    # 触发 response_after 钩子（继续）
+                    response_after_ctx = {
+                        "session": self.session,
+                        "harness": self,
+                        "response": {"choices": [{"message": {"content": full_content}}]},
+                        "should_continue": True,
+                    }
+                    await self._trigger_hook(HookPoint.RESPONSE_AFTER, response_after_ctx)
+                else:
+                    # 触发 response_after 钩子（完成）
+                    response_after_ctx = {
+                        "session": self.session,
+                        "harness": self,
+                        "response": {"choices": [{"message": {"content": full_content}}]},
+                        "should_continue": False,
+                    }
+                    await self._trigger_hook(HookPoint.RESPONSE_AFTER, response_after_ctx)
+
+                    # 触发 session_end 钩子（成功）
+                    session_end_ctx = {
+                        "session": self.session,
+                        "harness": self,
+                        "session_id": self.session.session_id,
+                        "reason": "completed",
+                        "event_count": self.session.get_event_count(),
+                        "final_response": full_content,
+                    }
+                    await self._trigger_hook(HookPoint.SESSION_END, session_end_ctx)
+
+                    self.session.record_session_end("completed")
+                    yield {"type": "final", "content": full_content}
+                    return
+
+            # 超过最大迭代
+            self.session.record_session_end("max_iterations_exceeded")
+            raise MaxIterationsExceeded(iteration)
+
+        except Exception as e:
+            # 触发 session_end 钩子（错误）
+            session_end_ctx = {
+                "session": self.session,
+                "harness": self,
+                "session_id": self.session.session_id,
+                "reason": "error",
+                "event_count": self.session.get_event_count(),
+                "error": str(e)[:500],
+            }
+            await self._trigger_hook(HookPoint.SESSION_END, session_end_ctx)
+
+            self.session.record_session_end("error")
+            yield {"type": "error", "content": str(e)}
+
+    async def stream_resume_with_user_response(
+        self,
+        response: "AskUserResult",
+        priority: int = RequestPriority.CRITICAL,
+        signal: AbortSignal | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """流式恢复执行（用户响应后）
+
+        Args:
+            response: 用户响应数据
+            priority: 请求优先级
+            signal: 取消信号
+
+        Yields:
+            流式响应 chunk（同 stream_conversation）
+        """
+        # 1. 清理等待状态
+        self._waiting_for_user = False
+        clear_ask_user_state()
+
+        # 2. 记录用户响应事件
+        self.session.emit_event(
+            EventType.USER_RESPONSE,
+            {
+                "request_id": response.request_id,
+                "responses": [r.to_dict() for r in response.responses],
+                "cancelled": response.cancelled,
+                "timeout": response.timeout,
+            },
+        )
+
+        # 3. 触发 SESSION_RESUME 钩子
+        await self._trigger_hook(
+            HookPoint.SESSION_RESUME,
+            {
+                "reason": "user_input_received",
+                "response": response.to_dict(),
+            },
+        )
+
+        # 4. 构造工具结果并注入历史
+        if response.cancelled:
+            tool_result = "[USER_CANCELLED]"
+        elif response.timeout:
+            tool_result = "[USER_TIMEOUT]"
+        else:
+            selected = response.get_selected_values()
+            tool_result = f"User selected: {selected}"
+
+        # 5. 注入到历史（作为 tool result）
+        if self._pending_tool_call_id:
+            self.session.emit_event(
+                EventType.TOOL_RESULT,
+                {
+                    "tool_call_id": self._pending_tool_call_id,
+                    "content": tool_result,
+                },
+            )
+            self._pending_tool_call_id = None
+
+        # 6. 继续执行循环
+        iteration = 0
+        try:
+            while iteration < self.max_iterations:
+                # 每轮开始检查取消信号
+                if signal and signal.aborted:
+                    self.session.emit_event(
+                        EventType.EXECUTION_CANCEL,
+                        {"reason": signal.reason, "iteration": iteration},
+                    )
+                    yield {"type": "cancelled", "reason": signal.reason}
+                    return
+
+                iteration += 1
+                logger.debug(f"stream_resume iteration {iteration}/{self.max_iterations}")
+
+                # 构建上下文
+                context = self._build_context_from_session()
+                tools = self.sandbox.get_tool_schemas()
+
+                # 流式推理
+                start_time = time.time()
+                full_content = ""
+                tool_calls_accumulator: dict[int, dict] = {}
+
+                async for chunk in self.llm_client.stream_reason(
+                    context, tools=tools, priority=priority
+                ):
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content")
+                    if content:
+                        full_content += content
+                        yield {"type": "chunk", "content": content}
+
+                    tc_list = delta.get("tool_calls")
+                    if tc_list:
+                        self._process_tool_delta(tc_list, tool_calls_accumulator)
+                        for tc in tc_list:
+                            if tc.get("function", {}).get("name"):
+                                yield {
+                                    "type": "tool_start",
+                                    "tool_name": tc["function"]["name"],
+                                }
+
+                duration_ms = (time.time() - start_time) * 1000
+
+                # 累积工具调用
+                tool_calls = (
+                    [
+                        tool_calls_accumulator[i]
+                        for i in sorted(tool_calls_accumulator.keys())
+                    ]
+                    if tool_calls_accumulator
+                    else []
+                )
+
+                # 记录响应
+                llm_data: dict[str, Any] = {}
+                if full_content:
+                    llm_data["content"] = full_content
+                if tool_calls:
+                    llm_data["tool_calls"] = tool_calls
+
+                self.session.emit_event(EventType.LLM_RESPONSE, llm_data)
+
+                # 执行工具或完成
+                if tool_calls:
+                    tool_results = await self._route_tool_calls_with_hooks(tool_calls)
+
+                    # 检查 Ask User 等待
+                    pending_request = get_pending_ask_user_request()
+                    if pending_request:
+                        self.session.emit_event(
+                            EventType.USER_WAITING,
+                            {
+                                "request": pending_request.to_dict(),
+                                "tool_call_id": tool_calls[0].get("id"),
+                            },
+                        )
+                        self._waiting_for_user = True
+                        self._pending_tool_call_id = tool_calls[0].get("id")
+
+                        await self._trigger_hook(
+                            HookPoint.SESSION_PAUSE,
+                            {
+                                "reason": "user_input_required",
+                                "request": pending_request.to_dict(),
+                            },
+                        )
+
+                        yield {
+                            "type": "awaiting_user_input",
+                            "request": pending_request.to_dict(),
+                        }
+                        return
+
+                    for result in tool_results:
+                        self.session.emit_event(
+                            EventType.TOOL_RESULT,
+                            {
+                                "tool_call_id": result["tool_call_id"],
+                                "content": result["content"],
+                            },
+                        )
+                        yield {"type": "tool_end", "result": result["content"]}
+                else:
+                    # 触发 session_end 钩子（成功）
+                    session_end_ctx = {
+                        "session": self.session,
+                        "harness": self,
+                        "session_id": self.session.session_id,
+                        "reason": "completed",
+                        "event_count": self.session.get_event_count(),
+                        "final_response": full_content,
+                    }
+                    await self._trigger_hook(HookPoint.SESSION_END, session_end_ctx)
+
+                    self.session.record_session_end("completed")
+                    yield {"type": "final", "content": full_content}
+                    return
+
+            self.session.record_session_end("max_iterations_exceeded")
+            raise MaxIterationsExceeded(iteration)
+
+        except Exception as e:
+            session_end_ctx = {
+                "session": self.session,
+                "harness": self,
+                "session_id": self.session.session_id,
+                "reason": "error",
+                "event_count": self.session.get_event_count(),
+                "error": str(e)[:500],
+            }
+            await self._trigger_hook(HookPoint.SESSION_END, session_end_ctx)
+
+            self.session.record_session_end("error")
+            yield {"type": "error", "content": str(e)}
 
     # === 上下文构建 (上下文工程) ===
 

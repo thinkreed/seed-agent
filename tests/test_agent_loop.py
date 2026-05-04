@@ -351,21 +351,100 @@ class TestRunMethods:
 
     @pytest.mark.asyncio
     async def test_stream_run_basic(self, agent_loop_instance):
-        """Test basic stream_run() using Harness."""
+        """Test basic stream_run() uses Harness.stream_conversation() for true streaming."""
         agent = agent_loop_instance
-        # stream_run 内部调用 run_conversation，而非 stream_conversation
-        agent.harness.run_conversation = AsyncMock(
-            return_value={"status": "completed", "content": "Response text"}
-        )
+
+        # Mock stream_conversation to yield real chunks
+        async def mock_stream_conversation(prompt, priority, signal):
+            yield {"type": "chunk", "content": "Hello"}
+            yield {"type": "chunk", "content": " world"}
+            yield {"type": "final", "content": "Hello world"}
+
+        agent.harness.stream_conversation = mock_stream_conversation
 
         chunks = []
-        async for chunk in agent.stream_run("hello"):
+        async for chunk in agent.stream_run("test"):
             chunks.append(chunk)
 
-        # stream_run 只 yield 一个 final chunk
-        assert len(chunks) == 1
-        assert chunks[0]["type"] == "final"
-        assert chunks[0]["content"] == "Response text"
+        # stream_run now yields multiple chunks (true streaming)
+        assert len(chunks) >= 2
+        assert chunks[-1]["type"] == "final"
+
+        # Verify intermediate chunks are forwarded
+        chunk_contents = [c["content"] for c in chunks if c["type"] == "chunk"]
+        assert len(chunk_contents) >= 1
+
+    @pytest.mark.asyncio
+    async def test_stream_run_with_ask_user(self, agent_loop_instance):
+        """Test stream_run() handles Ask User waiting correctly."""
+        agent = agent_loop_instance
+
+        # Mock stream_conversation that yields awaiting_user_input
+        async def mock_stream_conversation(prompt, priority, signal):
+            yield {"type": "chunk", "content": "Thinking..."}
+            yield {"type": "awaiting_user_input", "request": {"request_id": "test-123", "questions": []}}
+
+        agent.harness.stream_conversation = mock_stream_conversation
+
+        # Mock stream_resume_with_user_response
+        async def mock_stream_resume(response, priority, signal):
+            yield {"type": "chunk", "content": "Continued..."}
+            yield {"type": "final", "content": "Done"}
+
+        agent.harness.stream_resume_with_user_response = mock_stream_resume
+
+        # Collect chunks (will stop at awaiting_user_input since no response injected)
+        chunks = []
+        async for chunk in agent.stream_run("test"):
+            chunks.append(chunk)
+            if chunk["type"] == "awaiting_user_input":
+                break  # Stop here to avoid blocking on wait
+
+        # Verify awaiting_user_input chunk is yielded
+        assert len(chunks) >= 1
+        awaiting_chunks = [c for c in chunks if c["type"] == "awaiting_user_input"]
+        assert len(awaiting_chunks) == 1
+
+    @pytest.mark.asyncio
+    async def test_stream_run_with_cancelled(self, agent_loop_instance):
+        """Test stream_run() handles cancellation correctly."""
+        agent = agent_loop_instance
+
+        # Mock stream_conversation that yields cancelled
+        async def mock_stream_conversation(prompt, priority, signal):
+            yield {"type": "chunk", "content": "Partial..."}
+            yield {"type": "cancelled", "reason": "user_interrupt"}
+
+        agent.harness.stream_conversation = mock_stream_conversation
+
+        chunks = []
+        async for chunk in agent.stream_run("test"):
+            chunks.append(chunk)
+
+        # Verify cancelled chunk is yielded
+        cancelled_chunks = [c for c in chunks if c["type"] == "cancelled"]
+        assert len(cancelled_chunks) == 1
+        assert cancelled_chunks[0]["reason"] == "user_interrupt"
+
+    @pytest.mark.asyncio
+    async def test_stream_run_with_error(self, agent_loop_instance):
+        """Test stream_run() handles errors correctly."""
+        agent = agent_loop_instance
+
+        # Mock stream_conversation that yields error
+        async def mock_stream_conversation(prompt, priority, signal):
+            yield {"type": "chunk", "content": "Started..."}
+            yield {"type": "error", "content": "Something went wrong"}
+
+        agent.harness.stream_conversation = mock_stream_conversation
+
+        chunks = []
+        async for chunk in agent.stream_run("test"):
+            chunks.append(chunk)
+
+        # Verify error chunk is yielded
+        error_chunks = [c for c in chunks if c["type"] == "error"]
+        assert len(error_chunks) == 1
 
 
 # ==================== Summary Tests ====================

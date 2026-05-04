@@ -566,7 +566,12 @@ class AgentLoop:
     async def stream_run(
         self, user_input: str, priority: int = RequestPriority.CRITICAL
     ) -> AsyncGenerator[dict, None]:
-        """流式执行对话（支持 Ask User 等待和取消）
+        """流式执行对话（真正的流式输出 + Ask User 等待 + 取消支持）
+
+        核心改进：
+        - 直接调用 harness.stream_conversation() 获取真正的流式 chunks
+        - 转发所有中间 chunks，用户实时看到响应
+        - Ask User 等待时阻塞，收到响应后恢复流式执行
 
         Args:
             user_input: 用户输入
@@ -574,7 +579,7 @@ class AgentLoop:
 
         Yields:
             流式响应 chunk:
-                - {"type": "chunk", "content": "..."} - 文本片段
+                - {"type": "chunk", "content": "..."} - 文本片段（实时）
                 - {"type": "tool_start", "tool_name": "..."} - 工具开始
                 - {"type": "tool_end", "result": "..."} - 工具结束
                 - {"type": "awaiting_user_input", "request": {...}} - 等待用户输入
@@ -588,67 +593,96 @@ class AgentLoop:
         self._abort_controller = AbortController()
         signal = self._abort_controller.signal
 
+        # 设置当前任务（用于智能裁剪）
+        self.harness.set_current_task(user_input)
+
         try:
-            # 执行对话
-            result = await self.harness.run_conversation(user_input, priority, signal)
+            # ✅ 使用流式方法而非非流式方法
+            async for chunk in self.harness.stream_conversation(
+                user_input, priority, signal
+            ):
+                # 检查取消信号
+                if signal.aborted:
+                    yield {"type": "cancelled", "reason": signal.reason}
+                    return
 
-            # 处理等待状态
-            if result["status"] == "waiting_for_user":
-                # 流式返回等待信息
-                yield {
-                    "type": "awaiting_user_input",
-                    "request": result["pending_request"],
-                }
+                chunk_type = chunk.get("type")
 
-                # 阻塞等待用户响应
-                await self._user_input_event.wait()
+                # 处理等待状态
+                if chunk_type == "awaiting_user_input":
+                    # 转发等待信息
+                    yield chunk
 
-                # 获取注入的响应
-                user_response = self._pending_user_response
-                assert user_response is not None, (
-                    "user_response should be set after wait"
-                )
+                    # 阻塞等待用户响应
+                    await self._user_input_event.wait()
 
-                # 清理状态
-                self._user_input_event.clear()
-                self._pending_user_response = None
+                    # 获取注入的响应
+                    user_response = self._pending_user_response
+                    if user_response is None:
+                        yield {"type": "error", "content": "No user response received"}
+                        return
 
-                # 恢复执行
-                final_result = await self.harness.resume_with_user_response(
-                    user_response, priority, signal
-                )
+                    # 清理状态
+                    self._user_input_event.clear()
+                    self._pending_user_response = None
 
-                if final_result["status"] == "completed":
+                    # ✅ 恢复流式执行
+                    async for resume_chunk in self.harness.stream_resume_with_user_response(
+                        user_response, priority, signal
+                    ):
+                        resume_type = resume_chunk.get("type")
+
+                        # 再次等待（递归处理）
+                        if resume_type == "awaiting_user_input":
+                            yield resume_chunk
+                            await self._user_input_event.wait()
+                            user_response = self._pending_user_response
+                            if user_response is None:
+                                yield {"type": "error", "content": "No user response"}
+                                return
+                            self._user_input_event.clear()
+                            self._pending_user_response = None
+                            # 递归继续
+                            async for inner_chunk in self.harness.stream_resume_with_user_response(
+                                user_response, priority, signal
+                            ):
+                                inner_type = inner_chunk.get("type")
+                                if inner_type == "final":
+                                    await self._maybe_summarize()
+                                    self._evaluate_and_record_skill_outcomes(
+                                        final_success=True
+                                    )
+                                yield inner_chunk
+                        elif resume_type == "final":
+                            await self._maybe_summarize()
+                            self._evaluate_and_record_skill_outcomes(final_success=True)
+                            yield resume_chunk
+                        elif resume_type == "cancelled":
+                            yield resume_chunk
+                        elif resume_type == "error":
+                            yield resume_chunk
+                        else:
+                            # chunk, tool_start, tool_end
+                            yield resume_chunk
+                    return  # 恢复执行结束
+
+                elif chunk_type == "final":
                     await self._maybe_summarize()
                     self._evaluate_and_record_skill_outcomes(final_success=True)
-                    yield {"type": "final", "content": final_result["content"]}
-                elif final_result["status"] == "cancelled":
-                    yield {"type": "cancelled", "reason": final_result["cancel_reason"]}
-                elif final_result["status"] == "waiting_for_user":
-                    # 再次等待（递归处理）
-                    yield {
-                        "type": "awaiting_user_input",
-                        "request": final_result["pending_request"],
-                    }
+                    yield chunk
+                    return
+
+                elif chunk_type == "cancelled":
+                    yield chunk
+                    return
+
+                elif chunk_type == "error":
+                    yield chunk
+                    return
+
                 else:
-                    yield {
-                        "type": "error",
-                        "content": f"Unexpected status: {final_result['status']}",
-                    }
-
-            elif result["status"] == "cancelled":
-                yield {"type": "cancelled", "reason": result["cancel_reason"]}
-
-            elif result["status"] == "completed":
-                await self._maybe_summarize()
-                self._evaluate_and_record_skill_outcomes(final_success=True)
-                yield {"type": "final", "content": result["content"]}
-
-            else:
-                yield {
-                    "type": "error",
-                    "content": f"Unexpected status: {result['status']}",
-                }
+                    # chunk, tool_start, tool_end - 直接转发
+                    yield chunk
 
         except MaxIterationsExceeded as e:
             logger.exception("Max iterations exceeded")

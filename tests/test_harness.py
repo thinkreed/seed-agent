@@ -366,11 +366,11 @@ class TestHarnessRunConversation:
 
 
 class TestHarnessStreamConversation:
-    """Test Harness.stream_conversation()"""
+    """Test Harness.stream_conversation() - 增强版：支持取消信号、Ask User、钩子"""
 
     @pytest.mark.asyncio
     async def test_stream_conversation_basic(self, tmp_path):
-        """Test basic stream conversation"""
+        """Test basic stream conversation yields real chunks"""
         gateway = MockGateway()
         llm_client = LLMClient(gateway, "test-model")
         session = SessionEventStream("test_session", storage_path=tmp_path)
@@ -384,6 +384,9 @@ class TestHarnessStreamConversation:
             chunks.append(chunk)
 
         assert len(chunks) >= 1
+        # Should have chunk and final types
+        chunk_types = [c["type"] for c in chunks]
+        assert "chunk" in chunk_types or "final" in chunk_types
 
     @pytest.mark.asyncio
     async def test_stream_conversation_chunk_types(self, tmp_path):
@@ -402,6 +405,84 @@ class TestHarnessStreamConversation:
 
         # 验证 chunk 类型
         assert chunks[-1]["type"] == "final"
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_with_signal(self, tmp_path):
+        """Test stream conversation with abort signal"""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+
+        # Create abort signal
+        from abort_signal import AbortController
+        controller = AbortController()
+        signal = controller.signal
+
+        # Start streaming
+        chunks = []
+        async for chunk in harness.stream_conversation("hello", signal=signal):
+            chunks.append(chunk)
+            # Abort after first chunk
+            if len(chunks) == 1:
+                controller.abort(reason="test_cancel")
+
+        # Should have received at least one chunk before abort
+        assert len(chunks) >= 1
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_events_recorded(self, tmp_path):
+        """Test events are recorded during stream conversation"""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+
+        async for chunk in harness.stream_conversation("hello"):
+            pass  # consume all chunks
+
+        events = session.get_events()
+        user_events = [e for e in events if e["type"] == EventType.USER_INPUT.value]
+        llm_events = [e for e in events if e["type"] == EventType.LLM_RESPONSE.value]
+
+        assert len(user_events) == 1
+        assert len(llm_events) >= 1
+
+    @pytest.mark.asyncio
+    async def test_stream_resume_with_user_response(self, tmp_path):
+        """Test stream_resume_with_user_response method"""
+        gateway = MockGateway()
+        llm_client = LLMClient(gateway, "test-model")
+        session = SessionEventStream("test_session", storage_path=tmp_path)
+        sandbox = Sandbox()
+        sandbox.register_tools(MockToolRegistry())
+
+        harness = Harness(llm_client, session, sandbox)
+        harness._pending_tool_call_id = "call_123"
+
+        # Create mock response
+        from tools.ask_user_types import AskUserResult, UserResponse
+        response = AskUserResult(
+            request_id="test-123",
+            responses=[UserResponse(question_id="0", selected=["Yes"])]
+        )
+
+        chunks = []
+        async for chunk in harness.stream_resume_with_user_response(response):
+            chunks.append(chunk)
+
+        # Should yield chunks and complete
+        assert len(chunks) >= 1
+        # Verify user response event was recorded
+        events = session.get_events()
+        response_events = [e for e in events if e["type"] == EventType.USER_RESPONSE.value]
+        assert len(response_events) == 1
 
 
 class TestHarnessToolRouting:
