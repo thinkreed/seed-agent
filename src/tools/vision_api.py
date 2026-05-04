@@ -107,7 +107,7 @@ async def analyze_image_async(
         }
     ]
 
-    cfg_path = config_path or DEFAULT_CONFIG_PATH
+    cfg_path = str(config_path or DEFAULT_CONFIG_PATH)
 
     if not await asyncio.to_thread(Path(cfg_path).exists):
         return f"Error: Config file not found at {cfg_path}"
@@ -210,7 +210,7 @@ def ask_vision(
         if not Path(DEFAULT_CONFIG_PATH).exists():
             return f"Error: Config not found at {DEFAULT_CONFIG_PATH}"
 
-        gateway = LLMGateway(DEFAULT_CONFIG_PATH)
+        gateway = LLMGateway(str(DEFAULT_CONFIG_PATH))
 
         # 智能检测当前是否在异步事件循环中
         try:

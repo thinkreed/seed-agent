@@ -16,10 +16,11 @@ L5 工作日志层 - FTS5 + LLM 自动摘要
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

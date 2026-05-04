@@ -241,7 +241,7 @@ def load_config(config_path: str | None = None) -> FullConfig:
         ValueError: 配置文件不存在或格式错误
     """
     if config_path is None:
-        config_path = DEFAULT_CONFIG_PATH
+        config_path = str(DEFAULT_CONFIG_PATH)
 
     # 读取配置文件
     try:

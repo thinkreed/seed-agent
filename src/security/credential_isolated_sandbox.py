@@ -23,7 +23,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.sandbox import IsolationLevel
 from src.security.credential_proxy import CredentialProxy

@@ -23,7 +23,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any, Callable
 
 from src.security.credential_vault import CredentialScope, CredentialVault
 

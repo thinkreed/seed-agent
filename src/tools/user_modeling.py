@@ -14,6 +14,7 @@ L4 用户建模层 - 黑格尔辩证式进化
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
