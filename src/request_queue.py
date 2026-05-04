@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import contextlib
 import logging
 import time
 import uuid
@@ -12,7 +13,6 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Any, Deque
-import contextlib
 
 # Auto-adjust thresholds
 _MAX_CRITICAL_DISPATCH_RATE = 50.0

@@ -27,9 +27,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from src.security.credential_vault import CredentialScope, CredentialVault
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
 

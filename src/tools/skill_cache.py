@@ -7,15 +7,14 @@
 import hashlib
 import json
 import logging
-import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # 缓存路径配置
-CACHE_DIR = Path(os.path.expanduser("~")) / ".seed" / "cache"
+CACHE_DIR = Path.home() / ".seed" / "cache"
 SNAPSHOT_PATH = CACHE_DIR / "skills_snapshot.json"
 
 

@@ -17,6 +17,7 @@
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -28,9 +29,6 @@ from src.sandbox import IsolationLevel
 from src.security.credential_proxy import CredentialProxy
 from src.security.secure_sandbox import SecureExecutionResult, SecureSandbox
 from src.tools.utils import is_parse_failed, parse_tool_arguments
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -342,10 +340,8 @@ print(result)
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
 
             # 清理临时文件
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(args_file_path)
-            except OSError:
-                pass
 
             if proc.returncode != 0:
                 error_msg = stderr.decode() if stderr else "Unknown error"
@@ -359,17 +355,13 @@ print(result)
 
         except asyncio.TimeoutError:
             # 清理临时文件
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(args_file_path)
-            except OSError:
-                pass
             raise RuntimeError("Subprocess execution timeout")
         except Exception as e:
             # 清理临时文件
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(args_file_path)
-            except OSError:
-                pass
             raise RuntimeError(f"Subprocess execution failed: {type(e).__name__}")
 
     async def _execute_in_isolated_container(
@@ -669,11 +661,11 @@ print(result)
                 env=self._create_isolated_environment(),
             )
 
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             result = stdout.decode().strip()
 
             # 验证结果
-            is_isolated = result == "NOT_FOUND" or result == "None" or not result
+            is_isolated = result in {"NOT_FOUND", "None"} or not result
 
             return {
                 "isolation_verified": is_isolated,

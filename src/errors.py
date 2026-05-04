@@ -184,7 +184,7 @@ def log_error(
         context: 错误发生上下文（可选）
         include_trace: 是否包含堆栈信息
     """
-    error_type, severity = classify_error(error)
+    _error_type, severity = classify_error(error)
     log_level = get_log_level(severity)
 
     message = format_error_log(error, context, include_trace)
@@ -247,15 +247,15 @@ class ConfigurationError(SeedAgentError):
 # 请直接使用 SeedTimeoutError 和 SeedConnectionError
 
 __all__ = [
-    "ErrorType",
-    "ErrorSeverity",
-    "classify_error",
-    "get_log_level",
-    "format_error_log",
-    "log_error",
-    "SeedAgentError",
-    "RateLimitError",
-    "SeedTimeoutError",
-    "SeedConnectionError",
     "ConfigurationError",
+    "ErrorSeverity",
+    "ErrorType",
+    "RateLimitError",
+    "SeedAgentError",
+    "SeedConnectionError",
+    "SeedTimeoutError",
+    "classify_error",
+    "format_error_log",
+    "get_log_level",
+    "log_error",
 ]

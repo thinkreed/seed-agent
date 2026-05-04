@@ -11,7 +11,6 @@
 便于用户覆盖和维护更新。
 """
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -85,20 +84,18 @@ class PathValidationConfig:
 
     # 默认工作目录为 ~/.seed 目录
     project_root: Path = field(default_factory=lambda: Path(__file__).parent.parent)
-    default_work_dir: Path = field(
-        default_factory=lambda: Path(os.path.expanduser("~")) / ".seed"
-    )
+    default_work_dir: Path = field(default_factory=lambda: Path.home() / ".seed")
 
     # 允许的目录列表（可扩展）
     allowed_dirs: list[Path] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """初始化默认允许目录"""
         if not self.allowed_dirs:
             self.allowed_dirs = [
                 self.default_work_dir,
                 self.project_root,
-                Path(os.path.expanduser("~")) / "Documents",
+                Path.home() / "Documents",
             ]
 
 

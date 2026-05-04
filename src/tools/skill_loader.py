@@ -22,7 +22,6 @@ Token 节约估算:
 
 import difflib
 import logging
-import os
 import re
 import sys
 import threading
@@ -112,7 +111,7 @@ __all__ = [
 
 # ==================== 常量配置 ====================
 
-SKILLS_DIR = Path(os.path.expanduser("~")) / ".seed" / "memory" / "skills"
+SKILLS_DIR = Path.home() / ".seed" / "memory" / "skills"
 
 # LRU 缓存配置
 MAX_LOADED_SKILL_CACHE = 5  # 最多缓存 5 个已加载的完整 skill 内容

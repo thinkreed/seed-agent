@@ -214,32 +214,32 @@ def traced(
 
 
 __all__ = [
-    # Types
-    "NoOpSpan",
-    "NoOpTracer",
-    "NoOpStatusCode",
+    "SPAN_LLM_FALLBACK",
+    "SPAN_LLM_REQUEST",
     # Constants
     "SPAN_SESSION",
-    "SPAN_LLM_REQUEST",
-    "SPAN_LLM_FALLBACK",
-    "SPAN_TOOL_PREFIX",
     "SPAN_SUBAGENT_EXECUTE",
+    "SPAN_TOOL_PREFIX",
+    # Types
+    "NoOpSpan",
+    "NoOpStatusCode",
+    "NoOpTracer",
+    "add_fallback_event",
+    "classify_error",
+    "create_task_with_context",
+    "get_meter",
     # Functions
     "get_tracer",
-    "get_meter",
     "is_initialized",
-    "setup_observability",
-    "shutdown_observability",
-    "classify_error",
+    "record_llm_error",
     "record_llm_span_error",
     "record_llm_success",
-    "record_llm_error",
-    "add_fallback_event",
     "set_llm_span_attributes",
-    "set_tool_span_attributes",
     "set_subagent_span_attributes",
-    "start_span",
+    "set_tool_span_attributes",
+    "setup_observability",
+    "shutdown_observability",
     "start_as_current_span",
-    "create_task_with_context",
+    "start_span",
     "traced",
 ]

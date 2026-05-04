@@ -28,7 +28,6 @@ import asyncio
 import fnmatch
 import json
 import logging
-import os
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -39,7 +38,7 @@ from src.tools.utils import is_parse_failed, parse_tool_arguments
 logger = logging.getLogger(__name__)
 
 # 默认沙盒根目录
-DEFAULT_SANDBOX_ROOT = Path(os.path.expanduser("~")) / ".seed" / "sandbox"
+DEFAULT_SANDBOX_ROOT = Path.home() / ".seed" / "sandbox"
 
 
 class IsolationLevel(str, Enum):

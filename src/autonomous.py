@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
 
+import contextlib
+
 from src.ralph_state import (
     SEED_DIR,
     RalphState,
@@ -31,7 +33,6 @@ from src.ralph_state import (
     persist_state,
 )
 from src.session_event_stream import EventType
-import contextlib
 
 logger = logging.getLogger("seed_agent")
 

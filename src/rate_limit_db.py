@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import sqlite3
@@ -15,7 +16,6 @@ from pathlib import Path
 from typing import TypeVar
 
 from src.rate_limiter import RollingWindowState, TokenBucketState
-import contextlib
 
 logger = logging.getLogger("seed_agent")
 

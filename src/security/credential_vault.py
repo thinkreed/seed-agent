@@ -21,7 +21,6 @@
 import base64
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -31,7 +30,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # 默认保险库路径
-DEFAULT_VAULT_PATH = Path(os.path.expanduser("~")) / ".seed" / "vault"
+DEFAULT_VAULT_PATH = Path.home() / ".seed" / "vault"
 
 
 class CredentialType(str, Enum):

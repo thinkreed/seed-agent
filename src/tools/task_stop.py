@@ -20,8 +20,8 @@ import logging
 from typing import Optional
 
 from src.background_task_registry import (
-    TaskStatus,
     CANCEL_GRACE_SECONDS,
+    TaskStatus,
     get_background_task_registry,
 )
 

@@ -35,19 +35,19 @@ from src.security.tool_expander import ProgressiveToolExpander, ToolTier
 __all__ = [
     # 风险分类
     "CommandRiskClassifier",
-    "RiskLevel",
-    "RiskAction",
-    # 工具扩展
-    "ProgressiveToolExpander",
-    "ToolTier",
-    "SinglePurposeToolFactory",
-    # 安全沙盒
-    "SecureSandbox",
+    "CredentialIsolatedSandbox",
+    "CredentialProxy",
+    "CredentialScope",
+    "CredentialType",
     # 凭证安全
     "CredentialVault",
-    "CredentialType",
-    "CredentialScope",
-    "CredentialProxy",
-    "CredentialIsolatedSandbox",
+    # 工具扩展
+    "ProgressiveToolExpander",
+    "RiskAction",
+    "RiskLevel",
     "SecureHarness",
+    # 安全沙盒
+    "SecureSandbox",
+    "SinglePurposeToolFactory",
+    "ToolTier",
 ]

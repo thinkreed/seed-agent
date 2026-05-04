@@ -16,7 +16,6 @@
 """
 
 import logging
-import os
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -30,7 +29,7 @@ from src.tools.user_modeling import UserModelingLayer
 logger = logging.getLogger(__name__)
 
 # 记忆根目录
-MEMORY_ROOT = Path(os.path.expanduser("~")) / ".seed" / "memory"
+MEMORY_ROOT = Path.home() / ".seed" / "memory"
 
 
 class MemoryManager:

@@ -18,13 +18,13 @@
 
 import json
 import logging
-import os
 
+from pathlib import Path
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 logger = logging.getLogger("seed_agent.config")
 
-DEFAULT_CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".seed", "config.json")
+DEFAULT_CONFIG_PATH = Path.home() / ".seed" / "config.json"
 
 # 配置迁移版本号
 CONFIG_VERSION = 2  # v1: 原始格式, v2: 新嵌套格式

@@ -16,7 +16,6 @@ Session 不可变事件流模块
 
 import json
 import logging
-import os
 import time
 from enum import Enum
 from pathlib import Path
@@ -25,7 +24,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # 默认存储路径
-DEFAULT_STORAGE_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "events"
+DEFAULT_STORAGE_PATH = Path.home() / ".seed" / "memory" / "events"
 
 # 事件清理配置
 MAX_IN_MEMORY_EVENTS = 10000  # 内存中最大事件数

@@ -51,6 +51,8 @@ if TYPE_CHECKING:
     from src.security.credential_vault import CredentialVault as CredentialVaultType
 
 # OpenTelemetry 可观测性（自动处理 ImportError）
+import contextlib
+
 from src.observability import (
     SPAN_LLM_REQUEST,
     StatusCode,
@@ -77,7 +79,6 @@ from src.request_queue import (
     TurnTicket,
     TurnWaitTimeout,
 )
-import contextlib
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
 

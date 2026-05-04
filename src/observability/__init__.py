@@ -150,37 +150,37 @@ def is_observability_enabled() -> bool:
 
 
 __all__ = [
-    # Setup
-    "setup_observability",
-    "get_tracer",
-    "get_meter",
-    "is_initialized",
-    "is_observability_enabled",
-    "shutdown_observability",
-    # Metrics
-    "record_llm_success",
-    "record_llm_error",
-    # Tracing
-    "classify_error",
-    "record_llm_span_error",
-    "create_task_with_context",
-    "start_span",
-    "start_as_current_span",
-    "traced",
-    "add_fallback_event",
-    "set_llm_span_attributes",
-    "set_tool_span_attributes",
-    "set_subagent_span_attributes",
+    "SPAN_LLM_FALLBACK",
+    "SPAN_LLM_REQUEST",
     # Constants
     "SPAN_SESSION",
-    "SPAN_LLM_REQUEST",
-    "SPAN_LLM_FALLBACK",
-    "SPAN_TOOL_PREFIX",
     "SPAN_SUBAGENT_EXECUTE",
+    "SPAN_TOOL_PREFIX",
+    # Status
+    "_OBSERVABILITY_ENABLED",
+    "Attributes",
     # Types
     "Span",
     "StatusCode",
-    "Attributes",
-    # Status
-    "_OBSERVABILITY_ENABLED",
+    "add_fallback_event",
+    # Tracing
+    "classify_error",
+    "create_task_with_context",
+    "get_meter",
+    "get_tracer",
+    "is_initialized",
+    "is_observability_enabled",
+    "record_llm_error",
+    "record_llm_span_error",
+    # Metrics
+    "record_llm_success",
+    "set_llm_span_attributes",
+    "set_subagent_span_attributes",
+    "set_tool_span_attributes",
+    # Setup
+    "setup_observability",
+    "shutdown_observability",
+    "start_as_current_span",
+    "start_span",
+    "traced",
 ]

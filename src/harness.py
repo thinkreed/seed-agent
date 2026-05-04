@@ -68,8 +68,8 @@ from src.request_queue import RequestPriority
 from src.sandbox import Sandbox
 from src.session_event_stream import EventType, SessionEventStream
 from src.tools.builtin_tools import (
-    get_pending_ask_user_request,
     clear_ask_user_state,
+    get_pending_ask_user_request,
 )
 from src.tools.utils import is_parse_failed, parse_tool_arguments
 

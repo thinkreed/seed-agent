@@ -284,7 +284,7 @@ class RalphLoop:
             )
 
             # 异步等待完成（5分钟超时）
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+            stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
 
             # 解析测试结果（pytest 输出）
             pass_rate = self._parse_test_pass_rate(stdout)
@@ -429,7 +429,7 @@ class RalphLoop:
                 cwd=repo_path,
             )
 
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
 
             is_clean = stdout.strip() == b"" or stdout.strip() == ""
             if is_clean:

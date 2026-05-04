@@ -5,17 +5,16 @@
 """
 
 import asyncio
+import contextlib
 import json
 import logging
-import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.request_queue import RequestPriority
 from src.tools import ToolRegistry
-import contextlib
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("seed_agent")
 
 # 任务存储路径
-TASKS_DIR = Path(os.path.expanduser("~")) / ".seed" / "tasks"
+TASKS_DIR = Path.home() / ".seed" / "tasks"
 TASKS_FILE = TASKS_DIR / "scheduled_tasks.json"
 
 

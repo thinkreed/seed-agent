@@ -12,11 +12,10 @@ Memory Graph 增强:
 
 import json
 import logging
-import os
 import re
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import TypedDict
@@ -61,7 +60,7 @@ except ImportError:
     }
 
 # 数据库路径
-DB_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "raw" / "sessions.db"
+DB_PATH = Path.home() / ".seed" / "memory" / "raw" / "sessions.db"
 
 
 # LRU 缓存配置

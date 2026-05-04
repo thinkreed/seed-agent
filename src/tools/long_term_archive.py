@@ -16,11 +16,10 @@ L5 工作日志层 - FTS5 + LLM 自动摘要
 
 import json
 import logging
-import os
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -37,7 +36,7 @@ except ImportError:
     _HAS_JIEBA = False
 
 # 数据库路径
-ARCHIVE_DB_PATH = Path(os.path.expanduser("~")) / ".seed" / "memory" / "archives.db"
+ARCHIVE_DB_PATH = Path.home() / ".seed" / "memory" / "archives.db"
 
 
 # 导入 session_db 的分词缓存函数（延迟导入避免循环依赖）

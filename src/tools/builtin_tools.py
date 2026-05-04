@@ -13,7 +13,6 @@ Ask User 机制:
 
 import functools
 import logging
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -47,11 +46,11 @@ try:
 except ImportError:
     # Fallback: 使用默认值
     PROJECT_ROOT = Path(__file__).parent.parent.parent
-    DEFAULT_WORK_DIR = Path(os.path.expanduser("~")) / ".seed"
+    DEFAULT_WORK_DIR = Path.home() / ".seed"
     ALLOWED_DIRS_RAW = [
         DEFAULT_WORK_DIR,
         PROJECT_ROOT,
-        Path(os.path.expanduser("~")) / "Documents",
+        Path.home() / "Documents",
     ]
     SHELL_BLACKLIST = [
         "rm -rf",

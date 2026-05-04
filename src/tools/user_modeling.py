@@ -14,10 +14,9 @@ L4 用户建模层 - 黑格尔辩证式进化
 
 import json
 import logging
-import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -27,9 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # 数据库路径
-USER_MODELING_DB_PATH = (
-    Path(os.path.expanduser("~")) / ".seed" / "memory" / "user_modeling.db"
-)
+USER_MODELING_DB_PATH = Path.home() / ".seed" / "memory" / "user_modeling.db"
 
 
 class UserModelingLayer:

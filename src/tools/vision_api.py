@@ -6,7 +6,6 @@ Vision API Helper - 视觉识别基础模块
 import base64
 import io
 import logging
-import os
 from pathlib import Path
 
 try:
@@ -19,9 +18,9 @@ except ImportError:
 logger = logging.getLogger("seed_agent")
 
 # ================= 配置 =================
-VISION_MODEL = os.getenv("VISION_MODEL", "bailian/qwen3.6-plus")
+VISION_MODEL = "bailian/qwen3.6-plus"  # 默认模型，可通过环境变量覆盖
 MAX_PIXELS = 1_440_000  # 限制图像像素以节省 Token
-DEFAULT_CONFIG_PATH = os.path.join(Path.home(), ".seed", "config.json")
+DEFAULT_CONFIG_PATH = Path.home() / ".seed" / "config.json"
 
 # 模型映射
 MODEL_MAP = {

@@ -16,9 +16,9 @@
 
 import json
 import logging
-import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from . import ToolRegistry
@@ -26,8 +26,8 @@ from . import ToolRegistry
 logger = logging.getLogger(__name__)
 
 # 定位 ~/.seed/memory
-MEMORY_ROOT = os.path.join(os.path.expanduser("~"), ".seed", "memory")
-SESSIONS_DIR = os.path.join(MEMORY_ROOT, "raw", "sessions")
+MEMORY_ROOT = Path.home() / ".seed" / "memory"
+SESSIONS_DIR = MEMORY_ROOT / "raw" / "sessions"
 
 
 def write_memory(level: str, content: str, title: str = "", metadata: str = "") -> str:
@@ -138,7 +138,7 @@ def _validate_skill_format(content: str, name: str = "") -> str:
     if name:
         # name 应为 skill_name/SKILL.md 或 SKILL.md
         expected_name = f"{skill_name}/SKILL.md"
-        if name != expected_name and name != "SKILL.md":
+        if name not in (expected_name, "SKILL.md"):
             return f"Error: L2 filename must be '{expected_name}' (skill directory with SKILL.md)."
 
     return ""  # 校验通过
