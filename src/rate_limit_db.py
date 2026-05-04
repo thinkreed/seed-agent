@@ -126,7 +126,7 @@ class RateLimitSQLite:
             raise last_error
         raise sqlite3.Error("Unknown database error")
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """初始化数据库"""
         conn = self._get_conn()
 
@@ -400,13 +400,13 @@ class RateLimitSQLite:
                 "recent_errors": recent_errors,
             }
 
-    def close(self):
+    def close(self) -> None:
         """关闭连接"""
         if hasattr(self._local, "conn") and self._local.conn:
             self._local.conn.close()
             self._local.conn = None
 
-    def __del__(self):
+    def __del__(self) -> None:
         """析构时确保连接关闭"""
         # __del__ 中不应抛出异常，静默关闭
         # S110/SIM105: __del__ 中不应调用 logger 或使用 contextlib.suppress
@@ -416,7 +416,7 @@ class RateLimitSQLite:
         except Exception:
             pass  # 静默忽略，避免 Python 解释器关闭时的警告
 
-    async def aclose(self):
+    async def aclose(self) -> None:
         """异步关闭（用于异步上下文）"""
         async with self._lock:
             self.close()

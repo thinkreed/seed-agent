@@ -248,7 +248,7 @@ class LifecycleHookRegistry:
         HookPoint.SHUTDOWN_COMPLETE.value: "关闭完成",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化钩子注册中心"""
         # 钩子存储: {hook_point: [(priority, callback, hook_id), ...]}
         self._hooks: dict[str, list[tuple[int, Callable, str]]] = {

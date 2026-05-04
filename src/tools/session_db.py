@@ -222,7 +222,7 @@ class SessionDB:
         self.conn: sqlite3.Connection | None = None
         self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """初始化数据库连接和 Schema"""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.conn = sqlite3.connect(self.db_path)
@@ -265,7 +265,7 @@ class SessionDB:
             raise RuntimeError("Database connection is closed")
         return self.conn
 
-    def _create_schema(self):
+    def _create_schema(self) -> None:
         """创建数据库 Schema"""
         self._create_session_messages_schema()
         self._create_sessions_meta_schema()
@@ -1389,7 +1389,7 @@ class SessionDB:
             )
             return {"error": str(e), "error_type": type(e).__name__}
 
-    def optimize_index(self):
+    def optimize_index(self) -> str:
         """优化 FTS5 索引"""
         try:
             self._ensure_conn().execute(
@@ -1404,8 +1404,8 @@ class SessionDB:
             logger.error(f"Unexpected error optimizing index: {type(e).__name__}: {e}")
             return f"Error optimizing index: {type(e).__name__}: {e!s}"
 
-    def rebuild_index(self):
-        """重建 FTS5 索引"""
+    def rebuild_index(self) -> str:
+        """重建 FTS5 紎引"""
         try:
             self._ensure_conn().execute(
                 "INSERT INTO session_messages_fts(session_messages_fts) VALUES('rebuild')"
@@ -1424,7 +1424,7 @@ class SessionDB:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"session_{timestamp}.jsonl"
 
-    def __del__(self):
+    def __del__(self) -> None:
         # __del__ 中不应抛出异常，静默关闭
         # 注意：在 __del__ 中调用 logger 或其他模块是不安全的
         # S110/SIM105: __del__ 中不应使用 contextlib.suppress

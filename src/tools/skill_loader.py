@@ -217,7 +217,7 @@ class SkillLoader:
             return [str(v) for v in value]
         return []
 
-    def _load_metadata(self):
+    def _load_metadata(self) -> None:
         """加载所有 skill 元数据 (支持磁盘快照加速)"""
         snapshot = load_snapshot(self.skills_dir)
         if snapshot and snapshot.get("skills"):
@@ -628,7 +628,7 @@ class SkillLoader:
         """获取 skill 元数据 (不含完整内容)"""
         return self._skills_meta.get(name)  # type: ignore[return-value]
 
-    def refresh(self):
+    def refresh(self) -> None:
         """强制刷新元数据 (清除缓存并重新扫描)"""
         with self._lock:
             self._content_cache.clear()

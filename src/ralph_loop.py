@@ -233,7 +233,7 @@ class RalphLoop:
 
         return self._generate_status_report()
 
-    def stop(self):
+    def stop(self) -> None:
         """停止 Ralph Loop"""
         self._is_running = False
         logger.info(f"Ralph Loop stopped at iteration {self._iteration_count}")
@@ -476,7 +476,7 @@ class RalphLoop:
 
     # === 上下文管理 ===
 
-    def _reset_context(self):
+    def _reset_context(self) -> None:
         """重置上下文（新鲜上下文，使用共享模块）"""
         # 提取关键上下文
         preserved = extract_critical_context(self.agent.history)
@@ -504,7 +504,7 @@ class RalphLoop:
 
     # === 状态持久化 ===
 
-    def _load_or_init_state(self):
+    def _load_or_init_state(self) -> None:
         """加载或初始化状态（支持进程恢复，使用共享模块）"""
         state = load_or_init_state(self._state_file)
         self._iteration_count = state.iteration
@@ -537,7 +537,7 @@ class RalphLoop:
 
     # === 辅助方法 ===
 
-    def _cleanup(self):
+    def _cleanup(self) -> None:
         """清理状态文件（使用共享模块）"""
         cleanup_state_file(self._state_file)
 

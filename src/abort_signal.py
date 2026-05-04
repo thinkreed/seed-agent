@@ -143,7 +143,7 @@ class AbortController:
         controller.abort("user_cancelled")
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化控制器"""
         self.signal = AbortSignal()
 
@@ -177,7 +177,7 @@ class CancellationToken:
     parent: CancellationToken | None = None
     _children: list[CancellationToken] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """初始化后注册到父令牌"""
         if self.parent:
             self.parent._children.append(self)

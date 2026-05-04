@@ -15,11 +15,14 @@ Usage:
 """
 
 import json
+import logging
 import math
 from collections import Counter
 from pathlib import Path
 
 import numpy as np
+
+logger = logging.getLogger("seed_agent")
 
 # 类型注解使用内置类型
 
@@ -218,7 +221,11 @@ class SemanticIndex:
 
         import faiss
 
-        faiss.write_index(self.index, save_path)
+        try:
+            faiss.write_index(self.index, save_path)
+        except (OSError, RuntimeError) as e:
+            logger.error(f"Failed to write FAISS index to {save_path}: {e}")
+            raise
 
         # Save metadata + SVD model
         meta_path = save_path + ".meta"
@@ -235,18 +242,26 @@ class SemanticIndex:
         # Only store numpy arrays which are safe to load
         if self.svd is not None:
             svd_path = save_path + ".svd.npz"
-            np.savez(
-                svd_path,
-                components=self.svd.components_,
-                explained_variance=self.svd.explained_variance_,
-                explained_variance_ratio=self.svd.explained_variance_ratio_,
-                singular_values=self.svd.singular_values_,
-                n_components=self.svd.n_components,
-            )
-            meta["has_svd"] = True
+            try:
+                np.savez(
+                    svd_path,
+                    components=self.svd.components_,
+                    explained_variance=self.svd.explained_variance_,
+                    explained_variance_ratio=self.svd.explained_variance_ratio_,
+                    singular_values=self.svd.singular_values_,
+                    n_components=self.svd.n_components,
+                )
+                meta["has_svd"] = True
+            except (OSError, ValueError) as e:
+                logger.warning(f"Failed to save SVD model to {svd_path}: {e}")
+                # Continue without SVD metadata
 
-        with open(meta_path, "w") as f:
-            json.dump(meta, f)
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(meta, f)
+        except OSError as e:
+            logger.error(f"Failed to write metadata to {meta_path}: {e}")
+            raise
 
         return save_path
 
@@ -256,11 +271,19 @@ class SemanticIndex:
         import faiss
 
         idx = cls(dim=128, index_path=path)
-        idx.index = faiss.read_index(path)
+        try:
+            idx.index = faiss.read_index(path)
+        except (OSError, RuntimeError) as e:
+            logger.error(f"Failed to read FAISS index from {path}: {e}")
+            raise
 
         meta_path = path + ".meta"
-        with open(meta_path) as f:
-            meta = json.load(f)
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to load metadata from {meta_path}: {e}")
+            raise
 
         idx.dim = meta["dim"]
         idx._effective_dim = meta.get("effective_dim", meta["dim"])
@@ -287,8 +310,9 @@ class SemanticIndex:
                 ]
                 svd_model.singular_values_ = svd_data["singular_values"]
                 idx.svd = svd_model
-            except (OSError, KeyError, ValueError):
+            except (OSError, KeyError, ValueError) as e:
                 # If SVD load fails, continue without SVD
+                logger.warning(f"Failed to load SVD model from {svd_path}: {e}")
                 idx.svd = None
 
         return idx

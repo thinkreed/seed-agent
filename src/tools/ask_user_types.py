@@ -51,7 +51,7 @@ class QuestionOption:
     value: str | None = None
     description: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """确保 value 有默认值"""
         if self.value is None:
             self.value = self.label
@@ -86,7 +86,7 @@ class Question:
     allow_custom: bool = True
     default: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """验证问题结构"""
         # 截断 header 到 30 字符
         if len(self.header) > 30:

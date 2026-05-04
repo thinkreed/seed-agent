@@ -25,11 +25,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.llm_client import LLMClient
 from src.sandbox import IsolationLevel, Sandbox
 from src.session_event_stream import EventType, SessionEventStream
+
+if TYPE_CHECKING:
+    from src.tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -1429,7 +1432,7 @@ class InterAgentMessageBus:
 # === 工具注册 ===
 
 
-def register_collaboration_tools(registry: Any) -> None:
+def register_collaboration_tools(registry: "ToolRegistry") -> None:
     """注册协作工具到 Registry
 
     Args:

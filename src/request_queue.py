@@ -350,7 +350,7 @@ class RequestQueue:
         logger.debug(f"Ticket {ticket.id} submitted (priority={priority.name})")
         return ticket
 
-    async def start_dispatcher(self):
+    async def start_dispatcher(self) -> None:
         """启动异步调度器"""
         if self._running:
             logger.warning("Dispatcher already running")
@@ -369,7 +369,7 @@ class RequestQueue:
             f"normal_rate={self.config.normal_dispatch_rate})"
         )
 
-    async def stop_dispatcher(self):
+    async def stop_dispatcher(self) -> None:
         """停止调度器"""
         self._running = False
 
@@ -387,7 +387,7 @@ class RequestQueue:
 
         logger.info("Request queue dispatcher stopped")
 
-    async def _dispatch_loop(self):
+    async def _dispatch_loop(self) -> None:
         """调度循环核心：CRITICAL 优先"""
         while self._running:
             try:
@@ -534,7 +534,7 @@ class RequestQueue:
             self._active_tickets.clear()
             logger.info(f"All tickets cancelled: reason={reason}")
 
-    async def _adjust_loop(self):
+    async def _adjust_loop(self) -> None:
         """智能调整循环"""
         while self._running:
             try:
@@ -554,7 +554,7 @@ class RequestQueue:
                 )
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
 
-    async def _adjust_config(self):
+    async def _adjust_config(self) -> None:
         """根据统计数据智能调整配置"""
         # 1. CRITICAL 队列调整
         critical_avg_wait = self._stats.get_avg_wait_time(RequestPriority.CRITICAL)

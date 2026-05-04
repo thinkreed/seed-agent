@@ -182,7 +182,7 @@ class AutonomousExplorer:
         else:
             logger.warning(f"SOP file not found: {SOP_PATH}")
 
-    def record_activity(self):
+    def record_activity(self) -> None:
         """记录用户活动时间"""
         self._last_activity = time.time()
 
@@ -190,7 +190,7 @@ class AutonomousExplorer:
         """获取当前空闲时间（秒）"""
         return time.time() - self._last_activity
 
-    async def start(self):
+    async def start(self) -> None:
         """启动空闲监控"""
         if self._running:
             return
@@ -206,7 +206,7 @@ class AutonomousExplorer:
         self._task = asyncio.create_task(self._idle_monitor_loop())
         logger.warning("Autonomous explorer started")
 
-    async def stop(self):
+    async def stop(self) -> None:
         """停止空闲监控"""
         self._running = False
         if self._task:
@@ -215,7 +215,7 @@ class AutonomousExplorer:
                 await self._task
         logger.warning("Autonomous explorer stopped")
 
-    async def _idle_monitor_loop(self):
+    async def _idle_monitor_loop(self) -> None:
         """空闲监控循环"""
         while self._running:
             idle_time = self.get_idle_time()
@@ -517,7 +517,7 @@ class AutonomousExplorer:
             response=response,
         )
 
-    def _load_or_init_state(self):
+    def _load_or_init_state(self) -> None:
         """加载或初始化状态（使用共享模块）
 
         如果加载的状态已达到迭代上限，则重置状态开始新会话。
@@ -538,11 +538,11 @@ class AutonomousExplorer:
         self._ralph_start_time = state.start_time
         self._empty_response_count = 0  # 重置空响应计数
 
-    def _cleanup_state(self):
+    def _cleanup_state(self) -> None:
         """清理状态文件（使用共享模块）"""
         cleanup_state_file(self._state_file)
 
-    async def _execute_autonomous_task(self):
+    async def _execute_autonomous_task(self) -> str | None:
         """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强 + 四层防御）
 
         多层防御整合：
@@ -564,6 +564,9 @@ class AutonomousExplorer:
         - 用户交互时上下文可正确区分自主探索事件
         - Ask User 被自动跳过，不会阻塞等待用户响应
         - 迭代预算可配置，支持递减重试
+
+        Returns:
+            str | None: 探索结果文本，失败时返回 None
         """
         if not self._sop_content:
             logger.warning("No SOP loaded, skipping autonomous exploration")

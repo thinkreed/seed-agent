@@ -92,9 +92,8 @@ class SubagentTask:
 
         # max_iterations 转换
         if self.max_iterations is not None:
-            self.max_iterations = _safe_int(
-                self.max_iterations, default=None, min_val=1
-            )
+            converted = _safe_int(self.max_iterations, default=None, min_val=1)
+            self.max_iterations = converted
 
         # priority 转换
         self.priority = _safe_int(self.priority, default=0, min_val=0)
@@ -435,7 +434,7 @@ class SubagentManager:
 
         return "\n\n---\n\n".join(summaries)
 
-    def cleanup(self, task_id: str | None = None):
+    def cleanup(self, task_id: str | None = None) -> None:
         """
         清理任务资源（同步方法）
 

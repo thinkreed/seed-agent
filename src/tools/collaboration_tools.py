@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         MultiBrainOneHandOrchestrator,
         OneBrainMultiHandOrchestrator,
     )
+    from src.tools import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -743,7 +744,7 @@ def register_message_handler(
 # === 工具注册 ===
 
 
-def register_tools(registry: Any) -> None:
+def register_tools(registry: "ToolRegistry") -> None:
     """注册所有协作工具到 Registry
 
     Args:
