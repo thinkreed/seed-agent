@@ -29,8 +29,13 @@ def _get_config_path() -> Path:
     try:
         from src.models import get_config_path
         return get_config_path()
-    except Exception:
-        # Fallback
+    except ImportError:
+        # Fallback: models 模块未导入
+        logger.debug("Using fallback config path: ~/.seed/config.json")
+        return Path.home() / ".seed" / "config.json"
+    except RuntimeError:
+        # Fallback: PathsConfig 未初始化
+        logger.debug("PathsConfig not initialized, using fallback config path")
         return Path.home() / ".seed" / "config.json"
 
 
