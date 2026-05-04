@@ -1173,8 +1173,8 @@ class LLMGateway:
                     wait_time = int(retry_after)
                     # Cap at 60s to prevent excessive blocking if server requests long wait
                     return min(float(wait_time), 60.0)
-                except (ValueError, TypeError):
-                    pass  # Fall back to exponential backoff if header is invalid
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Invalid Retry-After header '{retry_after}': {e}")
 
         # 2. Default exponential backoff with Jitter: 1s, 2s, 4s (+/- 20%)
         # Jitter prevents "thundering herd" problem

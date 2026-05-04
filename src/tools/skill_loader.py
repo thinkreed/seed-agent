@@ -563,8 +563,8 @@ class SkillLoader:
                 project_root_posix + '/src/' + r'\1',
                 content
             )
-        except Exception:
-            pass  # 路径展开失败时保持原路径
+        except Exception as e:
+            logger.debug(f"Path regex replacement failed for skill '{name}': {e}")
 
         # Context Fencing
         fenced_content = f"<skill_content name='{name}'>\n{content}\n</skill_content>"
@@ -823,8 +823,8 @@ class SkillLoader:
                 project_root_posix + '/src/' + r'\1',
                 content
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Path regex replacement failed for gene '{name}': {e}")
 
         gene_fields = self._extract_gene_fields(content)
         if not gene_fields:
