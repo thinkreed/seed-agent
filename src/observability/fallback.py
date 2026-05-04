@@ -11,8 +11,10 @@ OpenTelemetry Fallback 实现
 
 import asyncio
 from collections.abc import Callable, Coroutine
-from contextlib import AbstractContextManager
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
 
 # 类型别名，用于 Span 属性值
 SpanAttributeValue = str | int | float | bool

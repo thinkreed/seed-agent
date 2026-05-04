@@ -13,7 +13,7 @@ import sys
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -26,11 +26,11 @@ from ralph_loop import RalphLoop, CompletionType
 def temp_seed_dir():
     """Create a temporary seed directory for state files."""
     temp_dir = tempfile.mkdtemp()
-    # Patch SEED_DIR
-    original_seed = ralph_loop.SEED_DIR
-    ralph_loop.SEED_DIR = Path(temp_dir)
+    # Patch _get_seed_dir to return temp_dir
+    patcher = patch('ralph_loop._get_seed_dir', return_value=Path(temp_dir))
+    patcher.start()
     yield temp_dir
-    ralph_loop.SEED_DIR = original_seed
+    patcher.stop()
 
 @pytest.fixture
 def mock_agent():

@@ -545,7 +545,7 @@ def _build_command(code: str, language: str) -> list[str] | None:
     """Build subprocess command for given language."""
     for lang_prefix, (cmd_prefix, alias) in LANGUAGE_MAP.items():
         if language in (lang_prefix, alias):
-            return cmd_prefix + [code]
+            return [*cmd_prefix, code]
     if language in ("js", "node"):
         return ["node", "-e", code]
     return None

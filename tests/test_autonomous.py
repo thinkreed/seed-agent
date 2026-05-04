@@ -642,7 +642,7 @@ class TestTodoLoading(unittest.TestCase):
         todo_file.write_text(todo_content)
 
         AutonomousExplorer(self.mock_agent)
-        with patch('autonomous.SEED_DIR', Path(self.tmpdir.name)):
+        with patch('autonomous._get_seed_dir', return_value=Path(self.tmpdir.name)):
             # 需要重新设置 SEED_DIR 常量
             pass
 
@@ -653,9 +653,9 @@ class TestTodoLoading(unittest.TestCase):
 
     def test_load_nonexistent_todo(self):
         """测试加载不存在的 TODO 文件"""
-        explorer = AutonomousExplorer(self.mock_agent)
-        # 使用不存在的目录
-        with patch('autonomous.SEED_DIR', Path(self.tmpdir.name)):
+        # 使用不存在的目录，patch _ensure_seed_dir 因为 _load_todo_content 使用它
+        with patch('autonomous._ensure_seed_dir', return_value=Path(self.tmpdir.name)):
+            explorer = AutonomousExplorer(self.mock_agent)
             result = explorer._load_todo_content()
             self.assertEqual(result, "")
 

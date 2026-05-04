@@ -16,6 +16,8 @@ import sys
 import pytest
 import tempfile
 import shutil
+from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
@@ -38,12 +40,13 @@ def temp_memory_dir():
     with open(os.path.join(temp_dir, 'notes.md'), 'w', encoding='utf-8') as f:
         f.write("# L1 Index\n\n- Test Pointer")
 
-    original_root = memory_tools.MEMORY_ROOT
-    memory_tools.MEMORY_ROOT = temp_dir
+    # Patch _get_memory_root to return temp_dir
+    patcher = patch('tools.memory_tools._get_memory_root', return_value=Path(temp_dir))
+    patcher.start()
 
     yield temp_dir
 
-    memory_tools.MEMORY_ROOT = original_root
+    patcher.stop()
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
 
@@ -174,10 +177,10 @@ class TestReadMemoryIndex:
 
     def test_read_index_missing(self):
         """Test reading missing L1 index."""
-        # Temporarily change MEMORY_ROOT to empty dir
+        # Temporarily patch _get_memory_root to empty dir
         temp_dir = tempfile.mkdtemp()
-        original_root = memory_tools.MEMORY_ROOT
-        memory_tools.MEMORY_ROOT = temp_dir
+        patcher = patch('tools.memory_tools._get_memory_root', return_value=Path(temp_dir))
+        patcher.start()
 
         try:
             content = memory_tools.read_memory_index()
@@ -185,7 +188,7 @@ class TestReadMemoryIndex:
             # But shouldn't crash
             assert isinstance(content, str)
         finally:
-            memory_tools.MEMORY_ROOT = original_root
+            patcher.stop()
             shutil.rmtree(temp_dir)
 
 

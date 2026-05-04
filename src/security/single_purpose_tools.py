@@ -788,7 +788,7 @@ class SinglePurposeToolFactory:
         timeout = args.get("timeout", 60)
 
         try:
-            cmd = ["python", script_path] + script_args
+            cmd = ["python", script_path, *script_args]
             # 安全：清理环境变量，移除敏感凭证
             safe_env = self._get_safe_environment()
             result = subprocess.run(
@@ -819,7 +819,7 @@ class SinglePurposeToolFactory:
         timeout = args.get("timeout", 120)
 
         try:
-            cmd = ["pytest", test_path] + options
+            cmd = ["pytest", test_path, *options]
             # 安全：清理环境变量，移除敏感凭证
             safe_env = self._get_safe_environment()
             result = subprocess.run(

@@ -114,7 +114,7 @@ def full_agent_patches(session_id='test_session', storage_path=None):
 
     if storage_path:
         patches.append(
-            patch('session_event_stream.DEFAULT_STORAGE_PATH', storage_path)
+            patch('session_event_stream._get_default_storage_path', return_value=storage_path)
         )
 
     return patches

@@ -211,7 +211,7 @@ def test_tools():
         print("✓ write_completion_marker passed")
 
     # 创建任务文件
-    with patch('src.tools.ralph_tools.SEED_DIR', Path(temp_dir)):
+    with patch('src.tools.ralph_tools._get_seed_dir', return_value=Path(temp_dir)):
         result = create_ralph_task_file("test_task", "# Test Task")
         assert "Task file created" in result
         print("✓ create_ralph_task_file passed")

@@ -173,9 +173,12 @@ class TestSnapshotSaveLoad:
 
     def test_clear_snapshot(self, temp_skills_dir, loader):
         save_snapshot(temp_skills_dir, loader._skills_meta)
-        assert SNAPSHOT_PATH.exists()
+        # Get snapshot path through the function
+        from tools.skill_cache import _ensure_cache_paths
+        _cache_dir, snapshot_path = _ensure_cache_paths()
+        assert snapshot_path.exists()
         clear_snapshot()
-        # Note: SNAPSHOT_PATH is global, may or may not exist after clear
+        # Note: snapshot_path may or may not exist after clear
         # depending on whether it was our snapshot
 
 

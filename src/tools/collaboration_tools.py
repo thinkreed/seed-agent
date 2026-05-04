@@ -17,13 +17,14 @@ import asyncio
 import json
 import logging
 import threading
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.tools.utils import add_background_task
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from src.collaboration import (
         MultiBrainOneHandOrchestrator,
         OneBrainMultiHandOrchestrator,
