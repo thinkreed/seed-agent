@@ -511,7 +511,7 @@ class RalphLoop:
         self._accumulated_duration = state.accumulated_duration
         self._start_time = state.start_time
 
-    def _persist_state(self, response: str):
+    def _persist_state(self, response: str) -> None:
         """持久化当前状态（使用共享模块）"""
         persist_state(
             state_file=self._state_file,

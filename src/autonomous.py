@@ -507,7 +507,7 @@ class AutonomousExplorer:
         # 最终 fallback：返回 prompt 的前 3000 字符
         return full_prompt[:3000] if full_prompt else "继续执行自主探索任务"
 
-    def _persist_state(self, response: str = ""):
+    def _persist_state(self, response: str = "") -> None:
         """持久化当前状态（使用共享模块）"""
         persist_state(
             state_file=self._state_file,

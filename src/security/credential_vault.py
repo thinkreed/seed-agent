@@ -218,8 +218,15 @@ class CredentialVault:
 
         # 存储密钥
         self._vault_path.mkdir(parents=True, exist_ok=True)
-        with open(key_path, "w") as f:
-            f.write(key)
+        try:
+            with open(key_path, "w") as f:
+                f.write(key)
+        except PermissionError as e:
+            logger.error(f"Permission denied writing vault key: {e}")
+            raise
+        except OSError as e:
+            logger.error(f"Failed to write vault key: {e}")
+            raise
 
         # 设置文件权限（仅 owner 可读写）
         try:
@@ -811,8 +818,15 @@ class CredentialVault:
             for cred_id, record in self._credentials.items()
         }
 
-        with open(credentials_file, "w") as f:
-            json.dump(data, f, indent=2)
+        try:
+            with open(credentials_file, "w") as f:
+                json.dump(data, f, indent=2)
+        except PermissionError as e:
+            logger.error(f"Permission denied writing credentials: {e}")
+            raise
+        except OSError as e:
+            logger.error(f"Failed to persist credentials: {e}")
+            raise
 
         # 设置文件权限
         try:
@@ -863,18 +877,24 @@ class CredentialVault:
         # 只追加最近的日志条目（避免重复写入）
         recent_logs = self._access_logs[-10:]
 
-        with open(audit_file, "a") as f:
-            for log in recent_logs:
-                entry = {
-                    "timestamp": log.timestamp,
-                    "credential_id": log.credential_id,
-                    "scope": log.scope,
-                    "requester_id": log.requester_id,
-                    "action": log.action,
-                    "success": log.success,
-                    "error": log.error,
-                }
-                f.write(json.dumps(entry) + "\n")
+        try:
+            with open(audit_file, "a") as f:
+                for log in recent_logs:
+                    entry = {
+                        "timestamp": log.timestamp,
+                        "credential_id": log.credential_id,
+                        "scope": log.scope,
+                        "requester_id": log.requester_id,
+                        "action": log.action,
+                        "success": log.success,
+                        "error": log.error,
+                    }
+                    f.write(json.dumps(entry) + "\n")
+        except PermissionError as e:
+            logger.error(f"Permission denied writing audit log: {e}")
+            # 审计日志写入失败不应阻断主流程，但需记录
+        except OSError as e:
+            logger.warning(f"Failed to persist audit log: {e}")
 
     def _load_access_logs(self) -> None:
         """从文件加载审计日志"""
