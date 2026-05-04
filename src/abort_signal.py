@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -34,7 +35,7 @@ class AbortSignal:
     核心设计：
     - aborted: 是否已取消
     - reason: 取消原因
-    - listeners: 取消监听器列表
+    - listeners: 取消监听器列表（线程安全）
 
     使用方式：
         signal = AbortSignal()
@@ -47,6 +48,7 @@ class AbortSignal:
     aborted: bool = False
     reason: str = ""
     _listeners: list[Callable[[AbortSignal], None]] = field(default_factory=list)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def abort(self, reason: str = "") -> None:
         """触发取消
@@ -60,22 +62,25 @@ class AbortSignal:
         - 调用所有监听器
         - 清空监听器列表
         """
-        if self.aborted:
-            return  # 已取消，不重复触发
+        with self._lock:
+            if self.aborted:
+                return  # 已取消，不重复触发
 
-        self.aborted = True
-        self.reason = reason
+            self.aborted = True
+            self.reason = reason
+
+            # 复制监听器列表，避免在调用时被修改
+            listeners = list(self._listeners)
+            self._listeners.clear()
 
         logger.info(f"AbortSignal triggered: reason={reason}")
 
-        # 触发所有监听器
-        for listener in self._listeners:
+        # 在锁外触发监听器（避免死锁）
+        for listener in listeners:
             try:
                 listener(self)
             except Exception as e:
                 logger.warning(f"AbortSignal listener error: {type(e).__name__}: {e}")
-
-        self._listeners.clear()
 
     def add_listener(self, listener: Callable[[AbortSignal], None]) -> None:
         """添加取消监听器
@@ -87,11 +92,12 @@ class AbortSignal:
         - 取消触发后监听器会被清空
         - 已取消状态下添加监听器不会被执行
         """
-        if self.aborted:
-            logger.warning("Cannot add listener to already aborted signal")
-            return
+        with self._lock:
+            if self.aborted:
+                logger.warning("Cannot add listener to already aborted signal")
+                return
 
-        self._listeners.append(listener)
+            self._listeners.append(listener)
 
     def remove_listener(self, listener: Callable[[AbortSignal], None]) -> None:
         """移除取消监听器
@@ -99,10 +105,11 @@ class AbortSignal:
         Args:
             listener: 要移除的监听器
         """
-        try:
-            self._listeners.remove(listener)
-        except ValueError:
-            logger.warning("Listener not found in signal")
+        with self._lock:
+            try:
+                self._listeners.remove(listener)
+            except ValueError:
+                logger.warning("Listener not found in signal")
 
     def check(self) -> None:
         """检查取消状态，如已取消则抛出 CancelledError

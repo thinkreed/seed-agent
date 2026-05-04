@@ -84,11 +84,8 @@ _OBSERVABILITY_ENABLED = is_observability_enabled()
 
 try:
     from opentelemetry.trace import Span
-
-    _SPAN_TYPE_AVAILABLE = True
 except ImportError:
     Span = None  # type: ignore[misc,assignment]
-    _SPAN_TYPE_AVAILABLE = False
 
 
 class MaxIterationsExceeded(Exception):
@@ -97,14 +94,6 @@ class MaxIterationsExceeded(Exception):
     def __init__(self, iterations: int) -> None:
         super().__init__(f"Harness exceeded maximum iterations ({iterations})")
         self.iterations = iterations
-
-
-class ExecutionCancelled(Exception):
-    """执行被取消"""
-
-    def __init__(self, reason: str = "") -> None:
-        super().__init__(f"Execution cancelled: {reason}")
-        self.reason = reason
 
 
 class CycleResult(TypedDict):

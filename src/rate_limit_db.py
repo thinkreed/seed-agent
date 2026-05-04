@@ -113,8 +113,8 @@ class RateLimitSQLite:
 
         logger.error(f"DB operation failed after {max_retries} retries")
         if last_error:
-            # 使用 from 保留原始堆栈跟踪
-            raise last_error from last_error
+            # 直接抛出原始异常，避免自引用异常链
+            raise last_error
         raise sqlite3.Error("Unknown database error")
 
     def _init_db(self):

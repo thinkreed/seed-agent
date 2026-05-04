@@ -60,11 +60,8 @@ def _parse_model_id(model_id: str) -> tuple[str, str]:
 
 try:
     from opentelemetry.trace import Span
-
-    _SPAN_TYPE_AVAILABLE = True
 except ImportError:
     Span = None  # type: ignore[misc,assignment]
-    _SPAN_TYPE_AVAILABLE = False
 
 
 class ReasonResult:

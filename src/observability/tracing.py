@@ -119,12 +119,10 @@ def create_task_with_context(
     try:
         task = asyncio.create_task(coro)
         # 任务创建后，context 已被继承，可以安全 detach
-        context.detach(token)
         return task
-    except Exception:
-        # 异常时也要 detach
+    finally:
+        # 使用 finally 确保 detach 总是执行，即使 create_task 抛出异常
         context.detach(token)
-        raise
 
 
 def start_span(

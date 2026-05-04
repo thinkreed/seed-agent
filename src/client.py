@@ -822,8 +822,12 @@ class LLMGateway:
 
         注意：此方法现在是异步生成器，直接 yield 数据
         """
-        # 确保 semaphore 已初始化（mypy 类型窄化）
-        assert self._request_semaphore is not None
+        # 确保 semaphore 已初始化（显式检查避免优化模式问题）
+        if self._request_semaphore is None:
+            raise RuntimeError(
+                "Request semaphore not initialized - "
+                "check _init_rate_limiting() was called during construction"
+            )
 
         async with self._request_semaphore:
             logger.debug(f"Ticket {ticket.id}: concurrent acquired (stream)")
@@ -1322,8 +1326,12 @@ class LLMGateway:
         **kwargs,
     ) -> AsyncGenerator[dict, None]:
         """流式 fallback providers 尝试"""
-        # 确保 fallback_chain 已初始化（mypy 类型窄化）
-        assert self._fallback_chain is not None
+        # 确保 fallback_chain 已初始化（显式检查避免优化模式问题）
+        if self._fallback_chain is None:
+            raise RuntimeError(
+                "Fallback chain not initialized - "
+                "check _init_fallback_chain() was called during construction"
+            )
 
         for fallback_provider, fallback_model_id in self._iterate_fallback_models(
             model_id, exclude_provider

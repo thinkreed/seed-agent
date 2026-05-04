@@ -90,11 +90,8 @@ from src.tools.subagent_tools import init_subagent_manager, register_subagent_to
 
 try:
     from opentelemetry.trace import Span
-
-    _SPAN_TYPE_AVAILABLE = True
 except ImportError:
     Span = None  # type: ignore[misc,assignment]
-    _SPAN_TYPE_AVAILABLE = False
 
 # 模块级 encoding 缓存
 _ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
@@ -241,7 +238,6 @@ class AgentLoop:
         register_collaboration_tools(self.tools)
 
         self.skill_loader = SkillLoader()
-        self._available_tools: set[str] = set()
 
     def _setup_subsystems(self, system_prompt: str | None = None) -> None:
         """初始化子系统"""
@@ -515,9 +511,11 @@ class AgentLoop:
 
                     # 获取注入的响应
                     user_response = self._pending_user_response
-                    assert user_response is not None, (
-                        "user_response should be set after wait"
-                    )
+                    if user_response is None:
+                        raise RuntimeError(
+                            "user_response should be set after wait - "
+                            "this indicates a race condition or bug in inject_user_input"
+                        )
 
                     # 清理状态
                     self._user_input_event.clear()
