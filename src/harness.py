@@ -1078,6 +1078,15 @@ class Harness:
 
                 duration_ms = (time.time() - start_time) * 1000
 
+                # 触发 llm_call_after 钩子
+                llm_after_ctx = {
+                    "session": self.session,
+                    "harness": self,
+                    "response": {"choices": [{"message": {"content": full_content}}]},
+                    "duration_ms": duration_ms,
+                }
+                await self._trigger_hook(HookPoint.LLM_CALL_AFTER, llm_after_ctx)
+
                 # 累积工具调用
                 tool_calls = (
                     [

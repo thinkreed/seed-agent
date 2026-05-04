@@ -402,7 +402,7 @@ class UserModelingLayer:
             # 使用参数化查询防止 SQL 注入，placeholders 只是占位符
             placeholders = ",".join("?" * len(ids))
             self._ensure_conn().execute(
-                f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",  # noqa: S608
+                f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",
                 ids,
             )
             self._ensure_conn().commit()
@@ -518,7 +518,7 @@ class UserModelingLayer:
                 list(keys),
             )
             .fetchall()
-        )  # noqa: S608
+        )
 
         # 解析结果，每个 key 取最新的
         result: dict[str, dict[str, Any]] = {}

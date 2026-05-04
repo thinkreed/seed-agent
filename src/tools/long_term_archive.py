@@ -805,7 +805,7 @@ class LongTermArchiveLayer:
                 additional_rows = (
                     self._ensure_conn()
                     .execute(
-                        f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",  # noqa: S608
+                        f"SELECT archive_id FROM archives WHERE archive_id NOT IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
                         (*already_deleted_ids, remaining_to_delete),
                     )
                     .fetchall()

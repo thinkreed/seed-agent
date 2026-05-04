@@ -324,10 +324,10 @@ class ProgressiveToolExpander:
         ]
 
         candidate_tiers = [task_tier, complexity_tier, iteration_tier]
-        highest_candidate = max(candidate_tiers, key=lambda t: tier_order.index(t))
+        highest_candidate = max(candidate_tiers, key=tier_order.index)
 
         # 不超过权限上限
-        return min(highest_candidate, max_tier, key=lambda t: tier_order.index(t))
+        return min(highest_candidate, max_tier, key=tier_order.index)
 
     def _expand_to_tier(self, new_tier: ToolTier, context: dict[str, Any]) -> None:
         """扩展到新层级

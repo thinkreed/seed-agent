@@ -38,7 +38,7 @@ def add_background_task(task: asyncio.Task[Any]) -> None:
             logger.debug(f"Cleaned {len(done_tasks)} completed background tasks")
 
     _background_tasks.add(task)
-    task.add_done_callback(lambda t: _background_tasks.discard(t))
+    task.add_done_callback(_background_tasks.discard)
 
 
 def parse_tool_arguments(raw_args: str | dict | None) -> dict[str, Any]:

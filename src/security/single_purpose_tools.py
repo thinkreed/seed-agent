@@ -684,7 +684,6 @@ class SinglePurposeToolFactory:
 
     def _impl_create_directory(self, args: dict[str, Any]) -> str:
         """创建目录"""
-        import fnmatch  # noqa: F401 (used in grep_search)
 
         path = args["path"]
         parents = args.get("parents", True)

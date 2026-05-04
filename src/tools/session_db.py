@@ -1397,9 +1397,9 @@ class SessionDB:
         # 注意：在 __del__ 中调用 logger 或其他模块是不安全的
         # S110/SIM105: __del__ 中不应使用 contextlib.suppress
         # 因为 Python 解释器可能已在关闭过程中
-        try:  # noqa: SIM105
+        try:
             self.close()
-        except Exception:  # noqa: S110
+        except Exception:
             pass  # 静默忽略，避免 Python 解释器关闭时的警告
 
 
