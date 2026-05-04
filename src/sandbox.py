@@ -132,58 +132,30 @@ class Sandbox:
         IsolationLevel.VM: "虚拟机级隔离 (最强)",
     }
 
-    # 默认权限配置
-    DEFAULT_PERMISSIONS: dict[str, SandboxPermission] = {
+    # 默认权限配置（使用工厂方法简化初始化）
+    _DEFAULT_TOOL_NAMES = [
         # 文件操作
-        "file_read": SandboxPermission("file_read", PermissionAction.ALLOW),
-        "file_write": SandboxPermission("file_write", PermissionAction.ALLOW),
-        "file_edit": SandboxPermission("file_edit", PermissionAction.ALLOW),
-        "list_directory": SandboxPermission("list_directory", PermissionAction.ALLOW),
+        "file_read", "file_write", "file_edit", "list_directory",
         # 代码执行
-        "run_shell_command": SandboxPermission(
-            "run_shell_command", PermissionAction.ALLOW
-        ),
-        "code_as_policy": SandboxPermission("code_as_policy", PermissionAction.ALLOW),
+        "run_shell_command", "code_as_policy",
         # 记忆操作
-        "save_memory": SandboxPermission("save_memory", PermissionAction.ALLOW),
-        "load_memory": SandboxPermission("load_memory", PermissionAction.ALLOW),
-        "search_memory": SandboxPermission("search_memory", PermissionAction.ALLOW),
+        "save_memory", "load_memory", "search_memory",
         # 用户交互
-        "ask_user_question": SandboxPermission(
-            "ask_user_question", PermissionAction.ALLOW
-        ),
+        "ask_user_question",
         # 技能操作
-        "load_skill": SandboxPermission("load_skill", PermissionAction.ALLOW),
+        "load_skill",
         # 子代理
-        "spawn_subagent": SandboxPermission("spawn_subagent", PermissionAction.ALLOW),
-        "wait_for_subagent": SandboxPermission(
-            "wait_for_subagent", PermissionAction.ALLOW
-        ),
-        "aggregate_subagent_results": SandboxPermission(
-            "aggregate_subagent_results", PermissionAction.ALLOW
-        ),
-        "list_subagents": SandboxPermission("list_subagents", PermissionAction.ALLOW),
-        "kill_subagent": SandboxPermission("kill_subagent", PermissionAction.ALLOW),
+        "spawn_subagent", "wait_for_subagent", "aggregate_subagent_results",
+        "list_subagents", "kill_subagent",
         # Ralph Loop
-        "start_ralph_loop": SandboxPermission(
-            "start_ralph_loop", PermissionAction.ALLOW
-        ),
-        "check_ralph_status": SandboxPermission(
-            "check_ralph_status", PermissionAction.ALLOW
-        ),
-        "mark_ralph_complete": SandboxPermission(
-            "mark_ralph_complete", PermissionAction.ALLOW
-        ),
+        "start_ralph_loop", "check_ralph_status", "mark_ralph_complete",
         # Scheduler
-        "create_scheduled_task": SandboxPermission(
-            "create_scheduled_task", PermissionAction.ALLOW
-        ),
-        "remove_scheduled_task": SandboxPermission(
-            "remove_scheduled_task", PermissionAction.ALLOW
-        ),
-        "list_scheduled_tasks": SandboxPermission(
-            "list_scheduled_tasks", PermissionAction.ALLOW
-        ),
+        "create_scheduled_task", "remove_scheduled_task", "list_scheduled_tasks",
+    ]
+
+    DEFAULT_PERMISSIONS: dict[str, SandboxPermission] = {
+        name: SandboxPermission(name, PermissionAction.ALLOW)
+        for name in _DEFAULT_TOOL_NAMES
     }
 
     # 路径相关参数名

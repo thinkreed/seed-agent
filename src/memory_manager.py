@@ -15,6 +15,8 @@
 4. 自动进化触发
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 from pathlib import Path
@@ -49,29 +51,33 @@ class MemoryManager:
     - 调用 archive_session() 归档会话
     """
 
-    _instance: "MemoryManager | None" = None
-    _initialized: bool = False
-    _lock: "threading.Lock | None" = None
+    # 类属性（单例状态）
+    _instance: MemoryManager | None = None
+    _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls, *args, **kwargs) -> "MemoryManager":
-        """单例模式 - 忽略构造参数"""
+    # 实例属性类型声明
+    _initialized: bool
+    _llm_gateway: LLMGateway | None
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> MemoryManager:
+        """单例模式 - 线程安全的双重检查锁定"""
         if cls._instance is None:
-            if cls._lock is None:
-                cls._lock = threading.Lock()
             with cls._lock:
                 if cls._instance is None:
-                    cls._instance = super().__new__(cls)
+                    instance = super().__new__(cls)
+                    instance._initialized = False  # 标记未初始化
+                    cls._instance = instance
         return cls._instance
 
-    def __init__(self, llm_gateway: "LLMGateway | None" = None):
-        if MemoryManager._initialized:
+    def __init__(self, llm_gateway: LLMGateway | None = None) -> None:
+        # 简化：仅在 _initialized 为 False 时初始化
+        if self._initialized:
             return
 
-        lock = MemoryManager._lock or threading.Lock()
-        with lock:
-            if MemoryManager._initialized:
+        with MemoryManager._lock:
+            if self._initialized:
                 return
-            MemoryManager._initialized = True
+            self._initialized = True
 
         self._llm_gateway = llm_gateway
 
