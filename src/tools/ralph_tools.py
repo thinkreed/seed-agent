@@ -5,9 +5,13 @@
 - write_completion_marker: 写入完成标志
 - check_ralph_status: 检查 Ralph Loop 状态
 - stop_ralph_loop: 停止 Ralph Loop
+
+类型安全:
+- max_iterations 参数在入口处强制转换为整数
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -16,10 +20,36 @@ if TYPE_CHECKING:
 
 from src.shared_config import SEED_DIR
 
+logger = logging.getLogger(__name__)
+
 # 类型注解使用内置类型
 
 COMPLETION_PROMISE_FILE = SEED_DIR / "completion_promise"
 RALPH_STATE_DIR = SEED_DIR / "ralph"
+
+
+def _safe_int_convert(value, default: int, min_val: int = 1) -> int:
+    """安全地将值转换为整数
+
+    Args:
+        value: 要转换的值（可能是 str, int, float, None 等）
+        default: 转换失败时的默认值
+        min_val: 最小有效值
+
+    Returns:
+        int: 转换后的整数，或默认值
+    """
+    if value is None:
+        return default
+    try:
+        result = int(value) if isinstance(value, str) else int(value)
+        if result < min_val:
+            logger.warning(f"Converted value {result} < min_val {min_val}, using default {default}")
+            return default
+        return result
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Failed to convert '{value}' to int: {type(e).__name__}, using default {default}")
+        return default
 
 
 def start_ralph_loop(
@@ -61,6 +91,9 @@ def start_ralph_loop(
             completion_criteria={"marker_path": ".seed/done"}
         )
     """
+    # 类型安全转换：max_iterations 必须是正整数
+    safe_max_iterations = _safe_int_convert(max_iterations, default=1000, min_val=1)
+
     # 解析任务文件路径
     task_path = Path(task_prompt_file)
     if not task_path.is_absolute():
@@ -84,7 +117,7 @@ def start_ralph_loop(
         "ralph_id": ralph_id,
         "task_file": str(task_path),
         "completion_type": completion_type,
-        "max_iterations": max_iterations,
+        "max_iterations": safe_max_iterations,
         "completion_criteria": completion_criteria or {},
         "status": "pending",
     }
@@ -100,7 +133,7 @@ def start_ralph_loop(
 - ID: {ralph_id}
 - Task: {task_path}
 - Completion: {completion_type}
-- Max Iterations: {max_iterations}
+- Max Iterations: {safe_max_iterations}
 
 To execute, use: check_ralph_status("{ralph_id}") or run Ralph Loop via scheduler.
 

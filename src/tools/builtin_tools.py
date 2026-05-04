@@ -307,6 +307,21 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
         File content with line numbers, or error message.
     """
     try:
+        # 类型安全转换：start 和 count 必须是正整数
+        try:
+            start = int(start) if isinstance(start, str) else int(start)
+            if start < 1:
+                start = 1
+        except (ValueError, TypeError):
+            start = 1
+
+        try:
+            count = int(count) if isinstance(count, str) else int(count)
+            if count < 1:
+                count = 100
+        except (ValueError, TypeError):
+            count = 100
+
         resolved_path = _resolve_path(path)
         content = None
         detected_encoding = "utf-8"
@@ -573,6 +588,14 @@ def code_as_policy(
         if len(code) > MAX_CODE_LENGTH:
             return f"Error: Code exceeds maximum length ({MAX_CODE_LENGTH} chars) for security"
 
+        # 类型安全转换：timeout 必须是正整数
+        try:
+            timeout = int(timeout) if isinstance(timeout, str) else int(timeout)
+            if timeout <= 0:
+                timeout = DEFAULT_EXECUTION_TIMEOUT
+        except (ValueError, TypeError):
+            timeout = DEFAULT_EXECUTION_TIMEOUT
+
         cwd = _resolve_execution_cwd(cwd)
         language = language.lower()
 
@@ -642,6 +665,14 @@ async def code_as_policy_async(
     try:
         if len(code) > MAX_CODE_LENGTH:
             return f"Error: Code exceeds maximum length ({MAX_CODE_LENGTH} chars) for security"
+
+        # 类型安全转换：timeout 必须是正整数
+        try:
+            timeout = int(timeout) if isinstance(timeout, str) else int(timeout)
+            if timeout <= 0:
+                timeout = DEFAULT_EXECUTION_TIMEOUT
+        except (ValueError, TypeError):
+            timeout = DEFAULT_EXECUTION_TIMEOUT
 
         cwd = _resolve_execution_cwd(cwd)
         language = language.lower()
