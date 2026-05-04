@@ -284,23 +284,33 @@ class LongTermArchiveLayer:
         return await self.archive_session(event_stream.session_id, events, metadata)
 
     def _store_events(self, archive_id: str, events: list[dict[str, Any]]) -> None:
-        """存储事件详情"""
+        """存储事件详情 - 使用批量插入优化"""
+        if not events:
+            return
+
+        # 构建批量数据
+        batch_data = []
         for event in events:
             event_data_json = json.dumps(event.get("data", {}), ensure_ascii=False)
-            self._ensure_conn().execute(
-                """
-                INSERT INTO archive_events
-                    (archive_id, event_id, event_type, event_data, timestamp)
-                VALUES (?, ?, ?, ?, ?)
-            """,
+            batch_data.append(
                 (
                     archive_id,
                     event.get("id", 0),
                     event.get("type", "unknown"),
                     event_data_json,
                     event.get("timestamp", 0),
-                ),
+                )
             )
+
+        # 执行批量插入
+        self._ensure_conn().executemany(
+            """
+            INSERT INTO archive_events
+                (archive_id, event_id, event_type, event_data, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        """,
+            batch_data,
+        )
 
     def _update_fts_index(
         self,

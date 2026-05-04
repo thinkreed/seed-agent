@@ -868,13 +868,21 @@ class SessionDB:
         return batch, fts_batch
 
     def _insert_fts_index(self, cursor, fts_batch: list[tuple], start_id: int):
-        """插入 FTS 索引"""
+        """插入 FTS 索引 - 使用批量插入优化"""
+        if not fts_batch:
+            return
+
+        # 构建批量数据
+        batch_data = []
         for i, (sid, tokenized, role) in enumerate(fts_batch):
             rowid = start_id + i
-            cursor.execute(
-                "INSERT INTO session_messages_fts(rowid, content, session_id, role) VALUES (?, ?, ?, ?)",
-                (rowid, tokenized, sid, role),
-            )
+            batch_data.append((rowid, tokenized, sid, role))
+
+        # 执行批量插入
+        cursor.executemany(
+            "INSERT INTO session_messages_fts(rowid, content, session_id, role) VALUES (?, ?, ?, ?)",
+            batch_data,
+        )
 
     def _upsert_session_meta(
         self,
