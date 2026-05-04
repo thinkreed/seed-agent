@@ -275,15 +275,31 @@ class MultiBrainOneHandOrchestrator:
                 suggestions=suggestions,
             )
 
-        except Exception as e:
-            logger.error(f"Analysis failed for {perspective}: {e}")
+        except (ConnectionError, TimeoutError, OSError) as e:
+            # 网络/连接错误：可恢复，记录警告
+            logger.warning(f"Network error during analysis for {perspective}: {type(e).__name__}: {e}")
             agent.status = "failed"
             return AnalysisResult(
                 perspective=perspective,
-                result=f"Error: {e}",
-                issues=[f"Analysis failed: {e}"],
+                result="",
+                issues=[],
                 suggestions=[],
             )
+        except (ValueError, KeyError) as e:
+            # 数据解析错误：记录警告
+            logger.warning(f"Parse error during analysis for {perspective}: {type(e).__name__}: {e}")
+            agent.status = "failed"
+            return AnalysisResult(
+                perspective=perspective,
+                result="",
+                issues=[],
+                suggestions=[],
+            )
+        except RuntimeError as e:
+            # 运行时错误：严重，需要记录并向上传播
+            logger.error(f"Runtime error during analysis for {perspective}: {e}")
+            agent.status = "failed"
+            raise
 
     def _parse_issues(self, text: str) -> list[str]:
         """解析问题列表"""

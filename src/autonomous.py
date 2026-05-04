@@ -101,6 +101,10 @@ class AutonomousExplorer:
         self._ralph_start_time: float = 0.0  # 当前会话开始时间
         self._accumulated_duration: float = 0.0  # 累计执行时间（跨会话）
         self._empty_response_count: int = 0  # 空响应计数
+        # TODO 内容缓存（TTL 30秒）
+        self._todo_cache: str | None = None
+        self._todo_cache_time: float = 0.0
+        self._todo_cache_ttl: float = 30.0  # 缓存有效期（秒）
         # 使用固定状态文件名，进程重启后可恢复
         self._state_file: Path = SEED_DIR / "ralph" / self.STATE_FILE_NAME
         # 从配置读取 IDLE_TIMEOUT
@@ -434,14 +438,29 @@ class AutonomousExplorer:
             # 不再恢复 history（无效操作）
 
     def _load_todo_content(self) -> str:
-        """加载TODO文件内容"""
+        """加载TODO文件内容（带 TTL 缓存）
+
+        缓存策略：30秒内不重复读取文件，减少 I/O 开销
+        """
+        now = time.time()
+        # 缓存有效，直接返回
+        if self._todo_cache is not None and now - self._todo_cache_time < self._todo_cache_ttl:
+            return self._todo_cache
+
         todo_path = SEED_DIR / "TODO.md"
         if todo_path.exists():
             try:
                 with open(todo_path, encoding="utf-8") as f:
-                    return f.read()
+                    content = f.read()
+                # 更新缓存
+                self._todo_cache = content
+                self._todo_cache_time = now
+                return content
             except OSError as e:
                 logger.warning(f"Failed to read TODO file {todo_path}: {e}")
+        # 缓存空内容
+        self._todo_cache = ""
+        self._todo_cache_time = now
         return ""
 
     async def _run_ralph_loop(self) -> str | None:

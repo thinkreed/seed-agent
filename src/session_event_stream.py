@@ -131,6 +131,10 @@ class SessionEventStream:
         self._event_index[event_id] = event  # 维护索引
         self._event_counter = event_id
 
+        # 自动清理：防止内存无限增长
+        if len(self._events) > MAX_IN_MEMORY_EVENTS:
+            self._auto_cleanup_events()
+
         # 持久化
         self._persist_event(event)
 
@@ -168,6 +172,50 @@ class SessionEventStream:
             events = [e for e in events if e["type"] in type_values]
 
         return events
+
+    def _auto_cleanup_events(self) -> int:
+        """自动清理旧事件（内部方法，emit_event 调用）
+
+        当事件数量超过 MAX_IN_MEMORY_EVENTS 时自动触发：
+        - 保留所有摘要标记事件
+        - 保留最近 80% 的事件
+        - 清理超过 MAX_EVENT_AGE_DAYS 的旧事件
+
+        Returns:
+            int: 清理的事件数量
+        """
+        # 保留摘要标记事件
+        summary_marker_ids = set()
+        for e in self._events:
+            if e.get("type") == EventType.SUMMARY_MARKER.value:
+                summary_marker_ids.add(e["id"])
+
+        cutoff_time = time.time() - (MAX_EVENT_AGE_DAYS * 24 * 3600)
+        original_count = len(self._events)
+        target_count = int(MAX_IN_MEMORY_EVENTS * 0.8)  # 目标保留 80%
+
+        # 过滤：保留摘要标记 + 最近事件 + 未过期事件
+        new_events = []
+        for e in self._events:
+            keep = (
+                e["id"] in summary_marker_ids
+                or e.get("timestamp", 0) >= cutoff_time
+                or e["id"] > self._event_counter - target_count
+            )
+            if keep:
+                new_events.append(e)
+
+        # 更新索引
+        self._events = new_events
+        self._event_index = {e["id"]: e for e in new_events}
+        cleaned_count = original_count - len(self._events)
+
+        if cleaned_count > 0:
+            logger.info(
+                f"Auto-cleaned {cleaned_count} events for session {self.session_id}"
+            )
+
+        return cleaned_count
 
     def cleanup_old_events(
         self,
