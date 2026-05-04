@@ -74,8 +74,8 @@ def _ensure_seed_dir() -> Path:
 # Ralph Loop 增强配置
 CONTEXT_RESET_ENABLED = True  # 默认开启
 CONTEXT_RESET_INTERVAL = 5  # 每5轮迭代重置
-RALPH_MAX_ITERATIONS = 1000  # 理论上限
-RALPH_MAX_DURATION = 8 * 60 * 60  # 8小时最大执行时间
+RALPH_MAX_ITERATIONS = 1000  # 理论上限（安全兜底）
+RALPH_MAX_DURATION = 8 * 60 * 60  # 8小时最大执行时间（安全兜底）
 
 # 任务完成检测标记（支持多语言）
 COMPLETION_MARKERS = [
@@ -91,7 +91,14 @@ COMPLETION_MARKERS = [
 
 
 class AutonomousExplorer:
-    """自主探索执行器 (Ralph Loop 增强)
+    """自主探索执行器 (Ralph Loop 增强 + 四层防御体系)
+
+    多层防御体系（方案 A+C 整合）：
+    - Layer 1: 预算警告注入（70%/90%阈值）
+    - Layer 2: 进度检测窗口（空转循环识别）
+    - Layer 3: 时间断路器（单任务时间上限）
+    - Layer 4: 递减重试预算（失败重试递减）
+    - 安全上限: 1000轮 + 8小时（继承 RalphLoop）
 
     新增特性:
     - completion_promise 检测：外部标志驱动退出
@@ -99,6 +106,11 @@ class AutonomousExplorer:
     - 防无限循环上限：迭代和时间双重保护
     - Session 事件记录：所有状态变更通过 Session 正确记录
     - 状态文件固定：进程重启后可恢复状态
+    - 配置化上限：从 AutonomousConfig 读取
+    - 渐进式预算：Agent 可感知剩余预算主动收尾
+    - 进度检测：识别空转循环提前终止
+    - 时间断路器：单任务时间上限保护
+    - 递减重试：失败重试预算递减避免无限重试
 
     修复:
     - 不直接修改 AgentLoop.history（这是兼容性接口，赋值无效）
@@ -126,20 +138,35 @@ class AutonomousExplorer:
         self._running: bool = False
         self._task: asyncio.Task[None] | None = None
         self._sop_content: str | None = None
+
+        # === Ralph Loop 状态 ===
         self._iteration_count: int = 0  # Ralph Loop 迭代计数
         self._ralph_start_time: float = 0.0  # 当前会话开始时间
         self._accumulated_duration: float = 0.0  # 累计执行时间（跨会话）
         self._empty_response_count: int = 0  # 空响应计数
+
+        # === 四层防御状态（新增）===
+        self._task_start_time: float = 0.0  # 当前任务开始时间（时间断路器）
+        self._action_history: list[dict[str, Any]] = []  # 工具调用历史（进度检测）
+        self._retry_count: int = 0  # 重试计数（递减预算）
+        self._budget_warning_sent: bool = False  # 70%警告已发送
+        self._budget_urgent_sent: bool = False  # 90%紧急警告已发送
+        self._time_warning_sent: bool = False  # 时间警告已发送
+
+        # === 配置 ===
+        from src.shared_config import get_autonomous_config
+
+        self._config = get_autonomous_config()
+        self._idle_timeout: float = self._config.idle_timeout_hours * 60 * 60
+
         # TODO 内容缓存（TTL 30秒）
         self._todo_cache: str | None = None
         self._todo_cache_time: float = 0.0
         self._todo_cache_ttl: float = 30.0  # 缓存有效期（秒）
+
         # 使用固定状态文件名，进程重启后可恢复
         self._state_file: Path = _ensure_seed_dir() / "ralph" / self.STATE_FILE_NAME
-        # 从配置读取 IDLE_TIMEOUT
-        from src.shared_config import get_autonomous_config
 
-        self._idle_timeout: float = get_autonomous_config().idle_timeout_hours * 60 * 60
         self._load_sop()
 
     def _load_sop(self) -> None:
@@ -238,6 +265,147 @@ class AutonomousExplorer:
             accumulated_duration=self._accumulated_duration,
             max_duration=RALPH_MAX_DURATION,
         )
+
+    # === 四层防御方法（方案 C 实现）===
+
+    def _get_retry_budget(self) -> int:
+        """获取当前重试的迭代预算（Layer 4: 递减重试预算）
+
+        Returns:
+            当前重试轮次的迭代上限
+            - 第1次重试: 100% 基础预算
+            - 第2次重试: 50% 基础预算
+            - 第3次重试: 25% 基础预算
+            - 超过上限: 0（不再执行）
+        """
+        base_budget = self._config.max_iterations_per_task
+
+        if self._retry_count >= len(self._config.retry_decay_factors):
+            logger.warning(
+                f"Retry count {self._retry_count} exceeds max "
+                f"{len(self._config.retry_decay_factors)}, returning 0 budget"
+            )
+            return 0
+
+        decay_factor = self._config.retry_decay_factors[self._retry_count]
+        budget = int(base_budget * decay_factor)
+        logger.info(
+            f"Retry budget: base={base_budget}, retry={self._retry_count}, "
+            f"factor={decay_factor}, budget={budget}"
+        )
+        return budget
+
+    async def _inject_budget_warning(self, current: int, max_budget: int) -> None:
+        """注入预算警告消息（Layer 1: 预算警告注入）
+
+        在剩余预算达到阈值时，注入警告消息到 Agent 对话历史，
+        让 Agent 能够感知剩余预算并主动规划收尾。
+
+        Args:
+            current: 当前已使用的迭代次数
+            max_budget: 最大迭代次数预算
+        """
+        percentage = current / max_budget * 100
+
+        # 70% 预算警告（仅发送一次）
+        if (
+            percentage >= self._config.budget_warning_threshold * 100
+            and not self._budget_warning_sent
+        ):
+            remaining = max_budget - current
+            warning_msg = (
+                f"[BUDGET WARNING] 已使用 {current}/{max_budget} 轮迭代 ({percentage:.0f}%)。"
+                f"剩余 {remaining} 轮。建议开始总结和收尾工作。"
+            )
+            self.agent.inject_system_message(warning_msg)
+            self._budget_warning_sent = True
+            logger.info(f"Budget warning injected at {percentage:.0f}%")
+
+        # 90% 紧急警告（仅发送一次）
+        if (
+            percentage >= self._config.budget_urgent_threshold * 100
+            and not self._budget_urgent_sent
+        ):
+            remaining = max_budget - current
+            urgent_msg = (
+                f"[BUDGET URGENT] 已使用 {current}/{max_budget} 轮 ({percentage:.0f}%)。"
+                f"仅剩 {remaining} 轮。请立即执行最终操作。"
+            )
+            self.agent.inject_system_message(urgent_msg)
+            self._budget_urgent_sent = True
+            logger.warning(f"Budget urgent warning injected at {percentage:.0f}%")
+
+    def _check_progress_window(self) -> bool:
+        """检查进度窗口，判断是否有有效进展（Layer 2: 进度检测窗口）
+
+        检测连续 N 轮无有效工具调用，判定为"空转循环"，建议提前终止。
+
+        Returns:
+            True: 有进展，继续执行
+            False: 无进展，建议终止（空转循环）
+        """
+        window_size = self._config.progress_detection_window
+
+        # 获取最近 N 轮的工具调用记录
+        recent_actions = self._action_history[-window_size:]
+
+        # 检查是否有实质性工具调用（排除 ask_user, search_history 等）
+        meaningful_actions = [
+            a for a in recent_actions
+            if a.get("tool") in self._config.meaningful_tools
+        ]
+
+        if len(meaningful_actions) == 0 and len(recent_actions) >= window_size:
+            logger.warning(
+                f"连续 {window_size} 轮无有效工具调用，判定为空转循环"
+            )
+            return False
+
+        return True
+
+    def _check_time_circuit_breaker(self) -> bool:
+        """检查时间断路器（Layer 3: 时间断路器）
+
+        单任务时间上限，防止长时间无产出运行。
+
+        Returns:
+            True: 未超时，继续执行
+            False: 超时，强制终止
+        """
+        elapsed = time.time() - self._task_start_time
+        max_duration = self._config.max_duration_per_task
+
+        if elapsed >= max_duration:
+            logger.warning(
+                f"任务执行时间 {elapsed:.0f}s 超过上限 {max_duration}s，触发断路器"
+            )
+            return False
+
+        # 在 80% 时间时注入时间警告（仅发送一次）
+        if (
+            elapsed >= max_duration * self._config.time_warning_threshold
+            and not self._time_warning_sent
+        ):
+            remaining = max_duration - elapsed
+            warning_msg = (
+                f"[TIME WARNING] 已运行 {elapsed:.0f}s，剩余 {remaining:.0f}s。"
+                f"请尽快完成当前操作。"
+            )
+            self.agent.inject_system_message(warning_msg)
+            self._time_warning_sent = True
+            logger.info(f"Time warning injected at {elapsed:.0f}s")
+
+        return True
+
+    def _reset_defense_state(self) -> None:
+        """重置四层防御状态（新任务开始时调用）"""
+        self._task_start_time = time.time()
+        self._action_history = []
+        self._budget_warning_sent = False
+        self._budget_urgent_sent = False
+        self._time_warning_sent = False
+
+    # === 原有方法 ===
 
     def _extract_critical_context(self) -> str | None:
         """提取关键上下文（包装共享模块函数，保持向后兼容）"""
@@ -375,24 +543,46 @@ class AutonomousExplorer:
         cleanup_state_file(self._state_file)
 
     async def _execute_autonomous_task(self):
-        """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强）
+        """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强 + 四层防御）
+
+        多层防御整合：
+        1. Layer 1: 预算警告注入（70%/90%阈值）- 在 _run_ralph_loop 中执行
+        2. Layer 2: 进度检测窗口（空转循环识别）- 在 _run_ralph_loop 中执行
+        3. Layer 3: 时间断路器（单任务时间上限）- 在 _run_ralph_loop 中执行
+        4. Layer 4: 递减重试预算（失败重试递减）- 此处设置预算
+        5. 安全上限: 1000轮 + 8小时（继承 RalphLoop）
 
         关键修复：
         1. 不保存/恢复 history（history 是兼容性接口，赋值无效）
         2. 使用 Session 标记自主探索开始/结束
         3. 通过 Session 创建上下文边界
         4. **启用 autonomous_mode 防止 Ask User 阻塞**
+        5. **使用配置化上限而非硬编码 100**
 
         这样确保：
         - Session 包含自主探索的完整事件历史
         - 用户交互时上下文可正确区分自主探索事件
         - Ask User 被自动跳过，不会阻塞等待用户响应
+        - 迭代预算可配置，支持递减重试
         """
         if not self._sop_content:
             logger.warning("No SOP loaded, skipping autonomous exploration")
             return None
 
         self._load_or_init_state()
+
+        # === Layer 4: 获取重试预算 ===
+        max_iterations = self._get_retry_budget()
+        if max_iterations == 0:
+            logger.warning(
+                f"Retry count {self._retry_count} exceeds max "
+                f"{self._config.max_retry_count}, stopping autonomous exploration"
+            )
+            return None
+
+        # === 重置四层防御状态 ===
+        self._reset_defense_state()
+
         todo_content = self._load_todo_content()
         prompt = self._build_autonomous_prompt(todo_content, bool(todo_content))
 
@@ -402,31 +592,35 @@ class AutonomousExplorer:
             {
                 "type": "autonomous_exploration",
                 "iteration": self._iteration_count,
+                "retry_count": self._retry_count,
+                "max_iterations_budget": max_iterations,
                 "todo_status": bool(todo_content),
             },
         )
 
-        logger.info("Starting autonomous exploration via Agent Loop (Ralph enhanced)")
+        logger.info(
+            f"Starting autonomous exploration (Ralph enhanced + 4-layer defense): "
+            f"budget={max_iterations}, retry={self._retry_count}"
+        )
 
         # 只保存/恢复 system_prompt 和 max_iterations
         # 不再操作 history（history 是兼容性接口，赋值无效）
         original_system_prompt = self.agent.system_prompt
         original_max_iterations = self.agent.max_iterations
 
-        # === 新增：启用 autonomous_mode ===
-        # 从配置读取 Ask User 跳过响应
-        from src.shared_config import get_autonomous_config
-
-        autonomous_config = get_autonomous_config()
+        # === 启用 autonomous_mode ===
         self.agent.set_autonomous_mode(
             enabled=True,
-            skip_response=autonomous_config.ask_user_skip_response,
+            skip_response=self._config.ask_user_skip_response,
         )
 
         try:
             self.agent.system_prompt = prompt
-            self.agent.max_iterations = 100
-            response = await self._run_ralph_loop()
+            # === 使用配置化预算（而非硬编码 100）===
+            self.agent.max_iterations = max_iterations
+
+            # 传入预算参数用于四层防御检查
+            response = await self._run_ralph_loop(max_iterations)
 
             if response:
                 logger.info(
@@ -440,8 +634,12 @@ class AutonomousExplorer:
                         "type": "autonomous_exploration",
                         "reason": "completed",
                         "response_length": len(response),
+                        "iterations_used": self._iteration_count,
                     },
                 )
+
+                # 成功完成，重置重试计数
+                self._retry_count = 0
 
                 if self.on_explore_complete:
                     if asyncio.iscoroutinefunction(self.on_explore_complete):
@@ -449,12 +647,22 @@ class AutonomousExplorer:
                     else:
                         self.on_explore_complete(response)
                 return response
-            logger.warning("Autonomous exploration returned empty response")
+
+            # === 失败处理：增加重试计数 ===
+            self._retry_count += 1
+            logger.warning(
+                f"Autonomous exploration returned empty response, "
+                f"retry_count now {self._retry_count}"
+            )
 
             # 创建失败标记
             self.agent.session.emit_event(
                 EventType.SESSION_END,
-                {"type": "autonomous_exploration", "reason": "empty_response"},
+                {
+                    "type": "autonomous_exploration",
+                    "reason": "empty_response",
+                    "retry_count": self._retry_count,
+                },
             )
             return None
 
@@ -462,18 +670,22 @@ class AutonomousExplorer:
             logger.exception(f"Autonomous exploration failed: {e}")
             self._persist_state(str(e))
 
+            # === 异常处理：增加重试计数 ===
+            self._retry_count += 1
+
             # 创建错误标记
             self.agent.session.emit_event(
                 EventType.ERROR_OCCURRED,
                 {
                     "error_type": "autonomous_exploration_failed",
                     "error_message": str(e)[:500],
+                    "retry_count": self._retry_count,
                 },
             )
             return None
 
         finally:
-            # === 新增：恢复正常模式 ===
+            # === 恢复正常模式 ===
             self.agent.set_autonomous_mode(enabled=False)
             self.agent.system_prompt = original_system_prompt
             self.agent.max_iterations = original_max_iterations
@@ -508,8 +720,15 @@ class AutonomousExplorer:
         self._todo_cache_time = now
         return ""
 
-    async def _run_ralph_loop(self) -> str | None:
-        """执行 Ralph Loop 主循环（增强版）
+    async def _run_ralph_loop(self, max_budget: int | None = None) -> str | None:
+        """执行 Ralph Loop 主循环（增强版 + 四层防御）
+
+        四层防御整合：
+        - Layer 1: 预算警告注入（70%/90%阈值）
+        - Layer 2: 进度检测窗口（空转循环识别）
+        - Layer 3: 时间断路器（单任务时间上限）
+        - Layer 4: 递减重试预算（由 _execute_autonomous_task 设置）
+        - 安全上限: 1000轮 + 8小时（继承 RalphLoop）
 
         增强特性：
         - 超时保护：LLM 单次调用有超时限制
@@ -517,17 +736,20 @@ class AutonomousExplorer:
         - 详细调试日志：记录 LLM 调用前/后状态、工具执行
         - 错误恢复退避：连续失败后等待再重试
 
+        Args:
+            max_budget: 迭代预算上限（由 _get_retry_budget 计算）
+
         Returns:
             最终响应文本，或 None 表示失败
         """
-        from src.shared_config import get_autonomous_config
+        llm_timeout = self._config.llm_call_timeout_seconds
+        failure_threshold = self._config.consecutive_failure_threshold
+        backoff_duration = self._config.backoff_duration_seconds
+        max_backoff = self._config.max_backoff_multiplier * backoff_duration
+        debug_enabled = self._config.debug_logging_enabled
 
-        autonomous_config = get_autonomous_config()
-        llm_timeout = autonomous_config.llm_call_timeout_seconds
-        failure_threshold = autonomous_config.consecutive_failure_threshold
-        backoff_duration = autonomous_config.backoff_duration_seconds
-        max_backoff = autonomous_config.max_backoff_multiplier * backoff_duration
-        debug_enabled = autonomous_config.debug_logging_enabled
+        # 使用传入预算或配置默认值
+        budget = max_budget or self._config.max_iterations_per_task
 
         response: str | None = None
         next_prompt: str = "继续执行自主探索任务"
@@ -536,12 +758,34 @@ class AutonomousExplorer:
         while True:
             self._iteration_count += 1
 
-            # === 安全上限检查 ===
+            # === 多层防御检查 ===
+
+            # Layer 1: 预算警告注入
+            await self._inject_budget_warning(self._iteration_count, budget)
+
+            # Layer 2: 进度检测窗口
+            if not self._check_progress_window():
+                logger.info("进度检测判定空转，提前终止")
+                break
+
+            # Layer 3: 时间断路器
+            if not self._check_time_circuit_breaker():
+                logger.info("时间断路器触发，强制终止")
+                break
+
+            # 安全上限检查（继承 RalphLoop）
             if self._check_safety_limits():
                 logger.info(
                     "Ralph Loop safety limit reached, cleaning up state for next session"
                 )
                 self._cleanup_state()
+                break
+
+            # 预算上限检查（配置化）
+            if self._iteration_count >= budget:
+                logger.info(
+                    f"迭代预算耗尽 ({self._iteration_count}/{budget}), 结束循环"
+                )
                 break
 
             # === 完成标志检查 ===
@@ -557,9 +801,10 @@ class AutonomousExplorer:
             # === 调试日志：LLM 调用前 ===
             if debug_enabled:
                 logger.debug(
-                    f"[Ralph Loop] Iteration {self._iteration_count}: "
+                    f"[Ralph Loop] Iteration {self._iteration_count}/{budget}: "
                     f"prompt='{next_prompt[:100]}...', "
-                    f"failures={consecutive_failures}/{failure_threshold}"
+                    f"failures={consecutive_failures}/{failure_threshold}, "
+                    f"time_elapsed={time.time() - self._task_start_time:.0f}s"
                 )
 
             # === LLM 调用（带超时保护）===
@@ -568,6 +813,17 @@ class AutonomousExplorer:
                     self.agent.run(next_prompt, wait_for_user=False),
                     timeout=llm_timeout,
                 )
+
+                # === 记录工具调用历史（进度检测用）===
+                # 从 Session 获取最近的工具调用
+                recent_events = self.agent.session.get_events(start_id=-5)
+                for event in recent_events:
+                    if event["type"] == EventType.TOOL_CALL.value:
+                        tool_data = event.get("data", {})
+                        self._action_history.append({
+                            "tool": tool_data.get("tool_name", ""),
+                            "iteration": self._iteration_count,
+                        })
 
                 # === 调试日志：LLM 调用成功 ===
                 if debug_enabled:

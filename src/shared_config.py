@@ -155,8 +155,17 @@ class RalphLoopConfig:
 
 @dataclass
 class AutonomousConfig:
-    """自主探索配置"""
+    """自主探索配置（方案 A+C 整合：配置化上限 + 渐进式预算）
 
+    多层防御体系：
+    - Layer 1: 预算警告注入（70%/90%阈值）
+    - Layer 2: 进度检测窗口（空转循环识别）
+    - Layer 3: 时间断路器（单任务时间上限）
+    - Layer 4: 递减重试预算（失败重试递减）
+    - 安全上限: 1000轮 + 8小时（继承 RalphLoop）
+    """
+
+    # === 现有字段 ===
     idle_timeout_hours: int = 2  # 空闲触发时间（小时）
     completion_prompt_tokens: int = 500  # 完成提示 token 数
     max_exploration_rounds: int = 5  # 最大探索轮数
@@ -176,6 +185,32 @@ class AutonomousConfig:
 
     # 调试日志
     debug_logging_enabled: bool = True
+
+    # === 方案 A: 配置化上限 ===
+    max_iterations_per_task: int = 100  # 单任务迭代上限（可配置）
+    max_iterations_high: int = 300  # 高复杂度任务上限
+    max_iterations_research: int = 500  # 研究型任务上限
+    max_duration_per_task: int = 1800  # 单任务时间上限（秒，30分钟）
+    max_retry_count: int = 3  # 最大重试次数
+
+    # === 方案 C: 渐进式预算 ===
+    budget_warning_threshold: float = 0.70  # 预算警告阈值（70%）
+    budget_urgent_threshold: float = 0.90  # 紧急警告阈值（90%）
+    progress_detection_window: int = 5  # 进度检测窗口大小（连续N轮）
+    time_warning_threshold: float = 0.80  # 时间警告阈值（80%）
+    retry_decay_factors: list[float] = field(
+        default_factory=lambda: [1.0, 0.5, 0.25]  # 首次100%, 二次50%, 三次25%
+    )
+    meaningful_tools: list[str] = field(
+        default_factory=lambda: [
+            "file_read",
+            "file_write",
+            "file_edit",
+            "code_as_policy",
+            "search_grep",
+            "search_glob",
+        ]
+    )
 
 
 @dataclass

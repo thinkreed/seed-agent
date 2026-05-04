@@ -1,8 +1,8 @@
-"""自主探索模块单元测试
+"""自主探索模块单元测试（四层防御体系增强版）
 
 测试覆盖:
 - CompletionType enum: 完成验证类型
-- AutonomousExplorer 初始化: SOP 加载、状态初始化
+- AutonomousExplorer 初始化: SOP 加载、状态初始化、四层防御状态
 - record_activity / get_idle_time: 空闲时间计算
 - _check_completion_promise: 完成标志检测与清理
 - _check_safety_limits: 迭代和时间安全上限
@@ -12,6 +12,14 @@
 - _extract_task_signals: 任务信号提取
 - _build_task_instruction: 任务指令构建
 - _handle_response: 空响应处理
+
+新增四层防御测试:
+- _get_retry_budget: 递减预算计算
+- _inject_budget_warning: 预算警告注入
+- _check_progress_window: 进度检测窗口
+- _check_time_circuit_breaker: 时间断路器
+- _reset_defense_state: 防御状态重置
+- AutonomousConfig 新增字段验证
 """
 
 import sys
@@ -20,7 +28,7 @@ import time
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
@@ -53,8 +61,40 @@ class TestCompletionType(unittest.TestCase):
         self.assertEqual(CompletionType("file_exists"), CompletionType.FILE_EXISTS)
 
 
+class TestAutonomousConfigFields(unittest.TestCase):
+    """测试 AutonomousConfig 新增字段（方案 A+C）"""
+
+    def test_config_fields_exist(self):
+        """测试所有新增配置字段存在"""
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+
+        # 方案 A: 配置化上限
+        self.assertEqual(config.max_iterations_per_task, 100)
+        self.assertEqual(config.max_iterations_high, 300)
+        self.assertEqual(config.max_iterations_research, 500)
+        self.assertEqual(config.max_duration_per_task, 1800)
+        self.assertEqual(config.max_retry_count, 3)
+
+        # 方案 C: 渐进式预算
+        self.assertEqual(config.budget_warning_threshold, 0.70)
+        self.assertEqual(config.budget_urgent_threshold, 0.90)
+        self.assertEqual(config.progress_detection_window, 5)
+        self.assertEqual(config.time_warning_threshold, 0.80)
+
+        # retry_decay_factors 默认值
+        self.assertEqual(config.retry_decay_factors, [1.0, 0.5, 0.25])
+
+        # meaningful_tools 默认值
+        expected_tools = [
+            "file_read", "file_write", "file_edit",
+            "code_as_policy", "search_grep", "search_glob"
+        ]
+        self.assertEqual(config.meaningful_tools, expected_tools)
+
+
 class TestAutonomousExplorerInit(unittest.TestCase):
-    """测试 AutonomousExplorer 初始化"""
+    """测试 AutonomousExplorer 初始化（四层防御状态）"""
 
     def setUp(self):
         """设置测试环境"""
@@ -65,6 +105,7 @@ class TestAutonomousExplorerInit(unittest.TestCase):
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
         self.mock_agent.max_iterations = 50
+        self.mock_agent.inject_system_message = MagicMock()
 
     def test_init_basic(self):
         """测试基本初始化"""
@@ -83,13 +124,32 @@ class TestAutonomousExplorerInit(unittest.TestCase):
         explorer = AutonomousExplorer(self.mock_agent, on_explore_complete=callback)
         self.assertEqual(explorer.on_explore_complete, callback)
 
-    def test_idle_timeout_constant(self):
+    def test_init_defense_state(self):
+        """测试四层防御状态初始化"""
+        explorer = AutonomousExplorer(self.mock_agent)
+
+        # 验证四层防御状态变量
+        self.assertEqual(explorer._task_start_time, 0.0)
+        self.assertEqual(explorer._action_history, [])
+        self.assertEqual(explorer._retry_count, 0)
+        self.assertFalse(explorer._budget_warning_sent)
+        self.assertFalse(explorer._budget_urgent_sent)
+        self.assertFalse(explorer._time_warning_sent)
+
+    def test_idle_timeout_from_config(self):
         """测试空闲超时从配置读取"""
         from src.shared_config import get_autonomous_config
         config = get_autonomous_config()
         expected_timeout = config.idle_timeout_hours * 60 * 60  # 默认2小时
         explorer = AutonomousExplorer(self.mock_agent)
         self.assertEqual(explorer._idle_timeout, expected_timeout)
+
+    def test_config_reference(self):
+        """测试配置引用"""
+        explorer = AutonomousExplorer(self.mock_agent)
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        self.assertEqual(explorer._config, config)
 
 
 class TestActivityTracking(unittest.TestCase):
@@ -102,6 +162,7 @@ class TestActivityTracking(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_record_activity(self):
@@ -130,6 +191,7 @@ class TestCompletionPromise(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_completion_promise_detected(self):
@@ -138,7 +200,8 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("DONE")
 
-            with patch('autonomous.COMPLETION_PROMISE_FILE', promise_file):
+            # 使用动态函数替代常量 patch
+            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertTrue(result)
                 # 文件应被删除
@@ -150,7 +213,7 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("COMPLETE")
 
-            with patch('autonomous.COMPLETION_PROMISE_FILE', promise_file):
+            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertTrue(result)
 
@@ -160,7 +223,7 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("TASK_FINISHED")
 
-            with patch('autonomous.COMPLETION_PROMISE_FILE', promise_file):
+            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertTrue(result)
 
@@ -170,7 +233,7 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("IN_PROGRESS")
 
-            with patch('autonomous.COMPLETION_PROMISE_FILE', promise_file):
+            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertFalse(result)
                 # 文件不应被删除
@@ -181,7 +244,7 @@ class TestCompletionPromise(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             promise_file = Path(tmpdir) / "completion_promise"
 
-            with patch('autonomous.COMPLETION_PROMISE_FILE', promise_file):
+            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertFalse(result)
 
@@ -196,6 +259,7 @@ class TestSafetyLimits(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_iteration_limit(self):
@@ -226,6 +290,202 @@ class TestSafetyLimits(unittest.TestCase):
         self.assertFalse(self.explorer._check_safety_limits())
 
 
+class TestFourLayerDefense(unittest.TestCase):
+    """测试四层防御机制（方案 C）"""
+
+    def setUp(self):
+        """设置测试环境"""
+        self.mock_agent = MagicMock()
+        self.mock_agent.system_prompt = "Test"
+        self.mock_agent.history = []
+        self.mock_agent.skill_loader = None
+        self.mock_agent.tools = MagicMock()
+        self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
+        self.explorer = AutonomousExplorer(self.mock_agent)
+
+    # === Layer 4: 递减重试预算 ===
+
+    def test_retry_budget_first_attempt(self):
+        """测试首次尝试预算（100%）"""
+        self.explorer._retry_count = 0
+        budget = self.explorer._get_retry_budget()
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        self.assertEqual(budget, config.max_iterations_per_task)
+
+    def test_retry_budget_second_attempt(self):
+        """测试第二次重试预算（50%）"""
+        self.explorer._retry_count = 1
+        budget = self.explorer._get_retry_budget()
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        expected = int(config.max_iterations_per_task * 0.5)
+        self.assertEqual(budget, expected)
+
+    def test_retry_budget_third_attempt(self):
+        """测试第三次重试预算（25%）"""
+        self.explorer._retry_count = 2
+        budget = self.explorer._get_retry_budget()
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        expected = int(config.max_iterations_per_task * 0.25)
+        self.assertEqual(budget, expected)
+
+    def test_retry_budget_exceeds_max(self):
+        """测试超过最大重试次数"""
+        self.explorer._retry_count = 10  # 远超过 max_retry_count
+        budget = self.explorer._get_retry_budget()
+        self.assertEqual(budget, 0)
+
+    # === Layer 1: 预算警告注入 ===
+
+    def test_budget_warning_70_percent(self):
+        """测试 70% 预算警告注入"""
+        import asyncio
+
+        self.explorer._budget_warning_sent = False
+        self.explorer._budget_urgent_sent = False
+
+        # 模拟 70% 使用率
+        asyncio.run(self.explorer._inject_budget_warning(70, 100))
+
+        # 验证警告消息已注入
+        self.assertTrue(self.explorer._budget_warning_sent)
+        self.assertFalse(self.explorer._budget_urgent_sent)  # 未触发 90%
+        self.mock_agent.inject_system_message.assert_called_once()
+
+        # 验证消息内容
+        call_args = self.mock_agent.inject_system_message.call_args[0][0]
+        self.assertIn("[BUDGET WARNING]", call_args)
+        self.assertIn("70%", call_args)
+
+    def test_budget_warning_90_percent(self):
+        """测试 90% 紧急警告注入"""
+        import asyncio
+
+        self.explorer._budget_warning_sent = False
+        self.explorer._budget_urgent_sent = False
+
+        # 模拟 90% 使用率
+        asyncio.run(self.explorer._inject_budget_warning(90, 100))
+
+        # 验证两个警告都已触发
+        self.assertTrue(self.explorer._budget_warning_sent)
+        self.assertTrue(self.explorer._budget_urgent_sent)
+        self.assertEqual(self.mock_agent.inject_system_message.call_count, 2)
+
+        # 验证紧急消息内容
+        calls = self.mock_agent.inject_system_message.call_args_list
+        urgent_call = calls[1][0][0]
+        self.assertIn("[BUDGET URGENT]", urgent_call)
+
+    def test_budget_warning_no_duplicate(self):
+        """测试警告不重复发送"""
+        import asyncio
+
+        self.explorer._budget_warning_sent = True  # 已发送过
+
+        # 再次调用不应发送
+        asyncio.run(self.explorer._inject_budget_warning(75, 100))
+
+        # 验证未重复调用
+        self.mock_agent.inject_system_message.assert_not_called()
+
+    # === Layer 2: 进度检测窗口 ===
+
+    def test_progress_window_has_progress(self):
+        """测试有进展的进度检测"""
+        # 添加有意义的工具调用历史
+        self.explorer._action_history = [
+            {"tool": "file_read", "iteration": 1},
+            {"tool": "file_write", "iteration": 2},
+            {"tool": "code_as_policy", "iteration": 3},
+        ]
+
+        result = self.explorer._check_progress_window()
+        self.assertTrue(result)
+
+    def test_progress_window_empty_loop(self):
+        """测试空转循环检测"""
+        # 设置足够的历史（达到窗口大小）
+        window_size = self.explorer._config.progress_detection_window
+        self.explorer._action_history = [
+            {"tool": "ask_user", "iteration": i}  # 不在 meaningful_tools 中
+            for i in range(window_size)
+        ]
+
+        result = self.explorer._check_progress_window()
+        self.assertFalse(result)
+
+    def test_progress_window_insufficient_history(self):
+        """测试历史不足时不判定空转"""
+        # 只有 2 条历史（窗口大小为 5）
+        self.explorer._action_history = [
+            {"tool": "ask_user", "iteration": 1},
+            {"tool": "ask_user", "iteration": 2},
+        ]
+
+        result = self.explorer._check_progress_window()
+        self.assertTrue(result)  # 历史不足，不判定空转
+
+    # === Layer 3: 时间断路器 ===
+
+    def test_time_circuit_breaker_not_triggered(self):
+        """测试时间断路器未触发"""
+        self.explorer._task_start_time = time.time()
+        self.explorer._time_warning_sent = False
+
+        result = self.explorer._check_time_circuit_breaker()
+        self.assertTrue(result)
+
+    def test_time_circuit_breaker_triggered(self):
+        """测试时间断路器触发"""
+        # 设置开始时间为很久以前
+        max_duration = self.explorer._config.max_duration_per_task
+        self.explorer._task_start_time = time.time() - max_duration - 1
+
+        result = self.explorer._check_time_circuit_breaker()
+        self.assertFalse(result)
+
+    def test_time_warning_80_percent(self):
+        """测试 80% 时间警告"""
+        max_duration = self.explorer._config.max_duration_per_task
+        self.explorer._task_start_time = time.time() - max_duration * 0.85
+        self.explorer._time_warning_sent = False
+
+        self.explorer._check_time_circuit_breaker()
+
+        # 验证警告已发送
+        self.assertTrue(self.explorer._time_warning_sent)
+        self.mock_agent.inject_system_message.assert_called_once()
+
+        # 验证消息内容
+        call_args = self.mock_agent.inject_system_message.call_args[0][0]
+        self.assertIn("[TIME WARNING]", call_args)
+
+    # === 防御状态重置 ===
+
+    def test_reset_defense_state(self):
+        """测试防御状态重置"""
+        # 设置一些非初始状态
+        self.explorer._task_start_time = 0.0
+        self.explorer._action_history = [{"tool": "test", "iteration": 1}]
+        self.explorer._budget_warning_sent = True
+        self.explorer._budget_urgent_sent = True
+        self.explorer._time_warning_sent = True
+
+        # 重置
+        self.explorer._reset_defense_state()
+
+        # 验证状态已重置
+        self.assertGreater(self.explorer._task_start_time, 0.0)
+        self.assertEqual(self.explorer._action_history, [])
+        self.assertFalse(self.explorer._budget_warning_sent)
+        self.assertFalse(self.explorer._budget_urgent_sent)
+        self.assertFalse(self.explorer._time_warning_sent)
+
+
 class TestContextExtraction(unittest.TestCase):
     """测试关键上下文提取"""
 
@@ -236,6 +496,7 @@ class TestContextExtraction(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_empty_history(self):
@@ -291,6 +552,7 @@ class TestStatePersistence(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.tmpdir = tempfile.TemporaryDirectory()
         self.state_file = Path(self.tmpdir.name) / "ralph_state.json"
 
@@ -367,6 +629,7 @@ class TestTodoLoading(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.tmpdir = tempfile.TemporaryDirectory()
 
     def tearDown(self):
@@ -407,6 +670,7 @@ class TestTaskSignals(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_extract_signals_from_todo(self):
@@ -440,6 +704,7 @@ class TestTaskInstruction(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_build_instruction_with_todo(self):
@@ -477,6 +742,7 @@ class TestResponseHandling(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_handle_empty_response_first(self):
@@ -521,6 +787,7 @@ class TestAutonomousMode(unittest.TestCase):
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
         self.mock_agent.set_autonomous_mode = MagicMock()
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_set_autonomous_mode_called(self):
@@ -552,6 +819,7 @@ class TestTimeoutProtection(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_timeout_config_available(self):
@@ -583,6 +851,7 @@ class TestErrorRecovery(unittest.TestCase):
         self.mock_agent.skill_loader = None
         self.mock_agent.tools = MagicMock()
         self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.inject_system_message = MagicMock()
         self.explorer = AutonomousExplorer(self.mock_agent)
 
     def test_backoff_config(self):
@@ -615,6 +884,26 @@ class TestErrorRecovery(unittest.TestCase):
             # 验证计算正确
             self.assertGreater(expected, 0)
             self.assertLessEqual(expected, max_backoff)
+
+
+class TestInjectSystemMessage(unittest.TestCase):
+    """测试 inject_system_message 方法（新增）"""
+
+    def setUp(self):
+        """设置测试环境"""
+        self.mock_agent = MagicMock()
+        self.mock_agent.inject_system_message = MagicMock()
+
+    def test_inject_system_message_exists(self):
+        """测试 inject_system_message 方法存在"""
+        self.assertTrue(hasattr(self.mock_agent, 'inject_system_message'))
+
+    def test_inject_system_message_called(self):
+        """测试 inject_system_message 被正确调用"""
+        test_message = "[BUDGET WARNING] Test message"
+        self.mock_agent.inject_system_message(test_message)
+
+        self.mock_agent.inject_system_message.assert_called_once_with(test_message)
 
 
 if __name__ == '__main__':

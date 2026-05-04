@@ -744,6 +744,28 @@ class AgentLoop:
         self.harness.set_autonomous_mode(enabled, skip_response)
         logger.info(f"AgentLoop autonomous mode set: {enabled}")
 
+    def inject_system_message(self, message: str) -> None:
+        """注入系统消息到对话历史（用于预算警告等）
+
+        Args:
+            message: 系统消息内容
+
+        Note:
+            此方法用于在自主探索过程中注入预算警告、时间警告等
+            系统级消息，让 Agent 能够感知剩余预算并主动规划收尾。
+
+        用法：
+            agent.inject_system_message(
+                "[BUDGET WARNING] 已使用 70/100 轮迭代 (70%)。剩余 30 轮。"
+            )
+        """
+        # 通过 Session 事件流注入系统消息
+        self.session.emit_event(
+            EventType.SYSTEM_MESSAGE,
+            {"content": message, "source": "autonomous_budget_warning"},
+        )
+        logger.info(f"System message injected: {message[:100]}...")
+
     # === Skill Outcome 记录 ===
 
     def _record_load_skill_if_needed(

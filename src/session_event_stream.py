@@ -62,6 +62,7 @@ class EventType(StrEnum):
     SESSION_END = "session_end"  # 会话结束
     ERROR_OCCURRED = "error_occurred"  # 错误发生
     STATE_PERSISTED = "state_persisted"  # 状态持久化
+    SYSTEM_MESSAGE = "system_message"  # 系统消息注入（预算警告等）
 
     # 用户交互事件 (Ask User 机制)
     USER_QUESTION = "user_question"  # 发起问题
@@ -608,6 +609,7 @@ class SessionEventStream:
             EventType.USER_INPUT,
             EventType.LLM_RESPONSE,
             EventType.TOOL_RESULT,
+            EventType.SYSTEM_MESSAGE,  # 系统消息（预算警告等）
         ]
 
         # 使用边界标记后的起始 ID
@@ -650,6 +652,12 @@ class SessionEventStream:
                 "tool_call_id": data.get("tool_call_id"),
                 "content": data.get("content", ""),
             }
+
+        if event_type == EventType.SYSTEM_MESSAGE.value:
+            # 系统消息（预算警告等）作为 user 消息注入，确保 LLM 可见
+            content = data.get("content", "")
+            if content:
+                return {"role": "user", "content": content}
 
         return None
 
