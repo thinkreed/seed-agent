@@ -61,11 +61,34 @@ class RalphLoopConfig:
 
 @dataclass
 class AutonomousConfig:
-    """自主探索配置"""
+    """自主探索配置（增强版）
+
+    新增特性：
+    - LLM 调用超时保护
+    - Ask User 自动跳过策略
+    - 错误恢复退避机制
+    - 调试日志级别控制
+    """
 
     idle_timeout_hours: int = 2  # 空闲触发时间（小时）
     completion_prompt_tokens: int = 500  # 完成提示 token 数
     max_exploration_rounds: int = 5  # 最大探索轮数
+
+    # === 新增：超时保护 ===
+    llm_call_timeout_seconds: int = 300  # LLM 单次调用超时（5分钟）
+    iteration_timeout_seconds: int = 600  # 单轮迭代总超时（10分钟）
+
+    # === 新增：Ask User 跳过策略 ===
+    ask_user_skip_response: str = "[AUTONOMOUS_SKIP] 自主模式自动跳过用户确认，继续执行"
+    ask_user_auto_confirm: bool = True  # 自动确认（而非跳过整个任务）
+
+    # === 新增：错误恢复退避 ===
+    consecutive_failure_threshold: int = 3  # 连续失败阈值
+    backoff_duration_seconds: int = 60  # 退避等待时间（1分钟）
+    max_backoff_multiplier: int = 5  # 最大退避倍数（5分钟后重试）
+
+    # === 新增：调试日志 ===
+    debug_logging_enabled: bool = True  # 启用详细调试日志
 
 
 @dataclass

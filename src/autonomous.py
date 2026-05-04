@@ -353,10 +353,12 @@ class AutonomousExplorer:
         1. 不保存/恢复 history（history 是兼容性接口，赋值无效）
         2. 使用 Session 标记自主探索开始/结束
         3. 通过 Session 创建上下文边界
+        4. **启用 autonomous_mode 防止 Ask User 阻塞**
 
         这样确保：
         - Session 包含自主探索的完整事件历史
         - 用户交互时上下文可正确区分自主探索事件
+        - Ask User 被自动跳过，不会阻塞等待用户响应
         """
         if not self._sop_content:
             logger.warning("No SOP loaded, skipping autonomous exploration")
@@ -382,6 +384,15 @@ class AutonomousExplorer:
         # 不再操作 history（history 是兼容性接口，赋值无效）
         original_system_prompt = self.agent.system_prompt
         original_max_iterations = self.agent.max_iterations
+
+        # === 新增：启用 autonomous_mode ===
+        # 从配置读取 Ask User 跳过响应
+        from src.shared_config import get_autonomous_config
+        autonomous_config = get_autonomous_config()
+        self.agent.set_autonomous_mode(
+            enabled=True,
+            skip_response=autonomous_config.ask_user_skip_response,
+        )
 
         try:
             self.agent.system_prompt = prompt
@@ -433,6 +444,8 @@ class AutonomousExplorer:
             return None
 
         finally:
+            # === 新增：恢复正常模式 ===
+            self.agent.set_autonomous_mode(enabled=False)
             self.agent.system_prompt = original_system_prompt
             self.agent.max_iterations = original_max_iterations
             # 不再恢复 history（无效操作）
@@ -464,36 +477,130 @@ class AutonomousExplorer:
         return ""
 
     async def _run_ralph_loop(self) -> str | None:
-        """执行Ralph Loop主循环"""
-        response: str | None = None  # Initialize before loop to avoid UnboundLocalError
-        next_prompt: str = "继续执行自主探索任务"  # 初始 prompt
+        """执行 Ralph Loop 主循环（增强版）
+
+        增强特性：
+        - 超时保护：LLM 单次调用有超时限制
+        - 异常处理扩展：捕获所有异常类型，记录后继续
+        - 详细调试日志：记录 LLM 调用前/后状态、工具执行
+        - 错误恢复退避：连续失败后等待再重试
+
+        Returns:
+            最终响应文本，或 None 表示失败
+        """
+        from src.shared_config import get_autonomous_config
+
+        autonomous_config = get_autonomous_config()
+        llm_timeout = autonomous_config.llm_call_timeout_seconds
+        failure_threshold = autonomous_config.consecutive_failure_threshold
+        backoff_duration = autonomous_config.backoff_duration_seconds
+        max_backoff = autonomous_config.max_backoff_multiplier * backoff_duration
+        debug_enabled = autonomous_config.debug_logging_enabled
+
+        response: str | None = None
+        next_prompt: str = "继续执行自主探索任务"
+        consecutive_failures: int = 0
 
         while True:
             self._iteration_count += 1
 
+            # === 安全上限检查 ===
             if self._check_safety_limits():
                 logger.info(
                     "Ralph Loop safety limit reached, cleaning up state for next session"
                 )
-                self._cleanup_state()  # 清理状态，防止下次启动时立即达到上限
+                self._cleanup_state()
                 break
 
+            # === 完成标志检查 ===
             if self._check_completion_promise():
                 logger.info("Completion promise detected, exiting Ralph loop")
                 self._cleanup_state()
                 await self._notify_completion("DONE")
                 return "DONE"
 
+            # === 上下文重置 ===
             await self._reset_context_if_needed()
-            try:
-                response = await self.agent.run(next_prompt)
-            except (RuntimeError, OSError, ValueError, asyncio.CancelledError) as e:
-                logger.exception(
-                    f"Agent execution failed at iteration {self._iteration_count}"
+
+            # === 调试日志：LLM 调用前 ===
+            if debug_enabled:
+                logger.debug(
+                    f"[Ralph Loop] Iteration {self._iteration_count}: "
+                    f"prompt='{next_prompt[:100]}...', "
+                    f"failures={consecutive_failures}/{failure_threshold}"
                 )
-                response = f"Error: {e!s}"
+
+            # === LLM 调用（带超时保护）===
+            try:
+                response = await asyncio.wait_for(
+                    self.agent.run(next_prompt, wait_for_user=False),
+                    timeout=llm_timeout,
+                )
+
+                # === 调试日志：LLM 调用成功 ===
+                if debug_enabled:
+                    logger.debug(
+                        f"[Ralph Loop] Iteration {self._iteration_count}: "
+                        f"response='{response[:200] if response else 'None'}...', "
+                        f"length={len(response) if response else 0}"
+                    )
+
+                # 成功时重置失败计数
+                consecutive_failures = 0
+
+            except asyncio.TimeoutError:
+                # === 超时处理 ===
+                logger.warning(
+                    f"[Ralph Loop] Iteration {self._iteration_count}: "
+                    f"LLM call timeout ({llm_timeout}s), skipping iteration"
+                )
+                consecutive_failures += 1
+                response = f"[TIMEOUT] LLM call exceeded {llm_timeout}s limit"
+
+            except (
+                RuntimeError,
+                OSError,
+                ValueError,
+                asyncio.CancelledError,
+                KeyError,
+            ) as e:
+                # === 异常处理（扩展版）===
+                logger.warning(
+                    f"[Ralph Loop] Iteration {self._iteration_count}: "
+                    f"Agent execution error: {type(e).__name__}: {e!s}"
+                )
+                consecutive_failures += 1
+                response = f"Error: {type(e).__name__}: {e!s}"
+
+            except Exception as e:
+                # === 捕获所有未预期异常 ===
+                logger.exception(
+                    f"[Ralph Loop] Iteration {self._iteration_count}: "
+                    f"Unexpected error: {type(e).__name__}"
+                )
+                consecutive_failures += 1
+                response = f"Unexpected Error: {type(e).__name__}: {e!s}"
+
+            # === 状态持久化 ===
             self._persist_state(response or "")
 
+            # === 错误恢复退避 ===
+            if consecutive_failures >= failure_threshold:
+                # 计算退避时间（指数增长，上限 max_backoff）
+                backoff = min(
+                    backoff_duration * (2 ** (consecutive_failures - failure_threshold)),
+                    max_backoff,
+                )
+                logger.warning(
+                    f"[Ralph Loop] Consecutive failures {consecutive_failures}, "
+                    f"backing off for {backoff}s"
+                )
+                await asyncio.sleep(backoff)
+                # 重置计数（退避后）
+                if consecutive_failures >= failure_threshold * 2:
+                    consecutive_failures = 0
+
+            # === 完成检测 ===
             if response and any(marker in response for marker in COMPLETION_MARKERS):
                 logger.info(
                     f"Autonomous exploration completed at iteration {self._iteration_count}"
@@ -501,7 +608,7 @@ class AutonomousExplorer:
                 self._cleanup_state()
                 break
 
-            # 获取下一轮的 prompt（如果有）
+            # === 下一轮 prompt ===
             next_prompt = (
                 await self._handle_response(response) or "继续执行自主探索任务"
             )

@@ -155,6 +155,13 @@ class Harness:
     - 确定性钩子：关键节点自动触发预设动作
     - Ask User：真正的等待机制，支持用户交互
     - 取消支持：AbortSignal 机制，优雅取消执行
+    - 自主模式：autonomous_mode 下自动跳过 Ask User
+
+    Autonomous Mode（自主探索模式）：
+    - autonomous_mode=True 时，自动跳过 Ask User 工具调用
+    - 返回配置化的默认响应（ask_user_skip_response）
+    - 不阻塞等待用户输入，继续执行循环
+    - 适用于无人值守的自主探索场景
     """
 
     def __init__(
@@ -168,6 +175,8 @@ class Harness:
         context_window: int = 100000,
         enable_pruning: bool = True,
         hook_registry: LifecycleHookRegistry | None = None,
+        autonomous_mode: bool = False,
+        ask_user_skip_response: str | None = None,
     ):
         """初始化 Harness
 
@@ -181,6 +190,8 @@ class Harness:
             context_window: 上下文窗口大小
             enable_pruning: 是否启用智能裁剪
             hook_registry: 生命周期钩子注册中心（可选）
+            autonomous_mode: 自主探索模式（自动跳过 Ask User）
+            ask_user_skip_response: 自主模式下跳过 Ask User 的默认响应
         """
         self.llm_client = llm_client  # 大脑
         self.session = session  # 状态（只读访问）
@@ -195,6 +206,15 @@ class Harness:
 
         # 生命周期钩子
         self._hook_registry = hook_registry
+
+        # === 自主探索模式 ===
+        self.autonomous_mode = autonomous_mode
+        # 从配置读取默认响应（如果未提供）
+        if ask_user_skip_response is None:
+            from src.shared_config import get_autonomous_config
+            self._ask_user_skip_response = get_autonomous_config().ask_user_skip_response
+        else:
+            self._ask_user_skip_response = ask_user_skip_response
 
         # 当前任务（用于智能裁剪）
         self._current_task: str | None = None
@@ -428,6 +448,63 @@ class Harness:
             # **关键：检查是否触发了 ask_user 等待**
             pending_request = get_pending_ask_user_request()
             if pending_request:
+                # === 自主模式：自动跳过 Ask User ===
+                if self.autonomous_mode:
+                    logger.info(
+                        f"Autonomous mode: skipping ask_user request {pending_request.request_id}"
+                    )
+
+                    # 清理等待状态
+                    clear_ask_user_state()
+
+                    # 记录跳过事件（而非 USER_WAITING）
+                    self.session.emit_event(
+                        EventType.USER_RESPONSE,
+                        {
+                            "request_id": pending_request.request_id,
+                            "responses": [],
+                            "cancelled": False,
+                            "timeout": False,
+                            "autonomous_skip": True,
+                            "skip_reason": "autonomous_mode",
+                        },
+                    )
+
+                    # 修改工具结果为跳过响应（让 LLM 继续执行）
+                    first_tool_call_id = message["tool_calls"][0].get("id")
+                    for result in tool_results:
+                        if result.get("tool_call_id") == first_tool_call_id:
+                            result["content"] = self._ask_user_skip_response
+
+                    # 记录修改后的工具结果
+                    self.session.emit_event(
+                        EventType.TOOL_RESULT,
+                        {
+                            "tool_call_id": first_tool_call_id,
+                            "content": self._ask_user_skip_response,
+                        },
+                    )
+
+                    # 触发 SESSION_RESUME 钩子（而非 SESSION_PAUSE）
+                    await self._trigger_hook(
+                        HookPoint.SESSION_RESUME,
+                        {
+                            "reason": "autonomous_skip",
+                            "request": pending_request.to_dict(),
+                        },
+                    )
+
+                    # 继续执行循环（而非等待）
+                    return {
+                        "status": "continue",
+                        "response": response,
+                        "tool_results": tool_results,
+                        "continue_loop": True,
+                        "pending_request": None,
+                        "cancel_reason": None,
+                    }
+
+                # === 正常模式：等待用户响应 ===
                 # 发送等待事件到 Session
                 self.session.emit_event(
                     EventType.USER_WAITING,
@@ -454,7 +531,7 @@ class Harness:
                     "status": "waiting_for_user",
                     "response": response,
                     "tool_results": tool_results,
-                    "continue_loop": False,  # 暂停循环
+                    "continue_loop": False,  # 暀停循环
                     "pending_request": pending_request.to_dict(),
                     "cancel_reason": None,
                 }
@@ -1260,6 +1337,26 @@ class Harness:
         """
         self._current_task = task
         logger.debug(f"Current task set: {task[:50]}...")
+
+    def set_autonomous_mode(
+        self,
+        enabled: bool,
+        skip_response: str | None = None,
+    ) -> None:
+        """设置自主探索模式
+
+        Args:
+            enabled: 是否启用自主模式
+            skip_response: 自主模式下跳过 Ask User 的响应（可选，默认使用配置）
+
+        Note:
+            自主模式下，Ask User 工具调用会被自动跳过，
+            返回默认响应继续执行，不会阻塞等待用户输入。
+        """
+        self.autonomous_mode = enabled
+        if skip_response is not None:
+            self._ask_user_skip_response = skip_response
+        logger.info(f"Autonomous mode: {enabled}, skip_response={skip_response}")
 
     def _get_events_since_last_summary(self) -> list[dict[str, Any]]:
         """获取最近摘要标记之后的事件"""

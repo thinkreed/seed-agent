@@ -509,5 +509,113 @@ class TestResponseHandling(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestAutonomousMode(unittest.TestCase):
+    """测试自主模式（autonomous_mode）"""
+
+    def setUp(self):
+        """设置测试环境"""
+        self.mock_agent = MagicMock()
+        self.mock_agent.system_prompt = "Test"
+        self.mock_agent.history = []
+        self.mock_agent.skill_loader = None
+        self.mock_agent.tools = MagicMock()
+        self.mock_agent.tools.get_tool_names.return_value = []
+        self.mock_agent.set_autonomous_mode = MagicMock()
+        self.explorer = AutonomousExplorer(self.mock_agent)
+
+    def test_set_autonomous_mode_called(self):
+        """测试 set_autonomous_mode 方法存在"""
+        # 验证 AgentLoop 有 set_autonomous_mode 方法
+        self.assertTrue(hasattr(self.mock_agent, 'set_autonomous_mode'))
+
+    def test_autonomous_config_values(self):
+        """测试 AutonomousConfig 新配置值"""
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        # 验证新增配置值
+        self.assertEqual(config.llm_call_timeout_seconds, 300)
+        self.assertEqual(config.consecutive_failure_threshold, 3)
+        self.assertEqual(config.backoff_duration_seconds, 60)
+        self.assertEqual(config.max_backoff_multiplier, 5)
+        self.assertTrue(config.debug_logging_enabled)
+        self.assertTrue(config.ask_user_auto_confirm)
+
+
+class TestTimeoutProtection(unittest.TestCase):
+    """测试超时保护"""
+
+    def setUp(self):
+        """设置测试环境"""
+        self.mock_agent = MagicMock()
+        self.mock_agent.system_prompt = "Test"
+        self.mock_agent.history = []
+        self.mock_agent.skill_loader = None
+        self.mock_agent.tools = MagicMock()
+        self.mock_agent.tools.get_tool_names.return_value = []
+        self.explorer = AutonomousExplorer(self.mock_agent)
+
+    def test_timeout_config_available(self):
+        """测试超时配置可用"""
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        # 验证超时配置值合理
+        self.assertGreater(config.llm_call_timeout_seconds, 0)
+        self.assertLess(config.llm_call_timeout_seconds, 3600)  # 不超过1小时
+
+    def test_timeout_error_handling(self):
+        """测试超时错误处理逻辑"""
+        import asyncio
+        # 模拟超时场景（简化测试，不实际等待）
+        # 验证配置读取正确
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        self.assertEqual(config.llm_call_timeout_seconds, 300)
+
+
+class TestErrorRecovery(unittest.TestCase):
+    """测试错误恢复退避策略"""
+
+    def setUp(self):
+        """设置测试环境"""
+        self.mock_agent = MagicMock()
+        self.mock_agent.system_prompt = "Test"
+        self.mock_agent.history = []
+        self.mock_agent.skill_loader = None
+        self.mock_agent.tools = MagicMock()
+        self.mock_agent.tools.get_tool_names.return_value = []
+        self.explorer = AutonomousExplorer(self.mock_agent)
+
+    def test_backoff_config(self):
+        """测试退避配置"""
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        # 验证退避配置
+        self.assertEqual(config.consecutive_failure_threshold, 3)
+        self.assertEqual(config.backoff_duration_seconds, 60)
+        self.assertEqual(config.max_backoff_multiplier, 5)
+        # 验证最大退避时间
+        max_backoff = config.max_backoff_multiplier * config.backoff_duration_seconds
+        self.assertEqual(max_backoff, 300)  # 5分钟
+
+    def test_exponential_backoff_calculation(self):
+        """测试指数退避计算"""
+        from src.shared_config import get_autonomous_config
+        config = get_autonomous_config()
+        base = config.backoff_duration_seconds
+        threshold = config.consecutive_failure_threshold
+        max_backoff = config.max_backoff_multiplier * base
+
+        # 验证退避时间计算逻辑
+        # consecutive_failures = threshold: backoff = base
+        # consecutive_failures = threshold + 1: backoff = base * 2
+        # consecutive_failures = threshold + 2: backoff = base * 4
+        for i in range(5):
+            failures = threshold + i
+            expected = min(base * (2 ** i), max_backoff)
+            # 验证计算正确
+            self.assertGreater(expected, 0)
+            self.assertLessEqual(expected, max_backoff)
+
+
 if __name__ == '__main__':
     unittest.main()

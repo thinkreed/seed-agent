@@ -727,6 +727,25 @@ class AgentLoop:
         """获取当前的取消信号"""
         return self._abort_controller.signal
 
+    def set_autonomous_mode(
+        self,
+        enabled: bool,
+        skip_response: str | None = None,
+    ) -> None:
+        """设置自主探索模式
+
+        Args:
+            enabled: 是否启用自主模式
+            skip_response: 自主模式下跳过 Ask User 的响应（可选）
+
+        Note:
+            自主模式下，Ask User 工具调用会被 Harness 自动跳过，
+            返回默认响应继续执行，不会阻塞等待用户输入。
+            这是解决自主探索阻塞问题的核心机制。
+        """
+        self.harness.set_autonomous_mode(enabled, skip_response)
+        logger.info(f"AgentLoop autonomous mode set: {enabled}")
+
     # === Skill Outcome 记录 ===
 
     def _record_load_skill_if_needed(
