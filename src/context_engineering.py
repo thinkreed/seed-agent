@@ -611,7 +611,15 @@ class ProgressiveContextCompressor:
             response = await self._gateway.chat_completion(
                 self._model_id, [{"role": "user", "content": prompt}], tools=None
             )
-            summary = response["choices"][0]["message"]["content"]
+            choices = response.get("choices", [])
+            if not choices:
+                logger.warning("Light summary: LLM returned empty choices")
+                simplified = self._simplify_messages(messages)
+                return self._format_simplified(simplified)
+            summary = choices[0].get("message", {}).get("content", "")
+            if not summary:
+                simplified = self._simplify_messages(messages)
+                return self._format_simplified(simplified)
             return summary.strip()
         except Exception as e:
             logger.warning(f"Light summary generation failed: {type(e).__name__}: {e}")
@@ -632,7 +640,15 @@ class ProgressiveContextCompressor:
             response = await self._gateway.chat_completion(
                 self._model_id, [{"role": "user", "content": prompt}], tools=None
             )
-            summary = response["choices"][0]["message"]["content"]
+            choices = response.get("choices", [])
+            if not choices:
+                logger.warning("Abstract summary: LLM returned empty choices")
+                simplified = self._simplify_messages(messages)
+                return self._format_abstract(simplified)
+            summary = choices[0].get("message", {}).get("content", "")
+            if not summary:
+                simplified = self._simplify_messages(messages)
+                return self._format_abstract(simplified)
             return summary.strip()
         except Exception as e:
             logger.warning(
@@ -981,7 +997,15 @@ class IntelligentContextPruner:
             response = await self._gateway.chat_completion(
                 self._model_id, [{"role": "user", "content": batch_prompt}], tools=None
             )
-            result_text = response["choices"][0]["message"]["content"]
+            choices = response.get("choices", [])
+            if not choices:
+                logger.warning("Semantic relevance: LLM returned empty choices")
+                entities = self._extract_entities(task)
+                return self._compute_relevance(history, entities)
+            result_text = choices[0].get("message", {}).get("content", "")
+            if not result_text:
+                entities = self._extract_entities(task)
+                return self._compute_relevance(history, entities)
 
             # 解析分数
             scores = self._parse_relevance_scores(result_text, len(history))

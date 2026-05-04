@@ -419,7 +419,13 @@ class AgentLoop:
             response = await self.gateway.chat_completion(
                 self.model_id, [{"role": "user", "content": prompt}], tools=None
             )
-            summary = response["choices"][0]["message"]["content"]
+            choices = response.get("choices", [])
+            if not choices:
+                logger.warning("Summary generation: LLM returned empty choices")
+                return None
+            summary = choices[0].get("message", {}).get("content", "")
+            if not summary:
+                return None
             return summary.strip()
         except Exception as e:
             logger.warning(

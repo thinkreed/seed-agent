@@ -444,8 +444,12 @@ class SubagentInstance:
                 self.model_id, messages, tools=self.tools.get_schemas()
             )
 
-            choice = response["choices"][0]
-            message = choice["message"]
+            choices = response.get("choices", [])
+            if not choices:
+                logger.warning("Subagent: LLM returned empty choices")
+                return ""
+            choice = choices[0]
+            message = choice.get("message", {})
             self.history.append(message)
 
             if message.get("tool_calls"):

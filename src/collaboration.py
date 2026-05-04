@@ -260,9 +260,17 @@ class MultiBrainOneHandOrchestrator:
             response = await agent.llm_client.reason(
                 [{"role": "user", "content": prompt}]
             )
-            result_text = (
-                response.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
+            choices = response.get("choices", [])
+            if not choices:
+                logger.warning(f"Analysis for {perspective}: LLM returned empty choices")
+                agent.status = "failed"
+                return AnalysisResult(
+                    perspective=perspective,
+                    result="",
+                    issues=[],
+                    suggestions=[],
+                )
+            result_text = choices[0].get("message", {}).get("content", "")
 
             # 解析结果
             issues = self._parse_issues(result_text)

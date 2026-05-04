@@ -81,15 +81,17 @@ class ReasonResult:
 
     def get_content(self) -> str:
         """获取响应内容"""
-        return (
-            self.response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        )
+        choices = self.response.get("choices", [])
+        if not choices:
+            return ""
+        return choices[0].get("message", {}).get("content", "")
 
     def get_tool_calls(self) -> list[dict] | None:
         """获取工具调用"""
-        return (
-            self.response.get("choices", [{}])[0].get("message", {}).get("tool_calls")
-        )
+        choices = self.response.get("choices", [])
+        if not choices:
+            return None
+        return choices[0].get("message", {}).get("tool_calls")
 
     def is_tool_call(self) -> bool:
         """是否包含工具调用"""
