@@ -167,23 +167,23 @@ class QueueStats:
         default_factory=lambda: dict.fromkeys(RequestPriority, 0)
     )
 
-    def record_submit(self, priority: RequestPriority):
+    def record_submit(self, priority: RequestPriority) -> None:
         """记录指定优先级的提交次数。"""
         self.submitted[priority] += 1
 
-    def record_signal(self, priority: RequestPriority):
+    def record_signal(self, priority: RequestPriority) -> None:
         """记录指定优先级的信号触发次数。"""
         self.signaled[priority] += 1
 
-    def record_rejected(self, priority: RequestPriority):
+    def record_rejected(self, priority: RequestPriority) -> None:
         """记录指定优先级的拒绝次数。"""
         self.rejected[priority] += 1
 
-    def record_cancelled(self, priority: RequestPriority):
+    def record_cancelled(self, priority: RequestPriority) -> None:
         """记录指定优先级的取消次数。"""
         self.cancelled[priority] += 1
 
-    def record_wait_time(self, priority: RequestPriority, duration: float):
+    def record_wait_time(self, priority: RequestPriority, duration: float) -> None:
         """记录指定优先级的等待时间，保留最近100条。"""
         self.wait_times[priority].append(duration)
         # 只保留最近100条
