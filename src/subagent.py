@@ -17,7 +17,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum, StrEnum
 
 from src.client import LLMGateway
@@ -363,7 +363,7 @@ class SubagentInstance:
             status="pending",
             prompt=prompt,
         )
-        self.state.started_at = datetime.now()
+        self.state.started_at = datetime.now(UTC)
         self.state.status = "running"
 
         self.history.append({"role": "user", "content": prompt})
@@ -419,7 +419,7 @@ class SubagentInstance:
                 span.set_status(StatusCode.ERROR, str(e)[:200])
 
         finally:
-            self.state.completed_at = datetime.now()
+            self.state.completed_at = datetime.now(UTC)
             if span:
                 span.end()
 

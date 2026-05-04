@@ -44,7 +44,7 @@ def init_subagent_manager(manager: "SubagentManager") -> None:
 
 
 def spawn_subagent(
-    type: str,
+    subagent_type: str,
     prompt: str,
     custom_tools: list[str] | None = None,
     timeout: int | None = None,
@@ -53,7 +53,7 @@ def spawn_subagent(
     创建并启动一个子代理任务。
 
     Args:
-        type: 子代理类型 - 'explore', 'review', 'implement', 'plan'
+        subagent_type: 子代理类型 - 'explore', 'review', 'implement', 'plan'
         prompt: 任务提示，描述子代理需要完成的工作
         custom_tools: 自定义工具列表（可选，覆盖默认权限集）
         timeout: 执行超时时间（秒），默认根据任务类型动态配置 (180s-900s)
@@ -74,9 +74,9 @@ def spawn_subagent(
         "plan": SubagentType.PLAN,
     }
 
-    subagent_type = type_map.get(type.lower())
-    if subagent_type is None:
-        return f"Error: Unknown subagent type '{type}'. Supported: explore, review, implement, plan"
+    resolved_type = type_map.get(subagent_type.lower())
+    if resolved_type is None:
+        return f"Error: Unknown subagent type '{subagent_type}'. Supported: explore, review, implement, plan"
 
     # 类型安全转换：timeout 必须是整数
     safe_timeout = (
@@ -88,7 +88,7 @@ def spawn_subagent(
     # 创建任务
     custom_tools_set = set(custom_tools) if custom_tools else None
     task_id = _subagent_manager.create_task(
-        subagent_type=subagent_type,
+        subagent_type=resolved_type,
         prompt=prompt,
         custom_tools=custom_tools_set,
         timeout=safe_timeout,

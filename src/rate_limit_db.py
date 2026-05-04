@@ -146,7 +146,7 @@ class RateLimitSQLite:
         conn.execute(
             """
             INSERT OR IGNORE INTO rate_limit_state (
-                id, window_requests, tokens_available, 
+                id, window_requests, tokens_available,
                 last_refill_time, total_requests, updated_at
             ) VALUES (1, '[]', 100.0, ?, 0, ?)
         """,
@@ -168,7 +168,7 @@ class RateLimitSQLite:
 
         # 创建索引
         conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_request_history_timestamp 
+            CREATE INDEX IF NOT EXISTS idx_request_history_timestamp
             ON request_history(timestamp)
         """)
 

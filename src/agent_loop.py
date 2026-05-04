@@ -54,7 +54,7 @@ from src.context_engineering import (
     ContextEngineering,
     PruningConfig,
 )
-from src.harness import Harness, MaxIterationsExceeded
+from src.harness import Harness, MaxIterationsExceededError
 
 # 生命周期钩子
 from src.lifecycle_hooks import LifecycleHookRegistry, get_global_registry
@@ -553,7 +553,7 @@ class AgentLoop:
 
             return f"[{result['status']}]"
 
-        except MaxIterationsExceeded:
+        except MaxIterationsExceededError:
             logger.exception("Max iterations exceeded")
             self.session.record_session_end("max_iterations_exceeded")
             raise
@@ -685,7 +685,7 @@ class AgentLoop:
                     # chunk, tool_start, tool_end - 直接转发
                     yield chunk
 
-        except MaxIterationsExceeded as e:
+        except MaxIterationsExceededError as e:
             logger.exception("Max iterations exceeded")
             self.session.record_session_end("max_iterations_exceeded")
             yield {"type": "error", "content": str(e)}

@@ -167,9 +167,7 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
             decoded_twice = unquote(decoded_once)
             for decoded in [path, decoded_once, decoded_twice]:
                 if (
-                    ".." in decoded
-                    or decoded.startswith("/")
-                    or decoded.startswith("\\")
+                    ".." in decoded or decoded.startswith(("/", "\\"))
                 ):
                     logger.warning(
                         f"URL-encoded path traversal attempt blocked: {path} -> {decoded}"
@@ -228,7 +226,7 @@ def _validate_path_safety(path: str) -> tuple[bool, str]:
             return False, f"Windows drive path '{path}' is outside allowed directories"
 
         # 检查 UNC 路径
-        if path.startswith("\\\\") or path.startswith("//"):
+        if path.startswith(("\\\\", "//")):
             logger.warning(f"UNC path blocked: {path}")
             return False, f"UNC path '{path}' is not allowed for security reasons"
 
@@ -267,8 +265,7 @@ def _resolve_path(path: str) -> str:
         resolved_seed = str(seed_path.resolve())
         # 使用缓存检查
         if (
-            resolved_seed.startswith(DEFAULT_WORK_DIR_RESOLVED)
-            or resolved_seed.startswith(PROJECT_ROOT_RESOLVED)
+            resolved_seed.startswith((DEFAULT_WORK_DIR_RESOLVED, PROJECT_ROOT_RESOLVED))
         ) and seed_path.exists():
             return resolved_seed
     except Exception as e:

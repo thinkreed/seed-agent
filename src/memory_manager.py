@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self, cast
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
@@ -66,7 +66,7 @@ class MemoryManager:
     _initialized: bool
     _llm_gateway: LLMGateway | None
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> MemoryManager:
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         """单例模式 - 线程安全的双重检查锁定"""
         if cls._instance is None:
             with cls._lock:
@@ -74,7 +74,7 @@ class MemoryManager:
                     instance = super().__new__(cls)
                     instance._initialized = False  # 标记未初始化
                     cls._instance = instance
-        return cls._instance
+        return cast("Self", cls._instance)
 
     def __init__(self, llm_gateway: LLMGateway | None = None) -> None:
         # 简化：仅在 _initialized 为 False 时初始化

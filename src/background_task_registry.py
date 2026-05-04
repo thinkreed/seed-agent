@@ -21,7 +21,7 @@ import asyncio
 import logging
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -174,7 +174,7 @@ class BackgroundTaskRegistry:
                 return False
 
             entry.status = TaskStatus.RUNNING
-            entry.started_at = datetime.now()
+            entry.started_at = datetime.now(UTC)
 
             logger.info(f"Task started: id={task_id}")
             return True
@@ -195,7 +195,7 @@ class BackgroundTaskRegistry:
                 return False
 
             entry.status = TaskStatus.COMPLETED
-            entry.completed_at = datetime.now()
+            entry.completed_at = datetime.now(UTC)
             entry.result = result
 
             logger.info(f"Task completed: id={task_id}")
@@ -217,7 +217,7 @@ class BackgroundTaskRegistry:
                 return False
 
             entry.status = TaskStatus.FAILED
-            entry.completed_at = datetime.now()
+            entry.completed_at = datetime.now(UTC)
             entry.error = error
 
             logger.warning(f"Task failed: id={task_id}, error={error[:100]}")
@@ -238,7 +238,7 @@ class BackgroundTaskRegistry:
                 return False
 
             entry.status = TaskStatus.TIMEOUT
-            entry.completed_at = datetime.now()
+            entry.completed_at = datetime.now(UTC)
             entry.error = "Task execution timeout"
 
             logger.warning(f"Task timeout: id={task_id}")
@@ -269,7 +269,7 @@ class BackgroundTaskRegistry:
                 # 直接标记为取消
                 if entry.status == TaskStatus.PENDING:
                     entry.status = TaskStatus.CANCELLED
-                    entry.completed_at = datetime.now()
+                    entry.completed_at = datetime.now(UTC)
                     entry.error = "Cancelled before execution"
                 return False
 
@@ -295,7 +295,7 @@ class BackgroundTaskRegistry:
             if entry and entry.status == TaskStatus.RUNNING:
                 # 超过优雅期，强制取消
                 entry.status = TaskStatus.CANCELLED
-                entry.completed_at = datetime.now()
+                entry.completed_at = datetime.now(UTC)
                 entry.error = "Cancelled after grace period"
 
                 logger.info(f"Task force cancelled after grace period: id={task_id}")
@@ -315,7 +315,7 @@ class BackgroundTaskRegistry:
                 elif entry.status == TaskStatus.PENDING:
                     # 直接标记为取消
                     entry.status = TaskStatus.CANCELLED
-                    entry.completed_at = datetime.now()
+                    entry.completed_at = datetime.now(UTC)
                     entry.error = "Cancelled before execution"
 
         # 在锁外执行取消（避免死锁）

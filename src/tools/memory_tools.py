@@ -18,7 +18,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -361,7 +361,7 @@ def _search_history(keyword: str, limit: int = 20) -> str:
 
 def _generate_session_filename() -> str:
     """生成会话文件名"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return f"session_{timestamp}.jsonl"
 
 
@@ -379,18 +379,18 @@ def _save_session_history_jsonl(
                 meta = {
                     "type": "session_meta",
                     "session_id": session_id,
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                 }
                 f.write(json.dumps(meta, ensure_ascii=False) + "\n")
             for msg in messages:
-                msg["timestamp"] = datetime.now().isoformat()
+                msg["timestamp"] = datetime.now(UTC).isoformat()
                 msg["type"] = "message"
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
             if summary:
                 summary_line = {
                     "type": "summary",
                     "content": summary,
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
                 f.write(json.dumps(summary_line, ensure_ascii=False) + "\n")
         msg_count = len(messages)

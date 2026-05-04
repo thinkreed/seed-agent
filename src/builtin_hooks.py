@@ -180,9 +180,7 @@ def _register_tool_hooks(registry: LifecycleHookRegistry) -> None:
         # 避免 "error" 字样出现在正常内容中导致的误报
         if isinstance(result, str) and result.strip():
             result_stripped = result.strip()
-            if result_stripped.startswith("Error:") or result_stripped.startswith(
-                "Error "
-            ):
+            if result_stripped.startswith(("Error:", "Error ")):
                 logger.warning(f"Tool {tool_name} returned error: {result[:100]}")
 
     @registry.register(HookPoint.TOOL_CALL_AFTER, priority=1, name="tool_log_result")

@@ -16,10 +16,10 @@ import os
 import re
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import TypedDict
+from typing import Self, TypedDict, cast
 
 logger = logging.getLogger(__name__)
 
@@ -202,14 +202,14 @@ class SessionDB:
     _initialized: bool = False
     _lock: threading.Lock = threading.Lock()  # 单例创建锁
 
-    def __new__(cls, db_path: str | None = None) -> "SessionDB":
+    def __new__(cls, db_path: str | None = None) -> Self:
         """单例模式：确保全局只有一个 SessionDB 实例（线程安全）"""
         if cls._instance is None:
             with cls._lock:
                 # 双重检查锁定模式，避免不必要的锁开销
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-        return cls._instance
+        return cast("Self", cls._instance)
 
     def __init__(self, db_path: str | None = None):
         # 使用类锁保护初始化状态检查
@@ -251,7 +251,7 @@ class SessionDB:
                 SessionDB._instance = None
                 SessionDB._initialized = False
 
-    def __enter__(self) -> "SessionDB":
+    def __enter__(self) -> Self:
         """上下文管理器入口"""
         return self
 
@@ -406,7 +406,7 @@ class SessionDB:
             return f"Invalid score: {score} (must be 0.0-1.0)"
 
         signal_pattern = " ".join(signals) if signals else ""
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         blast_radius_json = json.dumps(blast_radius) if blast_radius else None
 
         try:
@@ -622,7 +622,7 @@ class SessionDB:
         if last_timestamp:
             try:
                 last_time = datetime.fromisoformat(last_timestamp)
-                age_days = (datetime.now() - last_time).days
+                age_days = (datetime.now(UTC) - last_time).days
                 decay_weight = 0.5 ** (age_days / half_life)
             except Exception as e:
                 logger.debug(f"Decay calculation failed: {type(e).__name__}")
@@ -858,9 +858,8 @@ class SessionDB:
             )
             return 0
         except Exception as e:
-            logger.error(
-                f"Unexpected error during cleanup: {type(e).__name__}: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Unexpected error during cleanup: {type(e).__name__}: {e}"
             )
             return 0
 
@@ -939,7 +938,7 @@ class SessionDB:
             if not session_id:
                 session_id = self._generate_session_filename()
 
-            now = datetime.now().isoformat()
+            now = datetime.now(UTC).isoformat()
 
             existing = (
                 self._ensure_conn()
@@ -988,9 +987,8 @@ class SessionDB:
             return f"Error saving session (integrity issue): {e!s}"
         except Exception as e:
             self._ensure_conn().rollback()
-            logger.error(
-                f"Unexpected error saving session: {type(e).__name__}: {e}",
-                exc_info=True,
+            logger.exception(
+                f"Unexpected error saving session: {type(e).__name__}: {e}"
             )
             return f"Error saving session: {type(e).__name__}: {e!s}"
 
@@ -1421,7 +1419,7 @@ class SessionDB:
 
     def _generate_session_filename(self) -> str:
         """生成会话文件名"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         return f"session_{timestamp}.jsonl"
 
     def __del__(self) -> None:

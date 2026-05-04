@@ -52,7 +52,7 @@ class QueueFullError(Exception):
         )
 
 
-class TurnWaitTimeout(Exception):
+class TurnWaitTimeoutError(Exception):
     """轮次等待超时"""
 
     def __init__(self, ticket_id: str, waited_seconds: float, queue_status: dict):
@@ -90,13 +90,13 @@ class TurnTicket:
             timeout: 最大等待时间（秒）
 
         Raises:
-            TurnWaitTimeout: 等待超时
+            TurnWaitTimeoutError: 等待超时
             asyncio.CancelledError: 被取消
         """
         try:
             await asyncio.wait_for(self._turn_event.wait(), timeout)
         except TimeoutError:
-            raise TurnWaitTimeout(self.id, timeout, {}) from None
+            raise TurnWaitTimeoutError(self.id, timeout, {}) from None
 
         if self._cancelled:
             raise asyncio.CancelledError(self._cancel_reason)
@@ -548,9 +548,8 @@ class RequestQueue:
                 logger.error(f"Adjust config error: {type(e).__name__}: {e}")
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
             except Exception as e:
-                logger.error(
-                    f"Adjust loop unexpected error: {type(e).__name__}: {e}",
-                    exc_info=True,
+                logger.exception(
+                    f"Adjust loop unexpected error: {type(e).__name__}: {e}"
                 )
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
 

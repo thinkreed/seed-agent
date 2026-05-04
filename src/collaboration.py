@@ -23,7 +23,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -193,7 +193,7 @@ class MultiBrainOneHandOrchestrator:
                 for agent, analysis in zip(self._agents, analyses, strict=True)
             ],
             "sandbox_state": self.sandbox.get_status(),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     async def _read_target(self, target: str) -> str:
@@ -602,7 +602,7 @@ class OneBrainMultiHandOrchestrator:
             "plan": plan,
             "execution_results": results,
             "aggregated_result": aggregated,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     async def _plan_for_multi_hand(self, task: str) -> dict[str, list[dict[str, Any]]]:
@@ -803,7 +803,7 @@ class OneBrainMultiHandOrchestrator:
             "python_test": python_result,
             "node_test": node_result,
             "cross_env_valid": cross_env_valid,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     def get_sandboxes_status(self) -> list[dict[str, Any]]:

@@ -88,7 +88,7 @@ except ImportError:
     Span = None  # type: ignore[misc,assignment]
 
 
-class MaxIterationsExceeded(Exception):
+class MaxIterationsExceededError(Exception):
     """超过最大迭代次数"""
 
     def __init__(self, iterations: int) -> None:
@@ -610,7 +610,7 @@ class Harness:
                 - iterations: 执行的迭代次数
 
         Raises:
-            MaxIterationsExceeded: 超过最大迭代次数
+            MaxIterationsExceededError: 超过最大迭代次数
             ExecutionCancelled: 执行被取消
         """
         # 1. 触发 session_start 钩子
@@ -689,7 +689,7 @@ class Harness:
             if iteration >= self.max_iterations:
                 # 超过最大迭代
                 self.session.record_session_end("max_iterations_exceeded")
-                raise MaxIterationsExceeded(iteration)
+                raise MaxIterationsExceededError(iteration)
 
             # 3. 触发 session_end 钩子（成功）
             await self._trigger_hook(
@@ -840,7 +840,7 @@ class Harness:
 
             if iteration >= self.max_iterations:
                 self.session.record_session_end("max_iterations_exceeded")
-                raise MaxIterationsExceeded(iteration)
+                raise MaxIterationsExceededError(iteration)
 
             # 触发 session_end 钩子（成功）
             await self._trigger_hook(
@@ -1097,7 +1097,7 @@ class Harness:
 
             # 超过最大迭代
             self.session.record_session_end("max_iterations_exceeded")
-            raise MaxIterationsExceeded(iteration)
+            raise MaxIterationsExceededError(iteration)
 
         except Exception as e:
             # 触发 session_end 钩子（错误）
@@ -1307,7 +1307,7 @@ class Harness:
                     return
 
             self.session.record_session_end("max_iterations_exceeded")
-            raise MaxIterationsExceeded(iteration)
+            raise MaxIterationsExceededError(iteration)
 
         except Exception as e:
             await self._trigger_hook(
@@ -1986,7 +1986,7 @@ class HarnessManager:
 
     def get_all_status(self) -> dict[str, dict[str, Any]]:
         """获取所有 Harness 状态"""
-        return {id: harness.get_status() for id, harness in self._harnesses.items()}
+        return {h_id: harness.get_status() for h_id, harness in self._harnesses.items()}
 
     def destroy_all(self) -> None:
         """销毁所有 Harness"""

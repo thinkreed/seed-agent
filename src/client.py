@@ -77,7 +77,7 @@ from src.request_queue import (
     RequestPriority,
     RequestQueue,
     TurnTicket,
-    TurnWaitTimeout,
+    TurnWaitTimeoutError,
 )
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()
@@ -534,9 +534,8 @@ class LLMGateway:
                 logger.error(f"Persistence I/O error: {type(e).__name__}: {e}")
                 await asyncio.sleep(10.0)  # 更长等待避免频繁失败
             except Exception as e:
-                logger.error(
-                    f"Persistence loop unexpected error: {type(e).__name__}: {e}",
-                    exc_info=True,
+                logger.exception(
+                    f"Persistence loop unexpected error: {type(e).__name__}: {e}"
                 )
                 await asyncio.sleep(5.0)
 
@@ -760,7 +759,7 @@ class LLMGateway:
 
         try:
             await ticket.wait_for_turn(timeout=turn_timeout)
-        except TurnWaitTimeout:
+        except TurnWaitTimeoutError:
             logger.warning(
                 f"Ticket {ticket.id}: turn wait timeout ({turn_timeout:.1f}s)"
             )
@@ -923,7 +922,7 @@ class LLMGateway:
 
         Raises:
             QueueFullError: 队列已满
-            TurnWaitTimeout: 轮次等待超时
+            TurnWaitTimeoutError: 轮次等待超时
         """
         # 转换 priority 类型
         if isinstance(priority, int):
@@ -951,7 +950,7 @@ class LLMGateway:
 
         Raises:
             QueueFullError: 队列已满
-            TurnWaitTimeout: 轮次等待超时
+            TurnWaitTimeoutError: 轮次等待超时
         """
         # 转换 priority 类型
         if isinstance(priority, int):
@@ -969,7 +968,7 @@ class LLMGateway:
         self, model_id: str, messages: list[dict], **kwargs
     ) -> dict:
         """内部方法：带跨 Provider 降级的非流式聊天补全"""
-        provider_id = model_id.split("/")[0]
+        provider_id = model_id.split("/", maxsplit=1)[0]
         active_provider = await self.get_active_provider()
         start_time = time.time()
 
@@ -1057,7 +1056,7 @@ class LLMGateway:
                 span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
                 span.set_status(StatusCode.OK)
 
-        if span and provider != model_id.split("/")[0]:
+        if span and provider != model_id.split("/", maxsplit=1)[0]:
             span.set_attribute("seed.provider", provider)
 
     def _handle_llm_error(
@@ -1115,7 +1114,7 @@ class LLMGateway:
         active_provider = await self.get_active_provider()
 
         for fallback_provider, fallback_model_id in self._iterate_fallback_models(
-            model_id, model_id.split("/")[0]
+            model_id, model_id.split("/", maxsplit=1)[0]
         ):
             if span:
                 add_fallback_event(
@@ -1229,7 +1228,7 @@ class LLMGateway:
         self, model_id: str, messages: list[dict], **kwargs
     ) -> AsyncGenerator[dict, None]:
         """内部方法：带跨 Provider 降级的流式聊天补全"""
-        provider_id = model_id.split("/")[0]
+        provider_id = model_id.split("/", maxsplit=1)[0]
         active_provider = await self.get_active_provider()
         last_error = None
         start_time = time.time()

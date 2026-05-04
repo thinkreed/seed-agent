@@ -9,7 +9,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -184,7 +184,7 @@ def save_snapshot(skills_dir: Path, skills_meta: dict) -> None:
 
         snapshot = {
             "manifest": build_manifest(skills_dir),
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "skills": serializable_meta,
         }
 

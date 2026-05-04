@@ -20,9 +20,9 @@ import os
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self, cast
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
@@ -106,13 +106,13 @@ class LongTermArchiveLayer:
     _initialized: bool = False
     _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls, db_path: str | Path | None = None) -> "LongTermArchiveLayer":
+    def __new__(cls, db_path: str | Path | None = None) -> Self:
         """单例模式"""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-        return cls._instance
+        return cast("Self", cls._instance)
 
     def __init__(
         self, db_path: str | Path | None = None, llm_gateway: "LLMGateway | None" = None
@@ -248,7 +248,7 @@ class LongTermArchiveLayer:
             return "Error: No events to archive"
 
         archive_id = f"archive_{session_id}_{int(time.time())}"
-        created_at = datetime.now().isoformat()
+        created_at = datetime.now(UTC).isoformat()
 
         # 1. LLM 生成摘要
         summary = await self._generate_summary(events)
@@ -788,7 +788,7 @@ class LongTermArchiveLayer:
         """
         import datetime as dt_module
 
-        cutoff_date = dt_module.datetime.now() - dt_module.timedelta(days=max_age_days)
+        cutoff_date = dt_module.datetime.now(UTC) - dt_module.timedelta(days=max_age_days)
         cutoff_str = cutoff_date.isoformat()
 
         # 检查总数

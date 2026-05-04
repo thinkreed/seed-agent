@@ -19,7 +19,7 @@ import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self, cast
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
@@ -67,13 +67,13 @@ class UserModelingLayer:
     _initialized: bool = False
     _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls, db_path: str | Path | None = None) -> "UserModelingLayer":
+    def __new__(cls, db_path: str | Path | None = None) -> Self:
         """单例模式"""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-        return cls._instance
+        return cast("Self", cls._instance)
 
     def __init__(
         self, db_path: str | Path | None = None, llm_gateway: "LLMGateway | None" = None

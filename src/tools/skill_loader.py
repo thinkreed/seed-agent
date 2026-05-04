@@ -27,7 +27,7 @@ import re
 import sys
 import threading
 from collections import OrderedDict
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -778,7 +778,7 @@ class SkillLoader:
         if last_ts:
             try:
                 last_time = datetime.fromisoformat(last_ts)
-                age_days = (datetime.now() - last_time).days
+                age_days = (datetime.now(UTC) - last_time).days
                 decay_weight = 0.5 ** (age_days / half_life)
             except (ValueError, TypeError):
                 decay_weight = 1.0

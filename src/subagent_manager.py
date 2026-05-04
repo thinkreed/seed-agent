@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_int(
-    value: int | str | float | None, default: int | None = None, min_val: int = 1
+    value: str | float | None, default: int | None = None, min_val: int = 1
 ) -> int | None:
     """安全转换整数（用于 dataclass __post_init__）
 
