@@ -361,6 +361,9 @@ class TestFullConfig(unittest.TestCase):
     def _make_full_config_data(self):
         """Helper to create a full config data dict"""
         return {
+            "paths": {
+                "seedBaseDir": "~/.seed",
+            },
             "models": {
                 "dashscope": {
                     "baseUrl": "https://dashscope.aliyuncs.com",
