@@ -50,7 +50,7 @@
 
 | 组件 | 文件 | 功能 |
 |------|------|------|
-| **AbortSignal** | `src/abort_signal.py` | 取消信号：传播取消状态，监听器机制 |
+| **AbortSignal** | `src/abort_signal.py` + `src/abort_signal_core/` | 取消信号：传播取消状态，监听器机制，已拆分为 `_abort_signal`, `_cancellation_token` |
 | **AskUserTypes** | `src/tools/ask_user_types.py` | Ask User 数据类型：问题、选项、响应 |
 | **BackgroundTaskRegistry** | `src/background_task_registry.py` | 后台任务注册表：生命周期管理、取消控制 |
 | **TaskStop** | `src/tools/task_stop.py` | TaskStop 工具：停止后台任务 |
@@ -104,7 +104,7 @@ agent.inject_user_input(AskUserResult(
 | **RiskClassifier** | `src/security/risk_classifier.py` + `src/security/risk_classifier_core/` | 命令风险分类器：动态评估风险，已拆分为 `_types`, `_factors`, `_classifier` |
 | **SecureHarness** | `src/security/secure_harness.py` + `src/security/secure_harness_core/` | 安全Harness：凭证代理集成，已拆分为 `_api_calls`, `_audit`, `_stats`, `_verification`, `_credential_management`, `_tool_routing` |
 | **CredentialOps** | `src/security/vault/_credential_ops.py` + `src/security/vault/_ops_core/` | 凭证操作：存储/获取/轮换，已拆分为 `_store_get`, `_rotation`, `_listing` |
-| **Harness** | `src/harness/` | 控制器：驱动循环、路由工具，已拆分为 `_manager`, `_resume`, `_streaming`, `_streaming_loop`, `_streaming_iteration`, `_streaming_executor`, `_streaming_types`, `_streaming_utils`, `_metrics`, `_cycle`, `_tool_router` |
+| **Harness** | `src/harness/` | 控制器：驱动循环、路由工具，已拆分为 `_manager`, `_resume`, `_resume_utils`, `_context_builder`, `_streaming`, `_streaming_loop`, `_streaming_iteration`, `_streaming_executor`, `_streaming_types`, `_streaming_utils`, `_metrics`, `_cycle`, `_tool_router` |
 | **Sandbox** | `src/sandbox.py` + `src/sandbox_core/` | 工作台：隔离执行环境，已拆分为 `_execution`, `_path`, `_types` |
 | **ContextPruner** | `src/context/_pruner.py` + `src/context/_pruner_core/` | 智能上下文裁剪：相关性计算，已拆分为 `_entity_extraction`, `_relevance` |
 

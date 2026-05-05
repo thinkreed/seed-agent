@@ -20,6 +20,8 @@ seed-agent/
 │   ├── rate_limiter.py      # Token bucket rate limiter for API call throttling
 │   ├── rate_limit_db.py     # SQLite storage for rate limit tracking
 │   ├── request_queue.py    # Async request queue with priority support
+│   ├── abort_signal.py      # Cancel signal propagation (AbortController pattern)
+│   ├── abort_signal_core/   # Cancel signal core types (AbortSignal, CancellationToken)
 │   ├── subagent.py          # Subagent instance with isolated context
 │   ├── subagent_manager.py  # Subagent lifecycle and parallel execution manager
 │   └── tools/               # Tool registry system
