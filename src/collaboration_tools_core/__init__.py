@@ -11,6 +11,9 @@ from src.collaboration_tools_core._session import (
     get_session_registry,
     get_orchestrator_registry,
     get_message_bus_registry,
+    _collaboration_sessions,  # 向后兼容
+    _orchestrators,  # 向后兼容
+    _message_buses,  # 向后兼容
 )
 from src.collaboration_tools_core._multi_brain_one_hand import (
     setup_multi_brain_one_hand,
@@ -37,6 +40,9 @@ __all__ = [
     "get_session_registry",
     "get_orchestrator_registry",
     "get_message_bus_registry",
+    "_collaboration_sessions",  # 向后兼容
+    "_orchestrators",  # 向后兼容
+    "_message_buses",  # 向后兼容
     # 多脑一手
     "setup_multi_brain_one_hand",
     "multi_angle_analysis",

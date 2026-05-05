@@ -38,6 +38,9 @@ from src.collaboration_tools_core import (
     setup_one_brain_multi_hand,
     get_session_registry,
     get_orchestrator_registry,
+    _collaboration_sessions,  # 向后兼容
+    _orchestrators,  # 向后兼容
+    _message_buses,  # 向后兼容
 )
 
 if TYPE_CHECKING:

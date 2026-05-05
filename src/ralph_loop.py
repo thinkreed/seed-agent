@@ -275,6 +275,24 @@ class RalphLoop:
             self._state_file,
         )
 
+    # === 向后兼容别名（内部方法已移动到 CompletionChecker） ===
+
+    def _check_marker_file(self, criteria: dict[str, Any] | None = None) -> bool:
+        """向后兼容别名（支持无参数调用）"""
+        if criteria is None:
+            criteria = self.completion_criteria
+        return self._completion_checker._check_marker_file(criteria)
+
+    def _check_file_exists(self, criteria: dict[str, Any] | None = None) -> bool:
+        """向后兼容别名（支持无参数调用）"""
+        if criteria is None:
+            criteria = self.completion_criteria
+        return self._completion_checker._check_file_exists(criteria)
+
+    def _parse_test_pass_rate(self, output: str | bytes) -> float:
+        """向后兼容别名"""
+        return self._completion_checker._parse_test_pass_rate(output)
+
     # === 工厂方法 ===
 
     @classmethod

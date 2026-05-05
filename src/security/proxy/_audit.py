@@ -1,134 +1,130 @@
-"""
-审计日志模块
+"""请求审计日志模块
 
-内部模块，负责请求审计日志的记录和统计。
-
-核心功能:
-- 请求日志记录
-- 统计信息计算
-- 日志持久化
+负责记录和持久化请求审计日志
 """
 
+import json
+import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from src.security.proxy._types import RequestAuditLog
+
+logger = logging.getLogger(__name__)
+
+# 敏感信息键列表
+SENSITIVE_KEYS = [
+    "api_key",
+    "apikey",
+    "apiKey",
+    "token",
+    "secret",
+    "password",
+    "credential",
+]
 
 
 class AuditLogManager:
     """审计日志管理器
 
-    管理请求审计日志的记录、存储和统计。
-
-    Attributes:
-        _request_logs: 请求日志列表
-        _max_request_logs: 最大日志条数
+    管理请求审计日志的记录、持久化和查询。
     """
 
-    def __init__(self, max_request_logs: int = 10000):
+    def __init__(self, vault_path: Path | None = None):
         """初始化审计日志管理器
 
         Args:
-            max_request_logs: 最大日志条数
+            vault_path: Vault 路径（可选）
         """
-        self._request_logs: list[RequestAuditLog] = []
-        self._max_request_logs = max_request_logs
+        self._vault_path = vault_path
+        self._audit_entries: list[RequestAuditLog] = []
+        self._request_logs: list[dict[str, Any]] = []  # 向后兼容
 
-    def add_log(self, log_entry: RequestAuditLog) -> None:
-        """添加请求日志
+    def add_entry(self, entry: RequestAuditLog) -> None:
+        """添加审计日志条目
 
         Args:
-            log_entry: 审计日志条目
+            entry: 审计日志条目
         """
-        self._request_logs.append(log_entry)
+        self._audit_entries.append(entry)
 
-        # 限制日志大小
-        if len(self._request_logs) > self._max_request_logs:
-            self._request_logs = self._request_logs[-self._max_request_logs :]
+    def persist(self) -> None:
+        """持久化所有审计日志"""
+        if not self._vault_path:
+            return
 
-    def get_logs(self, limit: int = 100) -> list[dict[str, Any]]:
-        """获取请求审计日志
+        for entry in self._audit_entries:
+            persist_request_audit(entry, self._vault_path)
 
-        Args:
-            limit: 返回条数限制
+        self._audit_entries.clear()
 
-        Returns:
-            审计日志列表
-        """
-        logs = self._request_logs[-limit:]
-        return [
-            {
-                "timestamp": log.timestamp,
-                "provider": log.provider,
-                "credential_type": log.credential_type,
-                "requester_id": log.requester_id,
-                "status": log.status,
-                "duration_ms": log.duration_ms,
-                "request_context": log.request_context,
-                "error": log.error,
-            }
-            for log in logs
-        ]
-
-    def get_stats(self, active_clients_count: int = 0) -> dict[str, Any]:
-        """获取请求统计信息（单次遍历优化）
-
-        Args:
-            active_clients_count: 活跃客户端数量
-
-        Returns:
-            统计信息字典
-        """
-        total_requests = len(self._request_logs)
-        successful = 0
-        failed = 0
-        timeouts = 0
-        total_duration = 0.0
-        by_provider: dict[str, dict[str, int]] = {}
-
-        # 单次遍历计算所有统计值
-        for log in self._request_logs:
-            # 状态统计
-            if log.status == "success":
-                successful += 1
-            elif log.status == "failed":
-                failed += 1
-            elif log.status == "timeout":
-                timeouts += 1
-
-            # 耗时累计
-            total_duration += log.duration_ms
-
-            # 按 Provider 统计
-            if log.provider not in by_provider:
-                by_provider[log.provider] = {
-                    "total": 0,
-                    "success": 0,
-                    "failed": 0,
-                    "timeout": 0,
-                }
-            by_provider[log.provider]["total"] += 1
-            by_provider[log.provider][log.status] += 1
-
-        avg_duration = total_duration / total_requests if total_requests else 0.0
-
-        return {
-            "total_requests": total_requests,
-            "successful": successful,
-            "failed": failed,
-            "timeouts": timeouts,
-            "success_rate": (successful / total_requests * 100)
-            if total_requests
-            else 100.0,
-            "average_duration_ms": avg_duration,
-            "by_provider": by_provider,
-            "active_clients": active_clients_count,
-        }
+    def get_entries(self) -> list[RequestAuditLog]:
+        """获取所有审计日志条目"""
+        return self._audit_entries.copy()
 
     def clear(self) -> None:
-        """清空请求审计日志"""
-        self._request_logs.clear()
+        """清空审计日志"""
+        self._audit_entries.clear()
+        self._request_logs.clear()  # 向后兼容
 
-    @property
-    def count(self) -> int:
-        """获取日志条数"""
-        return len(self._request_logs)
+    def get_request_logs(self) -> list[dict[str, Any]]:
+        """向后兼容：获取请求日志"""
+        return self._request_logs.copy()
+
+
+def sanitize_request_context(context: dict[str, Any]) -> dict[str, Any]:
+    """过滤请求上下文中的敏感信息
+
+    Args:
+        context: 原始请求上下文
+
+    Returns:
+        过滤后的安全上下文
+    """
+    safe_context: dict[str, Any] = {}
+    for key, value in context.items():
+        # Check both lowercase and original key
+        key_lower = key.lower()
+        if key_lower in SENSITIVE_KEYS or key in SENSITIVE_KEYS:
+            safe_context[key] = "[REDACTED]"
+        elif isinstance(value, dict):
+            safe_context[key] = sanitize_request_context(value)
+        elif isinstance(value, str) and len(value) > 100:
+            safe_context[key] = value[:100] + "...[truncated]"
+        else:
+            safe_context[key] = value
+
+    return safe_context
+
+
+def persist_request_audit(log_entry: RequestAuditLog, vault_path: Any) -> None:
+    """持久化请求审计日志（带文件权限保护）
+
+    Args:
+        log_entry: 审计日志条目
+        vault_path: Vault 路径
+    """
+    audit_file = vault_path / "request_audit.jsonl"
+
+    entry = {
+        "timestamp": log_entry.timestamp,
+        "provider": log_entry.provider,
+        "credential_type": log_entry.credential_type,
+        "requester_id": log_entry.requester_id,
+        "status": log_entry.status,
+        "duration_ms": log_entry.duration_ms,
+        "request_context": log_entry.request_context,
+        "error": log_entry.error,
+    }
+
+    try:
+        with open(audit_file, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+        # 安全：设置审计日志文件权限（仅 owner 可读写）
+        try:
+            os.chmod(audit_file, 0o600)
+        except OSError:
+            logger.warning(f"Failed to set permissions on audit file: {audit_file}")
+    except Exception as e:
+        logger.warning(f"Failed to persist request audit: {e}")

@@ -85,20 +85,24 @@ agent.inject_user_input(AskUserResult(
 
 | 组件 | 文件 | 功能 |
 |------|------|------|
-| **AgentLoop** | `src/agent_loop.py` | 主执行引擎：集成三件套、Session管理、摘要触发、生命周期钩子 |
+| **AgentLoop** | `src/agent_loop/` | 主执行引擎：集成三件套、Session管理、摘要触发、生命周期钩子，已拆分为 `_init`, `_observability`, `_summarizer`, `_skill_tracker` |
 | **SessionEventStream** | `src/session_event_stream.py` | 不可变事件流：只追加日志、状态重放、摘要标记 |
-| **LifecycleHooks** | `src/lifecycle_hooks.py` | 确定性生命周期钩子：关键节点自动触发、优先级执行、统计 |
-| **BuiltinHooks** | `src/builtin_hooks.py` | 内置钩子定义：会话、工具、LLM、响应等全生命周期覆盖 |
+| **LifecycleHooks** | `src/lifecycle_hooks/` | 确定性生命周期钩子：关键节点自动触发、优先级执行、统计，已拆分为 `_global`, `_registry`, `_types` |
+| **BuiltinHooks** | `src/builtin_hooks.py` + `src/_*_hooks.py` | 内置钩子定义：会话、工具、LLM、响应等全生命周期覆盖，已拆分为 `_session_hooks`, `_tool_hooks`, `_llm_hooks`, `_response_hooks` |
 | **LLMGateway** | `src/client.py` | 多Provider网关：FallbackChain自动降级、重试逻辑 |
-| **RalphLoop** | `src/ralph_loop.py` | 长周期任务执行器：外部验证驱动完成、上下文重置防漂移 |
+| **RalphLoop** | `src/ralph_loop.py` + `src/ralph_core/` | 长周期任务执行器：外部验证驱动完成、上下文重置防漂移，已拆分为 `_state`, `_completion`, `_types` |
 | **Scheduler** | `src/scheduler.py` | 定时任务调度：内置任务 + 自定义任务管理 |
-| **AutonomousExplorer** | `src/autonomous.py` | 空闲自主探索：2小时触发、SOP驱动执行 |
-| **SubagentManager** | `src/subagent_manager.py` | 子代理管理器：创建、调度、并行执行、结果聚合 |
+| **AutonomousExplorer** | `src/autonomous.py` + `src/autonomous/` | 空闲自主探索：2小时触发、SOP驱动执行，已拆分为 `_idle_monitor`, `_defense`, `_explorer`, `_state_manager`, `_task_executor` |
+| **SubagentManager** | `src/subagent_manager.py` + `src/subagent_manager_core/` | 子代理管理器：创建、调度、并行执行、结果聚合，已拆分为 `_task`, `_manager`, `_orchestrator` |
 | **SubagentInstance** | `src/subagent.py` | 独立上下文的子代理：权限隔离、执行循环 |
 | **RateLimiter** | `src/rate_limiter.py` | 双重限流：TokenBucket + RollingWindow |
 | **RateLimitSQLite** | `src/rate_limit_db.py` | 限流状态持久化（SQLite+WAL） |
-| **RequestQueue** | `src/request_queue.py` | 请求队列：TurnTicket模式、优先级调度 |
-| **Collaboration** | `src/collaboration.py` | 多智能体协作：三种协作模式、Session协调、消息总线 |
+| **RequestQueue** | `src/request_queue.py` + `src/request_queue_core/` | 请求队列：TurnTicket模式、优先级调度，已拆分为 `_stats`, `_types` |
+| **Collaboration** | `src/collaboration.py` + `src/collaboration_core/` | 多智能体协作：三种协作模式、Session协调、消息总线，已拆分为 `_session`, `_message`, `_one_brain_multi_hand`, `_multi_brain_one_hand`, `_multi_brain_multi_hand` |
+| **CredentialIsolatedSandbox** | `src/security/credential_isolated_sandbox.py` + `src/security/credential_isolated/` | 凭证隔离沙盒：凭证永不进沙盒，已拆分为 `_types`, `_environment`, `_sanitize`, `_execution`, `_proxy`, `_sandbox` |
+| **RiskClassifier** | `src/security/risk_classifier.py` + `src/security/risk_classifier_core/` | 命令风险分类器：动态评估风险，已拆分为 `_types`, `_factors`, `_classifier` |
+| **Harness** | `src/harness/` | 控制器：驱动循环、路由工具，已拆分为 `_manager`, `_resume`, `_streaming`, `_streaming_loop`, `_streaming_iteration`, `_streaming_executor`, `_streaming_types`, `_streaming_utils`, `_metrics`, `_cycle`, `_tool_router` |
+| **Sandbox** | `src/sandbox.py` + `src/sandbox_core/` | 工作台：隔离执行环境，已拆分为 `_execution`, `_path`, `_types` |
 
 ### 多智能体协作模式
 
@@ -134,7 +138,7 @@ agent.inject_user_input(AskUserResult(
 |------|------|------|
 | **builtin_tools** | `src/tools/builtin_tools.py` | 5个核心工具：文件读写/编辑、代码执行、用户交互 |
 | **memory_tools** | `src/tools/memory_tools.py` | L1-L4记忆管理、经验沉淀 |
-| **skill_loader** | `src/tools/skill_loader.py` | 动态技能加载（渐进式披露） |
+| **skill_loader** | `src/tools/skill_loader/` | 动态技能加载（渐进式披露），已拆分为 `_types`, `_cache`, `_loader`, `_matching`, `_metadata`, `_api`, `_skillloader`, `_index` |
 | **ralph_tools** | `src/tools/ralph_tools.py` | Ralph Loop管理：启动/状态检查/完成标记 |
 | **subagent_tools** | `src/tools/subagent_tools.py` | Subagent管理：创建/等待/聚合/终止 |
 | **session_db** | `src/tools/session_db.py` | SQLite+FTS5会话存储（jieba中文分词） |
