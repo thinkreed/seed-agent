@@ -24,17 +24,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self, cast
 
+from src.tools.fts_utils import sanitize_fts_query, tokenize_for_fts5
+
 if TYPE_CHECKING:
     from src.client import LLMGateway
 
 logger = logging.getLogger(__name__)
-
-try:
-    import jieba
-
-    _HAS_JIEBA = True
-except ImportError:
-    _HAS_JIEBA = False
 
 
 def _get_archive_db_path() -> Path:
@@ -56,35 +51,6 @@ def _ensure_archive_db_path() -> Path:
     if ARCHIVE_DB_PATH is None:
         ARCHIVE_DB_PATH = _get_archive_db_path()
     return ARCHIVE_DB_PATH
-
-
-# 导入 session_db 的公共函数
-# 使用延迟导入避免循环依赖，在首次使用时导入
-_sanitize_fts_query_cached: Any = None
-
-
-def _get_sanitize_fts_query():
-    """延迟获取 FTS 查询清理函数"""
-    global _sanitize_fts_query_cached
-    if _sanitize_fts_query_cached is None:
-        from src.tools.session_db import sanitize_fts_query
-
-        _sanitize_fts_query_cached = sanitize_fts_query
-    return _sanitize_fts_query_cached
-
-
-# 兼容别名（延迟获取）
-def _sanitize_fts_query_alias(query: str) -> str:
-    """兼容别名，使用公共函数"""
-    return _get_sanitize_fts_query()(query)
-
-
-# 导入 session_db 的分词缓存函数（延迟导入避免循环依赖）
-def _get_tokenize_func():
-    """延迟获取分词函数，避免模块加载时的循环依赖"""
-    from src.tools.session_db import tokenize_for_fts5
-
-    return tokenize_for_fts5
 
 
 class LongTermArchiveLayer:
@@ -344,10 +310,9 @@ class LongTermArchiveLayer:
         key_findings_text = " ".join(key_findings)
 
         # 使用 tokenize_for_fts5 进行分词预处理（带缓存）
-        tokenize = _get_tokenize_func()
-        summary = tokenize(summary)
-        key_findings_text = tokenize(key_findings_text)
-        event_content = tokenize(event_content)
+        summary = tokenize_for_fts5(summary)
+        key_findings_text = tokenize_for_fts5(key_findings_text)
+        event_content = tokenize_for_fts5(event_content)
 
         self._ensure_conn().execute(
             """
@@ -526,7 +491,7 @@ class LongTermArchiveLayer:
             }]
         """
         # FTS5 搜索
-        fts_query = _sanitize_fts_query_alias(keyword)
+        fts_query = sanitize_fts_query(keyword)
         if not fts_query:
             return []
 
@@ -578,8 +543,8 @@ class LongTermArchiveLayer:
             return []
 
     def _sanitize_fts_query(self, query: str) -> str:
-        """清理 FTS5 查询字符串（兼容别名）"""
-        return _sanitize_fts_query_alias(query)
+        """清理 FTS5 查询字符串"""
+        return sanitize_fts_query(query)
 
     def _extract_matched_snippet(self, content: str, keyword: str) -> str:
         """提取匹配片段"""

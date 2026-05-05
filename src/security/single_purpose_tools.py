@@ -21,6 +21,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from src.security.constants import SENSITIVE_ENV_VARS
+from src.security.utils import get_safe_environment
+
 logger = logging.getLogger(__name__)
 
 
@@ -787,7 +790,7 @@ class SinglePurposeToolFactory:
         try:
             cmd = ["python", script_path, *script_args]
             # 安全：清理环境变量，移除敏感凭证
-            safe_env = self._get_safe_environment()
+            safe_env = get_safe_environment()
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -818,7 +821,7 @@ class SinglePurposeToolFactory:
         try:
             cmd = ["pytest", test_path, *options]
             # 安全：清理环境变量，移除敏感凭证
-            safe_env = self._get_safe_environment()
+            safe_env = get_safe_environment()
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -833,29 +836,6 @@ class SinglePurposeToolFactory:
             return f"[ERROR] Timeout ({timeout}s)"
         except FileNotFoundError:
             return "[ERROR] pytest not installed"
-
-    def _get_safe_environment(self) -> dict[str, str]:
-        """获取安全的环境变量字典（移除敏感凭证）
-
-        Returns:
-            清理后的环境变量，不含 API Key、Token、密码等
-        """
-        safe_env = os.environ.copy()
-
-        # 移除敏感环境变量
-        for var in self._SENSITIVE_ENV_VARS:
-            if var in safe_env:
-                del safe_env[var]
-
-        # 模式匹配移除（如 *_KEY, *_TOKEN, *_SECRET）
-        patterns = ["_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PRIVATE"]
-        for key in list(safe_env.keys()):
-            for pattern in patterns:
-                if key.endswith(pattern) or pattern in key:
-                    del safe_env[key]
-                    break
-
-        return safe_env
 
     def _impl_install_package(self, args: dict[str, Any]) -> str:
         """安装包"""
@@ -1013,36 +993,6 @@ class SinglePurposeToolFactory:
 
     # === 系统信息实现 ===
 
-    # 敏感环境变量列表（不暴露给用户）
-    _SENSITIVE_ENV_VARS = [
-        "OPENAI_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "BAILIAN_API_KEY",
-        "DEEPSEEK_API_KEY",
-        "GEMINI_API_KEY",
-        "COHERE_API_KEY",
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "AWS_SESSION_TOKEN",
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        "AZURE_CLIENT_SECRET",
-        "DATABASE_URL",
-        "DB_PASSWORD",
-        "MYSQL_PASSWORD",
-        "POSTGRES_PASSWORD",
-        "GITHUB_TOKEN",
-        "GITLAB_TOKEN",
-        "SLACK_TOKEN",
-        "DISCORD_TOKEN",
-        "SSH_PRIVATE_KEY",
-        "SSH_AUTH_SOCK",
-        "API_KEY",
-        "SECRET_KEY",
-        "PRIVATE_KEY",
-        "PASSWORD",
-        "TOKEN",
-    ]
-
     def _impl_get_env_info(self, args: dict[str, Any]) -> str:
         """获取环境信息（安全：过滤敏感变量）
 
@@ -1050,12 +1000,12 @@ class SinglePurposeToolFactory:
         """
         filter_pattern = args.get("filter")
 
-        # 获取环境变量并过滤敏感项
+        # 获取环境变量并过滤敏感项（使用公共常量）
         env_vars = {}
         for k, v in os.environ.items():
             # 检查是否为敏感变量
             is_sensitive = False
-            for sensitive in self._SENSITIVE_ENV_VARS:
+            for sensitive in SENSITIVE_ENV_VARS:
                 if (
                     sensitive.lower() in k.lower()
                     or k.lower().endswith("_key")

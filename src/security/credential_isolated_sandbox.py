@@ -27,59 +27,18 @@ from pathlib import Path
 from typing import Any
 
 from src.sandbox import IsolationLevel
+from src.security.constants import BLOCKED_ENV_VARS, ENV_VAR_BLOCK_PATTERNS, OUTPUT_SANITIZE_PATTERNS
 from src.security.credential_proxy import CredentialProxy
 from src.security.secure_sandbox import SecureExecutionResult, SecureSandbox
 from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 # 预编译正则表达式（性能优化）- 用于输出清洗
-_RE_SK_KEY = re.compile(r"sk-[a-zA-Z0-9]{20,}")
-_RE_BEARER = re.compile(r"Bearer\s+[a-zA-Z0-9_-]{20,}")
-_RE_AWS_KEY = re.compile(r"AKIA[A-Z0-9]{16}")
-_RE_API_KEY_GENERIC = re.compile(r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9_-]{20,}')
+_RE_SK_KEY = re.compile(OUTPUT_SANITIZE_PATTERNS["sk_key"])
+_RE_BEARER = re.compile(OUTPUT_SANITIZE_PATTERNS["bearer"])
+_RE_AWS_KEY = re.compile(OUTPUT_SANITIZE_PATTERNS["aws_key"])
+_RE_API_KEY_GENERIC = re.compile(OUTPUT_SANITIZE_PATTERNS["api_key_generic"])
 
 logger = logging.getLogger(__name__)
-
-
-# 需要屏蔽的环境变量列表
-BLOCKED_ENV_VARS = [
-    # API Keys
-    "OPENAI_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "BAILIAN_API_KEY",
-    "DEEPSEEK_API_KEY",
-    "GEMINI_API_KEY",
-    "COHERE_API_KEY",
-    "HUGGINGFACE_TOKEN",
-    # Cloud Credentials
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "AZURE_SUBSCRIPTION_ID",
-    "AZURE_CLIENT_ID",
-    "AZURE_CLIENT_SECRET",
-    # Database Credentials
-    "DATABASE_URL",
-    "DB_PASSWORD",
-    "MYSQL_PASSWORD",
-    "POSTGRES_PASSWORD",
-    "MONGODB_PASSWORD",
-    # Service Tokens
-    "GITHUB_TOKEN",
-    "GITLAB_TOKEN",
-    "SLACK_TOKEN",
-    "DISCORD_TOKEN",
-    "TELEGRAM_TOKEN",
-    # SSH Keys
-    "SSH_PRIVATE_KEY",
-    "SSH_AUTH_SOCK",
-    # Generic
-    "API_KEY",
-    "SECRET_KEY",
-    "PRIVATE_KEY",
-    "PASSWORD",
-    "TOKEN",
-]
 
 
 class CredentialIsolatedSandbox(SecureSandbox):
@@ -478,9 +437,8 @@ print(result)
                 del isolated_env[var]
 
         # 模式匹配移除（如 *_KEY, *_TOKEN, *_SECRET）
-        patterns = ["_KEY", "_TOKEN", "_SECRET", "_PASSWORD", "_PRIVATE"]
         for key in list(isolated_env.keys()):
-            for pattern in patterns:
+            for pattern in ENV_VAR_BLOCK_PATTERNS:
                 if key.endswith(pattern) or pattern in key:
                     logger.debug(f"Blocked environment variable (pattern): {key}")
                     del isolated_env[key]
