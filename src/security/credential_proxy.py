@@ -16,78 +16,33 @@
 - 支持多种 Provider
 
 参考来源: Harness Engineering "凭证永不进沙盒"
+
+重构说明:
+- RequestAuditLog 已移至 proxy/_types.py
+- TemporaryClient 已移至 proxy/_temp_client.py
+- 执行方法已移至 proxy/_execution.py
+- 审计日志管理已移至 proxy/_audit.py
 """
 
 import asyncio
-import json
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
 from src.security.credential_vault import CredentialScope, CredentialVault
+from src.security.proxy import (
+    AuditLogManager,
+    RequestAuditLog,
+    TemporaryClient,
+    execute_external_request,
+    execute_streaming_request,
+    finalize_streaming_request,
+    get_supported_providers,
+    register_provider,
+)
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class RequestAuditLog:
-    """请求审计日志"""
-
-    timestamp: float
-    provider: str
-    credential_type: str
-    requester_id: str | None
-    status: str  # success, failed, timeout
-    duration_ms: float
-    request_context: dict[str, Any]
-    error: str | None = None
-
-
-@dataclass
-class TemporaryClient:
-    """临时客户端（凭证销毁后不可用）"""
-
-    provider: str
-    client: Any
-    # 使用内部列表存储凭证，便于安全清除
-    _credential_storage: list[str]
-    created_at: float
-    destroyed: bool = False
-
-    @property
-    def credential(self) -> str:
-        """获取凭证"""
-        if self.destroyed:
-            raise RuntimeError(
-                "Client has been destroyed, credential no longer available"
-            )
-        return self._credential_storage[0] if self._credential_storage else ""
-
-    def destroy(self) -> None:
-        """销毁客户端（安全凭证清理）
-
-        通过多次覆盖内存区域来安全清除凭证，
-        减少被内存扫描获取的风险。
-        """
-        self.destroyed = True
-        self.client = None
-
-        # 安全清除凭证内存：多次覆盖
-        if self._credential_storage:
-            original_len = len(self._credential_storage[0])
-            # 多次覆盖不同模式
-            for _ in range(3):
-                self._credential_storage[0] = "\x00" * original_len  # 全零
-                self._credential_storage[0] = "\xff" * original_len  # 全一
-                self._credential_storage[0] = "REDACTED" * (
-                    original_len // 8 + 1
-                )  # 标记
-            # 最后清空列表
-            self._credential_storage.clear()
-
-        logger.debug(f"Temporary client destroyed for provider: {self.provider}")
 
 
 class CredentialProxy:
@@ -124,26 +79,6 @@ class CredentialProxy:
         # 凭证已销毁，无法复用客户端
     """
 
-    # Provider 配置
-    PROVIDER_CONFIGS: dict[str, dict[str, str | None]] = {
-        "openai": {
-            "base_url": None,
-            "client_class": "AsyncOpenAI",
-        },
-        "anthropic": {
-            "base_url": None,
-            "client_class": "AsyncAnthropic",
-        },
-        "bailian": {
-            "base_url": "https://coding.dashscope.aliyuncs.com/v1",
-            "client_class": "AsyncOpenAI",
-        },
-        "deepseek": {
-            "base_url": "https://api.deepseek.com/v1",
-            "client_class": "AsyncOpenAI",
-        },
-    }
-
     def __init__(
         self,
         vault: CredentialVault,
@@ -161,9 +96,11 @@ class CredentialProxy:
         self._max_concurrent_requests = max_concurrent_requests
         self._request_timeout = request_timeout
 
-        # 请求审计日志
-        self._request_logs: list[RequestAuditLog] = []
-        self._max_request_logs = 10000
+        # 审计日志管理器
+        self._audit_manager = AuditLogManager()
+
+        # 向后兼容：_request_logs 代理到 _audit_manager._request_logs
+        self._request_logs = self._audit_manager._request_logs
 
         # 并发控制
         self._request_semaphore = asyncio.Semaphore(max_concurrent_requests)
@@ -217,124 +154,19 @@ class CredentialProxy:
         """
         actual_timeout = timeout or self._request_timeout
 
-        # 并发控制
-        async with self._request_semaphore:
-            start_time = time.time()
-            temp_client: TemporaryClient | None = None
-
-            try:
-                # 1. 从 Vault 获取临时凭证（作用域检查）
-                credential = self._vault.get_credential(
-                    provider,
-                    credential_type,
-                    scope=scope,
-                    requester_id=requester_id,
-                )
-
-                # 2. 创建临时客户端
-                temp_client = await self._create_temp_client(provider, credential)
-                self._active_clients[temp_client.provider] = temp_client
-
-                # 3. 执行请求（带超时）
-                try:
-                    result = await asyncio.wait_for(
-                        request_func(temp_client.client, request_context),
-                        timeout=actual_timeout,
-                    )
-
-                    duration_ms = (time.time() - start_time) * 1000
-
-                    # 4. 记录成功审计
-                    self._log_request(
-                        provider=provider,
-                        credential_type=credential_type,
-                        requester_id=requester_id,
-                        status="success",
-                        duration_ms=duration_ms,
-                        request_context=request_context,
-                    )
-
-                    return {
-                        "status": "success",
-                        "result": result,
-                        "duration_ms": duration_ms,
-                    }
-
-                except TimeoutError:
-                    duration_ms = (time.time() - start_time) * 1000
-
-                    # 记录超时审计
-                    self._log_request(
-                        provider=provider,
-                        credential_type=credential_type,
-                        requester_id=requester_id,
-                        status="timeout",
-                        duration_ms=duration_ms,
-                        request_context=request_context,
-                        error=f"Request timeout after {actual_timeout}s",
-                    )
-
-                    return {
-                        "status": "timeout",
-                        "error": f"Request timeout after {actual_timeout}s",
-                        "duration_ms": duration_ms,
-                    }
-
-            except PermissionError as e:
-                # 作用域不允许
-                duration_ms = (time.time() - start_time) * 1000
-                self._log_request(
-                    provider=provider,
-                    credential_type=credential_type,
-                    requester_id=requester_id,
-                    status="failed",
-                    duration_ms=duration_ms,
-                    request_context=request_context,
-                    error=str(e),
-                )
-                raise
-
-            except ValueError as e:
-                # 凭证不存在
-                duration_ms = (time.time() - start_time) * 1000
-                self._log_request(
-                    provider=provider,
-                    credential_type=credential_type,
-                    requester_id=requester_id,
-                    status="failed",
-                    duration_ms=duration_ms,
-                    request_context=request_context,
-                    error=str(e),
-                )
-                raise
-
-            except Exception as e:
-                # 其他异常
-                duration_ms = (time.time() - start_time) * 1000
-                error_msg = f"{type(e).__name__}: {str(e)[:500]}"
-
-                self._log_request(
-                    provider=provider,
-                    credential_type=credential_type,
-                    requester_id=requester_id,
-                    status="failed",
-                    duration_ms=duration_ms,
-                    request_context=request_context,
-                    error=error_msg,
-                )
-
-                return {
-                    "status": "failed",
-                    "error": error_msg,
-                    "duration_ms": duration_ms,
-                }
-
-            finally:
-                # 5. 销毁临时客户端（凭证清理）
-                if temp_client:
-                    self._destroy_temp_client(temp_client)
-                    if temp_client.provider in self._active_clients:
-                        del self._active_clients[temp_client.provider]
+        return await execute_external_request(
+            vault=self._vault,
+            provider=provider,
+            credential_type=credential_type,
+            request_func=request_func,
+            request_context=request_context,
+            requester_id=requester_id,
+            scope=scope,
+            timeout=actual_timeout,
+            semaphore=self._request_semaphore,
+            log_callback=self._audit_manager.add_log,
+            vault_path=self._vault._vault_path,
+        )
 
     async def execute_streaming_request(
         self,
@@ -360,29 +192,20 @@ class CredentialProxy:
         Returns:
             (stream_iterator, metadata)
         """
-        start_time = time.time()
-
-        # 从 Vault 获取临时凭证
-        credential = self._vault.get_credential(
-            provider,
-            credential_type,
-            scope=scope,
+        stream, metadata = await execute_streaming_request(
+            vault=self._vault,
+            provider=provider,
+            credential_type=credential_type,
+            stream_func=stream_func,
+            request_context=request_context,
             requester_id=requester_id,
+            scope=scope,
         )
 
-        # 创建临时客户端
-        temp_client = await self._create_temp_client(provider, credential)
-
-        # 执行流式请求
-        stream = await stream_func(temp_client.client, request_context)
-
-        # 返回流和元数据（客户端将在流结束后销毁）
-        metadata = {
-            "provider": provider,
-            "requester_id": requester_id,
-            "temp_client": temp_client,
-            "start_time": start_time,
-        }
+        # 注册活跃客户端
+        temp_client = metadata.get("temp_client")
+        if temp_client:
+            self._active_clients[temp_client.provider] = temp_client
 
         return stream, metadata
 
@@ -399,263 +222,41 @@ class CredentialProxy:
             status: 请求状态
             error: 错误信息
         """
-        duration_ms = (time.time() - metadata["start_time"]) * 1000
-
-        # 记录审计
-        self._log_request(
-            provider=metadata["provider"],
-            credential_type="api_key",
-            requester_id=metadata["requester_id"],
+        finalize_streaming_request(
+            metadata=metadata,
             status=status,
-            duration_ms=duration_ms,
-            request_context={},
             error=error,
+            log_callback=self._audit_manager.add_log,
+            vault_path=self._vault._vault_path,
         )
 
-        # 销毁临时客户端
+        # 清理活跃客户端记录
         temp_client = metadata.get("temp_client")
-        if temp_client:
-            self._destroy_temp_client(temp_client)
-
-    async def _create_temp_client(
-        self,
-        provider: str,
-        credential: str,
-    ) -> TemporaryClient:
-        """创建临时客户端
-
-        重要: 客户端不存储在 Sandbox 中
-
-        Args:
-            provider: 提供商名称
-            credential: 凭证值
-
-        Returns:
-            TemporaryClient 实例
-
-        Raises:
-            ValueError: Provider 不支持
-        """
-        config = self.PROVIDER_CONFIGS.get(provider)
-        if not config:
-            raise ValueError(
-                f"Unknown provider: {provider}. "
-                f"Supported providers: {list(self.PROVIDER_CONFIGS.keys())}"
-            )
-
-        client_class = config["client_class"]
-        base_url = config.get("base_url")
-
-        # 创建客户端实例
-        if client_class == "AsyncOpenAI":
-            from openai import AsyncOpenAI
-
-            client = AsyncOpenAI(
-                api_key=credential,
-                base_url=base_url,
-            )
-        elif client_class == "AsyncAnthropic":
-            try:
-                from anthropic import AsyncAnthropic
-
-                client = AsyncAnthropic(api_key=credential)
-            except ImportError as e:
-                raise ValueError(
-                    "anthropic package not installed. "
-                    "Install with: pip install anthropic"
-                ) from e
-        else:
-            raise ValueError(f"Unsupported client class: {client_class}")
-
-        temp_client = TemporaryClient(
-            provider=provider,
-            client=client,
-            _credential_storage=[credential],  # 使用列表存储便于安全清除
-            created_at=time.time(),
-        )
-
-        logger.debug(
-            f"Temporary client created: provider={provider}, "
-            f"base_url={base_url or 'default'}"
-        )
-
-        return temp_client
-
-    def _destroy_temp_client(self, temp_client: TemporaryClient) -> None:
-        """销毁临时客户端
-
-        凭证销毁: 客户端对象被丢弃，凭证不再可用
-        """
-        temp_client.destroy()
-
-        logger.debug(
-            f"Temporary client destroyed: provider={temp_client.provider}, "
-            f"lifetime={(time.time() - temp_client.created_at) * 1000:.2f}ms"
-        )
+        if temp_client and temp_client.provider in self._active_clients:
+            del self._active_clients[temp_client.provider]
 
     # === 审计日志 ===
 
-    def _log_request(
-        self,
-        provider: str,
-        credential_type: str,
-        requester_id: str | None,
-        status: str,
-        duration_ms: float,
-        request_context: dict[str, Any],
-        error: str | None = None,
-    ) -> None:
-        """记录请求审计"""
-        # 过滤敏感信息
-        safe_context = self._sanitize_request_context(request_context)
-
-        log_entry = RequestAuditLog(
-            timestamp=time.time(),
-            provider=provider,
-            credential_type=credential_type,
-            requester_id=requester_id,
-            status=status,
-            duration_ms=duration_ms,
-            request_context=safe_context,
-            error=error,
-        )
-
-        self._request_logs.append(log_entry)
-
-        # 限制日志大小
-        if len(self._request_logs) > self._max_request_logs:
-            self._request_logs = self._request_logs[-self._max_request_logs :]
-
-        # 持久化审计日志
-        self._persist_request_audit(log_entry)
-
     def _sanitize_request_context(self, context: dict[str, Any]) -> dict[str, Any]:
-        """过滤请求上下文中的敏感信息"""
-        sensitive_keys = [
-            "api_key",
-            "apikey",
-            "apiKey",
-            "token",
-            "secret",
-            "password",
-            "credential",
-        ]
-
-        safe_context: dict[str, Any] = {}
-        for key, value in context.items():
-            # Check both lowercase and original key
-            key_lower = key.lower()
-            if key_lower in sensitive_keys or key in sensitive_keys:
-                safe_context[key] = "[REDACTED]"
-            elif isinstance(value, dict):
-                safe_context[key] = self._sanitize_request_context(value)
-            elif isinstance(value, str) and len(value) > 100:
-                safe_context[key] = value[:100] + "...[truncated]"
-            else:
-                safe_context[key] = value
-
-        return safe_context
-
-    def _persist_request_audit(self, log_entry: RequestAuditLog) -> None:
-        """持久化请求审计日志（带文件权限保护）"""
-        audit_file = self._vault._vault_path / "request_audit.jsonl"
-
-        entry = {
-            "timestamp": log_entry.timestamp,
-            "provider": log_entry.provider,
-            "credential_type": log_entry.credential_type,
-            "requester_id": log_entry.requester_id,
-            "status": log_entry.status,
-            "duration_ms": log_entry.duration_ms,
-            "request_context": log_entry.request_context,
-            "error": log_entry.error,
-        }
-
-        try:
-            with open(audit_file, "a") as f:
-                f.write(json.dumps(entry) + "\n")
-            # 安全：设置审计日志文件权限（仅 owner 可读写）
-            try:
-                import os
-
-                os.chmod(audit_file, 0o600)
-            except OSError:
-                logger.warning(f"Failed to set permissions on audit file: {audit_file}")
-        except Exception as e:
-            logger.warning(f"Failed to persist request audit: {e}")
-
-    def get_request_audit_log(self, limit: int = 100) -> list[dict[str, Any]]:
-        """获取请求审计日志
+        """过滤请求上下文中的敏感信息（向后兼容）
 
         Args:
-            limit: 返回条数限制
+            context: 原始请求上下文
 
         Returns:
-            审计日志列表
+            过滤后的安全上下文
         """
-        logs = self._request_logs[-limit:]
-        return [
-            {
-                "timestamp": log.timestamp,
-                "provider": log.provider,
-                "credential_type": log.credential_type,
-                "requester_id": log.requester_id,
-                "status": log.status,
-                "duration_ms": log.duration_ms,
-                "request_context": log.request_context,
-                "error": log.error,
-            }
-            for log in logs
-        ]
+        from src.security.proxy._execution import sanitize_request_context
+
+        return sanitize_request_context(context)
+
+    def get_request_audit_log(self, limit: int = 100) -> list[dict[str, Any]]:
+        """获取请求审计日志"""
+        return self._audit_manager.get_logs(limit)
 
     def get_request_stats(self) -> dict[str, Any]:
-        """获取请求统计信息（单次遍历优化）"""
-        total_requests = len(self._request_logs)
-        successful = 0
-        failed = 0
-        timeouts = 0
-        total_duration = 0.0
-        by_provider: dict[str, dict[str, int]] = {}
-
-        # 单次遍历计算所有统计值
-        for log in self._request_logs:
-            # 状态统计
-            if log.status == "success":
-                successful += 1
-            elif log.status == "failed":
-                failed += 1
-            elif log.status == "timeout":
-                timeouts += 1
-
-            # 耗时累计
-            total_duration += log.duration_ms
-
-            # 按 Provider 统计
-            if log.provider not in by_provider:
-                by_provider[log.provider] = {
-                    "total": 0,
-                    "success": 0,
-                    "failed": 0,
-                    "timeout": 0,
-                }
-            by_provider[log.provider]["total"] += 1
-            by_provider[log.provider][log.status] += 1
-
-        avg_duration = total_duration / total_requests if total_requests else 0.0
-
-        return {
-            "total_requests": total_requests,
-            "successful": successful,
-            "failed": failed,
-            "timeouts": timeouts,
-            "success_rate": (successful / total_requests * 100)
-            if total_requests
-            else 100.0,
-            "average_duration_ms": avg_duration,
-            "by_provider": by_provider,
-            "active_clients": len(self._active_clients),
-            "max_concurrent_requests": self._max_concurrent_requests,
-        }
+        """获取请求统计信息"""
+        return self._audit_manager.get_stats(len(self._active_clients))
 
     # === Provider 管理 ===
 
@@ -665,29 +266,18 @@ class CredentialProxy:
         base_url: str | None,
         client_class: str = "AsyncOpenAI",
     ) -> None:
-        """注册新的 Provider
-
-        Args:
-            provider: Provider 名称
-            base_url: API 基础 URL
-            client_class: 客户端类名
-        """
-        self.PROVIDER_CONFIGS[provider] = {
-            "base_url": base_url,
-            "client_class": client_class,
-        }
-
-        logger.info(f"Provider registered: {provider}, base_url={base_url}")
+        """注册新的 Provider"""
+        register_provider(provider, base_url, client_class)
 
     def get_supported_providers(self) -> list[str]:
         """获取支持的 Provider 列表"""
-        return list(self.PROVIDER_CONFIGS.keys())
+        return get_supported_providers()
 
     # === 清理 ===
 
     def clear_request_logs(self) -> None:
         """清空请求审计日志"""
-        self._request_logs.clear()
+        self._audit_manager.clear()
 
         # 删除日志文件
         audit_file = self._vault._vault_path / "request_audit.jsonl"
@@ -699,11 +289,7 @@ class CredentialProxy:
                 logger.warning(f"Failed to delete request audit file: {e}")
 
     def cleanup_active_clients(self) -> int:
-        """清理超时的活跃客户端
-
-        Returns:
-            清理的客户端数量
-        """
+        """清理超时的活跃客户端"""
         timeout_threshold = 300.0  # 5 分钟超时
         now = time.time()
 
@@ -715,10 +301,18 @@ class CredentialProxy:
 
         for provider in expired_ids:
             client = self._active_clients[provider]
-            self._destroy_temp_client(client)
+            client.destroy()
             del self._active_clients[provider]
 
         if expired_ids:
             logger.info(f"Cleaned up {len(expired_ids)} expired clients")
 
         return len(expired_ids)
+
+
+# 导出公共 API（向后兼容）
+__all__ = [
+    "CredentialProxy",
+    "TemporaryClient",
+    "RequestAuditLog",
+]

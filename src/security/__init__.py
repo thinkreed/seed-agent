@@ -27,10 +27,19 @@ from src.security.credential_vault import (
     CredentialVault,
 )
 from src.security.risk_classifier import CommandRiskClassifier, RiskAction, RiskLevel
-from src.security.secure_harness import SecureHarness
+# SecureHarness 延迟导入以避免循环导入
+# from src.security.secure_harness import SecureHarness
 from src.security.secure_sandbox import SecureSandbox
 from src.security.single_purpose_tools import SinglePurposeToolFactory
 from src.security.tool_expander import ProgressiveToolExpander, ToolTier
+
+
+def __getattr__(name: str):
+    """延迟导入 SecureHarness 以避免循环导入"""
+    if name == "SecureHarness":
+        from src.security.secure_harness import SecureHarness
+        return SecureHarness
+    raise AttributeError(f"module {__name__} has no attribute {name}")
 
 __all__ = [
     # 风险分类

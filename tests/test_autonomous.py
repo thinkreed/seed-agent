@@ -200,8 +200,8 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("DONE")
 
-            # 使用动态函数替代常量 patch
-            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
+            # 使用动态函数替代常量 patch - 更新路径以适应新模块结构
+            with patch('autonomous._explorer._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertTrue(result)
                 # 文件应被删除
@@ -213,7 +213,7 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("COMPLETE")
 
-            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
+            with patch('autonomous._explorer._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertTrue(result)
 
@@ -223,7 +223,7 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("TASK_FINISHED")
 
-            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
+            with patch('autonomous._explorer._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertTrue(result)
 
@@ -233,7 +233,7 @@ class TestCompletionPromise(unittest.TestCase):
             promise_file = Path(tmpdir) / "completion_promise"
             promise_file.write_text("IN_PROGRESS")
 
-            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
+            with patch('autonomous._explorer._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertFalse(result)
                 # 文件不应被删除
@@ -244,7 +244,7 @@ class TestCompletionPromise(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             promise_file = Path(tmpdir) / "completion_promise"
 
-            with patch('autonomous._get_completion_promise_file', return_value=promise_file):
+            with patch('autonomous._explorer._get_completion_promise_file', return_value=promise_file):
                 result = self.explorer._check_completion_promise()
                 self.assertFalse(result)
 
@@ -653,11 +653,14 @@ class TestTodoLoading(unittest.TestCase):
 
     def test_load_nonexistent_todo(self):
         """测试加载不存在的 TODO 文件"""
-        # 使用不存在的目录，patch _ensure_seed_dir 因为 _load_todo_content 使用它
-        with patch('autonomous._ensure_seed_dir', return_value=Path(self.tmpdir.name)):
-            explorer = AutonomousExplorer(self.mock_agent)
-            result = explorer._load_todo_content()
-            self.assertEqual(result, "")
+        # 需要在创建 explorer 之前 mock，避免初始化时读取真实 TODO
+        # 由于测试使用 sys.path.insert(0, 'src')，模块名是 'autonomous'，需要 mock 相应路径
+        with patch('autonomous._task_executor.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
+            with patch('autonomous._explorer.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
+                with patch('autonomous._state_manager.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
+                    explorer = AutonomousExplorer(self.mock_agent)
+                    result = explorer._load_todo_content()
+                    self.assertEqual(result, "")
 
 
 class TestTaskSignals(unittest.TestCase):

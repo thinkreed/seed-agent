@@ -212,6 +212,10 @@ def _get_db() -> SessionDB:
         with _db_lock:
             if _db_instance is None:
                 _db_instance = SessionDB()
+    # 检查连接是否已关闭，如果关闭则重新创建
+    if _db_instance.conn is None:
+        with _db_lock:
+            _db_instance = SessionDB()
     return _db_instance
 
 
