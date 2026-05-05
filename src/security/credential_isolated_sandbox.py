@@ -27,7 +27,11 @@ from pathlib import Path
 from typing import Any
 
 from src.sandbox import IsolationLevel
-from src.security.constants import BLOCKED_ENV_VARS, ENV_VAR_BLOCK_PATTERNS, OUTPUT_SANITIZE_PATTERNS
+from src.security.constants import (
+    BLOCKED_ENV_VARS,
+    ENV_VAR_BLOCK_PATTERNS,
+    OUTPUT_SANITIZE_PATTERNS,
+)
 from src.security.credential_proxy import CredentialProxy
 from src.security.secure_sandbox import SecureExecutionResult, SecureSandbox
 from src.tools.utils import is_parse_failed, parse_tool_arguments

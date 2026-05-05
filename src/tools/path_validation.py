@@ -250,10 +250,10 @@ def resolve_path(path: str) -> str:
 
 # 公共导出
 __all__ = [
-    "validate_path_safety",
-    "resolve_path",
-    "is_path_in_allowed_dirs",
     "ALLOWED_DIRS",
     "DEFAULT_WORK_DIR",
     "PROJECT_ROOT",
+    "is_path_in_allowed_dirs",
+    "resolve_path",
+    "validate_path_safety",
 ]

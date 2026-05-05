@@ -65,7 +65,6 @@ class SingletonDB:
         使用类锁保护初始化状态检查，避免重复初始化。
         """
         # 使用类属性名获取锁（子类应该有自己的锁）
-        lock_attr = f"{self.__class__.__name__}._lock"
         lock = self.__class__._lock
 
         with lock:

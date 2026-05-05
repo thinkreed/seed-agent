@@ -854,8 +854,8 @@ class LongTermArchiveLayer:
                 (summary, latest_archive_id),
             )
 
-            # 更新 FTS 索引
-            summary_tokens = " ".join(jieba.cut(summary)) if _HAS_JIEBA else summary
+            # 更新 FTS 索引（使用 fts_utils 的分词函数）
+            summary_tokens = tokenize_for_fts5(summary)
 
             self._ensure_conn().execute(
                 """

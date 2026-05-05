@@ -142,4 +142,4 @@ def sanitize_fts_query(query: str) -> str:
 
 
 # 公共导出
-__all__ = ["tokenize_for_fts5", "sanitize_fts_query", "_HAS_JIEBA"]
+__all__ = ["_HAS_JIEBA", "sanitize_fts_query", "tokenize_for_fts5"]

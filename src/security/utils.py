@@ -16,7 +16,7 @@
 import logging
 import os
 
-from src.security.constants import SENSITIVE_ENV_VARS, ENV_VAR_BLOCK_PATTERNS
+from src.security.constants import ENV_VAR_BLOCK_PATTERNS, SENSITIVE_ENV_VARS
 
 logger = logging.getLogger(__name__)
 
