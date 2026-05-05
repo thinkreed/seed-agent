@@ -12,10 +12,12 @@ Harness (控制器) 模块
 - CycleResult: 单轮循环结果类型
 - ToolExecutionMetrics: 工具执行指标类型
 - MaxIterationsExceededError: 最大迭代次数错误
+- LoopDetectedError: 循环检测错误
 - HarnessManager: 多实例管理器（从 harness._manager 导入）
 
 内部模块位于 src/harness/ 目录：
 - _metrics: 指标和 OpenTelemetry Span
+- _loop_detection: 循环检测服务
 - _write_conflict: 写冲突检测
 - _lifecycle_hooks: 钩子触发和上下文构建
 - _single_tool: 单工具执行
@@ -40,6 +42,7 @@ from src.harness._context_builder import (
 )
 from src.harness._cycle import run_conversation_impl, run_cycle_impl
 from src.harness._lifecycle_hooks import build_session_end_ctx, trigger_hook
+from src.harness._loop_detection import LoopDetectionConfig, LoopDetectionService, LoopType
 from src.harness._manager import MAX_ITERATIONS, HarnessManager
 
 # 从子模块导入
@@ -68,6 +71,21 @@ class MaxIterationsExceededError(Exception):
     def __init__(self, iterations: int) -> None:
         super().__init__(f"Harness exceeded maximum iterations ({iterations})")
         self.iterations = iterations
+
+
+class LoopDetectedError(Exception):
+    """检测到循环调用"""
+
+    def __init__(self, loop_type: LoopType, tool_name: str | None = None, count: int = 0) -> None:
+        message = f"Loop detected: {loop_type.name}"
+        if tool_name:
+            message += f" (tool: {tool_name})"
+        if count:
+            message += f" (count: {count})"
+        super().__init__(message)
+        self.loop_type = loop_type
+        self.tool_name = tool_name
+        self.count = count
 
 
 class CycleResult(dict):
@@ -118,6 +136,7 @@ class Harness:
         self._current_task: str | None = None
         self._metrics: deque[ToolExecutionMetrics] = deque(maxlen=1000)
         self._hook_reports: deque[HookTriggerReport] = deque(maxlen=500)
+        self._loop_detector: LoopDetectionService = LoopDetectionService()
         self._waiting_for_user: bool = False
         self._pending_tool_call_id: str | None = None
         logger.info(f"Harness initialized: session={session.session_id}")
@@ -268,4 +287,4 @@ class Harness:
         )
 
 
-__all__ = ["MAX_ITERATIONS", "CycleResult", "Harness", "HarnessManager", "MaxIterationsExceededError", "ToolExecutionMetrics"]
+__all__ = ["MAX_ITERATIONS", "CycleResult", "Harness", "HarnessManager", "LoopDetectedError", "LoopDetectionService", "LoopType", "MaxIterationsExceededError", "ToolExecutionMetrics"]

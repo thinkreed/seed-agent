@@ -28,6 +28,16 @@ from session_event_stream import SessionEventStream, EventType
 from request_queue import RequestPriority
 
 
+@pytest.fixture(autouse=True)
+def reset_global_state():
+    """清理全局状态，避免并发测试污染"""
+    # 使用已导入的路径
+    from src.tools.ask_user_types_core import reset_ask_user_state
+    reset_ask_user_state()
+    yield
+    reset_ask_user_state()
+
+
 class MockModelConfig:
     """Mock model config for testing"""
     contextWindow = 128000
