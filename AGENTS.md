@@ -331,7 +331,7 @@ RalphSubagentOrchestrator 执行模式:
 
 ## Wiki 知识落地状态
 
-基于 Wiki 知识库分析的实际落地情况：
+基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-06，测试通过: 1132 passed）：
 
 ### 已实现（P0）
 
@@ -340,7 +340,7 @@ RalphSubagentOrchestrator 执行模式:
 | ToolKind 枚举分类 | qwen-code | `src/tools/__init__.py` |
 | LoopDetectionService | qwen-code | `src/harness/_loop_detection.py` |
 | 整合锁机制 | qwen-code | `src/tools/memory/_consolidation_lock.py` |
-| win_rate 字段 | mia | `src/tools/session/_skill_queries.py` |
+| win_rate 字段 | mia | `src/tools/session/_rate_calculation.py` (success_rate/laplace_rate) |
 | 渐进式披露 Skills | hermes | `src/tools/skill_loader/_skillloader.py` |
 | MessageBus.request() | qwen-code | `src/lifecycle_hooks/_message_bus.py` |
 

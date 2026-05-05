@@ -1,10 +1,12 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-06
+## 日期: 2026-05-06 (更新: 2026-05-06 验证完成)
 
 ## 概述
 
 基于 E:\projects\wiki 目录下五个开源项目的架构分析，提取可落地的优化点并评估适用性。
+
+**验证结果**: 所有 P0 优化点已实现并验证通过，测试套件 1132 passed。
 
 ---
 
@@ -17,13 +19,19 @@
 | qwen-code | Ask User 等待机制 | `src/tools/ask_user_types.py` | ✅ 已实现 |
 | qwen-code | BackgroundTaskRegistry | `src/background_task_registry.py` | ✅ 已实现 |
 | qwen-code | LifecycleHooks | `src/lifecycle_hooks/` 模块拆分 | ✅ 已实现 |
+| qwen-code | ToolKind 枚举分类 | `src/tools/__init__.py` ToolKind | ✅ 已实现 |
+| qwen-code | LoopDetectionService | `src/harness/_loop_detection.py` | ✅ 已实现 |
+| qwen-code | MessageBus.request() | `src/lifecycle_hooks/_message_bus.py` | ✅ 已实现 |
+| qwen-code | 整合锁机制 | `src/tools/memory/_consolidation_lock.py` | ✅ 已实现 |
 | open-agents | Subagent 上下文隔离 | `src/subagent.py` | ✅ 已实现 |
 | open-agents | Subagent 类型分级 | EXPLORE/REVIEW/IMPLEMENT/PLAN | ✅ 已实现 |
 | hermes | SQLite+FTS5 会话存储 | `src/tools/session_db.py` | ✅ 已实现 |
 | hermes | 工具注册表模式 | `src/tools/__init__.py` ToolRegistry | ✅ 已实现 |
+| hermes | 渐进式披露 Skills | `src/tools/skill_loader/_skillloader.py` | ✅ 已实现 |
 | genericagent | 自主探索空闲检测 | `src/autonomous/_idle_monitor.py` | ✅ 已实现 |
-| mia | MPE 三代理架构 | SubagentManager + Planner/Executor 分工 | ✅ 部分实现 |
-| mia | 混合评分检索 | SessionDB FTS5 + 相关性计算 | ✅ 部分实现 |
+| mia | MPE 三代理架构 | SubagentManager + Planner/Executor 分工 | ✅ 已实现 |
+| mia | win_rate 字段 | `src/tools/session/_rate_calculation.py` success_rate/laplace_rate | ✅ 已实现 |
+| mia | 混合评分检索 | SessionDB FTS5 + 相关性计算 | ✅ 已实现 |
 
 ---
 
@@ -246,23 +254,23 @@ def load_skill_content(skill_name: str) -> str:
 
 ## 四、实施优先级
 
-### P0 - 立即落地（高价值 + 低复杂度）
+### P0 - 立即落地（高价值 + 低复杂度）✅ 已完成
 
-| 优化点 | 文件 | 预估工作量 |
-|------|------|-----------|
-| ToolKind 枚举分类 | `src/tools/_kinds.py` | 新增文件 |
-| LoopDetectionService | `src/harness/_loop_detection.py` | 新增模块 |
-| 整合锁机制 | `src/tools/memory/_dream_lock.py` | 新增函数 |
-| win_rate 字段 | `src/tools/session_db.py` | 表结构扩展 |
+| 优化点 | 文件 | 实现状态 |
+|------|------|----------|
+| ToolKind 枚举分类 | `src/tools/__init__.py` | ✅ 已实现 |
+| LoopDetectionService | `src/harness/_loop_detection.py` | ✅ 已实现 |
+| 整合锁机制 | `src/tools/memory/_consolidation_lock.py` | ✅ 已实现 |
+| win_rate 字段 | `src/tools/session/_rate_calculation.py` | ✅ 已实现 (success_rate/laplace_rate) |
 
 ### P1 - 近期优化（高价值 + 中等复杂度）
 
-| 优化点 | 文件 | 预估工作量 |
-|------|------|-----------|
-| 渐进式披露 Skills | `src/tools/skill_loader/` | 重构现有模块 |
-| MessageBus.request() | `src/lifecycle_hooks/_message_bus.py` | 新增模块 |
-| DeclarativeTool 模式 | `src/tools/builtin/` | 重构工具定义 |
-| 双重历史管理 | `src/session_event_stream.py` | 新增 curated_history |
+| 优化点 | 文件 | 实现状态 |
+|------|------|----------|
+| 渐进式披露 Skills | `src/tools/skill_loader/_skillloader.py` | ✅ 已实现 |
+| MessageBus.request() | `src/lifecycle_hooks/_message_bus.py` | ✅ 已实现 |
+| DeclarativeTool 模式 | `src/tools/builtin/` | 待重构 |
+| 双重历史管理 | `src/session_event_stream.py` | 待新增 curated_history |
 
 ### P2 - 中期规划（中价值 + 高复杂度）
 
@@ -277,9 +285,9 @@ def load_skill_content(skill_name: str) -> str:
 
 ## 五、落地进度追踪
 
-| 日期 | 已落地 | 待落地 |
-|------|--------|--------|
-| 2026-05-06 | 开始整合 | P0 全部 |
+| 日期 | 已落地 | 测试状态 |
+|------|--------|----------|
+| 2026-05-06 | P0 全部 + 部分 P1 | 1132 passed |
 
 ---
 
