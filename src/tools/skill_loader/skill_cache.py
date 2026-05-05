@@ -36,6 +36,12 @@ CACHE_DIR = None  # 类型: Path | None
 SNAPSHOT_PATH = None  # 类型: Path | None
 
 
+def get_snapshot_path() -> Path:
+    """获取快照路径（动态）"""
+    _ensure_cache_paths()
+    return SNAPSHOT_PATH or _get_snapshot_path()
+
+
 def _ensure_cache_paths() -> tuple[Path, Path]:
     """确保缓存路径已初始化"""
     global CACHE_DIR, SNAPSHOT_PATH
@@ -208,3 +214,17 @@ def clear_snapshot() -> None:
             logger.debug("Skill cache snapshot cleared")
     except OSError as e:
         logger.warning(f"Failed to clear skill cache snapshot: {type(e).__name__}: {e}")
+
+
+# 兼容性别名（供旧测试使用）
+_build_manifest = build_manifest
+
+
+__all__ = [
+    "SNAPSHOT_PATH",
+    "build_manifest",
+    "_build_manifest",
+    "clear_snapshot",
+    "load_snapshot",
+    "save_snapshot",
+]

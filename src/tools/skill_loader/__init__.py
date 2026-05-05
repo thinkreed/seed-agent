@@ -34,16 +34,25 @@ from ._config import (
     _RE_EN_WORD_HYPHEN,
     CURRENT_PLATFORM,
     MAX_LOADED_SKILL_CACHE,
+    MEMORY_GRAPH_CONFIG,
+    PLATFORM_MAP,
     _ensure_skills_dir,
 )
 from .skill_cache import (
+    SNAPSHOT_PATH,
+    _build_manifest,
+    build_manifest,
     clear_snapshot,
     load_snapshot,
     save_snapshot,
 )
 from .skill_security import (
+    INJECTION_PATTERNS,
+    _scan_for_injections,
+    _validate_skill_structure,
     scan_for_injections,
     validate_skill_structure,
+    validate_path_within_dir,
 )
 
 if TYPE_CHECKING:
@@ -340,6 +349,138 @@ class SkillLoader:
         """获取所有 skill 名称"""
         return list(self._skills_meta.keys())
 
+    def get_skill_info(self, name: str) -> dict | None:
+        """获取 skill 元数据"""
+        return self._skills_meta.get(name)
+
+    def load_skill_ref(self, name: str, ref_path: str) -> str | None:
+        """加载 skill 的参考文件（Tier 3）"""
+        if name not in self._skills_meta:
+            return None
+
+        skill_dir = Path(self._skills_meta[name]["dir"])
+
+        if ".." in ref_path:
+            return "Error: Path traversal not allowed."
+
+        target = (skill_dir / ref_path).resolve()
+        if not validate_path_within_dir(target, skill_dir):
+            return "Error: Path escapes skill directory."
+
+        if not target.exists() or not target.is_file():
+            return f"Reference file not found: {ref_path}"
+
+        try:
+            return target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            return f"Error reading reference: {e}"
+
+    def select_best_skill(self, signals: list[str], available_tools: set[str] | None = None) -> str | None:
+        """Memory Graph 增强的 Skill 选择"""
+        if not MEMORY_GRAPH_CONFIG.get("enabled", True):
+            query = " ".join(signals) if signals else ""
+            return self.match_skill(query, available_tools)
+
+        candidates = [
+            name for name in self._skills_meta
+            if self.should_show_skill(name, available_tools)
+        ]
+        if not candidates:
+            return None
+
+        # 简单排序（按触发分数）
+        scores = {}
+        for skill_name in candidates:
+            scores[skill_name] = self._compute_trigger_score(skill_name, signals)
+        ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        
+        return ranked[0][0] if ranked else None
+
+    def _compute_trigger_score(self, skill_name: str, signals: list[str]) -> float:
+        """计算触发器匹配分数"""
+        if not signals:
+            return 0.0
+
+        meta = self._skills_meta.get(skill_name)
+        if not meta:
+            return 0.0
+
+        triggers_lower = meta.get("triggers_lower", set())
+        if not triggers_lower:
+            return 0.0
+
+        signals_lower = [s.lower() for s in signals]
+        score = 0.0
+        for signal_lower in signals_lower:
+            if signal_lower in triggers_lower:
+                score += 1.0
+            else:
+                for trigger_lower in triggers_lower:
+                    if signal_lower in trigger_lower or trigger_lower in signal_lower:
+                        score += 0.5
+        return min(score, 3.0)
+
+    def get_gene_slice(self, name: str) -> str | None:
+        """提取 Gene slice (Tier 2a): 核心控制信号"""
+        if name not in self._skills_meta:
+            return None
+
+        skill_file = Path(self._skills_meta[name]["path"])
+        if not skill_file.exists():
+            return None
+
+        try:
+            content = skill_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+        # 解析 YAML frontmatter
+        if not content.startswith("---"):
+            return f"[SYSTEM: Skill '{name}' activated]\n\n{content[:500]}"
+
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            return f"[SYSTEM: Skill '{name}' activated]\n\n{content[:500]}"
+
+        try:
+            import yaml
+            frontmatter = yaml.safe_load(parts[1].strip())
+            
+            output = f"[SYSTEM: Skill '{name}' activated]\n\n"
+            
+            # 提取 strategy 字段
+            if "strategy" in frontmatter:
+                output += "## Strategy\n"
+                for item in frontmatter["strategy"]:
+                    output += f"- {item}\n"
+            
+            # 提取 avoid 字段
+            if "avoid" in frontmatter:
+                output += "\n## AVOID\n"
+                for item in frontmatter["avoid"]:
+                    output += f"- {item}\n"
+            
+            # 提取 constraints 字段
+            if "constraints" in frontmatter:
+                output += "\n## Constraints\n"
+                constraints = frontmatter["constraints"]
+                if isinstance(constraints, dict):
+                    for k, v in constraints.items():
+                        output += f"- {k}: {v}\n"
+                elif isinstance(constraints, list):
+                    for c in constraints:
+                        output += f"- {c}\n"
+            
+            # 提取 validation 字段
+            if "validation" in frontmatter:
+                output += "\n## Validation\n"
+                for item in frontmatter["validation"]:
+                    output += f"- {item}\n"
+            
+            return output if len(output) > 50 else f"[SYSTEM: Skill '{name}' activated]\n\n{content[:500]}"
+        except Exception:
+            return f"[SYSTEM: Skill '{name}' activated]\n\n{content[:500]}"
+
     def refresh(self) -> None:
         """刷新元数据"""
         with self._lock:
@@ -425,11 +566,30 @@ def register_skill_tools(registry: "ToolRegistry") -> None:
     registry.register("search_skill", search_skill)
 
 
+# 兼容性别名
+_get_loader = get_loader
+
+
 __all__ = [
     "SkillLoader",
     "get_loader",
+    "_get_loader",
     "list_skills",
     "load_skill",
     "register_skill_tools",
     "search_skill",
+    # 导出子模块内容以保持向后兼容
+    "MEMORY_GRAPH_CONFIG",
+    "PLATFORM_MAP",
+    "SNAPSHOT_PATH",
+    "_build_manifest",
+    "build_manifest",
+    "clear_snapshot",
+    "load_snapshot",
+    "save_snapshot",
+    "INJECTION_PATTERNS",
+    "_scan_for_injections",
+    "_validate_skill_structure",
+    "scan_for_injections",
+    "validate_skill_structure",
 ]

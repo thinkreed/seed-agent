@@ -98,3 +98,18 @@ def validate_path_within_dir(target: Path, base_dir: Path) -> bool:
         return str(target.resolve()).startswith(str(base_dir.resolve()))
     except (OSError, PermissionError):
         return False
+
+
+# 兼容性别名（供旧测试使用）
+_scan_for_injections = scan_for_injections
+_validate_skill_structure = validate_skill_structure
+
+
+__all__ = [
+    "INJECTION_PATTERNS",
+    "scan_for_injections",
+    "_scan_for_injections",
+    "validate_skill_structure",
+    "_validate_skill_structure",
+    "validate_path_within_dir",
+]
