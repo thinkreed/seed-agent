@@ -87,6 +87,10 @@ class AgentLoop:
         self.summary_interval = summary_interval
         self.session_id = session_id or self._generate_session_id()
 
+        # === SecureSandbox 配置 (保存以供测试验证) ===
+        self._enable_secure_sandbox = enable_secure_sandbox
+        self._user_permission_level = user_permission_level
+
         # === Session 事件流 ===
         self.session = SessionEventStream(self.session_id)
         self.session.record_session_start({

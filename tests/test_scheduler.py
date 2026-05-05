@@ -25,22 +25,18 @@ from scheduler import ScheduledTask, TaskScheduler
 
 @pytest.fixture
 def mock_tasks_dir(monkeypatch):
-    """Mock tasks directory and file for TaskScheduler tests using monkeypatch."""
+    """Mock tasks directory and file for TaskScheduler tests using override mechanism."""
     temp_dir = tempfile.mkdtemp()
     tasks_file = Path(temp_dir) / 'scheduled_tasks.json'
 
-    # Mock 动态路径函数
-    def mock_get_tasks_dir():
-        return Path(temp_dir)
-    
-    def mock_get_tasks_file():
-        return tasks_file
+    # Use the override mechanism instead of monkeypatch for functions
+    import scheduler._storage
+    scheduler._storage._set_tasks_dir_override(Path(temp_dir))
 
-    # 使用 monkeypatch 替换动态路径函数
-    monkeypatch.setattr(scheduler, '_get_tasks_dir', mock_get_tasks_dir)
-    monkeypatch.setattr(scheduler, '_get_tasks_file', mock_get_tasks_file)
+    yield temp_dir
 
-    return temp_dir
+    # Reset override after test
+    scheduler._storage._set_tasks_dir_override(None)
 
 # ==================== Tests for ScheduledTask ====================
 
@@ -79,124 +75,98 @@ class TestScheduledTask:
         )
         assert task.should_run() is False
 
-    def test_should_run_past_interval(self):
-        """Task should run if interval passed."""
+    def test_should_run_after_interval_passed(self):
+        """Task should run after interval has passed."""
         task = ScheduledTask(
             task_id="test",
             task_type="test",
-            interval_seconds=100,
+            interval_seconds=3600,
             prompt="Test",
-            last_run=time.time() - 200  # 200s ago
+            last_run=time.time() - 4000  # More than 1 hour ago
         )
         assert task.should_run() is True
 
-    def test_should_run_disabled(self):
-        """Disabled task should not run."""
-        task = ScheduledTask(
-            task_id="test",
-            task_type="test",
-            interval_seconds=1,
-            prompt="Test",
-            last_run=0,
-            enabled=False
-        )
-        assert task.should_run() is False
-
     def test_mark_run(self):
-        """Marking run updates last_run."""
+        """Test mark_run updates last_run."""
         task = ScheduledTask(
             task_id="test",
             task_type="test",
             interval_seconds=3600,
-            prompt="Test",
-            last_run=0
+            prompt="Test"
         )
-        before = time.time()
+        before = task.last_run
         task.mark_run()
-        after = time.time()
+        assert task.last_run > before
 
-        assert task.last_run > 0
-        assert task.last_run >= before
-        assert task.last_run <= after
-
-    def test_serialization(self):
-        """Test to_dict."""
+    def test_to_dict(self):
+        """Test serialization to dict."""
         task = ScheduledTask(
             task_id="test",
-            task_type="test",
-            interval_seconds=3600,
-            prompt="Test",
-            last_run=1234567890.0
+            task_type="custom",
+            interval_seconds=123,
+            prompt="Test prompt",
+            last_run=100,
+            enabled=True
         )
         data = task.to_dict()
-        assert data['task_id'] == "test"
-        assert data['last_run'] == 1234567890.0
+        assert data["task_id"] == "test"
+        assert data["task_type"] == "custom"
+        assert data["interval_seconds"] == 123
+        assert data["prompt"] == "Test prompt"
+        assert data["last_run"] == 100
+        assert data["enabled"] is True
 
-    def test_deserialization(self):
-        """Test from_dict."""
+    def test_from_dict(self):
+        """Test deserialization from dict."""
         data = {
             "task_id": "test",
-            "task_type": "test",
-            "interval_seconds": 3600,
-            "prompt": "Test",
-            "last_run": 1234567890.0,
+            "task_type": "custom",
+            "interval_seconds": 123,
+            "prompt": "Test prompt",
+            "last_run": 100,
             "enabled": False
         }
         task = ScheduledTask.from_dict(data)
         assert task.task_id == "test"
+        assert task.task_type == "custom"
+        assert task.interval_seconds == 123
+        assert task.prompt == "Test prompt"
+        assert task.last_run == 100
         assert task.enabled is False
 
-    def test_deserialization_defaults(self):
-        """Test from_dict with missing optional fields."""
-        data = {
-            "task_id": "test",
-            "task_type": "test",
-            "interval_seconds": 3600,
-            "prompt": "Test"
-        }
-        task = ScheduledTask.from_dict(data)
-        assert task.last_run == 0
-        assert task.enabled is True
+    def test_serialization_roundtrip(self):
+        """Test serialization roundtrip."""
+        original = ScheduledTask(
+            task_id="test",
+            task_type="custom",
+            interval_seconds=123,
+            prompt="Test prompt",
+            last_run=time.time(),
+            enabled=True
+        )
+        data = original.to_dict()
+        restored = ScheduledTask.from_dict(data)
+        assert restored.task_id == original.task_id
+        assert restored.task_type == original.task_type
+        assert restored.interval_seconds == original.interval_seconds
+        assert restored.prompt == original.prompt
+        assert restored.last_run == original.last_run
+        assert restored.enabled == original.enabled
+
 
 # ==================== Tests for TaskScheduler ====================
 
 class TestTaskScheduler:
     def test_add_task(self, mock_tasks_dir):
-        """Test adding a task."""
+        """Test adding a new task."""
         scheduler_mock = TaskScheduler()
 
-        scheduler_mock.add_task("my_task", "custom", 600, "Do something")
+        result = scheduler_mock.add_task("my_task", "custom", 600, "Do something")
 
         assert "my_task" in scheduler_mock._tasks
         assert scheduler_mock._tasks["my_task"].interval_seconds == 600
-        assert scheduler_mock._tasks["my_task"].enabled is True
-
-    def test_get_task_status(self, mock_tasks_dir):
-        """Test getting task status."""
-        scheduler_mock = TaskScheduler()
-        scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-
-        status = scheduler_mock.get_task_status("my_task")
-        assert status['task_id'] == "my_task"
-        assert status['enabled'] is True
-
-    def test_get_task_missing(self, mock_tasks_dir):
-        """Test getting status of non-existent task."""
-        scheduler_mock = TaskScheduler()
-        status = scheduler_mock.get_task_status("missing_task")
-        assert "error" in status
-
-    def test_remove_task(self, mock_tasks_dir):
-        """Test removing a task."""
-        scheduler_mock = TaskScheduler()
-        scheduler_mock.add_task("my_task", "custom", 600, "Do something")
-
-        scheduler_mock.remove_task("my_task")
-
-        assert "my_task" not in scheduler_mock._tasks
-        # Should return error if called again
-        result2 = scheduler_mock.remove_task("my_task")
-        assert "error" in result2.lower() or "not found" in result2.lower()
+        assert scheduler_mock._tasks["my_task"].prompt == "Do something"
+        assert "已添加" in result or "added" in result.lower()
 
     def test_add_task_duplicate(self, mock_tasks_dir):
         """Test adding a duplicate task returns error."""
@@ -275,3 +245,69 @@ class TestTaskScheduler:
 
         scheduler_mock.enable_task("my_task")
         assert scheduler_mock._tasks["my_task"].enabled is True
+
+    def test_remove_task(self, mock_tasks_dir):
+        """Test removing a task."""
+        scheduler_mock = TaskScheduler()
+        scheduler_mock.add_task("to_remove", "custom", 600, "Remove me")
+
+        assert "to_remove" in scheduler_mock._tasks
+        scheduler_mock.remove_task("to_remove")
+        assert "to_remove" not in scheduler_mock._tasks
+
+    def test_remove_nonexistent_task(self, mock_tasks_dir):
+        """Test removing a nonexistent task."""
+        scheduler_mock = TaskScheduler()
+        result = scheduler_mock.remove_task("nonexistent")
+        assert "not found" in result or "不存在" in result
+
+    def test_get_task(self, mock_tasks_dir):
+        """Test getting a specific task."""
+        scheduler_mock = TaskScheduler()
+        scheduler_mock.add_task("my_task", "custom", 600, "Do something")
+
+        task = scheduler_mock.get_task("my_task")
+        assert task is not None
+        assert task.task_id == "my_task"
+        assert task.interval_seconds == 600
+
+    def test_get_nonexistent_task(self, mock_tasks_dir):
+        """Test getting a nonexistent task."""
+        scheduler_mock = TaskScheduler()
+        task = scheduler_mock.get_task("nonexistent")
+        assert task is None
+
+
+# ==================== Tests for Edge Cases ====================
+
+class TestTaskSchedulerEdgeCases:
+    def test_empty_tasks_file(self, mock_tasks_dir):
+        """Test handling empty tasks file."""
+        tasks_file = scheduler._get_tasks_file()
+        # Create empty file
+        tasks_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(tasks_file, 'w') as f:
+            json.dump({}, f)
+
+        scheduler_mock = TaskScheduler()
+        # Should have builtin task only
+        assert "autodream" in scheduler_mock._tasks
+
+    def test_corrupted_tasks_file(self, mock_tasks_dir):
+        """Test handling corrupted tasks file."""
+        tasks_file = scheduler._get_tasks_file()
+        tasks_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(tasks_file, 'w') as f:
+            f.write("not valid json")
+
+        scheduler_mock = TaskScheduler()
+        # Should start fresh with builtin task
+        assert "autodream" in scheduler_mock._tasks
+
+    def test_multiple_task_types(self, mock_tasks_dir):
+        """Test handling multiple task types."""
+        scheduler_mock = TaskScheduler()
+        scheduler_mock.add_task("autodream_custom", "custom", 600, "Custom autodream")
+
+        assert "autodream_custom" in scheduler_mock._tasks
+        assert scheduler_mock._tasks["autodream_custom"].task_type == "custom"

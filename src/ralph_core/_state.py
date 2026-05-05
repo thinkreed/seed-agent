@@ -48,10 +48,12 @@ class StateManager:
         completion_type: str,
     ) -> None:
         """持久化当前状态"""
+        # Only calculate duration delta if start_time is valid (> 0)
+        duration_delta = (time.time() - start_time) if start_time > 0 else 0.0
         state = {
             "iteration": iteration,
             "start_time": start_time,
-            "accumulated_duration": accumulated_duration + (time.time() - start_time),
+            "accumulated_duration": accumulated_duration + duration_delta,
             "last_response": response[:500] if response else "",
             "task_file": task_file,
             "completion_type": completion_type,

@@ -10,7 +10,7 @@ import time
 from typing import TYPE_CHECKING
 
 from src.scheduler._execution import execute_task, log_task_execution
-from src.scheduler._storage import _get_tasks_dir, _get_tasks_file, load_tasks, save_tasks
+from src.scheduler._storage import load_tasks, save_tasks
 from src.scheduler._task_definition import ScheduledTask
 from src.scheduler._task_management import TaskManagementMixin
 
@@ -36,6 +36,8 @@ class TaskScheduler(TaskManagementMixin):
 
     def _load_tasks(self) -> None:
         """加载已保存的任务"""
+        # 动态获取 tasks_file 以支持测试 mock
+        from src.scheduler._storage import _get_tasks_file
         tasks_file = _get_tasks_file()
         data = load_tasks(tasks_file)
 
@@ -49,6 +51,8 @@ class TaskScheduler(TaskManagementMixin):
 
     def _save_tasks(self) -> None:
         """保存任务到文件"""
+        # 动态获取 tasks_file 以支持测试 mock
+        from src.scheduler._storage import _get_tasks_file
         tasks_file = _get_tasks_file()
         tasks_data = {"tasks": [t.to_dict() for t in self._tasks.values()]}
         save_tasks(tasks_data, tasks_file)

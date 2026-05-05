@@ -572,11 +572,12 @@ class TestStatusMethods:
 class TestSkillOutcome:
     """Test skill outcome recording."""
 
-    @patch('agent_loop._record_skill_outcome')
+    @patch('agent_loop._skill_tracker._record_skill_outcome')
     def test_evaluate_skill_outcome_success(self, mock_record, agent_loop_instance):
         """Test successful skill outcome recording."""
         agent = agent_loop_instance
-        agent._pending_skill_outcomes = [
+        # Use _skill_tracker's pending outcomes
+        agent._skill_tracker._pending_skill_outcomes = [
             {
                 'skill_name': 'test-skill',
                 'result': 'Success output',
@@ -585,20 +586,20 @@ class TestSkillOutcome:
             }
         ]
 
-        agent._evaluate_and_record_skill_outcomes(final_success=True)
+        agent._skill_tracker.evaluate_and_record_skill_outcomes(final_success=True)
 
         mock_record.assert_called_once()
         call_kwargs = mock_record.call_args[1]
         assert call_kwargs['skill_name'] == 'test-skill'
         assert call_kwargs['outcome'] == 'success'
         assert call_kwargs['score'] == 1.0
-        assert len(agent._pending_skill_outcomes) == 0
+        assert len(agent._skill_tracker._pending_skill_outcomes) == 0
 
-    @patch('agent_loop._record_skill_outcome')
+    @patch('agent_loop._skill_tracker._record_skill_outcome')
     def test_evaluate_skill_outcome_failed(self, mock_record, agent_loop_instance):
         """Test failed skill outcome recording."""
         agent = agent_loop_instance
-        agent._pending_skill_outcomes = [
+        agent._skill_tracker._pending_skill_outcomes = [
             {
                 'skill_name': 'failing-skill',
                 'result': 'Error: not found',
@@ -607,7 +608,7 @@ class TestSkillOutcome:
             }
         ]
 
-        agent._evaluate_and_record_skill_outcomes(final_success=True)
+        agent._skill_tracker.evaluate_and_record_skill_outcomes(final_success=True)
 
         mock_record.assert_called_once()
         call_kwargs = mock_record.call_args[1]

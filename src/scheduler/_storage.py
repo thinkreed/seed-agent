@@ -10,12 +10,24 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 logger = logging.getLogger("seed_agent")
+
+# 全局变量用于测试 override（None 表示使用默认路径）
+_TASKS_DIR_OVERRIDE: Path | None = None
+
+
+def _set_tasks_dir_override(path: Path | None) -> None:
+    """设置任务目录 override（用于测试）"""
+    global _TASKS_DIR_OVERRIDE
+    _TASKS_DIR_OVERRIDE = path
 
 
 def _get_tasks_dir() -> Path:
     """获取任务存储目录（动态）"""
+    if _TASKS_DIR_OVERRIDE is not None:
+        return _TASKS_DIR_OVERRIDE
     try:
         from src.shared_config import get_paths_config
         return get_paths_config().tasks_dir
