@@ -3,7 +3,6 @@
 包含 TaskExecutor 类的核心执行逻辑。
 """
 
-import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -89,7 +88,7 @@ class TaskExecutor:
         )
 
     async def execute_autonomous_task(self) -> str | None:
-        """执行自主探索任务（复用 Agent Loop + Ralph Loop 增强 + 四层防御）
+        """执行自主探索任务
 
         Returns:
             str | None: 探索结果文本，失败时返回 None
@@ -100,25 +99,21 @@ class TaskExecutor:
 
         self._state_manager.load_or_init_state()
 
-        # === Layer 4: 获取重试预算 ===
+        # 获取重试预算
         max_iterations = self._defense.get_retry_budget()
         if max_iterations == 0:
             logger.warning(
                 f"Retry count {self._defense.get_retry_count()} exceeds max "
-                f"{self._config.max_retry_count}, stopping autonomous exploration"
+                f"{self._config.max_retry_count}, stopping"
             )
             return None
 
-        # === 重置四层防御状态 ===
         self._defense.reset()
-
         todo_content = self._todo_cache.load_todo_content(self._seed_dir)
         expand_sop_paths(self._sop_content, self._seed_dir)
 
-        # 构建 prompt
         prompt = self._build_full_prompt(todo_content)
 
-        # 创建自主探索开始标记
         self.agent.session.emit_event(
             EventType.SESSION_START,
             {
@@ -131,15 +126,13 @@ class TaskExecutor:
         )
 
         logger.info(
-            f"Starting autonomous exploration (Ralph enhanced + 4-layer defense): "
-            f"budget={max_iterations}, retry={self._defense.get_retry_count()}"
+            f"Starting autonomous exploration: budget={max_iterations}, "
+            f"retry={self._defense.get_retry_count()}"
         )
 
-        # 保存/恢复 system_prompt 和 max_iterations
         original_system_prompt = self.agent.system_prompt
         original_max_iterations = self.agent.max_iterations
 
-        # === 启用 autonomous_mode ===
         self.agent.set_autonomous_mode(
             enabled=True,
             skip_response=self._config.ask_user_skip_response,
@@ -149,15 +142,12 @@ class TaskExecutor:
             self.agent.system_prompt = prompt
             self.agent.max_iterations = max_iterations
 
-            # 传入预算参数用于四层防御检查
             response = await run_ralph_loop(self, max_iterations)
 
             if response:
                 logger.info(
                     f"Autonomous exploration completed, response length: {len(response)}"
                 )
-
-                # 创建自主探索结束标记
                 self.agent.session.emit_event(
                     EventType.SESSION_END,
                     {
@@ -167,21 +157,15 @@ class TaskExecutor:
                         "iterations_used": self._state_manager.get_iteration_count(),
                     },
                 )
-
-                # 成功完成，重置重试计数
                 self._defense.reset_retry()
-
                 await notify_completion(self, response)
                 return response
 
-            # === 失败处理：增加重试计数 ===
             self._defense.increment_retry()
             logger.warning(
                 f"Autonomous exploration returned empty response, "
                 f"retry_count now {self._defense.get_retry_count()}"
             )
-
-            # 创建失败标记
             self.agent.session.emit_event(
                 EventType.SESSION_END,
                 {
@@ -195,11 +179,7 @@ class TaskExecutor:
         except Exception as e:
             logger.exception("Autonomous exploration failed")
             self._state_manager.persist_state(str(e))
-
-            # === 异常处理：增加重试计数 ===
             self._defense.increment_retry()
-
-            # 创建错误标记
             self.agent.session.emit_event(
                 EventType.ERROR_OCCURRED,
                 {
@@ -211,23 +191,14 @@ class TaskExecutor:
             return None
 
         finally:
-            # === 恢复正常模式 ===
             self.agent.set_autonomous_mode(enabled=False)
             self.agent.system_prompt = original_system_prompt
             self.agent.max_iterations = original_max_iterations
 
     def _build_full_prompt(self, todo_content: str) -> str:
-        """构建完整的自主探索 prompt
-
-        Args:
-            todo_content: TODO 文件内容
-
-        Returns:
-            完整 prompt
-        """
+        """构建完整的自主探索 prompt"""
         base_system_prompt = self.agent.system_prompt or ""
 
-        # 获取 skills prompt
         skills_prompt = ""
         best_skill = None
         gene_slice = None
@@ -235,8 +206,6 @@ class TaskExecutor:
         skill_loader = getattr(self.agent, "skill_loader", None)
         if skill_loader:
             skills_prompt = skill_loader.get_skills_prompt()
-
-            # Memory Graph 增强：根据任务类型选择最佳 skill
             signals = extract_task_signals(todo_content, bool(todo_content))
             best_skill = skill_loader.select_best_skill(
                 signals=signals,
@@ -244,11 +213,9 @@ class TaskExecutor:
                     self.agent.tools, "get_tool_names", lambda: None
                 )(),
             )
-
             if best_skill:
                 gene_slice = skill_loader.get_gene_slice(best_skill)
 
-        # 展开 SOP 路径
         expanded_sop = expand_sop_paths(self._sop_content or "", self._seed_dir)
 
         return build_autonomous_prompt(
@@ -262,7 +229,7 @@ class TaskExecutor:
             gene_slice=gene_slice,
         )
 
-    # 辅助方法（调用 _executor_helpers 模块）
+    # 辅助方法委托
     async def _reset_context_if_needed(self) -> str | None:
         return await reset_context_if_needed(self)
 

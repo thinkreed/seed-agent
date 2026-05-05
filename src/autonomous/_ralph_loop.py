@@ -5,17 +5,15 @@
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from src.autonomous._executor_constants import (
-    COMPLETION_MARKERS,
-    CONTEXT_RESET_ENABLED,
-    CONTEXT_RESET_INTERVAL,
-    RALPH_MAX_DURATION,
-    RALPH_MAX_ITERATIONS,
+from src.autonomous._executor_constants import COMPLETION_MARKERS
+from src.autonomous._ralph_checks import (
+    check_completion_markers,
+    check_defense_layers,
+    check_iteration_budget,
+    check_safety_limits,
 )
-from src.ralph_state import check_safety_limits
-from src.session_event_stream import EventType
 from src.shared_config import get_autonomous_config
 
 if TYPE_CHECKING:
@@ -55,33 +53,19 @@ async def run_ralph_loop(
         iteration = executor._state_manager.increment_iteration()
 
         # === 多层防御检查 ===
-
-        # Layer 1: 预算警告注入
         await executor._defense.inject_budget_warning(
             iteration, budget, executor.agent
         )
 
-        # Layer 2: 进度检测窗口
-        if not executor._defense.check_progress_window():
-            logger.info("进度检测判定空转，提前终止")
-            break
-
-        # Layer 3: 时间断路器
-        if not executor._defense.check_time_circuit_breaker(executor.agent):
-            logger.info("时间断路器触发，强制终止")
+        if check_defense_layers(executor, iteration, budget):
             break
 
         # 安全上限检查
-        if executor._check_safety_limits():
-            logger.info(
-                "Ralph Loop safety limit reached, cleaning up state for next session"
-            )
-            executor._state_manager.cleanup_state()
+        if check_safety_limits(executor):
             break
 
         # 预算上限检查
-        if iteration >= budget:
-            logger.info(f"迭代预算耗尽 ({iteration}/{budget}), 结束循环")
+        if check_iteration_budget(executor, iteration, budget):
             break
 
         # === 完成标志检查 ===
@@ -104,73 +88,20 @@ async def run_ralph_loop(
             )
 
         # === LLM 调用（带超时保护）===
-        try:
-            response = await asyncio.wait_for(
-                executor.agent.run(next_prompt, wait_for_user=False),
-                timeout=llm_timeout,
-            )
-
-            # 记录工具调用历史
-            executor._record_tool_calls()
-
-            if debug_enabled:
-                logger.debug(
-                    f"[Ralph Loop] Iteration {iteration}: "
-                    f"response='{response[:200] if response else 'None'}...', "
-                    f"length={len(response) if response else 0}"
-                )
-
-            consecutive_failures = 0
-
-        except TimeoutError:
-            logger.warning(
-                f"[Ralph Loop] Iteration {iteration}: "
-                f"LLM call timeout ({llm_timeout}s), skipping iteration"
-            )
-            consecutive_failures += 1
-            response = f"[TIMEOUT] LLM call exceeded {llm_timeout}s limit"
-
-        except (
-            RuntimeError,
-            OSError,
-            ValueError,
-            asyncio.CancelledError,
-            KeyError,
-        ) as e:
-            logger.warning(
-                f"[Ralph Loop] Iteration {iteration}: "
-                f"Agent execution error: {type(e).__name__}: {e!s}"
-            )
-            consecutive_failures += 1
-            response = f"Error: {type(e).__name__}: {e!s}"
-
-        except Exception as e:
-            logger.exception(
-                f"[Ralph Loop] Iteration {iteration}: "
-                f"Unexpected error: {type(e).__name__}"
-            )
-            consecutive_failures += 1
-            response = f"Unexpected Error: {type(e).__name__}: {e!s}"
+        response, consecutive_failures = await _execute_llm_call(
+            executor, iteration, next_prompt, llm_timeout, consecutive_failures, debug_enabled
+        )
 
         # === 状态持久化 ===
         executor._state_manager.persist_state(response or "")
 
         # === 错误恢复退避 ===
-        if consecutive_failures >= failure_threshold:
-            backoff = min(
-                backoff_duration * (2 ** (consecutive_failures - failure_threshold)),
-                max_backoff,
-            )
-            logger.warning(
-                f"[Ralph Loop] Consecutive failures {consecutive_failures}, "
-                f"backing off for {backoff}s"
-            )
-            await asyncio.sleep(backoff)
-            if consecutive_failures >= failure_threshold * 2:
-                consecutive_failures = 0
+        consecutive_failures = await _handle_error_backoff(
+            consecutive_failures, failure_threshold, backoff_duration, max_backoff
+        )
 
         # === 完成检测 ===
-        if response and any(marker in response for marker in COMPLETION_MARKERS):
+        if check_completion_markers(response, COMPLETION_MARKERS):
             logger.info(f"Autonomous exploration completed at iteration {iteration}")
             executor._state_manager.cleanup_state()
             break
@@ -182,35 +113,106 @@ async def run_ralph_loop(
     return response
 
 
-def check_safety_limits(
+async def _execute_llm_call(
+    executor: "TaskExecutor",
     iteration: int,
-    start_time: float,
-    accumulated_duration: float,
-) -> bool:
-    """检查安全上限（防止无限循环）
+    prompt: str,
+    timeout: float,
+    consecutive_failures: int,
+    debug_enabled: bool,
+) -> tuple[str | None, int]:
+    """执行 LLM 调用（带超时保护）
 
     Args:
+        executor: TaskExecutor 实例
         iteration: 当前迭代次数
-        start_time: 开始时间
-        accumulated_duration: 累计持续时间
+        prompt: 执行 prompt
+        timeout: 超时秒数
+        consecutive_failures: 当前连续失败次数
+        debug_enabled: 是否启用调试日志
 
     Returns:
-        bool: 是否达到安全上限
+        tuple[str | None, int]: (响应文本, 更新后的失败次数)
     """
-    # 迭代次数上限
-    if iteration >= RALPH_MAX_ITERATIONS:
-        return True
+    try:
+        response = await asyncio.wait_for(
+            executor.agent.run(prompt, wait_for_user=False),
+            timeout=timeout,
+        )
 
-    # 执行时间上限
-    total_duration = accumulated_duration
-    if start_time > 0:
-        import time
-        total_duration += time.time() - start_time
+        # 记录工具调用历史
+        executor._record_tool_calls()
 
-    if total_duration >= RALPH_MAX_DURATION:
-        return True
+        if debug_enabled:
+            logger.debug(
+                f"[Ralph Loop] Iteration {iteration}: "
+                f"response='{response[:200] if response else 'None'}...', "
+                f"length={len(response) if response else 0}"
+            )
 
-    return False
+        return response, 0  # 重置失败计数
+
+    except TimeoutError:
+        logger.warning(
+            f"[Ralph Loop] Iteration {iteration}: "
+            f"LLM call timeout ({timeout}s), skipping iteration"
+        )
+        return f"[TIMEOUT] LLM call exceeded {timeout}s limit", consecutive_failures + 1
+
+    except (
+        RuntimeError,
+        OSError,
+        ValueError,
+        asyncio.CancelledError,
+        KeyError,
+    ) as e:
+        logger.warning(
+            f"[Ralph Loop] Iteration {iteration}: "
+            f"Agent execution error: {type(e).__name__}: {e!s}"
+        )
+        return f"Error: {type(e).__name__}: {e!s}", consecutive_failures + 1
+
+    except Exception as e:
+        logger.exception(
+            f"[Ralph Loop] Iteration {iteration}: "
+            f"Unexpected error: {type(e).__name__}"
+        )
+        return f"Unexpected Error: {type(e).__name__}: {e!s}", consecutive_failures + 1
 
 
-__all__ = ["run_ralph_loop", "check_safety_limits"]
+async def _handle_error_backoff(
+    consecutive_failures: int,
+    threshold: int,
+    base_duration: float,
+    max_duration: float,
+) -> int:
+    """处理错误恢复退避
+
+    Args:
+        consecutive_failures: 当前连续失败次数
+        threshold: 触发退避的阈值
+        base_duration: 基础退避时长
+        max_duration: 最大退避时长
+
+    Returns:
+        int: 更新后的失败次数
+    """
+    if consecutive_failures >= threshold:
+        backoff = min(
+            base_duration * (2 ** (consecutive_failures - threshold)),
+            max_duration,
+        )
+        logger.warning(
+            f"[Ralph Loop] Consecutive failures {consecutive_failures}, "
+            f"backing off for {backoff}s"
+        )
+        await asyncio.sleep(backoff)
+
+        # 达到阈值两倍后重置
+        if consecutive_failures >= threshold * 2:
+            return 0
+
+    return consecutive_failures
+
+
+__all__ = ["run_ralph_loop", "_execute_llm_call", "_handle_error_backoff"]

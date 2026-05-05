@@ -4,12 +4,13 @@
 此文件保留为向后兼容的导入入口
 
 模块结构:
-- _client_factory.py: 客户端创建/销毁 (~126 行)
-- _request_handler.py: 请求执行逻辑 (~120 行)
-- _error_handler.py: 错误处理辅助 (~80 行)
-- _audit.py: 审计日志记录 (~118 行)
+- _client_factory.py: 客户端创建 (~101 行)
+- _request_handler.py: 请求执行 (~110 行)
+- _streaming.py: 流式请求 (~70 行)
+- _error_handler.py: 错误处理 (~93 行)
+- _audit.py: 审计日志 (~99 行)
 
-总计: 4 个模块，每个均 < 150 行
+总计: 5 个模块，每个均 < 150 行
 """
 
 from src.security.proxy._audit import (
@@ -23,8 +24,8 @@ from src.security.proxy._client_factory import (
     get_supported_providers,
     register_provider,
 )
-from src.security.proxy._request_handler import (
-    execute_external_request,
+from src.security.proxy._request_handler import execute_external_request
+from src.security.proxy._streaming import (
     execute_streaming_request,
     finalize_streaming_request,
 )

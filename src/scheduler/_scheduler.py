@@ -1,6 +1,6 @@
 """定时任务调度器核心模块
 
-包含 TaskScheduler 类和工具函数。
+包含 TaskScheduler 类定义和工具函数。
 """
 
 import asyncio
@@ -8,7 +8,6 @@ import contextlib
 import json
 import logging
 import time
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from src.scheduler._execution import execute_task, log_task_execution
@@ -19,6 +18,7 @@ from src.scheduler._storage import (
     save_tasks,
 )
 from src.scheduler._task_definition import ScheduledTask
+from src.scheduler._task_management import TaskManagementMixin
 from src.tools import ToolRegistry
 
 if TYPE_CHECKING:
@@ -39,7 +39,7 @@ def _get_scheduler() -> "TaskScheduler":
     return _global_scheduler
 
 
-class TaskScheduler:
+class TaskScheduler(TaskManagementMixin):
     """定时任务调度器"""
 
     # 内置任务类型及其默认间隔
@@ -137,95 +137,6 @@ class TaskScheduler:
                 log_task_execution(task, result, success)
                 task.mark_run()
                 self._save_tasks()
-
-    def add_task(
-        self, task_id: str, task_type: str, interval_seconds: int, prompt: str
-    ) -> str:
-        """添加自定义定时任务"""
-        if task_id in self._tasks:
-            return f"Task {task_id} already exists"
-
-        self._tasks[task_id] = ScheduledTask(
-            task_id=task_id,
-            task_type=task_type,
-            interval_seconds=interval_seconds,
-            prompt=prompt,
-            enabled=True,
-        )
-
-        self._save_tasks()
-        logger.info(f"Added task {task_id} (interval: {interval_seconds}s)")
-
-        return f"Task {task_id} added successfully, will run every {interval_seconds} seconds"
-
-    def remove_task(self, task_id: str) -> str:
-        """移除定时任务"""
-        if task_id not in self._tasks:
-            return f"Task {task_id} not found"
-
-        # 不允许移除内置任务
-        if task_id in self.BUILTIN_TASKS:
-            return f"Cannot remove builtin task {task_id}, use disable instead"
-
-        del self._tasks[task_id]
-        self._save_tasks()
-
-        return f"Task {task_id} removed"
-
-    def disable_task(self, task_id: str) -> str:
-        """禁用任务"""
-        if task_id not in self._tasks:
-            return f"Task {task_id} not found"
-
-        self._tasks[task_id].enabled = False
-        self._save_tasks()
-
-        return f"Task {task_id} disabled"
-
-    def enable_task(self, task_id: str) -> str:
-        """启用任务"""
-        if task_id not in self._tasks:
-            return f"Task {task_id} not found"
-
-        self._tasks[task_id].enabled = True
-        self._save_tasks()
-
-        return f"Task {task_id} enabled"
-
-    def list_tasks(self) -> str:
-        """列出所有任务"""
-        if not self._tasks:
-            return "No scheduled tasks"
-
-        lines = ["Scheduled Tasks:", "-" * 40]
-        for task_id, task in self._tasks.items():
-            next_run = (
-                "disabled" if not task.enabled else f"{task.interval_seconds}s interval"
-            )
-            lines.append(
-                f"  {task_id}: {task.task_type} | {next_run} | {task.prompt[:50]}..."
-            )
-
-        return "\n".join(lines)
-
-    def get_task_status(self, task_id: str) -> dict:
-        """获取任务状态"""
-        if task_id not in self._tasks:
-            return {"error": "Task not found"}
-
-        task = self._tasks[task_id]
-        return {
-            "task_id": task.task_id,
-            "task_type": task.task_type,
-            "interval_seconds": task.interval_seconds,
-            "enabled": task.enabled,
-            "last_run": datetime.fromtimestamp(task.last_run, tz=UTC).isoformat()
-            if task.last_run > 0
-            else "never",
-            "next_run_in": task.interval_seconds - (time.time() - task.last_run)
-            if task.enabled
-            else "disabled",
-        }
 
 
 # 工具函数（供 agent 调用）
