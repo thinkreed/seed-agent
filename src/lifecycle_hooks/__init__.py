@@ -11,6 +11,10 @@
 - 优先级执行：数值越小越先执行
 - 执行统计：调用次数、成功/失败率
 - 失败处理：钩子失败不中断主流程
+
+Wiki 知识落地 (基于 Qwen-Code Hooks 设计):
+- MessageBus.request(): 请求/响应模式 + AbortSignal 支持
+- HookAggregator: 多钩子结果合并，deny 优先
 """
 
 # 类型导出
@@ -31,6 +35,15 @@ from src.lifecycle_hooks._global import (
     reset_global_registry,
 )
 
+# Wiki 知识落地: MessageBus 导出
+from src.lifecycle_hooks._message_bus import (
+    PermissionDecision,
+    HookAggregator,
+    LifecycleMessageBus,
+    get_message_bus,
+    reset_message_bus,
+)
+
 __all__ = [
     # 类型
     "HookPoint",
@@ -43,4 +56,10 @@ __all__ = [
     # 全局管理
     "get_global_registry",
     "reset_global_registry",
+    # Wiki 知识落地: MessageBus
+    "PermissionDecision",
+    "HookAggregator",
+    "LifecycleMessageBus",
+    "get_message_bus",
+    "reset_message_bus",
 ]

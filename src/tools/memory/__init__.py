@@ -7,6 +7,7 @@
 3. 技能执行结果记录
 4. 用户建模 wrapper
 5. L5 长期归档 wrapper
+6. 整合锁机制 (防止并发 autodream)
 
 模块结构:
 - _memory_write.py: L1-L4 记忆写入
@@ -16,8 +17,9 @@
 - _skill_outcomes.py: Skill 执行结果
 - _user_modeling_wrapper.py: 用户建模 wrapper
 - _archive_wrapper.py: L5 归档 wrapper
+- _consolidation_lock.py: 整合锁 (Wiki 知识落地)
 
-版本: v2.1 (进一步拆分版)
+版本: v2.2 (Wiki 知识落地版)
 """
 
 import logging
@@ -67,6 +69,11 @@ from ._archive_wrapper import (
     _get_archive_details,
     _get_archive_stats,
     _get_memory_hierarchy,
+)
+from ._consolidation_lock import (
+    ConsolidationLock,
+    acquire_dream_lock,
+    LOCK_STALE_MS,
 )
 
 
@@ -130,5 +137,8 @@ __all__ = [
     "_get_archive_details",
     "_get_archive_stats",
     "_get_memory_hierarchy",
+    "ConsolidationLock",
+    "acquire_dream_lock",
+    "LOCK_STALE_MS",
     "register_memory_tools",
 ]

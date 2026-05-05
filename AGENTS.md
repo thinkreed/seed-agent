@@ -329,6 +329,27 @@ RalphSubagentOrchestrator 执行模式:
 
 ---
 
+## Wiki 知识落地状态
+
+基于 Wiki 知识库分析的实际落地情况：
+
+### 已实现（P0）
+
+| 优化点 | 来源 | 实现位置 |
+|------|------|----------|
+| ToolKind 枚举分类 | qwen-code | `src/tools/__init__.py` |
+| LoopDetectionService | qwen-code | `src/harness/_loop_detection.py` |
+| 整合锁机制 | qwen-code | `src/tools/memory/_consolidation_lock.py` |
+| win_rate 字段 | mia | `src/tools/session/_skill_queries.py` |
+| 渐进式披露 Skills | hermes | `src/tools/skill_loader/_skillloader.py` |
+| MessageBus.request() | qwen-code | `src/lifecycle_hooks/_message_bus.py` |
+
+### 待落地（P1-P2）
+
+详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
+
+---
+
 ## 核心禁忌
 
 - 不推诿，无方案时提建议；
