@@ -419,8 +419,8 @@ class RequestQueue:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
-                logger.exception(f"Dispatch loop error: {e}")
+            except Exception:
+                logger.exception("Dispatch loop error")
                 await asyncio.sleep(1.0)
 
     async def _pop_ticket(self, priority: RequestPriority) -> TurnTicket | None:
@@ -543,14 +543,12 @@ class RequestQueue:
             except asyncio.CancelledError:
                 logger.info("Adjust loop cancelled")
                 break
-            except (ValueError, KeyError, AttributeError) as e:
+            except (ValueError, KeyError, AttributeError):
                 # 配置错误（无效值、缺失键等）
-                logger.exception(f"Adjust config error: {type(e).__name__}: {e}")
+                logger.exception("Adjust config error")
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
-            except Exception as e:
-                logger.exception(
-                    f"Adjust loop unexpected error: {type(e).__name__}: {e}"
-                )
+            except Exception:
+                logger.exception("Adjust loop unexpected error")
                 await asyncio.sleep(_DISPATCH_LOOP_INTERVAL)
 
     async def _adjust_config(self) -> None:

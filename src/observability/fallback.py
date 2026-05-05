@@ -97,7 +97,6 @@ def get_tracer() -> NoOpTracer:
 
 def get_meter() -> None:
     """获取 NoOp Meter"""
-    return None
 
 
 def is_initialized() -> bool:

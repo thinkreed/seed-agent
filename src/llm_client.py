@@ -208,7 +208,7 @@ class LLMClient:
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
 
-            logger.exception(f"LLMClient.reason failed: {type(e).__name__}: {e}")
+            logger.exception("LLMClient.reason failed")
 
             # 记录错误
             if span:
@@ -276,7 +276,7 @@ class LLMClient:
         except Exception as e:
             duration_ms = (time.time() - start_time) * 1000
 
-            logger.exception(f"LLMClient.stream_reason failed: {type(e).__name__}: {e}")
+            logger.exception("LLMClient.stream_reason failed")
 
             if span:
                 record_llm_span_error(span, e)

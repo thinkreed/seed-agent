@@ -529,14 +529,12 @@ class LLMGateway:
             except asyncio.CancelledError:
                 logger.info("Persistence loop cancelled")
                 break
-            except OSError as e:
+            except OSError:
                 # 文件系统错误（磁盘满、权限问题等）
-                logger.exception(f"Persistence I/O error: {type(e).__name__}: {e}")
+                logger.exception("Persistence I/O error")
                 await asyncio.sleep(10.0)  # 更长等待避免频繁失败
-            except Exception as e:
-                logger.exception(
-                    f"Persistence loop unexpected error: {type(e).__name__}: {e}"
-                )
+            except Exception:
+                logger.exception("Persistence loop unexpected error")
                 await asyncio.sleep(5.0)
 
     async def get_persistence_stats(self) -> dict[str, Any] | None:

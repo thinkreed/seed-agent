@@ -72,8 +72,8 @@ def open_process(pid: int) -> int | None:
             )
             return None
         return handle
-    except Exception as e:
-        logger.exception(f"OpenProcess error: {e}")
+    except Exception:
+        logger.exception("OpenProcess error")
         return None
 
 
@@ -262,8 +262,8 @@ def scan_memory(
 
         logger.info(f"Found {len(results)} matches")
         return results
-    except Exception as e:
-        logger.exception(f"Scan error: {e}")
+    except Exception:
+        logger.exception("Scan error")
         return []
     finally:
         close_process(handle)

@@ -203,9 +203,9 @@ class CredentialVault:
                     key = f.read().strip()
                 logger.info("Loaded existing vault encryption key")
                 return key
-            except PermissionError as e:
+            except PermissionError:
                 # 权限错误不应被静默处理，这可能表示严重的安全问题
-                logger.exception(f"Permission denied loading vault key: {e}")
+                logger.exception("Permission denied loading vault key")
                 raise
             except OSError as e:
                 # 其他 I/O 错误（如文件损坏）可以恢复
@@ -221,11 +221,11 @@ class CredentialVault:
         try:
             with open(key_path, "w") as f:
                 f.write(key)
-        except PermissionError as e:
-            logger.exception(f"Permission denied writing vault key: {e}")
+        except PermissionError:
+            logger.exception("Permission denied writing vault key")
             raise
-        except OSError as e:
-            logger.exception(f"Failed to write vault key: {e}")
+        except OSError:
+            logger.exception("Failed to write vault key")
             raise
 
         # 设置文件权限（仅 owner 可读写）

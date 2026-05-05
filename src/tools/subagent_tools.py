@@ -115,8 +115,8 @@ async def _run_subagent_async(task_id: str):
         return
     try:
         await _subagent_manager.run_subagent(task_id)
-    except Exception as e:
-        logger.exception(f"Subagent {task_id} execution error: {e}")
+    except Exception:
+        logger.exception(f"Subagent {task_id} execution error")
 
 
 async def wait_for_subagent_async(
@@ -387,8 +387,8 @@ async def _run_parallel_async(task_ids: list[str]):
         return
     try:
         await _subagent_manager.run_parallel(task_ids)
-    except Exception as e:
-        logger.exception(f"Parallel execution error: {e}")
+    except Exception:
+        logger.exception("Parallel execution error")
 
 
 def register_subagent_tools(registry: "ToolRegistry") -> None:

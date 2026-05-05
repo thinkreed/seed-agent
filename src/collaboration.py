@@ -313,9 +313,9 @@ class MultiBrainOneHandOrchestrator:
                 issues=[],
                 suggestions=[],
             )
-        except RuntimeError as e:
+        except RuntimeError:
             # 运行时错误：严重，需要记录并向上传播
-            logger.exception(f"Runtime error during analysis for {perspective}: {e}")
+            logger.exception(f"Runtime error during analysis for {perspective}")
             agent.status = "failed"
             raise
 
@@ -647,8 +647,8 @@ class OneBrainMultiHandOrchestrator:
             # 解析 JSON
             return self._parse_plan(plan_text)
 
-        except Exception as e:
-            logger.exception(f"Planning failed: {e}")
+        except Exception:
+            logger.exception("Planning failed")
             # 默认分配：所有环境执行相同任务
             return {
                 str(i): [{"tool": "code_as_policy", "args": {"code": task}}]
@@ -711,7 +711,7 @@ class OneBrainMultiHandOrchestrator:
                     results.append("No result returned")
 
             except Exception as e:
-                logger.exception(f"Task execution failed: {e}")
+                logger.exception("Task execution failed")
                 results.append(f"Error: {e}")
 
         return results
@@ -751,7 +751,7 @@ class OneBrainMultiHandOrchestrator:
             }
 
         except Exception as e:
-            logger.exception(f"Aggregation failed: {e}")
+            logger.exception("Aggregation failed")
             return {
                 "summary": f"Aggregation failed: {e}",
                 "environments_count": len(results),
@@ -1027,7 +1027,7 @@ class MultiBrainMultiHandOrchestrator:
             }
 
         except Exception as e:
-            logger.exception(f"Pair {agent.id} execution failed: {e}")
+            logger.exception(f"Pair {agent.id} execution failed")
             agent.status = "failed"
             return {
                 "pair_id": agent.id,
@@ -1129,8 +1129,8 @@ class MultiBrainMultiHandOrchestrator:
                 response.get("choices", [{}])[0].get("message", {}).get("content", "")
             )
 
-        except Exception as e:
-            logger.exception(f"Merge summary failed: {e}")
+        except Exception:
+            logger.exception("Merge summary failed")
             return f"Generated {len(results)} results"
 
     async def dynamic_task_assignment(self, task: str) -> dict[str, Any]:

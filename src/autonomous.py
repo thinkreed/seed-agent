@@ -661,7 +661,7 @@ class AutonomousExplorer:
             return None
 
         except Exception as e:
-            logger.exception(f"Autonomous exploration failed: {e}")
+            logger.exception("Autonomous exploration failed")
             self._persist_state(str(e))
 
             # === 异常处理：增加重试计数 ===

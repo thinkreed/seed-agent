@@ -664,7 +664,7 @@ class AgentLoop:
                             await self._maybe_summarize()
                             self._evaluate_and_record_skill_outcomes(final_success=True)
                             yield resume_chunk
-                        elif resume_type == "cancelled" or resume_type == "error":
+                        elif resume_type in {"cancelled", "error"}:
                             yield resume_chunk
                         else:
                             # chunk, tool_start, tool_end
@@ -677,7 +677,7 @@ class AgentLoop:
                     yield chunk
                     return
 
-                elif chunk_type == "cancelled" or chunk_type == "error":
+                elif chunk_type in {"cancelled", "error"}:
                     yield chunk
                     return
 

@@ -96,9 +96,7 @@ def write_memory(level: str, content: str, title: str = "", metadata: str = "") 
         return f"Error writing memory: OS error - {type(e).__name__}: {str(e)[:100]}"
     except Exception as e:
         # 完整错误记录到日志
-        logger.exception(
-            f"Unexpected error writing memory to {path}: {type(e).__name__}: {e}"
-        )
+        logger.exception(f"Unexpected error writing memory to {path}: {type(e).__name__}")
         return f"Error writing memory: {type(e).__name__}: {str(e)[:100]}"
 
 

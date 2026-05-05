@@ -223,8 +223,8 @@ class SemanticIndex:
 
         try:
             faiss.write_index(self.index, save_path)
-        except (OSError, RuntimeError) as e:
-            logger.exception(f"Failed to write FAISS index to {save_path}: {e}")
+        except (OSError, RuntimeError):
+            logger.exception(f"Failed to write FAISS index to {save_path}")
             raise
 
         # Save metadata + SVD model
@@ -259,8 +259,8 @@ class SemanticIndex:
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
                 json.dump(meta, f)
-        except OSError as e:
-            logger.exception(f"Failed to write metadata to {meta_path}: {e}")
+        except OSError:
+            logger.exception(f"Failed to write metadata to {meta_path}")
             raise
 
         return save_path
@@ -273,16 +273,16 @@ class SemanticIndex:
         idx = cls(dim=128, index_path=path)
         try:
             idx.index = faiss.read_index(path)
-        except (OSError, RuntimeError) as e:
-            logger.exception(f"Failed to read FAISS index from {path}: {e}")
+        except (OSError, RuntimeError):
+            logger.exception(f"Failed to read FAISS index from {path}")
             raise
 
         meta_path = path + ".meta"
         try:
             with open(meta_path, encoding="utf-8") as f:
                 meta = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
-            logger.exception(f"Failed to load metadata from {meta_path}: {e}")
+        except (OSError, json.JSONDecodeError):
+            logger.exception(f"Failed to load metadata from {meta_path}")
             raise
 
         idx.dim = meta["dim"]

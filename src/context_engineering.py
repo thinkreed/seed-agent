@@ -745,7 +745,7 @@ class IntelligentContextPruner:
         prunable = [
             m
             for m in history
-            if m["role"] not in ["system"] and "摘要" not in m.get("content", "")
+            if m["role"] != "system" and "摘要" not in m.get("content", "")
         ]
 
         if not prunable:
@@ -823,7 +823,7 @@ class IntelligentContextPruner:
         prunable = [
             m
             for m in history
-            if m["role"] not in ["system"] and "摘要" not in m.get("content", "")
+            if m["role"] != "system" and "摘要" not in m.get("content", "")
         ]
 
         if not prunable:

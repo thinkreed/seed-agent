@@ -174,7 +174,7 @@ class RalphLoop:
                 error_type, severity = e.error_type, e.severity
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
                     logger.exception(
-                        f"Critical error at iteration {self._iteration_count}: {e}"
+                        f"Critical error at iteration {self._iteration_count}"
                     )
                     self._cleanup()
                     raise
@@ -187,7 +187,7 @@ class RalphLoop:
                 error_type, severity = classify_error(e)
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
                     logger.exception(
-                        f"Severe unclassified error at iteration {self._iteration_count}: {error_type.value}: {e}"
+                        f"Severe unclassified error at iteration {self._iteration_count}: {error_type.value}"
                     )
                     self._cleanup()
                     raise

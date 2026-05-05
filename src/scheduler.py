@@ -167,8 +167,8 @@ class TaskScheduler:
 
             # 原子替换（replace 在 POSIX 上是原子操作，Windows 上尽量保证）
             temp_file.replace(tasks_file)
-        except OSError as e:
-            logger.exception(f"Failed to save tasks: {e}")
+        except OSError:
+            logger.exception("Failed to save tasks")
             # 清理临时文件
             if temp_file.exists():
                 with contextlib.suppress(OSError):
@@ -287,7 +287,7 @@ class TaskScheduler:
             logger.warning(f"Task {task.task_id} timed out: {e}")
             self._log_task_execution(task, f"Timeout: {e!s}", success=False)
         except Exception as e:
-            logger.exception(f"Task {task.task_id} failed: {e}")
+            logger.exception(f"Task {task.task_id} failed")
             self._log_task_execution(task, f"Error: {e!s}", success=False)
 
     def _log_task_execution(

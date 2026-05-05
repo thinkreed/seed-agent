@@ -346,7 +346,7 @@ class Sandbox:
             }
 
         except Exception as e:
-            logger.exception(f"Tool execution failed: {tool_name}: {type(e).__name__}: {e}")
+            logger.exception(f"Tool execution failed: {tool_name}")
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
@@ -582,7 +582,7 @@ class Sandbox:
             )
         except Exception as e:
             logger.exception(
-                f"Container execution failed for {tool_name}: {type(e).__name__}: {e}. "
+                f"Container execution failed for {tool_name}: {type(e).__name__}. "
                 "Falling back to PROCESS isolation."
             )
             # 降级到进程执行，但明确通知调用方
