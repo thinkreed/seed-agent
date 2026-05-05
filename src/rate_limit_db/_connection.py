@@ -48,6 +48,10 @@ class DatabaseConnection:
                 raise
         return self._local.conn
 
+    def _get_conn(self) -> sqlite3.Connection:
+        """向后兼容别名"""
+        return self.get_connection()
+
     async def retry_operation(
         self, operation: Callable[[], T], max_retries: int = 3
     ) -> T:

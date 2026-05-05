@@ -69,6 +69,10 @@ class RateLimitSQLite:
     def close(self) -> None:
         self._db_conn.close()
 
+    def _get_conn(self) -> Any:
+        """向后兼容方法 - 委托给 _db_conn"""
+        return self._db_conn._get_conn()
+
     def __del__(self) -> None:
         try:
             self.close()

@@ -357,6 +357,10 @@ class AgentLoop:
         """重放事件"""
         return self._observability.replay_to_event(event_id)
 
+    def get_current_state(self) -> dict[str, Any]:
+        """获取当前状态"""
+        return self._observability.get_current_state()
+
     def get_event_count(self) -> int:
         """获取事件数"""
         return self._observability.get_event_count()
