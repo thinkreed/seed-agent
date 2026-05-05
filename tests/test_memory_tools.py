@@ -40,8 +40,9 @@ def temp_memory_dir():
     with open(os.path.join(temp_dir, 'notes.md'), 'w', encoding='utf-8') as f:
         f.write("# L1 Index\n\n- Test Pointer")
 
-    # Patch _get_memory_root to return temp_dir
-    patcher = patch('tools.memory_tools._get_memory_root', return_value=Path(temp_dir))
+    # Patch _get_memory_root at its definition location in _memory_write.py
+    # The function is defined in src/tools/memory/_memory_write.py
+    patcher = patch('src.tools.memory._memory_write._get_memory_root', return_value=Path(temp_dir))
     patcher.start()
 
     yield temp_dir
@@ -179,7 +180,7 @@ class TestReadMemoryIndex:
         """Test reading missing L1 index."""
         # Temporarily patch _get_memory_root to empty dir
         temp_dir = tempfile.mkdtemp()
-        patcher = patch('tools.memory_tools._get_memory_root', return_value=Path(temp_dir))
+        patcher = patch('src.tools.memory._memory_write._get_memory_root', return_value=Path(temp_dir))
         patcher.start()
 
         try:

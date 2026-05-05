@@ -93,6 +93,10 @@ async def run_iteration_loop(
             for chunk in _yield_outcome_chunks(outcome, data):
                 yield chunk
 
+            # COMPLETED 表示对话结束，退出循环
+            if outcome == IterationOutcome.COMPLETED:
+                return
+
         session.record_session_end("max_iterations_exceeded")
         raise Exception(f"Max iterations exceeded ({max_iterations})")
 

@@ -69,6 +69,10 @@ class TaskExecutor:
         """检查安全上限"""
         return check_safety_limits(self)
 
+    def _check_safety_limits(self) -> bool:
+        """检查安全上限（向后兼容别名）"""
+        return self._check_safety_limits_internal()
+
     async def execute_autonomous_task(self) -> str | None:
         """执行自主探索任务"""
         return await execute_autonomous_task(

@@ -19,6 +19,8 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from tools.long_term_archive import LongTermArchiveLayer
+from tools.archive import simple_summary, simple_findings
+from tools.fts_utils import sanitize_fts_query
 
 
 # ==================== Fixtures ====================
@@ -389,44 +391,44 @@ class TestCleanup:
 # ==================== Tests for Summary Generation ====================
 
 class TestSummaryGeneration:
-    def test_simple_summary_without_llm(self, archive_layer, sample_events):
+    def test_simple_summary_without_llm(self, sample_events):
         """Test simple summary generation without LLM."""
-        summary = archive_layer._simple_summary(sample_events)
-        
+        summary = simple_summary(sample_events)
+
         assert len(summary) > 0
         assert "事件" in summary
 
-    def test_simple_findings_extraction(self, archive_layer, sample_events):
+    def test_simple_findings_extraction(self, sample_events):
         """Test simple findings extraction."""
-        findings = archive_layer._simple_findings(sample_events)
-        
+        findings = simple_findings(sample_events)
+
         assert isinstance(findings, list)
 
 
 # ==================== Tests for FTS Query Sanitization ====================
 
 class TestFTSSanitization:
-    def test_sanitize_fts_query_removes_special_chars(self, archive_layer):
+    def test_sanitize_fts_query_removes_special_chars(self):
         """Test FTS query sanitization removes special characters."""
         query = "test:(keyword*^#"
-        sanitized = archive_layer._sanitize_fts_query(query)
-        
+        sanitized = sanitize_fts_query(query)
+
         assert ":" not in sanitized
         assert "*" not in sanitized
         assert "^" not in sanitized
         assert "#" not in sanitized
 
-    def test_sanitize_fts_query_removes_keywords(self, archive_layer):
+    def test_sanitize_fts_query_removes_keywords(self):
         """Test FTS query sanitization removes FTS keywords."""
         query = "test AND keyword OR value"
-        sanitized = archive_layer._sanitize_fts_query(query)
-        
+        sanitized = sanitize_fts_query(query)
+
         assert "AND" not in sanitized
         assert "OR" not in sanitized
 
-    def test_sanitize_fts_query_empty(self, archive_layer):
+    def test_sanitize_fts_query_empty(self):
         """Test empty query sanitization."""
-        sanitized = archive_layer._sanitize_fts_query("")
+        sanitized = sanitize_fts_query("")
         assert sanitized == ""
 
 

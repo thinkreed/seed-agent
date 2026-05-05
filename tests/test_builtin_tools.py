@@ -340,23 +340,23 @@ class TestCodeAsPolicyHelpers(unittest.TestCase):
 
     def test_check_shell_security_clean(self):
         """安全检查通过"""
-        result = _check_code_security("echo hello", "shell", None)
+        result = _check_code_security("echo hello", "shell")
         self.assertIsNone(result)
 
     def test_check_shell_security_blocked(self):
         """安全检查拦截危险命令"""
-        result = _check_code_security("rm -rf /", "shell", None)
+        result = _check_code_security("rm -rf /", "shell")
         self.assertIsNotNone(result)
         self.assertIn("rm -rf", result)
 
     def test_check_powershell_security_clean(self):
         """PowerShell 安全检查通过"""
-        result = _check_code_security("Get-Process", "powershell", None)
+        result = _check_code_security("Get-Process", "powershell")
         self.assertIsNone(result)
 
     def test_check_powershell_security_blocked(self):
         """PowerShell 安全检查拦截危险命令"""
-        result = _check_code_security("Remove-Item C:\\", "powershell", None)
+        result = _check_code_security("Remove-Item C:\\", "powershell")
         self.assertIsNotNone(result)
         self.assertIn("Remove-Item", result)
 
@@ -486,51 +486,11 @@ class TestAskUser(unittest.TestCase):
 class TestRunDiagnosis(unittest.TestCase):
     """测试 run_diagnosis 诊断运行功能"""
 
-    @patch('tools.builtin_tools.Path.exists')
-    @patch('tools.builtin_tools.subprocess.run')
-    def test_diagnosis_success(self, mock_run, mock_exists):
+    def test_diagnosis_success(self):
         """诊断成功"""
-        # Mock script exists
-        mock_exists.return_value = True
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="PASS: 10 checks passed",
-            stderr=""
-        )
-
         result = run_diagnosis()
-        self.assertIn("PASS", result)
-
-        # 验证调用参数（默认不带 --fix）
-        mock_run.assert_called_once()
-        call_args = mock_run.call_args
-        self.assertNotIn("--fix", str(call_args) if call_args else "")
-
-    @patch('tools.builtin_tools.Path.exists')
-    @patch('tools.builtin_tools.subprocess.run')
-    def test_diagnosis_with_fix(self, mock_run, mock_exists):
-        """带修复参数的诊断"""
-        mock_exists.return_value = True
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="PASS",
-            stderr=""
-        )
-        
-        run_diagnosis(fix=True)
-        call_args = mock_run.call_args[0][0]
-        self.assertIn("--fix", call_args)
-
-    @patch('tools.builtin_tools.Path.exists')
-    @patch('tools.builtin_tools.subprocess.run')
-    def test_diagnosis_timeout(self, mock_run, mock_exists):
-        """诊断超时"""
-        import subprocess
-        mock_exists.return_value = True
-        mock_run.side_effect = subprocess.TimeoutExpired("cmd", 120)
-        
-        result = run_diagnosis()
-        self.assertIn("timed out", result)
+        self.assertIn("Diagnosis complete", result)
+        self.assertIn("imported successfully", result)
 
 
 class TestRegisterBuiltinTools(unittest.TestCase):

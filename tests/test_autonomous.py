@@ -264,29 +264,29 @@ class TestSafetyLimits(unittest.TestCase):
 
     def test_iteration_limit(self):
         """测试迭代上限"""
-        self.explorer._iteration_count = RALPH_MAX_ITERATIONS
+        self.explorer._task_executor._state_manager.set_iteration_count(RALPH_MAX_ITERATIONS)
         self.assertTrue(self.explorer._check_safety_limits())
 
-        self.explorer._iteration_count = RALPH_MAX_ITERATIONS - 1
+        self.explorer._task_executor._state_manager.set_iteration_count(RALPH_MAX_ITERATIONS - 1)
         self.assertFalse(self.explorer._check_safety_limits())
 
     def test_duration_limit(self):
         """测试时间上限"""
-        self.explorer._ralph_start_time = time.time()
-        self.explorer._accumulated_duration = RALPH_MAX_DURATION
+        self.explorer._task_executor._state_manager.set_start_time(time.time())
+        self.explorer._task_executor._state_manager.set_accumulated_duration(RALPH_MAX_DURATION)
         self.assertTrue(self.explorer._check_safety_limits())
 
     def test_no_limits_exceeded(self):
         """测试未超过任何上限"""
-        self.explorer._iteration_count = 0
-        self.explorer._ralph_start_time = 0
-        self.explorer._accumulated_duration = 0
+        self.explorer._task_executor._state_manager.set_iteration_count(0)
+        self.explorer._task_executor._state_manager.set_start_time(0)
+        self.explorer._task_executor._state_manager.set_accumulated_duration(0)
         self.assertFalse(self.explorer._check_safety_limits())
 
     def test_duration_not_started(self):
         """测试未开始时的时间检查"""
-        self.explorer._iteration_count = 0
-        self.explorer._ralph_start_time = 0
+        self.explorer._task_executor._state_manager.set_iteration_count(0)
+        self.explorer._task_executor._state_manager.set_start_time(0)
         self.assertFalse(self.explorer._check_safety_limits())
 
 
