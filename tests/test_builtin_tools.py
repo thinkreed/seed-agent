@@ -500,14 +500,14 @@ class TestRegisterBuiltinTools(unittest.TestCase):
         """注册所有工具"""
         mock_registry = MagicMock()
         register_builtin_tools(mock_registry)
-        
+
         expected_tools = [
             "file_read", "file_write", "file_edit",
-            "code_as_policy", "ask_user", "run_diagnosis"
+            "code_as_policy", "ask_user"
         ]
-        
+
         self.assertEqual(mock_registry.register.call_count, len(expected_tools))
-        
+
         # 验证每个工具都被注册
         registered_names = [call[0][0] for call in mock_registry.register.call_args_list]
         for name in expected_tools:
