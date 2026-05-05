@@ -11,24 +11,24 @@ Agent 主循环模块
 - _summarizer.py: 摘要机制
 - _skill_tracker.py: Skill outcome 记录
 - _observability.py: OpenTelemetry 和状态查询
+- _execution.py: 核心执行流程
+- _user_interaction.py: 用户交互方法
 
 使用方法:
     from src.agent_loop import AgentLoop
-    
+
     loop = AgentLoop(gateway, model_id="openai/gpt-4")
     result = await loop.run("Hello!")
 """
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
-from src.abort_signal import AbortController, AbortSignal
+from src.abort_signal import AbortController
 from src.builtin_hooks import register_builtin_hooks
 from src.client import LLMGateway
 from src.context_engineering import CompressionConfig, PruningConfig
-from src.harness import MaxIterationsExceededError
 from src.lifecycle_hooks import LifecycleHookRegistry, get_global_registry
 from src.request_queue import RequestPriority
 from src.sandbox import IsolationLevel, Sandbox
@@ -36,6 +36,7 @@ from src.security.secure_sandbox import SecureSandbox
 from src.session_event_stream import SessionEventStream
 from src.tools.ask_user_types import AskUserResult
 
+from ._execution import ExecutionMixin
 from ._init import (
     get_context_window,
     get_tokenizer,
@@ -47,13 +48,14 @@ from ._init import (
 from ._observability import ObservabilityManager
 from ._skill_tracker import SkillTracker
 from ._summarizer import Summarizer
+from ._user_interaction import UserInteractionMixin
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["AgentLoop"]
 
 
-class AgentLoop:
+class AgentLoop(ExecutionMixin, UserInteractionMixin):
     """Agent 主循环 - 纯三件套架构 + 上下文工程
 
     架构设计：
@@ -61,6 +63,10 @@ class AgentLoop:
     - Harness: 控制器，驱动循环
     - Sandbox: 工作台，隔离执行
     - SessionEventStream: 状态存储，只追加
+
+    Mixin 组合:
+    - ExecutionMixin: 执行流程 (run, stream_run)
+    - UserInteractionMixin: 用户交互 (inject_user_input, cancel等)
     """
 
     def __init__(
@@ -87,45 +93,44 @@ class AgentLoop:
         self.summary_interval = summary_interval
         self.session_id = session_id or self._generate_session_id()
 
-        # === SecureSandbox 配置 (保存以供测试验证) ===
+        # SecureSandbox 配置
         self._enable_secure_sandbox = enable_secure_sandbox
         self._user_permission_level = user_permission_level
 
-        # === Session 事件流 ===
+        # Session 事件流
         self.session = SessionEventStream(self.session_id)
         self.session.record_session_start({
             "model_id": self.model_id,
             "max_iterations": self.max_iterations,
         })
 
-        # === Token 和上下文窗口 (需要在 _setup_all 之前) ===
+        # Token 和上下文窗口
         self._encoding = get_tokenizer(self.gateway, self.model_id)
         self.context_window = get_context_window(self.gateway, self.model_id)
 
-        # === 初始化三件套架构 ===
+        # 初始化三件套架构
         self._setup_all(
             system_prompt, isolation_level, compression_config, pruning_config,
             enable_pruning, hook_registry, enable_builtin_hooks,
             enable_secure_sandbox, user_permission_level
         )
-        
+
+        # 子系统
         self._summarizer = Summarizer(
             self.session, self.gateway, self.model_id,
             self.context_window, summary_interval, self._encoding
         )
-        
         self._skill_tracker = SkillTracker(self.session, self.session_id)
-        
         self._observability = ObservabilityManager(
             self.session, self._hook_registry, self.harness
         )
 
-        # === 取消控制 ===
+        # 取消控制
         self._abort_controller = AbortController()
         self._user_input_event = asyncio.Event()
         self._pending_user_response: AskUserResult | None = None
 
-        # === Scheduler ===
+        # Scheduler
         from src.scheduler import TaskScheduler
         self.scheduler = TaskScheduler(self)
 
@@ -197,141 +202,7 @@ class AgentLoop:
         self._pruning_config = pruning_config
         self._enable_pruning = enable_pruning
 
-    # === 核心执行流程 ===
-
-    async def run(
-        self,
-        user_input: str,
-        priority: int = RequestPriority.CRITICAL,
-        wait_for_user: bool = True,
-    ) -> str:
-        """执行对话"""
-        self._summarizer.increment_rounds()
-        self._abort_controller = AbortController()
-        signal = self._abort_controller.signal
-
-        try:
-            result = await self.harness.run_conversation(user_input, priority, signal)
-
-            if result["status"] == "waiting_for_user":
-                if wait_for_user:
-                    await self._user_input_event.wait()
-                    user_response = self._pending_user_response
-                    self._user_input_event.clear()
-                    self._pending_user_response = None
-
-                    final_result = await self.harness.resume_with_user_response(
-                        user_response, priority, signal
-                    )
-                    if final_result["status"] == "completed":
-                        await self._summarizer.maybe_summarize(
-                            self.system_prompt, self.session_id
-                        )
-                        self._skill_tracker.evaluate_and_record_skill_outcomes(True)
-                        return final_result["content"]
-                    return f"[{final_result['status']}]"
-                return "[AWAITING_USER_INPUT]"
-
-            if result["status"] == "completed":
-                await self._summarizer.maybe_summarize(self.system_prompt, self.session_id)
-                self._skill_tracker.evaluate_and_record_skill_outcomes(True)
-                return result["content"]
-
-            return f"[{result['status']}]"
-
-        except MaxIterationsExceededError:
-            logger.exception("Max iterations exceeded")
-            self.session.record_session_end("max_iterations_exceeded")
-            raise
-        finally:
-            self._pending_user_response = None
-            self._user_input_event.clear()
-
-    async def stream_run(
-        self, user_input: str, priority: int = RequestPriority.CRITICAL
-    ) -> AsyncGenerator[dict, None]:
-        """流式执行对话"""
-        self._summarizer.increment_rounds()
-        self._abort_controller = AbortController()
-        signal = self._abort_controller.signal
-        self.harness.set_current_task(user_input)
-
-        try:
-            async for chunk in self.harness.stream_conversation(user_input, priority, signal):
-                if signal.aborted:
-                    yield {"type": "cancelled", "reason": signal.reason}
-                    return
-
-                chunk_type = chunk.get("type")
-
-                if chunk_type == "awaiting_user_input":
-                    yield chunk
-                    await self._handle_user_wait(priority, signal)
-                    return
-
-                elif chunk_type == "final":
-                    await self._summarizer.maybe_summarize(self.system_prompt, self.session_id)
-                    self._skill_tracker.evaluate_and_record_skill_outcomes(True)
-                    yield chunk
-                    return
-
-                elif chunk_type in {"cancelled", "error"}:
-                    yield chunk
-                    return
-
-                else:
-                    yield chunk
-
-        except MaxIterationsExceededError as e:
-            yield {"type": "error", "content": str(e)}
-        finally:
-            self._pending_user_response = None
-            self._user_input_event.clear()
-
-    async def _handle_user_wait(self, priority: int, signal: AbortSignal) -> None:
-        """处理用户等待"""
-        await self._user_input_event.wait()
-        user_response = self._pending_user_response
-        self._user_input_event.clear()
-        self._pending_user_response = None
-
-        # 流式恢复执行（忽略中间 chunks）
-        async for _ in self.harness.stream_resume_with_user_response(
-            user_response, priority, signal
-        ):
-            pass
-
-    # === 用户交互 ===
-
-    def inject_user_input(self, response: AskUserResult) -> None:
-        """注入用户响应"""
-        self._pending_user_response = response
-        self._user_input_event.set()
-
-    def cancel_current_execution(self) -> None:
-        """取消当前执行"""
-        self._abort_controller.abort(reason="user_interrupt")
-        self._user_input_event.set()
-
-    def get_abort_signal(self) -> AbortSignal:
-        """获取取消信号"""
-        return self._abort_controller.signal
-
-    def set_autonomous_mode(self, enabled: bool, skip_response: str | None = None) -> None:
-        """设置自主探索模式"""
-        self.harness.set_autonomous_mode(enabled, skip_response)
-        logger.info(f"AgentLoop autonomous mode: {enabled}")
-
-    def inject_system_message(self, message: str) -> None:
-        """注入系统消息"""
-        from src.session_event_stream import EventType
-        self.session.emit_event(
-            EventType.SYSTEM_MESSAGE,
-            {"content": message, "source": "autonomous_budget_warning"},
-        )
-        logger.info(f"System message injected: {message[:100]}...")
-
-    # === 状态查询 ===
+    # === 状态查询（委托给 ObservabilityManager） ===
 
     def get_status(self) -> dict[str, Any]:
         """获取状态"""
@@ -351,8 +222,7 @@ class AgentLoop:
         return self._observability.get_hook_stats()
 
     def register_custom_hook(
-        self, hook_point: str, callback: Callable[..., Any],
-        priority: int = 100, name: str | None = None,
+        self, hook_point: str, callback: Any, priority: int = 100, name: str | None = None
     ) -> str | None:
         """注册自定义钩子"""
         return self._observability.register_custom_hook(hook_point, callback, priority, name)
@@ -369,6 +239,8 @@ class AgentLoop:
         """获取事件数"""
         return self._observability.get_event_count()
 
+    # === 属性 ===
+
     @property
     def history(self) -> list[dict[str, Any]]:
         """兼容性属性"""
@@ -380,13 +252,11 @@ class AgentLoop:
         return self._summarizer._conversation_rounds
 
 
-# === 向后兼容导入 (供测试 mock 使用) ===
+# === 向后兼容导入 ===
 from src.scheduler import TaskScheduler
 from src.subagent_manager import SubagentManager
 from src.tools import ToolRegistry
 from src.tools.skill_loader import SkillLoader
-
-# 向后兼容别名 (原函数已移动到 memory_tools)
 from src.tools.memory_tools import _generate_session_filename
 
 __all__.extend([
