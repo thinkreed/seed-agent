@@ -655,7 +655,7 @@ class TestTodoLoading(unittest.TestCase):
         """测试加载不存在的 TODO 文件"""
         # 需要在创建 explorer 之前 mock，避免初始化时读取真实 TODO
         # 由于测试使用 sys.path.insert(0, 'src')，模块名是 'autonomous'，需要 mock 相应路径
-        with patch('autonomous._task_executor.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
+        with patch('autonomous._executor_core.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
             with patch('autonomous._explorer.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
                 with patch('autonomous._state_manager.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
                     explorer = AutonomousExplorer(self.mock_agent)

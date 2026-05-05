@@ -107,7 +107,7 @@ def full_agent_patches(session_id='test_session', storage_path=None):
         patch('tools.ralph_tools.register_ralph_tools', noop),
         patch('tools.subagent_tools.register_subagent_tools', noop),
         patch('tools.collaboration_tools.register_tools', noop),
-        patch('agent_loop._generate_session_filename', return_value=session_id),
+        patch('agent_loop.AgentLoop._generate_session_id', return_value=session_id),
         patch('tiktoken.encoding_for_model', side_effect=KeyError),
         patch('tiktoken.get_encoding', return_value=MagicMock()),
     ]
