@@ -22,7 +22,7 @@
 
 import logging
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Generator
 from contextlib import contextmanager
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar
@@ -83,6 +83,8 @@ class Timer:
         if not self._running:
             raise RuntimeError(f"Timer '{self._name}' is not running")
 
+        # 类型断言：当 _running 为 True 时，_start_time 必定已设置
+        assert self._start_time is not None
         duration = (time.time() - self._start_time) * 1000
         self._total_duration += duration
         self._duration_ms = duration
@@ -135,7 +137,7 @@ class Timer:
 
 
 @contextmanager
-def timed_context(name: str | None = None) -> "Timer":
+def timed_context(name: str | None = None) -> Generator[Timer, None, None]:
     """计时上下文管理器
 
     Args:
