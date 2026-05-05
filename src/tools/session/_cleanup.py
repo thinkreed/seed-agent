@@ -74,8 +74,8 @@ def cleanup_old_outcomes(
     except sqlite3.IntegrityError:
         logger.exception("Database integrity error during cleanup")
         return 0
-    except Exception:
-        logger.exception("Unexpected error during cleanup")
+    except Exception as e:
+        logger.exception(f"Unexpected error during cleanup: {e}")
         return 0
 
 

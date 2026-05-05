@@ -359,11 +359,11 @@ print(result)
             logger.warning("Docker not installed, falling back to process isolation")
             return await self._execute_in_isolated_process(tool_name, args)
 
-        client = docker.from_env()
-
+        # 使用 closing 确保 Docker Client 正确关闭
         # 安全：使用临时文件传递参数，而非 f-string 嵌入
         # 避免 args_json 包含特殊字符导致的命令注入
         import tempfile
+        from contextlib import closing
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".json", delete=False
@@ -390,35 +390,32 @@ print(result)
 """
 
         try:
-            # 创建临时容器（不传递环境变量）
-            container = client.containers.run(
-                "seed-agent-sandbox:latest",
-                ["python", "-c", safe_cmd],
-                volumes={
-                    str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
-                    str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
-                    args_file_path: {"bind": "/tmp/args.json", "mode": "ro"},
-                },
-                environment={},  # 不传递任何环境变量（关键）
-                remove=True,
-                stdout=True,
-                stderr=True,
-            )
+            with closing(docker.from_env()) as client:
+                # 创建临时容器（不传递环境变量）
+                container = client.containers.run(
+                    "seed-agent-sandbox:latest",
+                    ["python", "-c", safe_cmd],
+                    volumes={
+                        str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
+                        str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
+                        args_file_path: {"bind": "/tmp/args.json", "mode": "ro"},
+                    },
+                    environment={},  # 不传递任何环境变量（关键）
+                    remove=True,
+                    stdout=True,
+                    stderr=True,
+                )
 
+                result = (
+                    container.decode() if isinstance(container, bytes) else str(container)
+                )
+                return self._sanitize_output(result)
+
+        except Exception as e:
             # 清理临时文件
             with contextlib.suppress(OSError):
                 os.unlink(args_file_path)
-
-            result = (
-                container.decode() if isinstance(container, bytes) else str(container)
-            )
-            return self._sanitize_output(result)
-
-        except Exception:
-            # 清理临时文件
-            with contextlib.suppress(OSError):
-                os.unlink(args_file_path)
-            logger.exception("Container execution failed")
+            logger.exception(f"Container execution failed: {e}")
             # 降级到进程级隔离
             return await self._execute_in_isolated_process(tool_name, args)
 
@@ -544,8 +541,8 @@ print(result)
                 scope=scope,
                 requester_id=requester_id,
             )
-        except Exception:
-            logger.exception("Failed to get credential via proxy")
+        except Exception as e:
+            logger.exception(f"Failed to get credential via proxy: {e}")
             return None
 
     async def execute_external_request_via_proxy(

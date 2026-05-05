@@ -250,11 +250,9 @@ class AutonomousExplorer:
         async def on_idle():
             return await self._task_executor.execute_autonomous_task()
 
-        # 启动空闲监控，传入回调
-        self._idle_monitor._running = True
-        self._idle_monitor._task = asyncio.create_task(
-            self._idle_monitor._idle_monitor_loop(on_idle)
-        )
+        # 设置空闲回调并启动监控
+        self._idle_monitor.set_idle_callback(on_idle)
+        await self._idle_monitor.start()
         logger.warning("Autonomous explorer started")
 
     async def stop(self) -> None:

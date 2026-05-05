@@ -27,6 +27,10 @@ class AuditMixin:
     _access_logs: list["CredentialAccessLog"]
     _max_access_logs: int
 
+    # 声明 Mixin 依赖的方法
+    if TYPE_CHECKING:
+        def _persist_audit_log(self) -> None: ...
+
     def _log_access(
         self,
         credential_id: str,

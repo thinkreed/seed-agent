@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from src.security.vault._types import CredentialRecord
+    from src.security.vault._types import CredentialAccessLog, CredentialRecord
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,22 @@ class CredentialOpsMixin:
 
     _credentials: dict[str, "CredentialRecord"]
     _vault_path: "Path"
+    _access_logs: list["CredentialAccessLog"]
+
+    # 声明 Mixin 依赖的方法（在 TYPE_CHECKING 中声明抽象方法）
+    if TYPE_CHECKING:
+        def _encrypt(self, value: str) -> str: ...
+        def _decrypt(self, value: str) -> str: ...
+        def _persist_credentials(self) -> None: ...
+        def _log_access(
+            self,
+            credential_id: str,
+            scope: str,
+            requester_id: str | None,
+            action: str,
+            success: bool,
+            error: str | None = None,
+        ) -> None: ...
 
     def store_credential(
         self,

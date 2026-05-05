@@ -558,40 +558,42 @@ class Sandbox:
                 f"Result:\n{await self._execute_in_process(tool_name, args)}"
             )
 
-        client = docker.from_env()
+        # 使用 closing 确保 Docker Client 正确关闭
+        from contextlib import closing
 
-        # 构建执行命令
-        args_json = json.dumps(args)
-        cmd = f"python -c 'from src.tools.builtin_tools import {tool_name}; print({tool_name}(**json.loads(\"{args_json}\")))'"
+        with closing(docker.from_env()) as client:
+            # 构建执行命令
+            args_json = json.dumps(args)
+            cmd = f"python -c 'from src.tools.builtin_tools import {tool_name}; print({tool_name}(**json.loads(\"{args_json}\")))'"
 
-        try:
-            # 创建临时容器执行
-            container = client.containers.run(
-                "seed-agent-sandbox:latest",
-                cmd,
-                volumes={
-                    str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
-                    str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
-                },
-                remove=True,
-                stdout=True,
-                stderr=True,
-            )
-            return (
-                container.decode() if isinstance(container, bytes) else str(container)
-            )
-        except Exception as e:
-            logger.exception(
-                f"Container execution failed for {tool_name}: {type(e).__name__}. "
-                "Falling back to PROCESS isolation."
-            )
-            # 降级到进程执行，但明确通知调用方
-            return (
-                f"[FALLBACK] Container execution failed ({type(e).__name__}), "
-                f"executed in PROCESS isolation.\n"
-                f"Original error: {str(e)[:200]}\n"
-                f"Result:\n{await self._execute_in_process(tool_name, args)}"
-            )
+            try:
+                # 创建临时容器执行
+                container = client.containers.run(
+                    "seed-agent-sandbox:latest",
+                    cmd,
+                    volumes={
+                        str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
+                        str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
+                    },
+                    remove=True,
+                    stdout=True,
+                    stderr=True,
+                )
+                return (
+                    container.decode() if isinstance(container, bytes) else str(container)
+                )
+            except Exception as e:
+                logger.exception(
+                    f"Container execution failed for {tool_name}: {type(e).__name__}. "
+                    "Falling back to PROCESS isolation."
+                )
+                # 降级到进程执行，但明确通知调用方
+                return (
+                    f"[FALLBACK] Container execution failed ({type(e).__name__}), "
+                    f"executed in PROCESS isolation.\n"
+                    f"Original error: {str(e)[:200]}\n"
+                    f"Result:\n{await self._execute_in_process(tool_name, args)}"
+                )
 
     # === 输出处理 ===
 

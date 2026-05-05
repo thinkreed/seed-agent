@@ -7,8 +7,10 @@ Harness 管理器模块
 - HarnessManager - Harness 生命周期管理器
 """
 
+from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from src.llm_client import LLMClient
 from src.sandbox import Sandbox
@@ -38,7 +40,7 @@ class HarnessManager:
     - 容错恢复
     """
 
-    def __init__(self, gateway_config_path: str):
+    def __init__(self, gateway_config_path: str) -> None:
         """初始化 HarnessManager
 
         Args:
@@ -51,7 +53,7 @@ class HarnessManager:
 
         logger.info("HarnessManager initialized")
 
-    def _ensure_gateway(self) -> "LLMGateway":
+    def _ensure_gateway(self) -> LLMGateway:
         """确保 Gateway 已创建"""
         if not self._gateway:
             from src.client import LLMGateway
@@ -92,9 +94,10 @@ class HarnessManager:
         session = SessionEventStream(harness_id)
 
         # 创建 Harness（延迟导入避免循环依赖）
-        from src.harness import Harness
+        # 使用 cast 告诉 mypy 这是可调用的
+        from src.harness import Harness as HarnessClass
 
-        harness = Harness(
+        harness = cast("Any", HarnessClass)(
             llm_client,
             session,
             sandbox,

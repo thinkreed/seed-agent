@@ -65,12 +65,13 @@ class TemporaryClient:
         self.client = client
         # 使用内部列表存储凭证，便于安全清除
         # 向后兼容：支持 _credential_storage 参数
+        self._credential_storage: list[str]
         if _credential_storage is not None:
-            self._credential_storage: list[str] = _credential_storage
+            self._credential_storage = _credential_storage
         elif credential is not None:
-            self._credential_storage: list[str] = [credential]
+            self._credential_storage = [credential]
         else:
-            self._credential_storage: list[str] = []
+            self._credential_storage = []
         self.created_at = created_at or time.time()
         self.destroyed: bool = False
 

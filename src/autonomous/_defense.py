@@ -29,7 +29,7 @@ class DefenseState:
     管理所有防御机制的状态变量。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化防御状态"""
         # Layer 3: 时间断路器状态
         self._task_start_time: float = 0.0

@@ -117,8 +117,8 @@ async def persistence_loop(
             # 文件系统错误（磁盘满、权限问题等）
             logger.exception("Persistence I/O error")
             await asyncio.sleep(10.0)  # 更长等待避免频繁失败
-        except Exception:
-            logger.exception("Persistence loop unexpected error")
+        except Exception as e:
+            logger.exception(f"Persistence loop unexpected error: {e}")
             await asyncio.sleep(5.0)
 
 

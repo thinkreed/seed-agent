@@ -342,8 +342,8 @@ class MultiBrainMultiHandOrchestrator:
                 response.get("choices", [{}])[0].get("message", {}).get("content", "")
             )
 
-        except Exception:
-            logger.exception("Merge summary failed")
+        except Exception as e:
+            logger.exception(f"Merge summary failed: {e}")
             return f"Generated {len(results)} results"
 
     async def dynamic_task_assignment(self, task: str) -> dict[str, Any]:

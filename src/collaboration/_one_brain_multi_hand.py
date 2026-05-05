@@ -181,8 +181,8 @@ class OneBrainMultiHandOrchestrator:
             # 解析 JSON
             return self._parse_plan(plan_text)
 
-        except Exception:
-            logger.exception("Planning failed")
+        except Exception as e:
+            logger.exception(f"Planning failed: {e}")
             # 默认分配：所有环境执行相同任务
             return {
                 str(i): [{"tool": "code_as_policy", "args": {"code": task}}]
