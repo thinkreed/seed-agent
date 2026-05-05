@@ -209,6 +209,32 @@ Session history is now stored in SQLite with FTS5 full-text search:
 
 The tool registry (`src/tools/`) provides extensible agent capabilities through five modules:
 
+### Tool Classification (Wiki Knowledge)
+
+Based on Qwen-Code's design, tools are classified by operation type:
+
+**ToolKind Enum:**
+| Kind | Description | Permission |
+|------|-------------|------------|
+| `Read` | File reading, listing | `allow` (safe) |
+| `Search` | grep, glob, search | `allow` (safe) |
+| `Edit` | File modification | `ask` (needs confirmation) |
+| `Delete` | File deletion | `ask` (needs confirmation) |
+| `Execute` | Code execution, shell | `ask` (needs confirmation) |
+| `Memory` | Memory operations | `ask` (needs confirmation) |
+| `Agent` | Subagent spawning | `ask` (needs confirmation) |
+
+**Permission Decision Enum:**
+| Decision | Behavior |
+|----------|----------|
+| `allow` | Direct execution, no confirmation needed |
+| `ask` | Requires user confirmation before execution |
+| `deny` | Blocked due to security policy |
+
+**Concurrency Safety:**
+- `CONCURRENCY_SAFE_KINDS`: `{Read, Search}` - Can be executed in parallel
+- `MUTATOR_KINDS`: `[Edit, Delete, Execute, Memory]` - Need sequential execution
+
 ### Built-in Tools (`builtin_tools.py`)
 
 | Tool | Signature | Purpose |

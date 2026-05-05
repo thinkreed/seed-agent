@@ -13,23 +13,111 @@
 - memory_tools: 记忆系统工具
 - skill_loader: 技能加载器
 - session_db: 会话数据库
+
+Wiki 知识落地 (基于 Qwen-Code 工具系统设计):
+- ToolKind: 工具分类枚举 (Read/Edit/Delete/Execute/Search 等)
+- PermissionDecision: 权限三级模式 (allow/ask/deny)
+- MUTATOR_KINDS: 具有副作用的工具类型
+- CONCURRENCY_SAFE_KINDS: 可安全并发执行的工具类型
+
+版本: v2.1 (Wiki 知识落地版)
 """
 
 import asyncio
 import inspect
 from collections.abc import Callable
+from enum import Enum
 from typing import Any
 
 
+# === Wiki 知识落地: 工具分类系统 (基于 Qwen-Code) ===
+
+
+class ToolKind(Enum):
+    """工具分类枚举
+
+    基于 Qwen-Code 的 Kind 设计，将工具按操作类型分类：
+    - Read: 只读操作（文件读取、搜索）
+    - Edit: 编辑操作（文件修改）
+    - Delete: 删除操作（文件删除）
+    - Execute: 执行操作（代码执行、Shell 命令）
+    - Search: 搜索操作（grep、glob）
+    - Memory: 记忆操作（读写记忆）
+    - Agent: 子代理操作（spawn subagent）
+    - Other: 其他操作
+
+    用途：
+    - 权限检查：不同类型有不同的默认权限
+    - 并发控制：判断是否可以并发执行
+    - 副作用检测：判断是否需要用户确认
+    """
+
+    Read = "read"
+    Edit = "edit"
+    Delete = "delete"
+    Execute = "execute"
+    Search = "search"
+    Memory = "memory"
+    Agent = "agent"
+    Other = "other"
+
+
+class PermissionDecision(Enum):
+    """权限决策枚举
+
+    基于 Qwen-Code 的三级权限模式：
+    - allow: 固有安全，直接执行无需确认
+    - ask: 需要用户确认后执行
+    - deny: 安全违规，拒绝执行
+
+    用途：
+    - 工具调用前的权限检查
+    - 用户确认流程的决策
+    - 安全策略的实现
+    """
+
+    Allow = "allow"
+    Ask = "ask"
+    Deny = "deny"
+
+
+# 具有副作用的工具类型（需要用户确认）
+MUTATOR_KINDS: list[ToolKind] = [
+    ToolKind.Edit,
+    ToolKind.Delete,
+    ToolKind.Execute,
+    ToolKind.Memory,
+]
+
+# 可安全并发执行的工具类型（纯读取，无写入）
+CONCURRENCY_SAFE_KINDS: set[ToolKind] = {
+    ToolKind.Read,
+    ToolKind.Search,
+}
+
+
 class ToolRegistry:
-    """工具注册表"""
+    """工具注册表
+
+    Wiki 知识落地特性:
+    - 工具分类 (ToolKind): 每个工具可指定类型
+    - 权限决策 (PermissionDecision): 基于分类的默认权限
+    - 并发安全判断: CONCURRENCY_SAFE_KINDS 判断是否可并发
+    """
 
     def __init__(self) -> None:
         self._tools: dict[str, Callable] = {}
         self._tool_schemas: dict[str, dict] = {}
+        self._tool_kinds: dict[str, ToolKind] = {}  # Wiki: 工具分类
+        self._tool_permissions: dict[str, PermissionDecision] = {}  # Wiki: 权限决策
 
     def register(
-        self, name: str, func: Callable[..., Any], schema: dict[str, Any] | None = None
+        self,
+        name: str,
+        func: Callable[..., Any],
+        schema: dict[str, Any] | None = None,
+        kind: ToolKind | None = None,
+        permission: PermissionDecision | None = None,
     ) -> None:
         """注册工具
 
@@ -37,9 +125,67 @@ class ToolRegistry:
             name: 工具名称
             func: 工具函数(可以是普通函数或异步函数)
             schema: 工具的 JSON Schema 描述(用于 function calling)
+            kind: 工具分类 (Wiki 知识落地)
+            permission: 权限决策 (Wiki 知识落地，默认基于 kind 自动推断)
         """
         self._tools[name] = func
         self._tool_schemas[name] = schema or self._infer_schema(func, name)
+
+        # Wiki 知识落地: 工具分类和权限
+        inferred_kind = kind or self._infer_kind_from_name(name)
+        self._tool_kinds[name] = inferred_kind
+
+        # 权限决策：如果未指定，基于分类自动推断
+        if permission:
+            self._tool_permissions[name] = permission
+        else:
+            self._tool_permissions[name] = self._infer_permission_from_kind(inferred_kind)
+
+    def _infer_kind_from_name(self, name: str) -> ToolKind:
+        """从工具名称推断分类"""
+        name_lower = name.lower()
+        if any(x in name_lower for x in ("read", "load", "get", "list", "search", "grep", "glob")):
+            return ToolKind.Read if "search" not in name_lower else ToolKind.Search
+        if any(x in name_lower for x in ("write", "edit", "patch", "update", "save")):
+            return ToolKind.Edit
+        if any(x in name_lower for x in ("delete", "remove", "clear")):
+            return ToolKind.Delete
+        if any(x in name_lower for x in ("exec", "run", "code", "shell", "bash")):
+            return ToolKind.Execute
+        if any(x in name_lower for x in ("memory", "skill")):
+            return ToolKind.Memory
+        if any(x in name_lower for x in ("agent", "subagent", "spawn")):
+            return ToolKind.Agent
+        return ToolKind.Other
+
+    def _infer_permission_from_kind(self, kind: ToolKind) -> PermissionDecision:
+        """从分类推断权限决策"""
+        # 只读和搜索工具默认允许
+        if kind in CONCURRENCY_SAFE_KINDS:
+            return PermissionDecision.Allow
+        # 子代理操作默认需要确认
+        if kind == ToolKind.Agent:
+            return PermissionDecision.Ask
+        # 其他修改操作需要确认
+        if kind in MUTATOR_KINDS:
+            return PermissionDecision.Ask
+        return PermissionDecision.Ask
+
+    def get_kind(self, name: str) -> ToolKind:
+        """获取工具分类"""
+        return self._tool_kinds.get(name, ToolKind.Other)
+
+    def get_permission(self, name: str) -> PermissionDecision:
+        """获取工具权限决策"""
+        return self._tool_permissions.get(name, PermissionDecision.Ask)
+
+    def is_concurrency_safe(self, name: str) -> bool:
+        """判断工具是否可安全并发执行"""
+        return self.get_kind(name) in CONCURRENCY_SAFE_KINDS
+
+    def is_mutator(self, name: str) -> bool:
+        """判断工具是否具有副作用"""
+        return self.get_kind(name) in MUTATOR_KINDS
 
     def get_tool(self, name: str) -> Callable:
         """获取工具函数"""
@@ -169,3 +315,16 @@ class ToolRegistry:
                 },
             },
         }
+
+
+# === 导出 ===
+
+__all__ = [
+    # 工具分类系统 (Wiki 知识落地)
+    "ToolKind",
+    "PermissionDecision",
+    "MUTATOR_KINDS",
+    "CONCURRENCY_SAFE_KINDS",
+    # 核心类
+    "ToolRegistry",
+]

@@ -285,6 +285,50 @@ RalphSubagentOrchestrator 执行模式:
 
 ---
 
+## Wiki 知识落地
+
+基于 `E:\projects\wiki` 目录下多个开源项目的架构分析，提取可落地的优化：
+
+### GenericAgent 借鉴
+
+- **极简核心循环**：~121 行 Agent Loop 实现（感知→推理→执行→记忆→循环）
+- **9 个原子工具**：最小工具集通过组合实现复杂功能
+- **分层记忆系统**：L0-L4 五层架构（行动验证原则、最小充分指针）
+- **自我进化机制**：任务自动沉淀为 Skill
+
+### Hermes-Agent 借鉴
+
+- **Skills 系统**：渐进式披露架构（skills_list 仅元数据、skill_view 加载完整内容）
+- **SessionDB + FTS5**：SQLite 全文搜索支持跨会话记忆检索
+- **Skills Hub 集成**：GitHub、skills.sh 社区技能发现
+- **提示缓存保护**：对话中途不修改上下文避免缓存破坏
+
+### MIA 借鉴
+
+- **MPE 三组件架构**：Manager-Planner-Executor 协作模式
+- **双层记忆架构**：参数化记忆（模型参数）+ 非参数化记忆（外部存储）
+- **模态 × 类别组织**：记忆按模态和类别两级分类
+- **混合评分机制**：余弦相似度 + 胜率加权检索
+- **TTRL 持续学习**：Test-Time RL 实现推理时学习
+
+### Open-Agents 借鉴
+
+- **Subagent 类型划分**：Explorer（只读）、Executor（实现）、Design（设计）
+- **上下文隔离机制**：Subagent 不继承主 Agent 对话历史
+- **Workflow SDK**：持久化执行，支持跨请求恢复
+- **流式取消机制**：AbortSignal 集成到执行流程
+
+### Qwen-Code 借鉴
+
+- **DeclarativeTool 模式**：声明式工具设计（参数验证与执行分离）
+- **三级权限模式**：allow（固有安全）/ ask（需确认）/ deny（拒绝）
+- **ToolKind 分类**：Read/Edit/Delete/Execute/Search 等工具分类
+- **工具并发判断**：CONCURRENCY_SAFE_KINDS 判断可安全并发执行的工具
+- **Hooks 系统**：Command/HTTP/Function 三种钩子类型
+- **MessageBus**：请求/响应模式的事件总线
+
+---
+
 ## 核心禁忌
 
 - 不推诿，无方案时提建议；
