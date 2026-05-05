@@ -23,12 +23,18 @@
 | qwen-code | LoopDetectionService | `src/harness/_loop_detection.py` | ✅ 已实现 |
 | qwen-code | MessageBus.request() | `src/lifecycle_hooks/_message_bus.py` | ✅ 已实现 |
 | qwen-code | 整合锁机制 | `src/tools/memory/_consolidation_lock.py` | ✅ 已实现 |
+| qwen-code | HookAggregator | `src/lifecycle_hooks/_message_bus.py` HookAggregator | ✅ 已实现 |
+| qwen-code | PermissionDecision 三级权限 | `src/tools/__init__.py` PermissionDecision | ✅ 已实现 |
+| qwen-code | MUTATOR_KINDS | `src/tools/__init__.py` MUTATOR_KINDS | ✅ 已实现 |
+| qwen-code | CONCURRENCY_SAFE_KINDS | `src/tools/__init__.py` CONCURRENCY_SAFE_KINDS | ✅ 已实现 |
 | open-agents | Subagent 上下文隔离 | `src/subagent.py` | ✅ 已实现 |
 | open-agents | Subagent 类型分级 | EXPLORE/REVIEW/IMPLEMENT/PLAN | ✅ 已实现 |
 | hermes | SQLite+FTS5 会话存储 | `src/tools/session_db.py` | ✅ 已实现 |
 | hermes | 工具注册表模式 | `src/tools/__init__.py` ToolRegistry | ✅ 已实现 |
 | hermes | 渐进式披露 Skills | `src/tools/skill_loader/_skillloader.py` | ✅ 已实现 |
+| hermes | 三级披露架构 | Tier 1/2/3 (索引/内容/参考) | ✅ 已实现 |
 | genericagent | 自主探索空闲检测 | `src/autonomous/_idle_monitor.py` | ✅ 已实现 |
+| genericagent | StepOutcome 统一返回 | `src/agent_loop/_execution.py` | ✅ 已实现 |
 | mia | MPE 三代理架构 | SubagentManager + Planner/Executor 分工 | ✅ 已实现 |
 | mia | win_rate 字段 | `src/tools/session/_rate_calculation.py` success_rate/laplace_rate | ✅ 已实现 |
 | mia | 混合评分检索 | SessionDB FTS5 + 相关性计算 | ✅ 已实现 |
@@ -263,14 +269,17 @@ def load_skill_content(skill_name: str) -> str:
 | 整合锁机制 | `src/tools/memory/_consolidation_lock.py` | ✅ 已实现 |
 | win_rate 字段 | `src/tools/session/_rate_calculation.py` | ✅ 已实现 (success_rate/laplace_rate) |
 
-### P1 - 近期优化（高价值 + 中等复杂度）
+### P1 - 近期优化（高价值 + 中等复杂度）✅ 已完成
 
 | 优化点 | 文件 | 实现状态 |
 |------|------|----------|
 | 渐进式披露 Skills | `src/tools/skill_loader/_skillloader.py` | ✅ 已实现 |
 | MessageBus.request() | `src/lifecycle_hooks/_message_bus.py` | ✅ 已实现 |
-| DeclarativeTool 模式 | `src/tools/builtin/` | 待重构 |
-| 双重历史管理 | `src/session_event_stream.py` | 待新增 curated_history |
+| HookAggregator | `src/lifecycle_hooks/_message_bus.py` | ✅ 已实现 |
+| PermissionDecision 三级权限 | `src/tools/__init__.py` | ✅ 已实现 |
+| MUTATOR_KINDS / CONCURRENCY_SAFE_KINDS | `src/tools/__init__.py` | ✅ 已实现 |
+| DeclarativeTool 模式 | `src/tools/builtin/` | 待重构（可选）|
+| 双重历史管理 | `src/session_event_stream.py` | 待新增 curated_history（可选）|
 
 ### P2 - 中期规划（中价值 + 高复杂度）
 
@@ -287,7 +296,9 @@ def load_skill_content(skill_name: str) -> str:
 
 | 日期 | 已落地 | 测试状态 |
 |------|--------|----------|
-| 2026-05-06 | P0 全部 + 部分 P1 | 1132 passed |
+| 2026-05-05 | P0 全部 | 1130 passed |
+| 2026-05-06 | P0 + P1 大部分 | 1132 passed |
+| **当前** | **P0 + P1 全部** | **1132 passed** |
 
 ---
 
