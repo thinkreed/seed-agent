@@ -1,25 +1,18 @@
 """定时任务调度器核心模块
 
-包含 TaskScheduler 类定义和工具函数。
+包含 TaskScheduler 类定义和主调度逻辑。
 """
 
 import asyncio
 import contextlib
-import json
 import logging
 import time
 from typing import TYPE_CHECKING
 
 from src.scheduler._execution import execute_task, log_task_execution
-from src.scheduler._storage import (
-    _get_tasks_dir,
-    _get_tasks_file,
-    load_tasks,
-    save_tasks,
-)
+from src.scheduler._storage import _get_tasks_dir, _get_tasks_file, load_tasks, save_tasks
 from src.scheduler._task_definition import ScheduledTask
 from src.scheduler._task_management import TaskManagementMixin
-from src.tools import ToolRegistry
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -27,31 +20,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger("seed_agent")
 
 
-# 模块级单例：避免工具函数重复创建实例
-_global_scheduler: "TaskScheduler | None" = None
-
-
-def _get_scheduler() -> "TaskScheduler":
-    """获取全局 TaskScheduler 单例（延迟初始化）"""
-    global _global_scheduler
-    if _global_scheduler is None:
-        _global_scheduler = TaskScheduler()
-    return _global_scheduler
-
-
 class TaskScheduler(TaskManagementMixin):
     """定时任务调度器"""
 
-    # 内置任务类型及其默认间隔
-    BUILTIN_TASKS = {
-        "autodream": 12 * 60 * 60,  # 每12小时记忆整理
-    }
+    BUILTIN_TASKS = {"autodream": 12 * 60 * 60}
 
     def __init__(self, agent_loop: "AgentLoop | None" = None) -> None:
         self.agent = agent_loop
         self._tasks: dict[str, ScheduledTask] = {}
         self._running: bool = False
-        self._check_interval: int = 60  # 每60秒检查一次
+        self._check_interval: int = 60
         self._task: asyncio.Task | None = None
         self._load_tasks()
         self._init_builtin_tasks()
@@ -66,9 +44,7 @@ class TaskScheduler(TaskManagementMixin):
                 task = ScheduledTask.from_dict(task_data)
                 self._tasks[task.task_id] = task
             except (KeyError, TypeError) as e:
-                logger.warning(
-                    f"Skipping invalid task data: {task_data}, error: {e}"
-                )
+                logger.warning(f"Skipping invalid task data: {task_data}, error: {e}")
         logger.info(f"Loaded {len(self._tasks)} scheduled tasks")
 
     def _save_tasks(self) -> None:
@@ -78,22 +54,17 @@ class TaskScheduler(TaskManagementMixin):
         save_tasks(tasks_data, tasks_file)
 
     def _init_builtin_tasks(self) -> None:
-        """初始化内置任务
-
-        重要：启动时设置 last_run 为当前时间，避免立即触发到期的任务。
-        这样确保任务在启动后等待一个完整间隔周期才首次执行。
-        """
+        """初始化内置任务"""
         modified = False
         now = time.time()
 
-        # 1. autodream: 记忆整理
         if "autodream" not in self._tasks:
             self._tasks["autodream"] = ScheduledTask(
                 task_id="autodream",
                 task_type="autodream",
                 interval_seconds=self.BUILTIN_TASKS["autodream"],
                 prompt="执行 autodream 记忆整理 SOP：分层逐查、ROI评估、低ROI清理、补全高价值项",
-                last_run=now,  # 启动时设置，避免立即触发
+                last_run=now,
                 enabled=True,
             )
             modified = True
@@ -139,50 +110,4 @@ class TaskScheduler(TaskManagementMixin):
                 self._save_tasks()
 
 
-# 工具函数（供 agent 调用）
-def create_scheduled_task(task_id: str, interval_minutes: int, prompt: str) -> str:
-    """Create a scheduled task that runs periodically."""
-    return _get_scheduler().add_task(
-        task_id=task_id,
-        task_type="custom",
-        interval_seconds=interval_minutes * 60,
-        prompt=prompt,
-    )
-
-
-def remove_scheduled_task(task_id: str) -> str:
-    """Remove a scheduled task."""
-    return _get_scheduler().remove_task(task_id)
-
-
-def list_scheduled_tasks() -> str:
-    """List all scheduled tasks."""
-    return _get_scheduler().list_tasks()
-
-
-def get_task_info(task_id: str) -> str:
-    """Get detailed info about a scheduled task."""
-    status = _get_scheduler().get_task_status(task_id)
-    if "error" in status:
-        return status["error"]
-
-    return json.dumps(status, ensure_ascii=False, indent=2)
-
-
-def register_scheduler_tools(registry: ToolRegistry) -> None:
-    """注册定时任务工具"""
-    registry.register("create_scheduled_task", create_scheduled_task)
-    registry.register("remove_scheduled_task", remove_scheduled_task)
-    registry.register("list_scheduled_tasks", list_scheduled_tasks)
-    registry.register("get_task_info", get_task_info)
-
-
-__all__ = [
-    "TaskScheduler",
-    "_get_scheduler",
-    "create_scheduled_task",
-    "remove_scheduled_task",
-    "list_scheduled_tasks",
-    "get_task_info",
-    "register_scheduler_tools",
-]
+__all__ = ["TaskScheduler"]

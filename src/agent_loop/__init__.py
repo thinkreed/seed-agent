@@ -84,6 +84,7 @@ class AgentLoop:
         self.gateway = gateway
         self.model_id = model_id or self._get_primary_model()
         self.max_iterations = max_iterations
+        self.summary_interval = summary_interval
         self.session_id = session_id or self._generate_session_id()
 
         # === Session 事件流 ===
@@ -93,16 +94,16 @@ class AgentLoop:
             "max_iterations": self.max_iterations,
         })
 
+        # === Token 和上下文窗口 (需要在 _setup_all 之前) ===
+        self._encoding = get_tokenizer(self.gateway, self.model_id)
+        self.context_window = get_context_window(self.gateway, self.model_id)
+
         # === 初始化三件套架构 ===
         self._setup_all(
             system_prompt, isolation_level, compression_config, pruning_config,
             enable_pruning, hook_registry, enable_builtin_hooks,
             enable_secure_sandbox, user_permission_level
         )
-
-        # === 辅助模块 ===
-        self._encoding = get_tokenizer(self.gateway, self.model_id)
-        self.context_window = get_context_window(self.gateway, self.model_id)
         
         self._summarizer = Summarizer(
             self.session, self.gateway, self.model_id,
@@ -364,3 +365,23 @@ class AgentLoop:
     def history(self) -> list[dict[str, Any]]:
         """兼容性属性"""
         return self.session.build_context_for_llm(system_prompt=None)
+
+    @property
+    def _conversation_rounds(self) -> int:
+        """向后兼容属性 - 委托给 _summarizer"""
+        return self._summarizer._conversation_rounds
+
+
+# === 向后兼容导入 (供测试 mock 使用) ===
+from src.scheduler import TaskScheduler
+from src.subagent_manager import SubagentManager
+from src.tools import ToolRegistry
+from src.tools.skill_loader import SkillLoader
+
+# 向后兼容别名 (原函数已移动到 memory_tools)
+from src.tools.memory_tools import _generate_session_filename
+
+__all__.extend([
+    "ToolRegistry", "SkillLoader", "TaskScheduler", "SubagentManager",
+    "_generate_session_filename",
+])

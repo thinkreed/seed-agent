@@ -286,6 +286,10 @@ class UserModelingDB:
 
 
 # 单例访问函数
-def get_db() -> UserModelingDB:
-    """获取数据库单例"""
-    return UserModelingDB()
+def get_db(db_path: str | Path | None = None) -> UserModelingDB:
+    """获取数据库单例
+
+    Args:
+        db_path: 可选的数据库路径（用于测试）
+    """
+    return UserModelingDB(db_path)

@@ -37,6 +37,7 @@ from src.tools.memory import (
     _load_session_history,
     _save_session_history,
     _search_history,
+    _generate_session_filename,
     # Skill 结果追踪
     _get_skill_stats,
     _get_top_skills,
@@ -75,6 +76,7 @@ __all__ = [
     "_load_session_history",
     "_list_sessions",
     "_search_history",
+    "_generate_session_filename",
     # Skill 结果追踪
     "_record_skill_outcome",
     "_get_skill_stats",

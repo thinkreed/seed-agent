@@ -59,8 +59,8 @@ class UserModelingLayer:
 
     _instance: "UserModelingLayer | None" = None
 
-    def __new__(cls) -> Self:
-        """单例模式"""
+    def __new__(cls, **kwargs) -> Self:  # noqa: ARG003
+        """单例模式 - 接受 kwargs 以支持测试中重置单例"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -75,7 +75,7 @@ class UserModelingLayer:
             return
 
         self._initialized = True
-        self._db = get_db()
+        self._db = get_db(db_path)
         self._observation = get_observation_manager()
         self._dialectic = get_dialectic_engine()
         self._upgrade = get_upgrade_engine()

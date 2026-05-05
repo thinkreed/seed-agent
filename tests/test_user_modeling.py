@@ -255,7 +255,7 @@ class TestDialecticalUpdate:
         asyncio.run(user_model.dialectical_update())
         
         # Verify the preference structure
-        pref = user_model._get_preference_from_db("coffee")
+        pref = user_model._db.get_preference("coffee")
         
         assert pref is not None
         assert pref.get("usual") == "美式"

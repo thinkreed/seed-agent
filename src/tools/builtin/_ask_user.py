@@ -14,7 +14,24 @@ Ask User 机制
 import logging
 from typing import Any
 
-from src.tools.ask_user_types import AskUserRequest, AskUserResult, get_ask_user_state
+try:
+    # 尝试从 src.tools 导入（正式运行时）
+    from src.tools.ask_user_types import (
+        AskUserRequest,
+        AskUserResult,
+        Question,
+        QuestionOption,
+        get_ask_user_state,
+    )
+except ImportError:
+    # 回退到 tools 导入（测试时）
+    from tools.ask_user_types import (
+        AskUserRequest,
+        AskUserResult,
+        Question,
+        QuestionOption,
+        get_ask_user_state,
+    )
 
 logger = logging.getLogger("seed_agent.ask_user")
 
@@ -43,26 +60,31 @@ def ask_user(
     Returns:
         等待标记字符串（包含 AskUserRequest JSON）
     """
-    # 构建请求
-    request = AskUserRequest(
-        header=header or "User Input",
-        questions=[
-            {
-                "question": question,
-                "options": [{"label": opt, "description": ""} for opt in (options or [])],
-                "multiSelect": multi_select,
-            }
-        ],
+    # 构建选项
+    if options:
+        q_options = [QuestionOption(label=opt) for opt in options]
+    else:
+        q_options = [QuestionOption(label="Yes"), QuestionOption(label="No")]
+
+    # 构建问题
+    q = Question(
+        question=question,
+        header=header or question[:30],
+        options=q_options,
+        multi_select=multi_select,
     )
+
+    # 构建请求
+    request = AskUserRequest(questions=[q])
 
     # 获取状态并设置等待
     state = get_ask_user_state()
-    state.set_waiting(request)
+    state.set_request(request)
 
     logger.info(f"Ask user: {question[:50]}... (options: {len(options or [])})")
 
     # 返回等待标记
-    return f"[AWAITING_USER_INPUT]\n{request.to_json()}"
+    return f"[AWAITING_USER_INPUT]\n{request.to_dict()}"
 
 
 def process_user_response(response: AskUserResult) -> str:

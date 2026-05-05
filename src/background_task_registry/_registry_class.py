@@ -1,12 +1,13 @@
 """后台任务注册表类模块
 
-包含 BackgroundTaskRegistry 类定义，组合 lifecycle 和 query mixins。
+包含 BackgroundTaskRegistry 类定义，组合所有 mixins。
 """
 
 import asyncio
 import logging
 import threading
 
+from src.background_task_registry._cancel import CancelMixin
 from src.background_task_registry._lifecycle import LifecycleMixin
 from src.background_task_registry._query import QueryMixin
 from src.background_task_registry._types import BackgroundTaskEntry
@@ -14,7 +15,7 @@ from src.background_task_registry._types import BackgroundTaskEntry
 logger = logging.getLogger(__name__)
 
 
-class BackgroundTaskRegistry(LifecycleMixin, QueryMixin):
+class BackgroundTaskRegistry(LifecycleMixin, CancelMixin, QueryMixin):
     """后台任务注册表
 
     参考 qwen-code 的 background-tasks.ts 实现
@@ -49,9 +50,7 @@ class BackgroundTaskRegistry(LifecycleMixin, QueryMixin):
         """
         self._tasks: dict[str, BackgroundTaskEntry] = {}
         self._max_concurrent = max_concurrent
-        # 使用线程锁保护并发访问（兼容同步方法）
         self._lock = threading.Lock()
-        # 异步锁用于异步方法
         self._async_lock = asyncio.Lock()
 
         logger.info(

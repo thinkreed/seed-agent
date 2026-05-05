@@ -47,6 +47,7 @@ from ._session_history import (
     _save_session_history,
     _search_history,
 )
+from ._session_history_jsonl import _generate_session_filename
 from ._skill_outcomes import (
     _get_skill_stats,
     _get_top_skills,
