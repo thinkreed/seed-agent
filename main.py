@@ -406,6 +406,10 @@ async def interactive_loop(agent: AgentLoop, explorer: AutonomousExplorer) -> No
                 elif chunk_type == "cancelled":
                     print(f"\n[Cancelled: {chunk.get('reason', 'unknown')}]")
                 elif chunk_type == "final":
+                    # 显示最终响应内容（如果有的话）
+                    final_content = chunk.get("content", "")
+                    if final_content:
+                        print(final_content)
                     print()  # 响应结束换行
                 elif chunk_type == "error":
                     print(f"\n[Error: {chunk.get('content', 'unknown')}]")
