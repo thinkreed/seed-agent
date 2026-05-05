@@ -24,6 +24,7 @@ from .ask_user_types import (
     AskUserResult,
     get_ask_user_state,
 )
+from .utils import safe_int_convert
 
 logger = logging.getLogger("seed_agent.path")
 
@@ -303,18 +304,9 @@ def file_read(path: str, start: int = 1, count: int = 100) -> str:
         File content with line numbers, or error message.
     """
     try:
-        # 类型安全转换：start 和 count 必须是正整数
-        try:
-            start = int(start) if isinstance(start, str) else int(start)
-            start = max(start, 1)
-        except (ValueError, TypeError):
-            start = 1
-
-        try:
-            count = int(count) if isinstance(count, str) else int(count)
-            count = max(count, 1)
-        except (ValueError, TypeError):
-            count = 100
+        # 类型安全转换：使用 safe_int_convert 简化逻辑
+        start = safe_int_convert(start, default=1, min_val=1)
+        count = safe_int_convert(count, default=100, min_val=1)
 
         resolved_path = _resolve_path(path)
         content = None
@@ -582,13 +574,8 @@ def code_as_policy(
         if len(code) > MAX_CODE_LENGTH:
             return f"Error: Code exceeds maximum length ({MAX_CODE_LENGTH} chars) for security"
 
-        # 类型安全转换：timeout 必须是正整数
-        try:
-            timeout = int(timeout) if isinstance(timeout, str) else int(timeout)
-            if timeout <= 0:
-                timeout = DEFAULT_EXECUTION_TIMEOUT
-        except (ValueError, TypeError):
-            timeout = DEFAULT_EXECUTION_TIMEOUT
+        # 类型安全转换：使用 safe_int_convert 简化逻辑
+        timeout = safe_int_convert(timeout, default=DEFAULT_EXECUTION_TIMEOUT, min_val=1)
 
         cwd = _resolve_execution_cwd(cwd)
         language = language.lower()
@@ -660,13 +647,8 @@ async def code_as_policy_async(
         if len(code) > MAX_CODE_LENGTH:
             return f"Error: Code exceeds maximum length ({MAX_CODE_LENGTH} chars) for security"
 
-        # 类型安全转换：timeout 必须是正整数
-        try:
-            timeout = int(timeout) if isinstance(timeout, str) else int(timeout)
-            if timeout <= 0:
-                timeout = DEFAULT_EXECUTION_TIMEOUT
-        except (ValueError, TypeError):
-            timeout = DEFAULT_EXECUTION_TIMEOUT
+        # 类型安全转换：使用 safe_int_convert 简化逻辑
+        timeout = safe_int_convert(timeout, default=DEFAULT_EXECUTION_TIMEOUT, min_val=1)
 
         cwd = _resolve_execution_cwd(cwd)
         language = language.lower()
