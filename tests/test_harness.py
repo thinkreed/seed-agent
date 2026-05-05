@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from harness import Harness, HarnessManager, MaxIterationsExceeded, MAX_ITERATIONS, CycleResult
+from harness import Harness, HarnessManager, MaxIterationsExceededError, MAX_ITERATIONS, CycleResult
 from llm_client import LLMClient
 from sandbox import Sandbox, IsolationLevel
 from session_event_stream import SessionEventStream, EventType
@@ -334,7 +334,7 @@ class TestHarnessRunConversation:
 
         harness = Harness(llm_client, session, sandbox, max_iterations=2)
 
-        with pytest.raises(MaxIterationsExceeded) as exc_info:
+        with pytest.raises(MaxIterationsExceededError) as exc_info:
             await harness.run_conversation("hello")
 
         assert exc_info.value.iterations == 2
@@ -760,12 +760,12 @@ class TestHarnessManager:
         assert metrics["total_duration_ms"] == 300
 
 
-class TestMaxIterationsExceeded:
-    """Test MaxIterationsExceeded exception"""
+class TestMaxIterationsExceededError:
+    """Test MaxIterationsExceededError exception"""
 
     def test_exception_message(self):
         """Test exception message"""
-        exc = MaxIterationsExceeded(30)
+        exc = MaxIterationsExceededError(30)
         assert "30" in str(exc)
         assert exc.iterations == 30
 

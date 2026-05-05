@@ -15,7 +15,7 @@ from request_queue import (  # noqa: E402
     RequestQueue,
     RequestPriority,
     TurnTicket,
-    TurnWaitTimeout,
+    TurnWaitTimeoutError,
     QueueFullError,
     QueueConfig,
     QueueStats,
@@ -60,7 +60,7 @@ class TestTurnTicket(unittest.TestCase):
             try:
                 await ticket.wait_for_turn(timeout=0.1)
                 return False
-            except TurnWaitTimeout as e:
+            except TurnWaitTimeoutError as e:
                 return True, e.waited_seconds
 
         result = asyncio.run(run())

@@ -642,7 +642,7 @@ class TestTodoLoading(unittest.TestCase):
         todo_file.write_text(todo_content)
 
         AutonomousExplorer(self.mock_agent)
-        with patch('autonomous._get_seed_dir', return_value=Path(self.tmpdir.name)):
+        with patch('autonomous._ensure_seed_dir', return_value=Path(self.tmpdir.name)):
             # 需要重新设置 SEED_DIR 常量
             pass
 

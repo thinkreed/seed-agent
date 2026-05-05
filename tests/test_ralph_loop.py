@@ -26,8 +26,8 @@ from ralph_loop import RalphLoop, CompletionType
 def temp_seed_dir():
     """Create a temporary seed directory for state files."""
     temp_dir = tempfile.mkdtemp()
-    # Patch _get_seed_dir to return temp_dir
-    patcher = patch('ralph_loop._get_seed_dir', return_value=Path(temp_dir))
+    # Patch get_seed_dir_with_fallback to return temp_dir
+    patcher = patch('ralph_loop.get_seed_dir_with_fallback', return_value=Path(temp_dir))
     patcher.start()
     yield temp_dir
     patcher.stop()

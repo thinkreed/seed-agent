@@ -32,7 +32,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from agent_loop import AgentLoop
-from harness import MaxIterationsExceeded
+from harness import MaxIterationsExceededError
 from session_event_stream import SessionEventStream, EventType
 from sandbox import IsolationLevel
 from request_queue import RequestPriority
@@ -335,13 +335,13 @@ class TestRunMethods:
 
     @pytest.mark.asyncio
     async def test_run_max_iterations_exceeded(self, agent_loop_instance):
-        """Test run() with MaxIterationsExceeded."""
+        """Test run() with MaxIterationsExceededError."""
         agent = agent_loop_instance
         agent.harness.run_conversation = AsyncMock(
-            side_effect=MaxIterationsExceeded(30)
+            side_effect=MaxIterationsExceededError(30)
         )
 
-        with pytest.raises(MaxIterationsExceeded):
+        with pytest.raises(MaxIterationsExceededError):
             await agent.run("hello")
 
         # 验证 session end 事件被记录

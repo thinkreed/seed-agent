@@ -501,7 +501,7 @@ class TestSubagentTools(unittest.TestCase):
         from src.tools.subagent_tools import spawn_subagent
 
         result = spawn_subagent(
-            type="explore",
+            subagent_type="explore",
             prompt="Find all Python files",
         )
 
@@ -513,7 +513,7 @@ class TestSubagentTools(unittest.TestCase):
         from src.tools.subagent_tools import spawn_subagent
 
         result = spawn_subagent(
-            type="invalid_type",
+            subagent_type="invalid_type",
             prompt="Test",
         )
 
@@ -662,7 +662,7 @@ class TestTypeSafetyConversion(unittest.TestCase):
         from src.tools.subagent_tools import spawn_subagent
 
         result = spawn_subagent(
-            type="explore",
+            subagent_type="explore",
             prompt="Test prompt",
             timeout="60",  # 字符串 timeout
         )
@@ -683,7 +683,7 @@ class TestTypeSafetyConversion(unittest.TestCase):
         from src.tools.subagent_tools import spawn_subagent
 
         result = spawn_subagent(
-            type="explore",
+            subagent_type="explore",
             prompt="Test prompt",
             timeout="invalid",  # 无效字符串
         )
@@ -697,7 +697,7 @@ class TestTypeSafetyConversion(unittest.TestCase):
         from src.tools.subagent_tools import spawn_subagent
 
         result = spawn_subagent(
-            type="explore",
+            subagent_type="explore",
             prompt="Test prompt",
             timeout="-100",  # 负数
         )

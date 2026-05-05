@@ -104,8 +104,8 @@ def spawn_subagent(
         # 在 AgentLoop 异步环境中会正常启动
         logger.debug(f"No event loop, task {task_id} created but not started")
 
-    logger.info(f"Spawned subagent {task_id} (type={type})")
-    return f"Subagent task created: {task_id}\nType: {type}\nStatus: pending\nUse 'wait_for_subagent' to get results."
+    logger.info(f"Spawned subagent {task_id} (type={subagent_type})")
+    return f"Subagent task created: {task_id}\nType: {subagent_type}\nStatus: pending\nUse 'wait_for_subagent' to get results."
 
 
 async def _run_subagent_async(task_id: str):
