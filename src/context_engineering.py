@@ -25,16 +25,17 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.client import LLMGateway
 
-from src.session_event_stream import SessionEventStream
+from src.context._compressor import ProgressiveContextCompressor
 
 # 从子模块导入核心类
 from src.context._config import (
     CompressionConfig,
     CompressionTier,
     PruningConfig,
+    TierConfig,
 )
-from src.context._compressor import ProgressiveContextCompressor
 from src.context._pruner import IntelligentContextPruner
+from src.session_event_stream import SessionEventStream
 
 logger = logging.getLogger(__name__)
 
@@ -227,14 +228,11 @@ __all__ = [
     # 配置类
     "CompressionConfig",
     "CompressionTier",
-    "TierConfig",
-    "PruningConfig",
-    # 核心类
-    "ProgressiveContextCompressor",
-    "IntelligentContextPruner",
     # 集成管理器
     "ContextEngineering",
+    "IntelligentContextPruner",
+    # 核心类
+    "ProgressiveContextCompressor",
+    "PruningConfig",
+    "TierConfig",
 ]
-
-# 从子模块导入 TierConfig 以便导出
-from src.context._config import TierConfig

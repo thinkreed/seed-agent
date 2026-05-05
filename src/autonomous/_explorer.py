@@ -29,40 +29,28 @@ if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
 
 from src.ralph_state import _ensure_ralph_dir
+from src.shared_config import get_autonomous_config, get_seed_dir_with_fallback
 
 # 导入子模块（使用相对导入）
 from ._defense import (
-    DefenseState,
     check_completion_promise,
 )
 from ._idle_monitor import IdleMonitor
 from ._prompt_builder import (
-    build_autonomous_prompt,
     build_task_instruction,
     extract_autonomous_prompt_core,
     extract_task_signals,
 )
 from ._sop_loader import (
-    expand_sop_paths,
-    get_project_root,
     get_sop_path,
     load_sop,
 )
 from ._state_manager import (
-    StateManager,
-    TodoCache,
     extract_critical_context,
 )
 from ._task_executor import (
-    COMPLETION_MARKERS,
-    CONTEXT_RESET_ENABLED,
-    CONTEXT_RESET_INTERVAL,
-    RALPH_MAX_DURATION,
-    RALPH_MAX_ITERATIONS,
     TaskExecutor,
 )
-
-from src.shared_config import get_autonomous_config, get_seed_dir_with_fallback
 
 logger = logging.getLogger("seed_agent")
 

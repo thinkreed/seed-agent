@@ -25,71 +25,68 @@
 """
 
 # 导出主类和公共 API
-from ._explorer import (
-    AutonomousExplorer,
-    create_autonomous_explorer,
-    _get_completion_promise_file,
+# 导出测试 mock 需要的函数（使用冗余别名避免 ruff F401）
+from src.shared_config import (
+    get_seed_dir_with_fallback as _ensure_seed_dir,  # noqa: F401
 )
 
-# 导出常量
-from ._task_executor import (
-    COMPLETION_MARKERS,
-    RALPH_MAX_ITERATIONS,
-    RALPH_MAX_DURATION,
-)
-
-# 导出子模块的工具函数（可选，用于高级用法）
 from ._defense import (
     DefenseState,
     check_completion_promise,
 )
+from ._explorer import (
+    AutonomousExplorer,
+    create_autonomous_explorer,
+)
 
+# 内部函数导出（用于测试 mock）
+from ._explorer import _get_completion_promise_file as _get_completion_promise_file
 from ._idle_monitor import IdleMonitor
-
 from ._prompt_builder import (
     build_autonomous_prompt,
     build_task_instruction,
     extract_task_signals,
 )
-
 from ._sop_loader import (
-    load_sop,
     expand_sop_paths,
-    get_sop_path,
     get_project_root,
+    get_sop_path,
+    load_sop,
 )
-
-# 导出测试 mock 需要的函数
-from src.shared_config import get_seed_dir_with_fallback as _ensure_seed_dir
-
 from ._state_manager import (
     StateManager,
     TodoCache,
 )
 
-from ._task_executor import TaskExecutor
+# 导出常量
+from ._task_executor import (
+    COMPLETION_MARKERS,
+    RALPH_MAX_DURATION,
+    RALPH_MAX_ITERATIONS,
+    TaskExecutor,
+)
 
 __all__ = [
-    # 主类
-    "AutonomousExplorer",
-    "create_autonomous_explorer",
+    "COMPLETION_MARKERS",
+    "RALPH_MAX_DURATION",
     # 常量
     "RALPH_MAX_ITERATIONS",
-    "RALPH_MAX_DURATION",
-    "COMPLETION_MARKERS",
+    # 主类
+    "AutonomousExplorer",
+    "DefenseState",
     # 子模块类
     "IdleMonitor",
-    "DefenseState",
     "StateManager",
-    "TodoCache",
     "TaskExecutor",
-    # 工具函数
-    "check_completion_promise",
+    "TodoCache",
     "build_autonomous_prompt",
     "build_task_instruction",
-    "extract_task_signals",
-    "load_sop",
+    # 工具函数
+    "check_completion_promise",
+    "create_autonomous_explorer",
     "expand_sop_paths",
-    "get_sop_path",
+    "extract_task_signals",
     "get_project_root",
+    "get_sop_path",
+    "load_sop",
 ]

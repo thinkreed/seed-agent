@@ -11,7 +11,6 @@
 
 import asyncio
 import logging
-import time
 from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,7 +25,6 @@ from src.shared_config import get_autonomous_config, get_seed_dir_with_fallback
 from ._defense import DefenseState, check_completion_promise
 from ._prompt_builder import (
     build_autonomous_prompt,
-    build_task_instruction,
     extract_autonomous_prompt_core,
     extract_task_signals,
 )
@@ -133,7 +131,7 @@ class TaskExecutor:
         self._defense.reset()
 
         todo_content = self._todo_cache.load_todo_content(self._seed_dir)
-        expanded_sop = expand_sop_paths(self._sop_content, self._seed_dir)
+        expand_sop_paths(self._sop_content, self._seed_dir)
 
         # 构建 prompt
         prompt = self._build_full_prompt(todo_content)

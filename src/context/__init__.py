@@ -26,28 +26,27 @@
 """
 
 # 配置类导出
+# 核心类导出
+from src.context._compressor import ProgressiveContextCompressor
 from src.context._config import (
+    RELEVANCE_THRESHOLD,
     CompressionConfig,
     CompressionTier,
     PruningConfig,
     TierConfig,
-    RELEVANCE_THRESHOLD,
 )
-
-# 核心类导出
-from src.context._compressor import ProgressiveContextCompressor
 from src.context._pruner import IntelligentContextPruner
 
 __all__ = [
+    "RELEVANCE_THRESHOLD",
     # 配置类
     "CompressionConfig",
     "CompressionTier",
-    "TierConfig",
-    "PruningConfig",
-    "RELEVANCE_THRESHOLD",
+    "IntelligentContextPruner",
     # 核心类
     "ProgressiveContextCompressor",
-    "IntelligentContextPruner",
+    "PruningConfig",
+    "TierConfig",
 ]
 
 

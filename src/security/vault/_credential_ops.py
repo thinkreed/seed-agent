@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pathlib import Path
+
     from src.security.vault._types import CredentialRecord
 
 logger = logging.getLogger(__name__)

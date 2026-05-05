@@ -17,7 +17,7 @@ from src.abort_signal import AbortSignal
 from src.lifecycle_hooks import HookPoint
 from src.request_queue import RequestPriority
 from src.session_event_stream import EventType
-from src.tools.builtin_tools import get_pending_ask_user_request, clear_ask_user_state
+from src.tools.builtin_tools import clear_ask_user_state, get_pending_ask_user_request
 
 from ._context_builder import build_context_from_session
 from ._lifecycle_hooks import (
@@ -33,11 +33,11 @@ from ._metrics import ToolExecutionMetrics
 from ._tool_router import route_tool_calls_with_hooks
 
 if TYPE_CHECKING:
+    from src.context_engineering import ContextEngineering
+    from src.lifecycle_hooks import LifecycleHookRegistry
     from src.llm_client import LLMClient
     from src.sandbox import Sandbox
     from src.session_event_stream import SessionEventStream
-    from src.context_engineering import ContextEngineering
-    from src.lifecycle_hooks import LifecycleHookRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ async def run_cycle_impl(
         if pending_request:
             if autonomous_mode:
                 # 自主模式：自动跳过
-                logger.info(f"Autonomous mode: skipping ask_user request")
+                logger.info("Autonomous mode: skipping ask_user request")
                 clear_ask_user_state()
                 session.emit_event(
                     EventType.USER_RESPONSE,

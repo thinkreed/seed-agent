@@ -10,7 +10,7 @@ Harness 指标模块
 """
 
 import time
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import Any, TypedDict
 
 from src.observability import (
     SPAN_TOOL_PREFIX,
@@ -19,9 +19,6 @@ from src.observability import (
     is_observability_enabled,
     set_tool_span_attributes,
 )
-
-if TYPE_CHECKING:
-    pass
 
 try:
     from opentelemetry.trace import Span

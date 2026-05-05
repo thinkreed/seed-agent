@@ -19,8 +19,8 @@ from src.lifecycle_hooks import HookPoint
 from src.session_event_stream import EventType
 
 from ._lifecycle_hooks import trigger_hook
-from ._single_tool import execute_single_tool_with_hooks
 from ._metrics import ToolExecutionMetrics
+from ._single_tool import execute_single_tool_with_hooks
 from ._write_conflict import check_write_conflicts
 
 if TYPE_CHECKING:

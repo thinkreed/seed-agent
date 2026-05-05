@@ -28,19 +28,19 @@ Harness 包
 
 from typing import Any
 
+# 导入 HarnessManager
+from ._manager import MAX_ITERATIONS, HarnessManager
+
 # 从子模块导入类型
 from ._metrics import ToolExecutionMetrics
 
-# 导入 HarnessManager
-from ._manager import HarnessManager, MAX_ITERATIONS
-
 __all__ = [
+    "MAX_ITERATIONS",
+    "CycleResult",
     "Harness",
     "HarnessManager",
-    "CycleResult",
-    "ToolExecutionMetrics",
     "MaxIterationsExceededError",
-    "MAX_ITERATIONS",
+    "ToolExecutionMetrics",
 ]
 
 # 使用特殊路径导入 src/harness.py 中的类（避免循环导入）

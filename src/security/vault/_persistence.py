@@ -105,7 +105,6 @@ class PersistenceMixin:
 
     def _persist_audit_log(self) -> None:
         """持久化审计日志（追加模式）"""
-        from src.security.vault._types import CredentialAccessLog
 
         audit_file = self._vault_path / "audit_log.jsonl"
 

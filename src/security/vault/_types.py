@@ -4,12 +4,11 @@
 包含凭证类型、作用域、访问日志、轮换记录和凭证记录等数据结构。
 """
 
+import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
-
-import logging
 
 logger = logging.getLogger(__name__)
 

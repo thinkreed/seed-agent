@@ -20,7 +20,6 @@
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from src.security.vault import (
     AuditMixin,
@@ -145,10 +144,10 @@ class CredentialVault(
 
 # 导出公共接口（向后兼容）
 __all__ = [
-    "CredentialVault",
-    "CredentialType",
-    "CredentialScope",
     "CredentialAccessLog",
-    "CredentialRotationRecord",
     "CredentialRecord",
+    "CredentialRotationRecord",
+    "CredentialScope",
+    "CredentialType",
+    "CredentialVault",
 ]

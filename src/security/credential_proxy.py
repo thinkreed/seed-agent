@@ -313,6 +313,6 @@ class CredentialProxy:
 # 导出公共 API（向后兼容）
 __all__ = [
     "CredentialProxy",
-    "TemporaryClient",
     "RequestAuditLog",
+    "TemporaryClient",
 ]

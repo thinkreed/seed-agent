@@ -16,8 +16,8 @@ from src.security.single_purpose._config import (
 from src.security.single_purpose._factory import SinglePurposeToolFactory
 
 __all__ = [
-    "SinglePurposeToolRisk",
-    "SinglePurposeToolConfig",
     "SINGLE_PURPOSE_TOOLS",
+    "SinglePurposeToolConfig",
     "SinglePurposeToolFactory",
+    "SinglePurposeToolRisk",
 ]

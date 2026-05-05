@@ -34,21 +34,27 @@ from typing import TYPE_CHECKING, Any
 
 from src.abort_signal import AbortSignal
 from src.context_engineering import ContextEngineering
+from src.harness._context_builder import (
+    build_context_from_session,
+    build_context_from_session_async,
+)
+from src.harness._cycle import run_conversation_impl, run_cycle_impl
+from src.harness._lifecycle_hooks import build_session_end_ctx, trigger_hook
+from src.harness._manager import MAX_ITERATIONS, HarnessManager
+
+# 从子模块导入
+from src.harness._metrics import ToolExecutionMetrics
+from src.harness._resume import resume_with_user_response
+from src.harness._streaming import stream_conversation, stream_resume_with_user_response
+from src.harness._tool_router import (
+    execute_tools_parallel_with_hooks,
+    route_tool_calls_with_hooks,
+)
 from src.lifecycle_hooks import HookPoint, HookTriggerReport, LifecycleHookRegistry
 from src.llm_client import LLMClient
 from src.request_queue import RequestPriority
 from src.sandbox import Sandbox
 from src.session_event_stream import SessionEventStream
-
-# 从子模块导入
-from src.harness._metrics import ToolExecutionMetrics
-from src.harness._lifecycle_hooks import trigger_hook, build_session_end_ctx
-from src.harness._tool_router import route_tool_calls_with_hooks, execute_tools_parallel_with_hooks
-from src.harness._context_builder import build_context_from_session, build_context_from_session_async
-from src.harness._streaming import stream_conversation, stream_resume_with_user_response
-from src.harness._resume import resume_with_user_response
-from src.harness._cycle import run_cycle_impl, run_conversation_impl
-from src.harness._manager import HarnessManager, MAX_ITERATIONS
 
 if TYPE_CHECKING:
     from src.tools.ask_user_types import AskUserResult
@@ -262,4 +268,4 @@ class Harness:
         )
 
 
-__all__ = ["Harness", "HarnessManager", "CycleResult", "ToolExecutionMetrics", "MaxIterationsExceededError", "MAX_ITERATIONS"]
+__all__ = ["MAX_ITERATIONS", "CycleResult", "Harness", "HarnessManager", "MaxIterationsExceededError", "ToolExecutionMetrics"]

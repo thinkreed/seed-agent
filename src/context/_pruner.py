@@ -19,7 +19,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.client import LLMGateway
 
-from src.context._config import PruningConfig, get_code_pattern, get_file_pattern, get_stop_words
+from src.context._config import (
+    PruningConfig,
+    get_code_pattern,
+    get_file_pattern,
+    get_stop_words,
+)
 
 logger = logging.getLogger(__name__)
 

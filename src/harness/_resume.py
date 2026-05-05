@@ -24,11 +24,11 @@ from ._metrics import ToolExecutionMetrics
 from ._tool_router import route_tool_calls_with_hooks
 
 if TYPE_CHECKING:
+    from src.lifecycle_hooks import LifecycleHookRegistry
     from src.llm_client import LLMClient
     from src.sandbox import Sandbox
     from src.session_event_stream import SessionEventStream
     from src.tools.ask_user_types import AskUserResult
-    from src.lifecycle_hooks import LifecycleHookRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -302,9 +302,8 @@ async def resume_with_user_response(
                 )
 
                 # 无工具调用 = 对话完成
-                if resp:
-                    if choices:
-                        final_response = choices[0].get("message", {}).get("content", "")
+                if resp and choices:
+                    final_response = choices[0].get("message", {}).get("content", "")
                 break
 
         if iteration >= max_iterations:

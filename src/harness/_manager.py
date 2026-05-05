@@ -10,9 +10,9 @@ Harness 管理器模块
 import logging
 from typing import TYPE_CHECKING, Any
 
-from src.session_event_stream import SessionEventStream
-from src.sandbox import Sandbox
 from src.llm_client import LLMClient
+from src.sandbox import Sandbox
+from src.session_event_stream import SessionEventStream
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
@@ -47,7 +47,7 @@ class HarnessManager:
         self._gateway_config_path = gateway_config_path
         self._harnesses: dict[str, Any] = {}  # harness_id -> Harness
         self._sandboxes: dict[str, Sandbox] = {}  # harness_id -> Sandbox
-        self._gateway: "LLMGateway | None" = None
+        self._gateway: LLMGateway | None = None
 
         logger.info("HarnessManager initialized")
 

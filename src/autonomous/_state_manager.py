@@ -9,7 +9,6 @@
 从 AutonomousExplorer 中提取，保持接口不变。
 """
 
-import json
 import logging
 import time
 from pathlib import Path
@@ -19,6 +18,8 @@ from src.ralph_state import (
     RalphState,
     cleanup_state_file,
     load_or_init_state,
+)
+from src.ralph_state import (
     persist_state as ralph_persist_state,
 )
 from src.shared_config import get_seed_dir_with_fallback

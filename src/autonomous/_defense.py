@@ -10,8 +10,8 @@
 """
 
 import logging
-import time
 import threading
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 

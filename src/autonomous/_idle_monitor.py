@@ -12,10 +12,6 @@ import asyncio
 import contextlib
 import logging
 import time
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from src.agent_loop import AgentLoop
 
 logger = logging.getLogger("seed_agent")
 

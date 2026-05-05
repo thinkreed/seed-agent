@@ -11,11 +11,6 @@ import re
 import shutil
 import subprocess
 from collections.abc import Callable
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from src.security.constants import SENSITIVE_ENV_VARS as _SENSITIVE_ENV_VARS_TYPE
-    from src.security.utils import get_safe_environment as _get_safe_environment_type
 
 logger = logging.getLogger(__name__)
 

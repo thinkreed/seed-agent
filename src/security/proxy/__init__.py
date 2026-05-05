@@ -32,22 +32,22 @@ from src.security.proxy._temp_client import TemporaryClient
 from src.security.proxy._types import RequestAuditLog
 
 __all__ = [
-    # 公共类型
-    "TemporaryClient",
-    "RequestAuditLog",
-    # 审计管理器
-    "AuditLogManager",
     # Provider 配置
     "PROVIDER_CONFIGS",
+    # 审计管理器
+    "AuditLogManager",
+    "RequestAuditLog",
+    # 公共类型
+    "TemporaryClient",
     # 执行函数（供 CredentialProxy 内部使用）
     "create_temp_client",
     "destroy_temp_client",
     "execute_external_request",
     "execute_streaming_request",
     "finalize_streaming_request",
-    "sanitize_request_context",
-    "persist_request_audit",
     # Provider 管理
     "get_supported_providers",
+    "persist_request_audit",
     "register_provider",
+    "sanitize_request_context",
 ]
