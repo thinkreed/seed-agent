@@ -7,32 +7,28 @@ Sandbox (工作台) 模块
 - 可重建、可销毁、可扩展
 - 不存储凭证
 
-隔离级别：
-- process: 进程级隔离 (子进程执行，默认)
-- container: 容器级隔离 (Docker，可选)
-- vm: 虚拟机级隔离 (最强，未来)
-
-核心职责：
-1. 工具执行隔离
-2. 路径映射 (沙盒路径 → 主机路径)
-3. 权限检查
-4. 网络策略控制
-5. 输出截断和安全处理
-
-性能优化：
-- 大脑(LLMClient)从容器(Sandbox)分离
-- 首Token延迟降低 60-90%
+重构说明：
+- 类型定义移至 sandbox_core/_types.py
+- 路径映射移至 sandbox_core/_path.py
+- 执行逻辑移至 sandbox_core/_execution.py
 """
 
-import asyncio
-import fnmatch
-import json
 import logging
 import os
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from src.sandbox_core import (
+    DEFAULT_TOOL_NAMES,
+    ExecutionResult,
+    ISOLATION_LEVELS,
+    IsolationLevel,
+    PathMapper,
+    PermissionAction,
+    PermissionChecker,
+    SandboxPermission,
+    ToolExecutor,
+)
 from src.tools import ToolRegistry
 from src.tools.utils import is_parse_failed, parse_tool_arguments
 
@@ -45,72 +41,7 @@ def _get_default_sandbox_root() -> Path:
         from src.shared_config import get_paths_config
         return get_paths_config().sandbox_dir
     except RuntimeError:
-        # PathsConfig 未初始化时使用 fallback
         return Path.home() / ".seed" / "sandbox"
-
-
-class IsolationLevel(StrEnum):
-    """隔离级别"""
-
-    PROCESS = "process"  # 进程级隔离 (子进程执行)
-    CONTAINER = "container"  # 容器级隔离 (Docker)
-    VM = "vm"  # 虚拟机级隔离 (最强)
-
-
-class PermissionAction(StrEnum):
-    """权限动作"""
-
-    ALLOW = "allow"
-    DENY = "deny"
-    READONLY = "readonly"
-
-
-class SandboxPermission:
-    """沙盒权限规则
-
-    定义单个工具的执行权限：
-    - action: 允许/拒绝/只读
-    - path_patterns: 允许的路径模式列表
-    - max_output_size: 最大输出大小限制
-    """
-
-    def __init__(
-        self,
-        tool_name: str,
-        action: PermissionAction = PermissionAction.ALLOW,
-        path_patterns: list[str] | None = None,
-        max_output_size: int = 10000,
-    ):
-        self.tool_name = tool_name
-        self.action = action
-        self.path_patterns = path_patterns or ["*"]
-        self.max_output_size = max_output_size
-
-
-class ExecutionResult:
-    """工具执行结果"""
-
-    def __init__(
-        self,
-        tool_call_id: str,
-        content: str,
-        success: bool = True,
-        error: str | None = None,
-        duration_ms: float = 0.0,
-    ):
-        self.tool_call_id = tool_call_id
-        self.content = content
-        self.success = success
-        self.error = error
-        self.duration_ms = duration_ms
-
-    def to_dict(self) -> dict[str, Any]:
-        """转换为字典格式"""
-        return {
-            "tool_call_id": self.tool_call_id,
-            "role": "tool",
-            "content": self.content,
-        }
 
 
 class Sandbox:
@@ -127,58 +58,10 @@ class Sandbox:
     - 权限检查：禁止危险操作
     - 输出截断：防止过大输出
     - 凭证隔离：不存储凭证
-
-    性能优化：
-    - 进程级隔离默认，低开销
-    - 可选容器级隔离，更强安全
     """
 
-    ISOLATION_LEVELS = {
-        IsolationLevel.PROCESS: "进程级隔离 (子进程执行)",
-        IsolationLevel.CONTAINER: "容器级隔离 (Docker)",
-        IsolationLevel.VM: "虚拟机级隔离 (最强)",
-    }
-
-    # 默认权限配置（使用工厂方法简化初始化）
-    _DEFAULT_TOOL_NAMES = [
-        # 文件操作
-        "file_read",
-        "file_write",
-        "file_edit",
-        "list_directory",
-        # 代码执行
-        "run_shell_command",
-        "code_as_policy",
-        # 记忆操作
-        "save_memory",
-        "load_memory",
-        "search_memory",
-        # 用户交互
-        "ask_user_question",
-        # 技能操作
-        "load_skill",
-        # 子代理
-        "spawn_subagent",
-        "wait_for_subagent",
-        "aggregate_subagent_results",
-        "list_subagents",
-        "kill_subagent",
-        # Ralph Loop
-        "start_ralph_loop",
-        "check_ralph_status",
-        "mark_ralph_complete",
-        # Scheduler
-        "create_scheduled_task",
-        "remove_scheduled_task",
-        "list_scheduled_tasks",
-    ]
-
-    DEFAULT_PERMISSIONS: dict[str, SandboxPermission] = {
-        name: SandboxPermission(name, PermissionAction.ALLOW)
-        for name in _DEFAULT_TOOL_NAMES
-    }
-
-    # 路径相关参数名
+    # 类属性（向后兼容）
+    ISOLATION_LEVELS = ISOLATION_LEVELS
     PATH_KEYS = [
         "path",
         "file_path",
@@ -192,6 +75,12 @@ class Sandbox:
         "base_path",
         "output_path",
     ]
+
+    # 默认权限配置
+    DEFAULT_PERMISSIONS: dict[str, SandboxPermission] = {
+        name: SandboxPermission(name, PermissionAction.ALLOW)
+        for name in DEFAULT_TOOL_NAMES
+    }
 
     def __init__(
         self,
@@ -208,7 +97,7 @@ class Sandbox:
             file_system_root: 沙盒文件系统根目录
             network_policy: 网络策略 {"allow": [...], "deny": [...]}
             permissions: 权限配置
-            workspace_path: 工作目录映射（沙盒内 /workspace → 主机路径）
+            workspace_path: 工作目录映射
         """
         self.isolation_level = isolation_level
         self._fs_root = file_system_root or _get_default_sandbox_root()
@@ -216,11 +105,20 @@ class Sandbox:
         self._permissions = permissions or self.DEFAULT_PERMISSIONS.copy()
         self._workspace_path = workspace_path or Path.cwd()
 
-        # 工具注册表（由外部注入）
+        # 工具注册表
         self._tools: ToolRegistry | None = None
 
-        # 凭证代理（不存储凭证，只代理访问）
+        # 凭证代理
         self._credential_proxy: Any | None = None
+
+        # 核心组件（使用拆分模块）
+        self._path_mapper = PathMapper(self._fs_root, self._workspace_path)
+        self._permission_checker = PermissionChecker(
+            self._permissions, self._path_mapper
+        )
+        self._tool_executor = ToolExecutor(
+            self._tools, self._permissions, self._fs_root, self._workspace_path
+        )
 
         # 确保沙盒目录存在
         os.makedirs(self._fs_root, exist_ok=True)
@@ -233,16 +131,13 @@ class Sandbox:
     # === 工具管理 ===
 
     def register_tools(self, tool_registry: ToolRegistry) -> None:
-        """注册可用工具
-
-        Args:
-            tool_registry: 工具注册表实例
-        """
+        """注册可用工具"""
         self._tools = tool_registry
+        self._tool_executor._tools = tool_registry
         logger.debug(f"Sandbox tools registered: count={len(tool_registry._tools)}")
 
     def get_tool_schemas(self) -> list[dict]:
-        """获取工具 schema (供 LLMClient 使用)"""
+        """获取工具 schema"""
         if not self._tools:
             logger.warning("Sandbox has no tools registered")
             return []
@@ -257,31 +152,7 @@ class Sandbox:
     # === 工具执行 ===
 
     async def execute_tools(self, tool_calls: list[dict]) -> list[dict[str, Any]]:
-        """在隔离环境中执行工具
-
-        Args:
-            tool_calls: 工具调用列表，格式:
-                [
-                    {
-                        "id": "call_xxx",
-                        "type": "function",
-                        "function": {
-                            "name": "tool_name",
-                            "arguments": "{...}"  # JSON string
-                        }
-                    }
-                ]
-
-        Returns:
-            执行结果列表:
-                [
-                    {
-                        "tool_call_id": "call_xxx",
-                        "role": "tool",
-                        "content": "执行结果"
-                    }
-                ]
-        """
+        """在隔离环境中执行工具"""
         results: list[dict[str, Any]] = []
 
         for tc in tool_calls:
@@ -290,24 +161,33 @@ class Sandbox:
 
         return results
 
+    # === 代理方法（向后兼容测试） ===
+
+    def _map_single_path(self, path: str) -> str:
+        """映射单个路径（向后兼容）"""
+        return self._path_mapper._map_single_path(path)
+
+    def _map_paths(self, args: dict[str, Any]) -> dict[str, Any]:
+        """路径映射（向后兼容）"""
+        return self._path_mapper.map_paths(args)
+
+    def _check_permission(self, tool_name: str, args: dict[str, Any]) -> bool:
+        """权限检查（向后兼容）"""
+        return self._permission_checker.check_permission(tool_name, args)
+
+    def _truncate_output(self, output: str, tool_name: str) -> str:
+        """输出截断（向后兼容）"""
+        return self._tool_executor._truncate_output(output, tool_name)
+
     async def _execute_single_tool(self, tool_call: dict) -> dict[str, Any]:
-        """执行单个工具
-
-        Args:
-            tool_call: 工具调用请求
-
-        Returns:
-            执行结果
-        """
+        """执行单个工具"""
         tool_call_id = tool_call.get("id", "unknown")
         func_data = tool_call.get("function", {})
         tool_name = func_data.get("name", "unknown")
         raw_args = func_data.get("arguments", "{}")
 
-        # 使用统一函数解析参数
         tool_args = parse_tool_arguments(raw_args)
         if is_parse_failed(tool_args):
-            # 解析失败，返回错误
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
@@ -315,314 +195,38 @@ class Sandbox:
             }
 
         # 路径映射
-        mapped_args = self._map_paths(tool_args)
+        mapped_args = self._path_mapper.map_paths(tool_args)
 
         # 权限检查
-        if not self._check_permission(tool_name, mapped_args):
-            logger.warning(f"Permission denied for tool: {tool_name}")
+        if not self._permission_checker.check_permission(tool_name, mapped_args):
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
                 "content": f"Error: Permission denied for tool '{tool_name}' in sandbox",
             }
 
-        # 根据隔离级别执行
+        # 执行
         try:
-            if self.isolation_level == IsolationLevel.PROCESS:
-                result = await self._execute_in_process(tool_name, mapped_args)
-            elif self.isolation_level == IsolationLevel.CONTAINER:
-                result = await self._execute_in_container(tool_name, mapped_args)
-            else:
-                # 默认进程内执行
-                result = await self._execute_in_process(tool_name, mapped_args)
-
-            # 输出截断
-            truncated_result = self._truncate_output(str(result), tool_name)
-
-            return {
-                "tool_call_id": tool_call_id,
-                "role": "tool",
-                "content": truncated_result,
-            }
-
+            result = await self._tool_executor._execute_in_process(tool_name, mapped_args)
+            truncated = self._tool_executor._truncate_output(str(result), tool_name)
+            return {"tool_call_id": tool_call_id, "role": "tool", "content": truncated}
         except Exception as e:
-            logger.exception(f"Tool execution failed: {tool_name}")
             return {
                 "tool_call_id": tool_call_id,
                 "role": "tool",
                 "content": f"Error: {type(e).__name__}: {str(e)[:500]}",
             }
 
-    # === 路径映射 ===
-
-    def _map_paths(self, args: dict[str, Any]) -> dict[str, Any]:
-        """路径映射：沙盒内路径 → 主机路径
-
-        映射规则：
-        - /workspace/... → {workspace_path}/...
-        - /sandbox/... → {fs_root}/...
-        - 其他路径保持不变（需要权限检查）
-
-        Args:
-            args: 工具参数
-
-        Returns:
-            映射后的参数
-        """
-        mapped: dict[str, Any] = {}
-        for key, value in args.items():
-            if key in self.PATH_KEYS and isinstance(value, str):
-                mapped[key] = self._map_single_path(value)
-            elif isinstance(value, dict):
-                mapped[key] = self._map_paths(value)
-            elif isinstance(value, list):
-                mapped[key] = [
-                    self._map_single_path(v)
-                    if isinstance(v, str) and key in self.PATH_KEYS
-                    else v
-                    for v in value
-                ]
-            else:
-                mapped[key] = value
-
-        return mapped
-
-    def _map_single_path(self, path: str) -> str:
-        """映射单个路径
-
-        Args:
-            path: 原始路径
-
-        Returns:
-            映射后的主机路径
-        """
-        # 沙盒内路径映射
-        if path.startswith("/workspace/"):
-            mapped = str(self._workspace_path / path[11:])
-        elif path.startswith("/sandbox/"):
-            mapped = str(self._fs_root / path[9:])
-        elif path.startswith("/"):
-            # 根路径下的其他目录映射到沙盒
-            mapped = str(self._fs_root / path[1:])
-        else:
-            # 相对路径保持不变
-            mapped = path
-
-        logger.debug(f"Path mapped: {path} -> {mapped}")
-        return mapped
+    # === 路径映射（代理方法） ===
 
     def reverse_map_path(self, host_path: str) -> str:
-        """反向映射：主机路径 → 沙盒内路径
-
-        Args:
-            host_path: 主机路径
-
-        Returns:
-            沙盒内路径
-        """
-        host_path_obj = Path(host_path).resolve()
-
-        # 检查是否在 workspace 目录下
-        try:
-            rel_to_workspace = host_path_obj.relative_to(self._workspace_path.resolve())
-            return f"/workspace/{rel_to_workspace}"
-        except ValueError:
-            logger.debug(f"Path not in workspace: {host_path_obj}")
-
-        # 检查是否在沙盒目录下
-        try:
-            rel_to_sandbox = host_path_obj.relative_to(self._fs_root.resolve())
-            return f"/sandbox/{rel_to_sandbox}"
-        except ValueError:
-            logger.debug(f"Path not in sandbox root: {host_path_obj}")
-
-        # 其他路径直接返回
-        return host_path
-
-    # === 权限检查 ===
-
-    def _check_permission(self, tool_name: str, args: dict[str, Any]) -> bool:
-        """检查工具执行权限
-
-        Args:
-            tool_name: 工具名称
-            args: 工具参数
-
-        Returns:
-            是否允许执行
-        """
-        # 获取权限配置
-        perm = self._permissions.get(tool_name)
-
-        if perm is None:
-            # 未配置的工具默认允许（向后兼容）
-            logger.debug(
-                f"No permission config for tool: {tool_name}, allowing by default"
-            )
-            return True
-
-        if perm.action == PermissionAction.DENY:
-            return False
-
-        # 检查路径模式
-        if perm.path_patterns and perm.path_patterns != ["*"]:
-            for key in self.PATH_KEYS:
-                if key in args:
-                    path = args[key]
-                    if not self._match_path_patterns(path, perm.path_patterns):
-                        logger.warning(f"Path not allowed: {path}")
-                        return False
-
-        return True
-
-    def _match_path_patterns(self, path: str, patterns: list[str]) -> bool:
-        """检查路径是否匹配任一模式"""
-        return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
-
-    # === 执行实现 ===
-
-    async def _execute_in_process(self, tool_name: str, args: dict[str, Any]) -> Any:
-        """进程内执行工具（通过 ToolRegistry）
-
-        这是默认的执行方式，直接调用注册的工具函数。
-
-        Args:
-            tool_name: 工具名称
-            args: 工具参数
-
-        Returns:
-            执行结果
-        """
-        if not self._tools:
-            raise RuntimeError("Sandbox has no tools registered")
-
-        # 直接通过 ToolRegistry 执行
-        return await self._tools.execute(tool_name, **args)
-
-    async def _execute_in_subprocess(self, tool_name: str, args: dict[str, Any]) -> str:
-        """子进程隔离执行（进程级隔离）
-
-        在独立子进程中执行工具，提供更强的隔离。
-
-        Args:
-            tool_name: 工具名称
-            args: 工具参数
-
-        Returns:
-            执行结果
-        """
-        # 构建执行命令
-        args_json = json.dumps(args)
-
-        # 创建子进程
-        proc = await asyncio.create_subprocess_exec(
-            "python",
-            "-c",
-            f"import json; from src.tools.builtin_tools import {tool_name}; "
-            f"print({tool_name}(**json.loads('{args_json}')))",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(self._workspace_path),
-        )
-
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode != 0:
-            error_msg = stderr.decode() if stderr else "Unknown error"
-            raise RuntimeError(f"Subprocess failed: {error_msg}")
-
-        return stdout.decode() if stdout else ""
-
-    async def _execute_in_container(self, tool_name: str, args: dict[str, Any]) -> str:
-        """Docker 容器级隔离执行
-
-        需要安装 Docker 并配置镜像。
-
-        Args:
-            tool_name: 工具名称
-            args: 工具参数
-
-        Returns:
-            执行结果
-        """
-        # 容器执行需要 docker 库
-        try:
-            import docker
-        except ImportError:
-            logger.warning(
-                f"Docker not installed, falling back to process execution for {tool_name}. "
-                "WARNING: Isolation level degraded from CONTAINER to PROCESS."
-            )
-            return (
-                f"[FALLBACK] Docker unavailable, executed in PROCESS isolation.\n"
-                f"Result:\n{await self._execute_in_process(tool_name, args)}"
-            )
-
-        # 使用 closing 确保 Docker Client 正确关闭
-        from contextlib import closing
-
-        with closing(docker.from_env()) as client:
-            # 构建执行命令
-            args_json = json.dumps(args)
-            cmd = f"python -c 'from src.tools.builtin_tools import {tool_name}; print({tool_name}(**json.loads(\"{args_json}\")))'"
-
-            try:
-                # 创建临时容器执行
-                container = client.containers.run(
-                    "seed-agent-sandbox:latest",
-                    cmd,
-                    volumes={
-                        str(self._workspace_path): {"bind": "/workspace", "mode": "rw"},
-                        str(self._fs_root): {"bind": "/sandbox", "mode": "rw"},
-                    },
-                    remove=True,
-                    stdout=True,
-                    stderr=True,
-                )
-                return (
-                    container.decode() if isinstance(container, bytes) else str(container)
-                )
-            except Exception as e:
-                logger.exception(
-                    f"Container execution failed for {tool_name}: {type(e).__name__}. "
-                    "Falling back to PROCESS isolation."
-                )
-                # 降级到进程执行，但明确通知调用方
-                return (
-                    f"[FALLBACK] Container execution failed ({type(e).__name__}), "
-                    f"executed in PROCESS isolation.\n"
-                    f"Original error: {str(e)[:200]}\n"
-                    f"Result:\n{await self._execute_in_process(tool_name, args)}"
-                )
-
-    # === 输出处理 ===
-
-    def _truncate_output(self, output: str, tool_name: str) -> str:
-        """截断输出以防止过大
-
-        Args:
-            output: 原始输出
-            tool_name: 工具名称
-
-        Returns:
-            截断后的输出
-        """
-        perm = self._permissions.get(tool_name)
-        max_size = perm.max_output_size if perm else 10000
-
-        if len(output) > max_size:
-            truncated = output[:max_size]
-            return truncated + f"\n... [truncated, total {len(output)} chars]"
-        return output
+        """反向映射：主机路径 → 沙盒内路径"""
+        return self._path_mapper.reverse_map_path(host_path)
 
     # === 状态管理 ===
 
     def cleanup(self) -> None:
-        """清理沙盒状态
-
-        注意：不删除沙盒目录，只清理临时状态
-        """
-        # 清理临时文件（如果需要）
+        """清理沙盒状态"""
         logger.info(f"Sandbox cleanup: isolation={self.isolation_level.value}")
 
     def get_status(self) -> dict[str, Any]:
@@ -645,17 +249,11 @@ class Sandbox:
         path_patterns: list[str] | None = None,
         max_output_size: int = 10000,
     ) -> None:
-        """设置单个工具权限
-
-        Args:
-            tool_name: 工具名称
-            action: 权限动作
-            path_patterns: 允许的路径模式
-            max_output_size: 最大输出大小
-        """
+        """设置单个工具权限"""
         self._permissions[tool_name] = SandboxPermission(
             tool_name, action, path_patterns, max_output_size
         )
+        self._permission_checker._permissions = self._permissions
         logger.info(f"Permission set: {tool_name} -> {action.value}")
 
     def get_permissions(self) -> dict[str, Any]:
@@ -670,9 +268,10 @@ class Sandbox:
         }
 
     def deny_all_tools(self) -> None:
-        """拒绝所有工具（用于只读模式）"""
+        """拒绝所有工具"""
         for name in self._permissions:
             self._permissions[name].action = PermissionAction.DENY
+        self._permission_checker._permissions = self._permissions
         logger.info("All tools denied")
 
     def allow_readonly_tools(self) -> None:
@@ -693,17 +292,28 @@ class Sandbox:
                 perm.action = PermissionAction.ALLOW
             else:
                 perm.action = PermissionAction.DENY
+        self._permission_checker._permissions = self._permissions
         logger.info("Readonly mode enabled")
 
     # === 凭证代理 ===
 
     def set_credential_proxy(self, proxy: Any) -> None:
-        """设置凭证代理（不存储凭证）"""
+        """设置凭证代理"""
         self._credential_proxy = proxy
-        logger.info("Credential proxy set (credentials not stored in sandbox)")
+        logger.info("Credential proxy set")
 
     def get_credential(self, credential_name: str) -> str | None:
         """通过代理获取凭证"""
         if self._credential_proxy:
             return self._credential_proxy.get_credential(credential_name)
         return None
+
+
+# 导出类型（向后兼容）
+__all__ = [
+    "Sandbox",
+    "IsolationLevel",
+    "PermissionAction",
+    "SandboxPermission",
+    "ExecutionResult",
+]
