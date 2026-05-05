@@ -19,7 +19,7 @@
 from ._skillloader import SkillLoader
 
 # API 函数
-from ._api import get_loader, list_skills, load_skill, register_skill_tools, search_skill, _global_loader
+from ._api import get_loader, list_skills, load_skill, register_skill_tools, search_skill, _global_loader, _set_global_loader
 
 # 类型
 from ._types import SkillMeta, SkillMetadata
@@ -54,6 +54,7 @@ __all__ = [
     "get_loader",
     "_get_loader",
     "_global_loader",
+    "_set_global_loader",
     "list_skills",
     "load_skill",
     "load_skill_content",

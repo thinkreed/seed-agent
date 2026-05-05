@@ -19,6 +19,12 @@ _global_loader: "SkillLoader | None" = None
 _loader_lock = threading.Lock()
 
 
+def _set_global_loader(loader: "SkillLoader | None") -> None:
+    """设置全局 loader（用于测试）"""
+    global _global_loader
+    _global_loader = loader
+
+
 def get_loader() -> "SkillLoader":
     """获取全局 loader"""
     global _global_loader

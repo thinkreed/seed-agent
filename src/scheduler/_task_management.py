@@ -121,5 +121,9 @@ class TaskManagementMixin:
             else "disabled",
         }
 
+    def get_task(self, task_id: str) -> ScheduledTask | None:
+        """向后兼容方法 - 获取任务对象"""
+        return self._tasks.get(task_id)
+
 
 __all__ = ["TaskManagementMixin"]
