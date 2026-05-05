@@ -366,3 +366,15 @@ def reset_ask_user_state() -> None:
         if _global_ask_user_state:
             _global_ask_user_state.clear()
         _global_ask_user_state = AskUserState()
+
+
+def clear_ask_user_state() -> None:
+    """清理当前等待状态（别名函数，兼容旧接口）"""
+    state = get_ask_user_state()
+    state.clear()
+
+
+def get_pending_ask_user_request() -> AskUserRequest | None:
+    """获取待处理的 Ask User 请求"""
+    state = get_ask_user_state()
+    return state.pending_request
