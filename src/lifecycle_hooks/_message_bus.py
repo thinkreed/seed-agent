@@ -6,98 +6,24 @@ Lifecycle Hooks MessageBus
 - 超时管理
 - 多钩子结果合并
 
-核心特性：
-- request/response 模式：发送请求并等待响应
-- AbortSignal 支持：取消等待中的请求
-- HookAggregator：合并多个钩子的结果
-
-版本: v1.0 (Wiki 知识落地)
+重构说明:
+- PermissionDecision 从 src/tools/_types.py 导入（避免重复）
+- PendingRequest 移至 _types.py
+- HookAggregator 移至 _aggregator.py
 """
 
 import asyncio
 import logging
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, Optional
 
+from src.tools import PermissionDecision
+
+from ._aggregator import HookAggregator
+from ._types import PendingRequest
+
 logger = logging.getLogger(__name__)
-
-
-class PermissionDecision(Enum):
-    """权限决策枚举（与 tools/__init__.py 保持一致）"""
-
-    Allow = "allow"
-    Ask = "ask"
-    Deny = "deny"
-
-
-@dataclass
-class PendingRequest:
-    """等待中的请求"""
-
-    correlation_id: str
-    request_type: str
-    future: asyncio.Future
-    created_at: float = field(default_factory=lambda: asyncio.get_event_loop().time())
-    timeout_ms: int = 60000
-
-
-class HookAggregator:
-    """钩子结果聚合器
-
-    合并多个钩子的执行结果：
-    - deny 优先：任何 deny 都导致最终 deny
-    - ask 汇总：收集所有 ask 的原因
-    - allow 统计：记录允许的钩子数量
-    """
-
-    @staticmethod
-    def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
-        """聚合多个钩子结果
-
-        Args:
-            results: 钩子执行结果列表
-
-        Returns:
-            聚合后的最终决策
-        """
-        if not results:
-            return {"decision": PermissionDecision.Allow.value, "reasons": []}
-
-        # deny 优先
-        deny_reasons = [
-            r.get("reason", "Security violation")
-            for r in results
-            if r.get("decision") == PermissionDecision.Deny.value
-        ]
-        if deny_reasons:
-            return {
-                "decision": PermissionDecision.Deny.value,
-                "reasons": deny_reasons,
-                "message": f"Denied by hooks: {deny_reasons[0]}",
-            }
-
-        # ask 汇总
-        ask_reasons = [
-            r.get("reason", "Needs confirmation")
-            for r in results
-            if r.get("decision") == PermissionDecision.Ask.value
-        ]
-        if ask_reasons:
-            return {
-                "decision": PermissionDecision.Ask.value,
-                "reasons": ask_reasons,
-                "message": f"Confirmation required: {', '.join(ask_reasons)}",
-            }
-
-        # 全部 allow
-        return {
-            "decision": PermissionDecision.Allow.value,
-            "reasons": [],
-            "allowed_count": len(results),
-        }
 
 
 class LifecycleMessageBus:
@@ -130,12 +56,7 @@ class LifecycleMessageBus:
     def register_handler(
         self, request_type: str, handler: Callable[[dict[str, Any]], Any]
     ) -> None:
-        """注册响应处理器
-
-        Args:
-            request_type: 请求类型
-            handler: 处理函数
-        """
+        """注册响应处理器"""
         if request_type not in self._handlers:
             self._handlers[request_type] = []
         self._handlers[request_type].append(handler)
@@ -148,25 +69,10 @@ class LifecycleMessageBus:
         timeout_ms: int = 60000,
         abort_signal: Optional[Any] = None,
     ) -> dict[str, Any]:
-        """发送请求并等待响应
-
-        Args:
-            request_type: 请求类型
-            payload: 请求数据
-            timeout_ms: 超时时间（毫秒）
-            abort_signal: AbortSignal 实例（可选）
-
-        Returns:
-            响应数据
-
-        Raises:
-            TimeoutError: 请求超时
-            asyncio.CancelledError: 被 AbortSignal 取消
-        """
+        """发送请求并等待响应"""
         correlation_id = str(uuid.uuid4())
         future: asyncio.Future[dict[str, Any]] = asyncio.get_event_loop().create_future()
 
-        # 注册等待请求
         pending = PendingRequest(
             correlation_id=correlation_id,
             request_type=request_type,
@@ -177,17 +83,15 @@ class LifecycleMessageBus:
         async with self._lock:
             self._pending_requests[correlation_id] = pending
 
-        # 设置 AbortSignal 监听器
+        # AbortSignal 监听器
         cancel_callback = None
         if abort_signal is not None:
             cancel_callback = lambda: self._cancel_request(correlation_id)
-            # 尝试添加监听器（如果 signal 支持）
             if hasattr(abort_signal, "add_listener"):
                 abort_signal.add_listener(cancel_callback)
             elif hasattr(abort_signal, "add_done_callback"):
                 abort_signal.add_done_callback(cancel_callback)
 
-        # 发送请求
         full_request = {
             **payload,
             "correlation_id": correlation_id,
@@ -196,11 +100,7 @@ class LifecycleMessageBus:
         await self._dispatch_request(request_type, full_request)
 
         try:
-            # 等待响应
-            result = await asyncio.wait_for(
-                future,
-                timeout=timeout_ms / 1000,
-            )
+            result = await asyncio.wait_for(future, timeout=timeout_ms / 1000)
             return result
         except asyncio.TimeoutError:
             async with self._lock:
@@ -211,25 +111,12 @@ class LifecycleMessageBus:
                 self._pending_requests.pop(correlation_id, None)
             raise
         finally:
-            # 清理监听器
             if cancel_callback and abort_signal is not None:
                 if hasattr(abort_signal, "remove_listener"):
                     abort_signal.remove_listener(cancel_callback)
 
-    async def respond(
-        self,
-        correlation_id: str,
-        response: dict[str, Any],
-    ) -> bool:
-        """发送响应
-
-        Args:
-            correlation_id: 关联 ID
-            response: 响应数据
-
-        Returns:
-            True 如果成功响应，False 如果请求已超时/取消
-        """
+    async def respond(self, correlation_id: str, response: dict[str, Any]) -> bool:
+        """发送响应"""
         async with self._lock:
             pending = self._pending_requests.pop(correlation_id, None)
 
@@ -241,26 +128,19 @@ class LifecycleMessageBus:
             pending.future.set_result(response)
             logger.debug(f"Response sent: {correlation_id}")
             return True
-
         return False
 
-    async def _dispatch_request(
-        self,
-        request_type: str,
-        request: dict[str, Any],
-    ) -> None:
+    async def _dispatch_request(self, request_type: str, request: dict[str, Any]) -> None:
         """分发请求到处理器"""
         handlers = self._handlers.get(request_type, [])
 
         if not handlers:
-            # 无处理器时自动返回默认响应
             await self.respond(
                 request["correlation_id"],
                 {"decision": PermissionDecision.Allow.value, "handled": False},
             )
             return
 
-        # 调用所有处理器
         results = []
         for handler in handlers:
             try:
@@ -277,7 +157,6 @@ class LifecycleMessageBus:
                     "reason": f"Handler error: {e}",
                 })
 
-        # 聚合结果
         aggregated = HookAggregator.aggregate_results(results)
         await self.respond(request["correlation_id"], aggregated)
 
@@ -289,13 +168,11 @@ class LifecycleMessageBus:
                 if pending and not pending.future.done():
                     pending.future.cancel()
 
-        # 在事件循环中执行
         try:
             asyncio.get_event_loop().call_soon_threadsafe(
                 lambda: asyncio.create_task(_cancel())
             )
         except RuntimeError:
-            # 无运行中的事件循环
             pass
 
     def get_pending_count(self) -> int:
@@ -326,10 +203,9 @@ def reset_message_bus() -> None:
 
 
 __all__ = [
-    "PermissionDecision",
+    "LifecycleMessageBus",
     "PendingRequest",
     "HookAggregator",
-    "LifecycleMessageBus",
     "get_message_bus",
     "reset_message_bus",
 ]

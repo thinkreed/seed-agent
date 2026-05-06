@@ -1,308 +1,44 @@
 """
 Vision API Helper - 视觉识别基础模块
 支持: 窗口截图, 图像编码, 调用多模态大模型 (Claude/OpenAI/DashScope)
-路径从 PathsConfig 动态获取。
+
+公共 API 从 vision_api_core 子模块导出，保持向后兼容。
 """
 
-import asyncio
-import base64
-import io
-import logging
-from pathlib import Path
+# 从子模块导入所有公共 API
+from src.tools.vision_api_core import (
+    DEFAULT_CONFIG_PATH,
+    HAS_PIL,
+    MAX_PIXELS,
+    MODEL_MAP,
+    VISION_MODEL,
+    _ensure_config_path,
+    _get_config_path,
+    analyze_image_async,
+    ask_vision,
+    capture_window,
+    image_to_base64,
+)
 
-try:
-    from PIL import Image, ImageGrab
-
-    HAS_PIL = True
-except ImportError:
-    HAS_PIL = False
-
-logger = logging.getLogger("seed_agent")
-
-# ================= 配置 =================
-VISION_MODEL = "bailian/qwen3.6-plus"  # 默认模型，可通过环境变量覆盖
-MAX_PIXELS = 1_440_000  # 限制图像像素以节省 Token
-
-
-def _get_config_path() -> Path:
-    """获取配置文件路径（动态）"""
-    try:
-        from src.models import get_config_path
-        return get_config_path()
-    except ImportError:
-        # Fallback: models 模块未导入
-        logger.debug("Using fallback config path: ~/.seed/config.json")
-        return Path.home() / ".seed" / "config.json"
-    except RuntimeError:
-        # Fallback: PathsConfig 未初始化
-        logger.debug("PathsConfig not initialized, using fallback config path")
-        return Path.home() / ".seed" / "config.json"
-
-
-DEFAULT_CONFIG_PATH = None  # 类型: Path | None
-
-
-def _ensure_config_path() -> Path:
-    """确保配置路径已初始化"""
-    global DEFAULT_CONFIG_PATH
-    if DEFAULT_CONFIG_PATH is None:
-        DEFAULT_CONFIG_PATH = _get_config_path()
-    return DEFAULT_CONFIG_PATH
-
-# 模型映射
-MODEL_MAP = {
-    "claude": "anthropic/claude-3-5-sonnet-20241022",
-    "openai": "openai/gpt-4o",
-    "dashscope": "bailian/qwen3.6-plus",
-}
-
-
-def capture_window(hwnd=None) -> "Image.Image | None":
-    """
-    截取指定窗口或全屏图像
-    Args:
-        hwnd: 窗口句柄 (Windows)
-    Returns:
-        PIL Image 对象
-    """
-    if not HAS_PIL:
-        logger.error("Pillow not installed. pip install Pillow")
-        return None
-
-    try:
-        img = ImageGrab.grab()
-        return _resize_if_needed(img, MAX_PIXELS)
-    except OSError:
-        logger.exception("Screen capture failed")
-        return None
-
-
-def _resize_if_needed(img: "Image.Image", max_pixels: int) -> "Image.Image":
-    """如果像素超过限制，则等比缩放"""
-    w, h = img.size
-    if w * h > max_pixels:
-        ratio = (max_pixels / (w * h)) ** 0.5
-        new_w = int(w * ratio)
-        new_h = int(h * ratio)
-        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-    return img
-
-
-def image_to_base64(img: "Image.Image", image_format: str = "PNG") -> str:
-    """将图像转换为 Base64 字符串"""
-    buffered = io.BytesIO()
-    img.save(buffered, format=image_format)
-    return base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-
-async def analyze_image_async(
-    image: "Image.Image",
-    prompt: str,
-    model_id: str | None = None,
-    config_path: str | None = None,
-) -> str:
-    """
-    异步分析图像 - 通过 LLMGateway 调用多模态模型
-
-    Args:
-        image: PIL Image 对象
-        prompt: 分析提示词
-        model_id: 模型 ID (格式: provider/model)，默认 VISION_MODEL
-        config_path: 配置文件路径，默认 ~/.seed/config.json
-
-    Returns:
-        模型响应文本
-    """
-    b64_img = image_to_base64(image)
-    target_model = model_id or VISION_MODEL
-
-    # 构建 OpenAI 兼容的多模态消息
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{b64_img}",
-                        "detail": "auto",
-                    },
-                },
-                {"type": "text", "text": prompt},
-            ],
-        }
-    ]
-
-    cfg_path = str(config_path or DEFAULT_CONFIG_PATH)
-
-    if not await asyncio.to_thread(Path(cfg_path).exists):
-        return f"Error: Config file not found at {cfg_path}"
-
-    try:
-        # 通过 LLMGateway 调用
-        from src.client import LLMGateway, RequestPriority
-
-        gateway = LLMGateway(cfg_path)
-
-        result = await gateway.chat_completion(
-            model_id=target_model,
-            messages=messages,
-            priority=RequestPriority.HIGH,
-            max_tokens=2048,
-        )
-
-        content = result.get("content", "")
-        logger.info(f"Vision analysis completed, content length: {len(content)}")
-        return content
-
-    except (OSError, RuntimeError, ValueError) as e:
-        error_msg = f"Vision API call failed: {type(e).__name__}: {e}"
-        logger.exception("Vision API call failed")
-        return f"Error: {error_msg}"
-
-
-def _load_image(image) -> tuple:
-    """Load image from path or return as-is. Returns (image, error)."""
-    if isinstance(image, str):
-        if not HAS_PIL:
-            return None, "Error: Pillow not installed"
-        try:
-            return Image.open(image), None
-        except (OSError, FileNotFoundError) as e:
-            return None, f"Error loading image: {e}"
-    return image, None
-
-
-def _resolve_vision_model(backend: str) -> str:
-    """Map backend name to model ID."""
-    return MODEL_MAP.get(backend.lower(), VISION_MODEL)
-
-
-def _build_vision_messages(b64_img: str, prompt: str) -> list:
-    """Build OpenAI-compatible multimodal messages."""
-    return [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{b64_img}",
-                        "detail": "auto",
-                    },
-                },
-                {"type": "text", "text": prompt},
-            ],
-        }
-    ]
-
-
-def ask_vision(
-    image,
-    prompt: str = "Describe this image",
-    backend: str = "claude",
-    timeout: int = 60,
-    max_pixels: int = 1_440_000,
-) -> str:
-    """
-    同步视觉分析包装器 (适用于 Skill 调用)
-
-    自动检测运行环境：
-    - 在异步环境中：使用 asyncio.run_coroutine_threadsafe() 或创建任务
-    - 在同步环境中：创建新事件循环执行
-
-    Args:
-        image: 文件路径 (str) 或 PIL Image 对象
-        prompt: 分析提示词
-        backend: 提供商 (claude/openai/dashscope)
-        timeout: 超时秒数
-        max_pixels: 最大像素限制
-
-    Returns:
-        分析结果文本
-    """
-    img, err = _load_image(image)
-    if err:
-        return err
-
-    img = _resize_if_needed(img, max_pixels)
-    b64_img = image_to_base64(img)
-    model_id = _resolve_vision_model(backend)
-    messages = _build_vision_messages(b64_img, prompt)
-
-    try:
-        from src.client import LLMGateway, RequestPriority
-
-        config_path = _ensure_config_path()
-        if not config_path.exists():
-            return f"Error: Config not found at {config_path}"
-
-        gateway = LLMGateway(str(config_path))
-
-        # 智能检测当前是否在异步事件循环中
-        try:
-            asyncio.get_running_loop()  # 检测是否在异步环境中
-            # 已在异步环境中：使用线程池执行避免阻塞当前循环
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    _run_vision_in_new_loop, gateway, model_id, messages, timeout
-                )
-                result = future.result(timeout=timeout + 5)  # 额外 5 秒缓冲
-                return result.get("content", "No content returned")
-        except RuntimeError:
-            # 不在异步环境中：创建新事件循环
-            loop = asyncio.new_event_loop()
-            try:
-                result = loop.run_until_complete(
-                    gateway.chat_completion(
-                        model_id=model_id,
-                        messages=messages,
-                        priority=RequestPriority.HIGH,
-                        max_tokens=2048,
-                        timeout=timeout,
-                    )
-                )
-                return result.get("content", "No content returned")
-            finally:
-                loop.close()
-
-    except concurrent.futures.TimeoutError:
-        return f"Error: Vision API call timed out ({timeout}s)"
-    except ImportError as e:
-        return f"Error: Missing dependency: {e}"
-    except (OSError, RuntimeError, ValueError) as e:
-        error_msg = f"Vision API error: {type(e).__name__}: {e}"
-        logger.exception("Vision API error")
-        return error_msg
-
-
-def _run_vision_in_new_loop(
-    gateway, model_id: str, messages: list, timeout: int
-) -> dict:
-    """在独立线程中创建新事件循环执行视觉分析"""
-    from src.client import RequestPriority
-
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(
-            gateway.chat_completion(
-                model_id=model_id,
-                messages=messages,
-                priority=RequestPriority.HIGH,
-                max_tokens=2048,
-                timeout=timeout,
-            )
-        )
-    finally:
-        loop.close()
-        asyncio.set_event_loop(None)
-
+__all__ = [
+    # 公共 API
+    "capture_window",
+    "image_to_base64",
+    "analyze_image_async",
+    "ask_vision",
+    # 配置常量
+    "VISION_MODEL",
+    "MAX_PIXELS",
+    "MODEL_MAP",
+    "HAS_PIL",
+    # 配置函数
+    "DEFAULT_CONFIG_PATH",
+    "_get_config_path",
+    "_ensure_config_path",
+]
 
 if __name__ == "__main__":
-    import asyncio
+    import logging
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
@@ -311,11 +47,13 @@ if __name__ == "__main__":
     if img is not None:
         logger.info(f"Captured image: {img.size}")
 
-        async def test(captured_img: "Image.Image"):
+        async def test(captured_img):
             result = await analyze_image_async(
                 captured_img, "Describe this screen in detail"
             )
             logger.info(f"Result: {result}")
+
+        import asyncio
 
         asyncio.run(test(img))
     else:

@@ -9,6 +9,7 @@ Wiki 知识落地 (基于 Qwen-Code Hook 输出类设计):
 - PostToolUseHookOutput: 工具调用后专用输出（支持结果修改）
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -294,3 +295,46 @@ HOOK_POINT_DESCRIPTIONS: dict[str, str] = {
     HookPoint.SHUTDOWN_START.value: "关闭开始",
     HookPoint.SHUTDOWN_COMPLETE.value: "关闭完成",
 }
+
+
+# === MessageBus 相关类型 ===
+
+
+@dataclass
+class PendingRequest:
+    """等待中的请求 (用于 MessageBus)
+
+    Attributes:
+        correlation_id: 请求关联 ID
+        request_type: 请求类型
+        future: asyncio.Future 用于等待响应
+        created_at: 创建时间
+        timeout_ms: 超时时间（毫秒）
+    """
+
+    correlation_id: str
+    request_type: str
+    future: asyncio.Future
+    created_at: float = field(default_factory=lambda: asyncio.get_event_loop().time())
+    timeout_ms: int = 60000
+
+
+# 导出列表（供外部导入）
+__all__ = [
+    # Hook 输出类
+    "DefaultHookOutput",
+    "PreToolUseHookOutput",
+    "PostToolUseHookOutput",
+    "LLMStreamHookOutput",
+    "UserResponseHookOutput",
+    # 钩子节点
+    "HookPoint",
+    # 钩子结果
+    "HookExecutionResult",
+    "HookTriggerReport",
+    "HookStats",
+    # MessageBus 类型
+    "PendingRequest",
+    # 常量
+    "HOOK_POINT_DESCRIPTIONS",
+]

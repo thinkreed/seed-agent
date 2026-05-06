@@ -7,6 +7,10 @@ Architecture inspired by Claude Context hybrid search pattern:
   - FAISS IndexFlatIP for cosine similarity (Inner Product)
   - L2 normalization enables IP = cosine similarity
 
+重构说明:
+- TFIDFEncoder 移至 _encoder.py
+- SemanticIndex 保留核心索引逻辑
+
 Usage:
     idx = SemanticIndex(dim=128)
     idx.add("doc1", "text content here")
@@ -16,75 +20,13 @@ Usage:
 
 import json
 import logging
-import math
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
 
+from ._encoder import TFIDFEncoder
+
 logger = logging.getLogger("seed_agent")
-
-# 类型注解使用内置类型
-
-
-class TFIDFEncoder:
-    """Simple TF-IDF encoder (no sklearn dependency)."""
-
-    def __init__(self) -> None:
-        self.vocab: dict[str, int] = {}
-        self.idf: list[float] = []
-        self._doc_count: int = 0
-
-    def fit(self, texts: list[str]) -> "TFIDFEncoder":
-        """Build vocabulary and compute IDF from documents."""
-        doc_freq: Counter[str] = Counter()
-        self._doc_count = len(texts)
-
-        for text in texts:
-            tokens = set(self._tokenize(text))
-            for t in tokens:
-                doc_freq[t] += 1
-
-        # Build vocab
-        self.vocab = {t: i for i, t in enumerate(sorted(doc_freq.keys()))}
-        vocab_size = len(self.vocab)
-
-        # Compute IDF: log(N / df) + 1 (smoothed)
-        self.idf = [0.0] * vocab_size
-        for token, df in doc_freq.items():
-            self.idf[self.vocab[token]] = math.log((self._doc_count + 1) / (df + 1)) + 1
-
-        return self
-
-    def transform(self, text: str) -> np.ndarray:
-        """Transform text to TF-IDF vector."""
-        dim = len(self.vocab)
-        if dim == 0:
-            return np.zeros((1, 1), dtype=np.float32)
-
-        vec = np.zeros(dim, dtype=np.float32)
-        tokens = self._tokenize(text)
-        tf = Counter(tokens)
-
-        for token, count in tf.items():
-            if token in self.vocab:
-                idx = self.vocab[token]
-                # sublinear TF: 1 + log(tf)
-                vec[idx] = (1 + math.log(count)) * self.idf[idx]
-
-        # L2 normalize
-        norm = np.linalg.norm(vec)
-        if norm > 0:
-            vec = vec / norm
-
-        return vec.reshape(1, -1).astype(np.float32)
-
-    @staticmethod
-    def _tokenize(text: str) -> list[str]:
-        """Simple tokenization: lowercase, split on non-alphanumeric."""
-        import re
-
-        return re.findall(r"[a-z0-9]+", text.lower())
 
 
 class SemanticIndex:
@@ -125,40 +67,34 @@ class SemanticIndex:
         if not hasattr(self, "_texts") or not self._texts:
             return
 
-        # Fit TF-IDF encoder
         self.encoder.fit(self._texts)
 
-        # Transform all documents
         raw_dim = len(self.encoder.vocab)
         vectors = []
         for text in self._texts:
-            vec = self.encoder.transform(text)  # (1, raw_dim)
+            vec = self.encoder.transform(text)
             vectors.append(vec)
 
         if not vectors:
             return
 
-        all_vectors = np.vstack(vectors).astype(np.float32)  # (n_docs, raw_dim)
+        all_vectors = np.vstack(vectors).astype(np.float32)
 
-        # Create FAISS index (Inner Product = cosine sim after L2 norm)
+        # Create FAISS index
         if raw_dim <= self.dim:
-            # Direct: use raw vectors (no dimension reduction needed)
             faiss_index = faiss.IndexFlatIP(raw_dim)
             faiss_index.add(all_vectors)
             self.index = faiss_index
             self._effective_dim = raw_dim
         else:
-            # Project to target dimension using SVD
             from sklearn.decomposition import TruncatedSVD
 
             n_samples = all_vectors.shape[0]
-            # SVD components must be < min(raw_dim, n_samples)
             n_components = min(self.dim, raw_dim - 1, n_samples - 1)
             n_components = max(1, n_components)
 
             svd_model = TruncatedSVD(n_components=n_components, random_state=42)
             reduced = svd_model.fit_transform(all_vectors).astype(np.float32)
-            # L2 normalize again after projection
             norms = np.linalg.norm(reduced, axis=1, keepdims=True)
             norms[norms == 0] = 1
             reduced = reduced / norms
@@ -170,7 +106,7 @@ class SemanticIndex:
             self._effective_dim = n_components
 
         self._built = True
-        del self._texts  # Free memory
+        del self._texts
 
     def search(self, query: str, top_k: int = 5) -> list[dict]:
         """Search for semantically similar documents."""
@@ -179,15 +115,12 @@ class SemanticIndex:
 
         query_vec = self.encoder.transform(query).astype(np.float32)
 
-        # Project query to match FAISS index dimension
         if self.svd is not None:
             query_vec = self.svd.transform(query_vec).astype(np.float32)
-            # L2 normalize after projection
             norm = np.linalg.norm(query_vec)
             if norm > 0:
                 query_vec = query_vec / norm
         elif query_vec.shape[1] != self.index.d:
-            # Fallback: pad or truncate
             raw_dim = query_vec.shape[1]
             if raw_dim < self.index.d:
                 padded = np.zeros((1, self.index.d), dtype=np.float32)
@@ -202,13 +135,11 @@ class SemanticIndex:
         results = []
         for score, idx in zip(scores[0], indices[0], strict=True):
             if idx >= 0 and idx < len(self.doc_ids):
-                results.append(
-                    {
-                        "doc_id": self.doc_ids[idx],
-                        "score": float(score),
-                        "rank": len(results) + 1,
-                    }
-                )
+                results.append({
+                    "doc_id": self.doc_ids[idx],
+                    "score": float(score),
+                    "rank": len(results) + 1,
+                })
         return results
 
     def save(self, path: str | None = None) -> str:
@@ -227,7 +158,6 @@ class SemanticIndex:
             logger.exception(f"Failed to write FAISS index to {save_path}")
             raise
 
-        # Save metadata + SVD model
         meta_path = save_path + ".meta"
         meta = {
             "dim": self.dim,
@@ -238,8 +168,6 @@ class SemanticIndex:
             "doc_count": self.encoder._doc_count,
         }
 
-        # Save SVD model parameters (not pickle, for security)
-        # Only store numpy arrays which are safe to load
         if self.svd is not None:
             svd_path = save_path + ".svd.npz"
             try:
@@ -254,7 +182,6 @@ class SemanticIndex:
                 meta["has_svd"] = True
             except (OSError, ValueError) as e:
                 logger.warning(f"Failed to save SVD model to {svd_path}: {e}")
-                # Continue without SVD metadata
 
         try:
             with open(meta_path, "w", encoding="utf-8") as f:
@@ -293,7 +220,6 @@ class SemanticIndex:
         idx.encoder._doc_count = meta["doc_count"]
         idx._built = True
 
-        # Load SVD model parameters (safe npz format instead of pickle)
         if meta.get("has_svd"):
             svd_path = path + ".svd.npz"
             try:
@@ -302,7 +228,6 @@ class SemanticIndex:
 
                 n_components = int(svd_data["n_components"])
                 svd_model = TruncatedSVD(n_components=n_components, random_state=42)
-                # Manually set fitted attributes
                 svd_model.components_ = svd_data["components"]
                 svd_model.explained_variance_ = svd_data["explained_variance"]
                 svd_model.explained_variance_ratio_ = svd_data[
@@ -311,7 +236,6 @@ class SemanticIndex:
                 svd_model.singular_values_ = svd_data["singular_values"]
                 idx.svd = svd_model
             except (OSError, KeyError, ValueError) as e:
-                # If SVD load fails, continue without SVD
                 logger.warning(f"Failed to load SVD model from {svd_path}: {e}")
                 idx.svd = None
 
@@ -323,3 +247,6 @@ class SemanticIndex:
     @property
     def is_built(self) -> bool:
         return self._built
+
+
+__all__ = ["SemanticIndex", "TFIDFEncoder"]
