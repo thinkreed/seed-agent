@@ -1,12 +1,16 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-06 (更新: 2026-05-06 P1 新增完成)
+## 日期: 2026-05-06 (更新: 2026-05-06 P1 全部完成 + 模块拆分)
 
 ## 概述
 
 基于 E:\projects\wiki 目录下五个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
 **验证结果**: 所有 P0 + P1 优化点已实现并验证通过，测试套件 1147 passed。
+
+**新增内容 (2026-05-06)**:
+- `src/tools/__init__.py` 拆分为 4 个模块（_types, _schema, _registry, __init__）
+- 提取光标机制落地 `src/tools/memory/_extract_cursor.py`
 
 ---
 
@@ -27,8 +31,9 @@
 | qwen-code | PermissionDecision 三级权限 | `src/tools/__init__.py` PermissionDecision | ✅ 已实现 |
 | qwen-code | MUTATOR_KINDS | `src/tools/__init__.py` MUTATOR_KINDS | ✅ 已实现 |
 | qwen-code | CONCURRENCY_SAFE_KINDS | `src/tools/__init__.py` CONCURRENCY_SAFE_KINDS | ✅ 已实现 |
-| **hermes** | **check_fn 可用性检查** | **`src/tools/__init__.py` ToolRegistry.check_fn** | **✅ 新增 (2026-05-06)** |
+| **hermes** | **check_fn 可用性检查** | **`src/tools/_registry.py` ToolRegistry.check_fn** | **✅ 新增 (2026-05-06)** |
 | **qwen-code** | **Hook 专用输出类** | **`src/lifecycle_hooks/_types.py` PreToolUseHookOutput 等** | **✅ 新增 (2026-05-06)** |
+| **qwen-code** | **提取光标机制** | **`src/tools/memory/_extract_cursor.py`** | **✅ 新增 (2026-05-06)** |
 | open-agents | Subagent 上下文隔离 | `src/subagent.py` | ✅ 已实现 |
 | open-agents | Subagent 类型分级 | EXPLORE/REVIEW/IMPLEMENT/PLAN | ✅ 已实现 |
 | hermes | SQLite+FTS5 会话存储 | `src/tools/session_db.py` | ✅ 已实现 |
@@ -70,6 +75,43 @@ else:
 - `is_available(name)` - 判断工具是否可用
 - `get_available_tools()` - 获取所有可用工具列表
 - `get_unavailable_tools()` - 获取不可用工具及原因
+
+### 2.3 提取光标机制 (Qwen-Code 设计)
+
+**实现位置**: `src/tools/memory/_extract_cursor.py`
+
+**功能**: 跟踪记忆提取进度，避免重复处理已处理的数据。
+
+```python
+# 使用示例
+cursor = get_extract_cursor(project_root)
+offset = cursor.get_offset("session_db")
+# 处理从 offset 开始的新数据
+new_offset = process_session_data(offset)
+cursor.set_offset("session_db", new_offset)
+```
+
+**核心类**:
+- `ExtractCursor` - 提取光标类，支持多源跟踪
+- `get_extract_cursor()` - 便捷获取函数
+- `CURSOR_STALE_MS` - 光标过期时间（1小时）
+
+**特性**:
+- 基于文件的 JSON 存储
+- 自动过期清理（防止旧光标干扰）
+- 支持多种提取源（session_db, jsonl 等）
+
+### 2.4 src/tools/__init__.py 模块拆分
+
+**拆分原因**: 原文件 319 行超过 300 行阈值，拆分为职责单一的模块。
+
+**拆分结构**:
+| 模块 | 行数 | 职责 |
+|------|------|------|
+| `_types.py` | 56 行 | ToolKind, PermissionDecision, MUTATOR_KINDS, CONCURRENCY_SAFE_KINDS |
+| `_schema.py` | 101 行 | schema 推断（parse_docstring, resolve_type_to_schema, infer_schema）|
+| `_registry.py` | 134 行 | ToolRegistry 类核心实现 |
+| `__init__.py` | 36 行 | 导出和模块文档 |
 
 ### 2.2 Hook 专用输出类 (Qwen-Code 设计)
 
@@ -116,8 +158,9 @@ def security_hook(tool_name, args):
 | HookAggregator | `src/lifecycle_hooks/_message_bus.py` | ✅ 已实现 |
 | PermissionDecision 三级权限 | `src/tools/__init__.py` | ✅ 已实现 |
 | MUTATOR_KINDS / CONCURRENCY_SAFE_KINDS | `src/tools/__init__.py` | ✅ 已实现 |
-| **check_fn 可用性检查** | **`src/tools/__init__.py`** | **✅ 新增 (2026-05-06)** |
+| **check_fn 可用性检查** | **`src/tools/_registry.py`** | **✅ 新增 (2026-05-06)** |
 | **Hook 专用输出类** | **`src/lifecycle_hooks/_types.py`** | **✅ 新增 (2026-05-06)** |
+| **提取光标机制** | **`src/tools/memory/_extract_cursor.py`** | **✅ 新增 (2026-05-06)** |
 | DeclarativeTool 模式 | `src/tools/builtin/` | 待重构（可选）|
 | 双重历史管理 | `src/session_event_stream.py` | 待新增 curated_history（可选）|
 
@@ -140,7 +183,8 @@ def security_hook(tool_name, args):
 |------|--------|----------|
 | 2026-05-05 | P0 全部 | 1130 passed |
 | 2026-05-06 早期 | P0 + P1 大部分 | 1132 passed |
-| **2026-05-06 当前** | **P0 + P1 全部 + check_fn + Hook 输出类** | **1147 passed** |
+| 2026-05-06 中期 | P0 + P1 全部 + check_fn + Hook 输出类 | 1147 passed |
+| **2026-05-06 当前** | **P0 + P1 全部 + 提取光标 + 模块拆分** | **1147 passed** |
 
 ---
 

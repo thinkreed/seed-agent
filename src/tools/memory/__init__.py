@@ -8,6 +8,7 @@
 4. 用户建模 wrapper
 5. L5 长期归档 wrapper
 6. 整合锁机制 (防止并发 autodream)
+7. 提取光标机制 (跟踪已处理偏移量)
 
 模块结构:
 - _memory_write.py: L1-L4 记忆写入
@@ -18,8 +19,9 @@
 - _user_modeling_wrapper.py: 用户建模 wrapper
 - _archive_wrapper.py: L5 归档 wrapper
 - _consolidation_lock.py: 整合锁 (Wiki 知识落地)
+- _extract_cursor.py: 提取光标 (Wiki 知识落地)
 
-版本: v2.2 (Wiki 知识落地版)
+版本: v2.3 (Wiki 知识落地版)
 """
 
 import logging
@@ -74,6 +76,11 @@ from ._consolidation_lock import (
     ConsolidationLock,
     acquire_dream_lock,
     LOCK_STALE_MS,
+)
+from ._extract_cursor import (
+    ExtractCursor,
+    get_extract_cursor,
+    CURSOR_STALE_MS,
 )
 
 
@@ -140,5 +147,8 @@ __all__ = [
     "ConsolidationLock",
     "acquire_dream_lock",
     "LOCK_STALE_MS",
+    "ExtractCursor",
+    "get_extract_cursor",
+    "CURSOR_STALE_MS",
     "register_memory_tools",
 ]
