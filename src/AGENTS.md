@@ -106,7 +106,8 @@ Processes user input with streaming output, yielding chunks in real-time.
 ```python
 async def stream_run(self, user_input: str) -> AsyncGenerator[Dict, None]:
     """流式处理用户输入"""
-    # Yields chunks: {"type": "chunk", "content": "..."}
+    # Yields thinking: {"type": "thinking", "content": "..."} - 思考过程
+    # Yields chunks: {"type": "chunk", "content": "..."} - 正式回复
     # Yields tool calls: {"type": "tool_call", "calls": [...]}
     # Yields final: {"type": "final", "content": "..."}
 ```
@@ -2652,13 +2653,21 @@ print(response)
 
 ```python
 async for chunk in agent.stream_run("Your message here"):
-    if chunk["type"] == "chunk":
+    if chunk["type"] == "thinking":
+        # 思考过程（灰色显示）
+        print(f"\033[90m{chunk['content']}\033[0m", end="")
+    elif chunk["type"] == "chunk":
         print(chunk["content"], end="")
     elif chunk["type"] == "tool_call":
         print(f"\n[Tool calls: {chunk['calls']}]")
     elif chunk["type"] == "final":
         print(f"\n[Final response: {chunk['content']}]")
 ```
+
+**Thinking 显示控制**（环境变量 `SHOW_THINKING`）：
+- `hidden`: 不显示思考过程
+- `compact`: 简化显示（仅显示 "💭 Thinking..." 指示）
+- `full`: 完整显示思考内容（灰色 ANSI `\033[90m`）
 
 ## Task Scheduling
 

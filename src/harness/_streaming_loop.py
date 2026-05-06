@@ -13,6 +13,7 @@ from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
 from src.abort_signal import AbortSignal
+from src.lifecycle_hooks import HookPoint
 from src.request_queue import RequestPriority
 from src.session_event_stream import EventType
 
@@ -101,9 +102,9 @@ async def run_iteration_loop(
         raise Exception(f"Max iterations exceeded ({max_iterations})")
 
     except Exception as e:
-        await trigger_hook(hook_registry, "SESSION_END",
+        await trigger_hook(hook_registry, HookPoint.SESSION_END,
             build_session_end_ctx(session, harness_ref, "error", error=str(e))
-        )  # type: ignore[arg-type]
+        )
         session.record_session_end("error")
         yield {"type": StreamChunkType.ERROR, "content": str(e)}
 

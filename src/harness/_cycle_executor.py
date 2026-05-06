@@ -11,6 +11,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 
 from src.abort_signal import AbortSignal
+from src.lifecycle_hooks import HookPoint
 from src.request_queue import RequestPriority
 from src.session_event_stream import EventType
 
@@ -147,7 +148,7 @@ async def run_cycle_impl(
     # 6. 无工具调用 = 完成
     await trigger_hook(
         hook_registry,
-        "RESPONSE_AFTER",
+        HookPoint.RESPONSE_AFTER,
         build_response_after_ctx(session, harness_ref, response, False),
     )
     return {

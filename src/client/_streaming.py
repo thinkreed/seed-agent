@@ -2,14 +2,20 @@
 流式响应处理模块
 
 提供:
-- stream_chat_completion_single: 单 Provider 流式调用
+- stream_chat_completion_single: 单 Provider 流式调用（含 thinking 支持）
 - stream_with_retry: 流式响应重试逻辑
 - stream_fallback_providers: 流式 fallback providers 尝试
 - stream_chat_completion_with_fallback_internal: 带降级的流式聊天补全
+
+Thinking 支持：
+- Claude: delta.thinking 字段
+- OpenAI o-series: delta.reasoning_content 字段
+- Qwen: 可能在 content 中嵌入 <thinking> 标签
 """
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncGenerator
 
 from openai import APIConnectionError, APIStatusError, RateLimitError
@@ -22,6 +28,26 @@ from src.rate_limiter import RateLimiter
 
 logger = logging.getLogger("seed_agent")
 
+# Thinking 标签解析正则（用于 Qwen 等模型）
+_THINKING_TAG_PATTERN = re.compile(r"<thinking>(.*?)</thinking>", re.DOTALL)
+
+
+def _parse_embedded_thinking(content: str) -> tuple[str | None, str]:
+    """解析嵌入在 content 中的 thinking 标签
+
+    Args:
+        content: 可能包含 <thinking> 标签的文本
+
+    Returns:
+        (thinking_content, remaining_content) 元组
+    """
+    match = _THINKING_TAG_PATTERN.search(content)
+    if match:
+        thinking = match.group(1).strip()
+        remaining = content[:match.start()] + content[match.end():]
+        return thinking, remaining.strip()
+    return None, content
+
 
 async def stream_chat_completion_single(
     client,
@@ -29,7 +55,7 @@ async def stream_chat_completion_single(
     messages: list[dict],
     **kwargs,
 ) -> AsyncGenerator[dict, None]:
-    """单 provider 流式调用
+    """单 provider 流式调用（含 thinking 支持）
 
     Args:
         client: AsyncOpenAI 实例
@@ -38,7 +64,10 @@ async def stream_chat_completion_single(
         **kwargs: 其他参数
 
     Yields:
-        流式数据块
+        流式数据块，包含以下类型：
+        - {"type": "thinking", "content": "..."} - 思考过程片段
+        - {"type": "content", "content": "..."} - 正式回复片段
+        - 原始 OpenAI 格式 chunk（保持向后兼容）
     """
     # 清理空 tools 数组（部分 API 不允许空数组）
     tools = kwargs.get("tools")
@@ -71,6 +100,32 @@ async def stream_chat_completion_single(
         try:
             chunk_dict = chunk.model_dump()
             if chunk_dict.get("choices"):
+                choices = chunk_dict["choices"]
+                delta = choices[0].get("delta", {})
+
+                # 识别 thinking/reasoning_content 字段
+                thinking_content = None
+                if hasattr(delta, "thinking") and delta.thinking:
+                    thinking_content = delta.thinking
+                elif hasattr(delta, "reasoning_content") and delta.reasoning_content:
+                    thinking_content = delta.reasoning_content
+                elif isinstance(delta, dict):
+                    thinking_content = delta.get("thinking") or delta.get("reasoning_content")
+
+                # 先 yield thinking chunk
+                if thinking_content:
+                    yield {"type": "thinking", "content": thinking_content}
+
+                # 处理 content（可能含嵌入标签）
+                content = delta.get("content", "") if isinstance(delta, dict) else getattr(delta, "content", "")
+                if content:
+                    parsed_thinking, parsed_content = _parse_embedded_thinking(content)
+                    if parsed_thinking:
+                        yield {"type": "thinking", "content": parsed_thinking}
+                    if parsed_content:
+                        yield {"type": "content", "content": parsed_content}
+
+                # 同时 yield 原始 chunk（向后兼容）
                 yield chunk_dict
         except Exception as e:
             logger.debug(f"Failed to serialize stream chunk: {type(e).__name__}")

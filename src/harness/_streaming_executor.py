@@ -4,7 +4,7 @@ Harness 流式执行器
 提取核心流式 LLM 推理逻辑。
 
 内容:
-- stream_llm_reasoning - 流式 LLM 推理执行
+- stream_llm_reasoning - 流式 LLM 推理执行（含 thinking 支持）
 - execute_iteration - 执行单轮迭代
 """
 
@@ -71,7 +71,7 @@ async def execute_iteration(
     tools: list[dict[str, Any]],
     priority: int = RequestPriority.CRITICAL,
 ) -> AsyncGenerator[dict[str, Any], None]:
-    """执行单轮 LLM 迭代
+    """执行单轮 LLM 迭代（含 thinking 支持）
 
     Args:
         llm_client: LLMClient 实例
@@ -81,19 +81,45 @@ async def execute_iteration(
 
     Yields:
         流式 chunk:
+            - {"type": "thinking", "content": "..."} - 思考过程片段
             - {"type": "chunk", "content": "..."} - 文本片段
             - {"type": "tool_start", "tool_name": "..."} - 工具开始
+            - {"_iteration_result": True, ...} - 迭代结果（内部使用）
     """
     full_content = ""
+    full_thinking = ""
     tool_calls_accumulator: dict[int, dict[str, Any]] = {}
 
     start_time = time.time()
 
     async for chunk in llm_client.stream_reason(context, tools=tools, priority=priority):
+        # 处理 thinking 类型 chunk（来自 client/_streaming.py）
+        if chunk.get("type") == "thinking":
+            thinking_content = chunk.get("content", "")
+            if thinking_content:
+                full_thinking += thinking_content
+                yield {"type": StreamChunkType.THINKING, "content": thinking_content}
+            continue
+
+        # 处理 content 类型 chunk
+        if chunk.get("type") == "content":
+            content = chunk.get("content", "")
+            if content:
+                full_content += content
+                yield {"type": StreamChunkType.CHUNK, "content": content}
+            continue
+
+        # 处理原始 OpenAI 格式 chunk（向后兼容）
         choices = chunk.get("choices", [])
         if not choices:
             continue
         delta = choices[0].get("delta", {})
+
+        # 识别 thinking/reasoning_content 字段（兼容不同模型）
+        thinking = delta.get("thinking") or delta.get("reasoning_content")
+        if thinking:
+            full_thinking += thinking
+            yield {"type": StreamChunkType.THINKING, "content": thinking}
 
         # 处理文本内容
         content = delta.get("content")
@@ -116,6 +142,7 @@ async def execute_iteration(
     yield {
         "_iteration_result": True,
         "full_content": full_content,
+        "full_thinking": full_thinking,
         "tool_calls": tool_calls,
         "duration_ms": duration_ms,
     }

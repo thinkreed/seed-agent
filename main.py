@@ -357,10 +357,19 @@ async def interactive_loop(agent: AgentLoop, explorer: AutonomousExplorer) -> No
     loop = asyncio.get_event_loop()
     setup_signal_handlers(agent, explorer, loop)
 
+    # Thinking 显示配置（可通过环境变量控制）
+    show_thinking = os.getenv("SHOW_THINKING", "compact").lower()
+    # ANSI 颜色代码
+    ANSI_GRAY = "\033[90m"
+    ANSI_RESET = "\033[0m"
+
     print("Agent initialized successfully. Type 'exit' to quit.\n")
     print("Starting interactive loop...")
     print("  - Ctrl+C once: cancel current execution")
-    print("  - Ctrl+C twice (within 2s): exit agent\n")
+    print("  - Ctrl+C twice (within 2s): exit agent")
+    if show_thinking != "hidden":
+        print("  - Thinking display: " + show_thinking + " (set SHOW_THINKING=hidden/compact/full)")
+    print()
 
     while True:
         try:
@@ -380,6 +389,7 @@ async def interactive_loop(agent: AgentLoop, explorer: AutonomousExplorer) -> No
 
             print("Agent: ⏳", end="", flush=True)
             is_first_chunk = True
+            thinking_indicator_printed = False
 
             # 使用流式输出提升交互体验
             async for chunk in agent.stream_run(user_input):
@@ -390,28 +400,53 @@ async def interactive_loop(agent: AgentLoop, explorer: AutonomousExplorer) -> No
 
                 chunk_type = chunk.get("type")
 
-                if chunk_type == "chunk":
-                    # 思考内容直接输出（LLM 自己控制换行）
+                if chunk_type == "thinking":
+                    # 思考过程显示
+                    if show_thinking == "hidden":
+                        pass  # 不显示
+                    elif show_thinking == "compact":
+                        # 简化显示：仅显示思考进度指示
+                        if not thinking_indicator_printed:
+                            print(f"\n{ANSI_GRAY}💭 Thinking...{ANSI_RESET}", end="", flush=True)
+                            thinking_indicator_printed = True
+                    elif show_thinking == "full":
+                        # 完整显示思考内容（灰色）
+                        thinking_content = chunk.get("content", "")
+                        if thinking_content:
+                            print(f"{ANSI_GRAY}{thinking_content}{ANSI_RESET}", end="", flush=True)
+
+                elif chunk_type == "chunk":
+                    # 正式回复内容
+                    if thinking_indicator_printed:
+                        # 思考结束，换行显示正式回复
+                        print()  # 换行
+                        thinking_indicator_printed = False
                     print(chunk["content"], end="", flush=True)
+
                 elif chunk_type == "tool_start":
-                    # 工具开始：换行显示，清晰区分思考内容和工具执行
+                    # 工具开始：换行显示，清晰区分思考和工具执行
                     print(f"\n  ▶ [{chunk['tool_name']}]", end="", flush=True)
+
                 elif chunk_type == "tool_end":
                     # 工具完成：显示简短状态
                     result = chunk.get("result", "")
                     status = "✓" if not result.startswith("Error") else "✗"
                     print(f" {status}", end="", flush=True)
+
                 elif chunk_type == "awaiting_user_input":
                     # 处理 Ask User 等待
                     await handle_user_question(agent, chunk["request"])
+
                 elif chunk_type == "cancelled":
                     print(f"\n[Cancelled: {chunk.get('reason', 'unknown')}]")
+
                 elif chunk_type == "final":
                     # 显示最终响应内容（如果有的话）
                     final_content = chunk.get("content", "")
                     if final_content:
                         print(final_content)
                     print()  # 响应结束换行
+
                 elif chunk_type == "error":
                     print(f"\n[Error: {chunk.get('content', 'unknown')}]")
 
