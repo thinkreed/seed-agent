@@ -11,6 +11,9 @@ Session 不可变事件流模块
 - 类型定义移至 session_stream/_types.py
 - 持久化逻辑移至 session_stream/_persist.py
 - 重放逻辑移至 session_stream/_replay.py
+- 清理逻辑移至 session_stream/_cleanup.py
+- 摘要逻辑移至 session_stream/_summary.py
+- 上下文构建移至 session_stream/_context.py
 """
 
 import logging
@@ -20,10 +23,11 @@ from typing import Any
 
 from src.session_stream import (
     EventType,
-    MAX_EVENT_AGE_DAYS,
-    MAX_IN_MEMORY_EVENTS,
     EventPersistence,
     StateReplay,
+    EventCleanup,
+    SummaryManager,
+    ContextBuilder,
     _get_default_storage_path,
 )
 
@@ -41,12 +45,6 @@ class SessionEventStream:
     """
 
     def __init__(self, session_id: str, storage_path: Path | None = None):
-        """初始化事件流
-
-        Args:
-            session_id: 会话唯一标识
-            storage_path: 事件存储路径
-        """
         self.session_id = session_id
         self._storage_path = storage_path or _get_default_storage_path()
         self._events: list[dict[str, Any]] = []
@@ -57,6 +55,9 @@ class SessionEventStream:
         # 使用拆分模块的组件
         self._persistence = EventPersistence(self._storage_path)
         self._replay = StateReplay()
+        self._cleanup = EventCleanup()
+        self._summary_manager = SummaryManager()
+        self._context_builder = ContextBuilder()
 
         self._persistence.ensure_dir_exists()
         self._load_existing_events()
@@ -80,9 +81,6 @@ class SessionEventStream:
         self._event_index[event_id] = event
         self._event_counter = event_id
 
-        if len(self._events) > MAX_IN_MEMORY_EVENTS:
-            self._auto_cleanup_events()
-
         self._persistence.persist_event(self.session_id, event)
         logger.debug(f"Event emitted: id={event_id}, type={event['type']}")
         return event_id
@@ -98,47 +96,15 @@ class SessionEventStream:
         if event_types:
             type_values = [t if isinstance(t, str) else t.value for t in event_types]
 
-        events = []
-        for e in self._events:
-            if start_id > 0 and e["id"] < start_id:
-                continue
-            if end_id is not None and e["id"] > end_id:
-                continue
-            if type_values and e["type"] not in type_values:
-                continue
-            events.append(e)
+        return [
+            e
+            for e in self._events
+            if (start_id <= 0 or e["id"] >= start_id)
+            and (end_id is None or e["id"] <= end_id)
+            and (type_values is None or e["type"] in type_values)
+        ]
 
-        return events
-
-    def _auto_cleanup_events(self) -> int:
-        """自动清理旧事件"""
-        summary_marker_ids = set()
-        for e in self._events:
-            if e.get("type") == EventType.SUMMARY_MARKER.value:
-                summary_marker_ids.add(e["id"])
-
-        cutoff_time = time.time() - (MAX_EVENT_AGE_DAYS * 24 * 3600)
-        original_count = len(self._events)
-        target_count = int(MAX_IN_MEMORY_EVENTS * 0.8)
-
-        new_events = []
-        for e in self._events:
-            keep = (
-                e["id"] in summary_marker_ids
-                or e.get("timestamp", 0) >= cutoff_time
-                or e["id"] > self._event_counter - target_count
-            )
-            if keep:
-                new_events.append(e)
-
-        self._events = new_events
-        self._event_index = {e["id"]: e for e in new_events}
-        cleaned_count = original_count - len(self._events)
-
-        if cleaned_count > 0:
-            logger.info(f"Auto-cleaned {cleaned_count} events for session {self.session_id}")
-
-        return cleaned_count
+    # === 清理 ===
 
     def cleanup_old_events(
         self,
@@ -147,38 +113,16 @@ class SessionEventStream:
         keep_summary_markers: bool = True,
     ) -> int:
         """清理旧事件"""
-        max_age_days = max_age_days or MAX_EVENT_AGE_DAYS
-        max_count = max_count or MAX_IN_MEMORY_EVENTS
-
-        if len(self._events) <= max_count:
-            return 0
-
-        cutoff_time = time.time() - (max_age_days * 24 * 3600)
-        original_count = len(self._events)
-
-        summary_marker_ids = set()
-        if keep_summary_markers:
-            for e in self._events:
-                if e.get("type") == EventType.SUMMARY_MARKER.value:
-                    summary_marker_ids.add(e["id"])
-
-        new_events = []
-        for e in self._events:
-            keep = (
-                e["id"] in summary_marker_ids
-                or e.get("timestamp", 0) >= cutoff_time
-                or e["id"] > self._event_counter - max_count // 2
-            )
-            if keep:
-                new_events.append(e)
-
+        new_events, new_index, cleaned = self._cleanup.manual_cleanup(
+            self._events,
+            self._event_counter,
+            max_age_days,
+            max_count,
+            keep_summary_markers,
+        )
         self._events = new_events
-        cleaned_count = original_count - len(self._events)
-
-        if cleaned_count > 0:
-            logger.info(f"Cleaned up {cleaned_count} old events")
-
-        return cleaned_count
+        self._event_index = new_index
+        return cleaned
 
     # === 恢复能力 ===
 
@@ -199,61 +143,55 @@ class SessionEventStream:
     def create_summary_marker(
         self, event_id: int, summary: str, metadata: dict[str, Any] | None = None
     ) -> int:
-        """创建摘要标记（不截断历史）"""
-        marker_data: dict[str, Any] = {
-            "covers_events": list(range(1, event_id + 1)),
-            "summary": summary,
-            "created_at": time.time(),
-        }
-
-        if metadata:
-            marker_data["metadata"] = metadata
-
+        """创建摘要标记"""
+        marker_data = self._summary_manager.create_summary_marker_data(
+            event_id, summary, metadata
+        )
         return self.emit_event(EventType.SUMMARY_MARKER, marker_data)
 
     def create_context_reset_marker(
         self, iteration: int, preserved_context: str | None = None
     ) -> int:
         """创建上下文重置标记"""
-        marker_data: dict[str, Any] = {
-            "iteration": iteration,
-            "preserved_context": preserved_context,
-            "created_at": time.time(),
-        }
-
+        marker_data = self._summary_manager.create_context_reset_data(
+            iteration, preserved_context
+        )
         return self.emit_event(EventType.CONTEXT_RESET, marker_data)
 
     def find_last_summary_marker(self) -> dict[str, Any] | None:
         """找到最近的摘要标记"""
-        for event in reversed(self._events):
-            if event["type"] == EventType.SUMMARY_MARKER.value:
-                return event
-        return None
+        return self._summary_manager.find_last_summary_marker(self._events)
 
     def find_last_reset_marker(self) -> dict[str, Any] | None:
         """找到最近的上下文重置标记"""
-        for event in reversed(self._events):
-            if event["type"] == EventType.CONTEXT_RESET.value:
-                return event
-        return None
+        return self._summary_manager.find_last_reset_marker(self._events)
 
     def find_last_boundary_marker(self) -> dict[str, Any] | None:
         """找到最近的边界标记"""
-        for event in reversed(self._events):
-            if event["type"] in (
-                EventType.SUMMARY_MARKER.value,
-                EventType.CONTEXT_RESET.value,
-            ):
-                return event
-        return None
+        return self._summary_manager.find_last_boundary_marker(self._events)
 
     def get_events_since_last_summary(
         self, event_types: list[str | EventType] | None = None
     ) -> list[dict[str, Any]]:
         """获取最近摘要标记之后的事件"""
         last_summary = self.find_last_summary_marker()
-        start_id = last_summary["id"] + 1 if last_summary else 0
-        return self.get_events(start_id, event_types=event_types)
+        events = self._summary_manager.get_events_since_marker(
+            self._events, last_summary
+        )
+        if event_types:
+            type_values = [t if isinstance(t, str) else t.value for t in event_types]
+            events = [e for e in events if e["type"] in type_values]
+        return events
+
+    # === LLM 上下文 ===
+
+    def build_context_for_llm(
+        self, system_prompt: str | None = None, max_recent_events: int | None = None
+    ) -> list[dict[str, Any]]:
+        """从事件流构建 LLM 上下文"""
+        return self._context_builder.build_context(
+            self._events, system_prompt, max_recent_events
+        )
 
     # === 持久化 ===
 
@@ -280,64 +218,11 @@ class SessionEventStream:
 
     def get_last_event(self) -> dict[str, Any] | None:
         """获取最后一个事件"""
-        if self._events:
-            return self._events[-1]
-        return None
+        return self._events[-1] if self._events else None
 
     def get_event_by_id(self, event_id: int) -> dict[str, Any] | None:
         """根据 ID 获取事件"""
         return self._event_index.get(event_id)
-
-    def build_context_for_llm(
-        self, system_prompt: str | None = None, max_recent_events: int | None = None
-    ) -> list[dict[str, Any]]:
-        """从事件流构建 LLM 上下文"""
-        messages: list[dict[str, Any]] = []
-
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-
-        last_boundary = self.find_last_boundary_marker()
-
-        if last_boundary:
-            event_type = last_boundary["type"]
-            data = last_boundary["data"]
-
-            if event_type == EventType.SUMMARY_MARKER.value:
-                summary_content = data.get("summary", "")
-                messages.append(
-                    {"role": "user", "content": f"[历史摘要]\n{summary_content}"}
-                )
-            elif event_type == EventType.CONTEXT_RESET.value:
-                preserved = data.get("preserved_context")
-                iteration = data.get("iteration", 0)
-                if preserved:
-                    messages.append(
-                        {
-                            "role": "system",
-                            "content": f"[迭代 {iteration} 状态摘要]\n{preserved}",
-                        }
-                    )
-
-        context_event_types: list[str | EventType] = [
-            EventType.USER_INPUT,
-            EventType.LLM_RESPONSE,
-            EventType.TOOL_RESULT,
-            EventType.SYSTEM_MESSAGE,
-        ]
-
-        start_id = last_boundary["id"] + 1 if last_boundary else 0
-        recent_events = self.get_events(start_id, event_types=context_event_types)
-
-        if max_recent_events and len(recent_events) > max_recent_events:
-            recent_events = recent_events[-max_recent_events:]
-
-        for event in recent_events:
-            msg = self._replay.event_to_message(event)
-            if msg:
-                messages.append(msg)
-
-        return messages
 
     def record_session_start(self, metadata: dict[str, Any] | None = None) -> int:
         """记录会话开始"""

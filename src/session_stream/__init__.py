@@ -10,11 +10,17 @@ Session 事件流模块
 - 类型定义移至 _types.py
 - 持久化逻辑移至 _persist.py
 - 重放逻辑移至 _replay.py
+- 清理逻辑移至 _cleanup.py
+- 摘要逻辑移至 _summary.py
+- 上下文构建移至 _context.py
 """
 
 from src.session_stream._types import EventType, MAX_EVENT_AGE_DAYS, MAX_IN_MEMORY_EVENTS
 from src.session_stream._persist import EventPersistence, _get_default_storage_path
 from src.session_stream._replay import StateReplay
+from src.session_stream._cleanup import EventCleanup
+from src.session_stream._summary import SummaryManager
+from src.session_stream._context import ContextBuilder
 
 __all__ = [
     "EventType",
@@ -22,5 +28,8 @@ __all__ = [
     "MAX_EVENT_AGE_DAYS",
     "EventPersistence",
     "StateReplay",
+    "EventCleanup",
+    "SummaryManager",
+    "ContextBuilder",
     "_get_default_storage_path",
 ]

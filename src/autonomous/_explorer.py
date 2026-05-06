@@ -32,17 +32,12 @@ logger = logging.getLogger("seed_agent")
 
 
 def _get_completion_promise_file() -> Path:
-    """获取完成标志文件路径（动态）
-
-    用于测试 mock。
-    """
+    """获取完成标志文件路径"""
     return _ensure_ralph_dir().parent / "completion_promise"
 
 
 class AutonomousExplorer:
     """自主探索执行器 (Ralph Loop 增强 + 四层防御体系)
-
-    重构后：组合使用子模块，提供清晰的公共 API。
 
     多层防御体系：
     - Layer 1: 预算警告注入（70%/90%阈值）
@@ -72,144 +67,11 @@ class AutonomousExplorer:
         self._config = get_autonomous_config()
         self._sop_content: str | None = load_sop()
 
-    # === 向后兼容属性访问器 ===
-
-    @property
-    def _idle_timeout(self) -> float:
-        """向后兼容：空闲超时时间"""
-        return self._idle_monitor._idle_timeout
-
-    @property
-    def _last_activity(self) -> float:
-        """向后兼容：上次活动时间"""
-        return self._idle_monitor._last_activity
-
-    @property
-    def _running(self) -> bool:
-        """向后兼容：监控是否运行"""
-        return self._idle_monitor._running
-
-    @property
-    def _task(self) -> Any:
-        """向后兼容：监控任务"""
-        return self._idle_monitor._task
-
-    @property
-    def _iteration_count(self) -> int:
-        """向后兼容：迭代计数"""
-        return self._task_executor._state_manager.get_iteration_count()
-
-    @_iteration_count.setter
-    def _iteration_count(self, value: int) -> None:
-        """向后兼容：设置迭代计数"""
-        self._task_executor._state_manager.set_iteration_count(value)
-
-    @property
-    def _ralph_start_time(self) -> float:
-        """向后兼容：会话开始时间"""
-        return self._task_executor._state_manager.get_start_time()
-
-    @_ralph_start_time.setter
-    def _ralph_start_time(self, value: float) -> None:
-        """向后兼容：设置会话开始时间"""
-        self._task_executor._state_manager.set_start_time(value)
-
-    @property
-    def _accumulated_duration(self) -> float:
-        """向后兼容：累计执行时间"""
-        return self._task_executor._state_manager.get_accumulated_duration()
-
-    @_accumulated_duration.setter
-    def _accumulated_duration(self, value: float) -> None:
-        """向后兼容：设置累计执行时间"""
-        self._task_executor._state_manager.set_accumulated_duration(value)
-
-    @property
-    def _empty_response_count(self) -> int:
-        """向后兼容：空响应计数"""
-        return self._task_executor._state_manager.get_empty_response_count()
-
-    @_empty_response_count.setter
-    def _empty_response_count(self, value: int) -> None:
-        """向后兼容：设置空响应计数"""
-        self._task_executor._state_manager._empty_response_count = value
-
-    @property
-    def _state_file(self) -> Path:
-        """向后兼容：状态文件路径"""
-        return self._task_executor._state_manager.get_state_file()
-
-    @_state_file.setter
-    def _state_file(self, value: Path) -> None:
-        """向后兼容：设置状态文件路径"""
-        self._task_executor._state_manager._state_file = value
-
-    @property
-    def _task_start_time(self) -> float:
-        """向后兼容：任务开始时间"""
-        return self._task_executor._defense._task_start_time
-
-    @_task_start_time.setter
-    def _task_start_time(self, value: float) -> None:
-        """向后兼容：设置任务开始时间"""
-        self._task_executor._defense._task_start_time = value
-
-    @property
-    def _action_history(self) -> list[dict[str, Any]]:
-        """向后兼容：工具调用历史"""
-        return self._task_executor._defense._action_history
-
-    @_action_history.setter
-    def _action_history(self, value: list[dict[str, Any]]) -> None:
-        """向后兼容：设置工具调用历史"""
-        self._task_executor._defense._action_history = value
-
-    @property
-    def _retry_count(self) -> int:
-        """向后兼容：重试计数"""
-        return self._task_executor._defense.get_retry_count()
-
-    @_retry_count.setter
-    def _retry_count(self, value: int) -> None:
-        """向后兼容：设置重试计数"""
-        self._task_executor._defense._retry_count = value
-
-    @property
-    def _budget_warning_sent(self) -> bool:
-        """向后兼容：预算警告已发送"""
-        return self._task_executor._defense._budget_warning_sent
-
-    @_budget_warning_sent.setter
-    def _budget_warning_sent(self, value: bool) -> None:
-        """向后兼容：设置预算警告状态"""
-        self._task_executor._defense._budget_warning_sent = value
-
-    @property
-    def _budget_urgent_sent(self) -> bool:
-        """向后兼容：紧急预算警告已发送"""
-        return self._task_executor._defense._budget_urgent_sent
-
-    @_budget_urgent_sent.setter
-    def _budget_urgent_sent(self, value: bool) -> None:
-        """向后兼容：设置紧急预算警告状态"""
-        self._task_executor._defense._budget_urgent_sent = value
-
-    @property
-    def _time_warning_sent(self) -> bool:
-        """向后兼容：时间警告已发送"""
-        return self._task_executor._defense._time_warning_sent
-
-    @_time_warning_sent.setter
-    def _time_warning_sent(self, value: bool) -> None:
-        """向后兼容：设置时间警告状态"""
-        self._task_executor._defense._time_warning_sent = value
-
     # === 公共 API ===
 
     def record_activity(self) -> None:
         """记录用户活动时间"""
         self._idle_monitor.record_activity()
-        self._task_executor._state_manager._ralph_start_time = 0.0
 
     def get_idle_time(self) -> float:
         """获取当前空闲时间（秒）"""
@@ -234,11 +96,122 @@ class AutonomousExplorer:
         """停止空闲监控"""
         await self._idle_monitor.stop()
 
-    # === 内部方法（委托给子模块）===
+    # === 状态访问（向后兼容）===
 
-    def _load_sop(self) -> None:
-        """加载自主探索 SOP"""
-        self._sop_content = load_sop()
+    @property
+    def _idle_timeout(self) -> float:
+        return self._idle_monitor._idle_timeout
+
+    @property
+    def _last_activity(self) -> float:
+        return self._idle_monitor._last_activity
+
+    @property
+    def _running(self) -> bool:
+        return self._idle_monitor._running
+
+    @property
+    def _task(self) -> Any:
+        return self._idle_monitor._task
+
+    @property
+    def _iteration_count(self) -> int:
+        return self._task_executor._state_manager.get_iteration_count()
+
+    @_iteration_count.setter
+    def _iteration_count(self, value: int) -> None:
+        self._task_executor._state_manager.set_iteration_count(value)
+
+    @property
+    def _ralph_start_time(self) -> float:
+        return self._task_executor._state_manager.get_start_time()
+
+    @_ralph_start_time.setter
+    def _ralph_start_time(self, value: float) -> None:
+        self._task_executor._state_manager.set_start_time(value)
+
+    @property
+    def _accumulated_duration(self) -> float:
+        return self._task_executor._state_manager.get_accumulated_duration()
+
+    @_accumulated_duration.setter
+    def _accumulated_duration(self, value: float) -> None:
+        self._task_executor._state_manager.set_accumulated_duration(value)
+
+    @property
+    def _empty_response_count(self) -> int:
+        return self._task_executor._state_manager.get_empty_response_count()
+
+    @_empty_response_count.setter
+    def _empty_response_count(self, value: int) -> None:
+        self._task_executor._state_manager._empty_response_count = value
+
+    @property
+    def _state_file(self) -> Path:
+        return self._task_executor._state_manager.get_state_file()
+
+    @_state_file.setter
+    def _state_file(self, value: Path) -> None:
+        self._task_executor._state_manager._state_file = value
+
+    @property
+    def _task_start_time(self) -> float:
+        return self._task_executor._defense._task_start_time
+
+    @_task_start_time.setter
+    def _task_start_time(self, value: float) -> None:
+        self._task_executor._defense._task_start_time = value
+
+    @property
+    def _action_history(self) -> list[dict[str, Any]]:
+        return self._task_executor._defense._action_history
+
+    @_action_history.setter
+    def _action_history(self, value: list[dict[str, Any]]) -> None:
+        self._task_executor._defense._action_history = value
+
+    @property
+    def _retry_count(self) -> int:
+        return self._task_executor._defense.get_retry_count()
+
+    @_retry_count.setter
+    def _retry_count(self, value: int) -> None:
+        self._task_executor._defense._retry_count = value
+
+    @property
+    def _budget_warning_sent(self) -> bool:
+        return self._task_executor._defense._budget_warning_sent
+
+    @_budget_warning_sent.setter
+    def _budget_warning_sent(self, value: bool) -> None:
+        self._task_executor._defense._budget_warning_sent = value
+
+    @property
+    def _budget_urgent_sent(self) -> bool:
+        return self._task_executor._defense._budget_urgent_sent
+
+    @_budget_urgent_sent.setter
+    def _budget_urgent_sent(self, value: bool) -> None:
+        self._task_executor._defense._budget_urgent_sent = value
+
+    @property
+    def _time_warning_sent(self) -> bool:
+        return self._task_executor._defense._time_warning_sent
+
+    @_time_warning_sent.setter
+    def _time_warning_sent(self, value: bool) -> None:
+        self._task_executor._defense._time_warning_sent = value
+
+    def get_state(self) -> dict[str, Any]:
+        """获取当前状态"""
+        return {
+            "iteration_count": self._iteration_count,
+            "idle_time": self.get_idle_time(),
+            "running": self._running,
+            "sop_loaded": self._sop_content is not None,
+        }
+
+    # === 内部方法（委托给子模块）===
 
     def _check_completion_promise(self) -> bool:
         """检查外部完成标志"""
@@ -289,8 +262,8 @@ class AutonomousExplorer:
 
     def _load_todo_content(self) -> str:
         """加载 TODO 内容"""
-        seed_dir = get_seed_dir_with_fallback()
-        return self._task_executor._todo_cache.load_todo_content(seed_dir)
+        from src.shared_config import get_seed_dir_with_fallback
+        return self._task_executor._todo_cache.load_todo_content(get_seed_dir_with_fallback())
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
         """构建自主探索 prompt"""
@@ -319,7 +292,7 @@ class AutonomousExplorer:
         return await self._task_executor._run_ralph_loop(max_budget)
 
     async def _handle_response(self, response: str | None) -> str | None:
-        """处理响应并返回下一轮的 prompt"""
+        """处理响应"""
         return await self._task_executor._handle_response(response)
 
 
