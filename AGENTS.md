@@ -344,7 +344,7 @@ RalphSubagentOrchestrator 执行模式:
 
 基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-06，测试通过: 1147 passed）：
 
-### 已实现（P0+P1+部分P2）
+### 已实现（P0+P1+P2 全部完成）
 
 | 优化点 | 来源 | 实现位置 |
 |------|------|----------|
@@ -359,16 +359,20 @@ RalphSubagentOrchestrator 执行模式:
 | win_rate 字段 | mia | `src/tools/session/_rate_calculation.py` |
 | 渐进式披露 Skills | hermes | `src/tools/skill_loader/_skillloader.py` |
 | check_fn 可用性检查 | hermes | `src/tools/__init__.py` |
+| **延迟加载机制** | qwen-code (P2) | `src/tools/_registry.py` ToolFactory |
+| **Context Fencing** | hermes (P2) | `src/tools/memory/_memory_search.py` |
+| **行动验证原则** | genericagent (P2) | `src/tools/memory/_memory_write.py` VerifiedSource |
+| **记忆去重阈值** | mia (P2) | `src/tools/memory/_memory_write.py` DEDUPLICATION_THRESHOLD |
+| **Skills Hub 集成** | hermes (P2) | `src/tools/skill_loader/_hub.py` SkillsHub |
+| **TTRL 持续学习** | mia (P2) | `src/tools/memory/_ttrl.py` TTRLProcessor |
 | **提示缓存保护机制** | hermes (P2) | `src/client/_prompt_caching.py` |
 | **命令钩子执行器** | qwen-code (P2) | `src/lifecycle_hooks/_command_runner.py` |
 | **HTTP 钩子执行器** | qwen-code (P2) | `src/lifecycle_hooks/_http_runner.py` |
 
-### 待落地（剩余 P2）
+### 待落地（P3 规划）
 
 详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
 
-- Skills Hub 集成 (hermes)
-- TTRL 持续学习 (mia)
 - Snapshot-based Sandbox 持久化 (open-agents)
 
 ---

@@ -9,52 +9,95 @@ seed-agent/
 ├── main.py                  # Interactive CLI entry point
 ├── requirements.txt         # Python dependencies
 │
-├── src/                     # Core engine
+├── src/                     # Core engine (modular architecture)
 │   ├── __init__.py
-│   ├── agent_loop.py        # Main agent loop (conversation lifecycle, tool execution)
-│   ├── autonomous.py        # Idle-time autonomous exploration (Ralph enhanced)
-│   ├── client.py            # LLM Gateway (OpenAI compatible, multi-provider fallback)
-│   ├── models.py            # Pydantic configuration validation
-│   ├── ralph_loop.py        # Long-cycle deterministic task executor
-│   ├── scheduler.py         # Task scheduling and management
-│   ├── rate_limiter.py      # Token bucket rate limiter for API call throttling
-│   ├── rate_limit_db.py     # SQLite storage for rate limit tracking
-│   ├── request_queue.py    # Async request queue with priority support
-│   ├── abort_signal.py      # Cancel signal propagation (AbortController pattern)
-│   ├── abort_signal_core/   # Cancel signal core types (AbortSignal, CancellationToken)
-│   ├── subagent.py          # Subagent instance with isolated context
-│   ├── subagent_manager.py  # Subagent lifecycle and parallel execution manager
-│   └── tools/               # Tool registry system
-│       ├── __init__.py      # ToolRegistry class with schema inference
-│       ├── builtin_tools.py # 5 core tools (file ops, code exec)
-│       ├── memory_tools.py  # L1-L4 memory management
-│       ├── skill_loader.py  # Dynamic skill loading (progressive disclosure)
-│       ├── ralph_tools.py   # Ralph Loop management tools
-│       ├── session_db.py    # SQLite+FTS5 session storage (Chinese FTS)
-│       └── subagent_tools.py # Subagent spawning and management tools
+│   ├── agent_loop/          # Main agent loop (拆分为 6 个子模块)
+│   │   ├── _init.py         # 初始化逻辑
+│   │   ├── _observability.py # 可观测性集成
+│   │   ├── _summarizer.py   # 消息摘要
+│   │   ├── _skill_tracker.py # 技能追踪
+│   │   ├── _execution.py    # 工具执行
+│   │   └── _user_interaction.py # 用户交互
+│   ├── autonomous/          # 自主探索 (拆分为 7 个子模块)
+│   │   ├── _idle_monitor.py # 空闲监控
+│   │   ├── _explorer.py     # 探索执行器
+│   │   ├── _state_manager.py # 状态管理
+│   │   ├── _task_executor.py # 任务执行
+│   │   ├── _prompt_builder.py # Prompt 构建
+│   │   ├── _sop_loader.py   # SOP 加载
+│   │   └── _defense.py      # 防御机制
+│   ├── client/              # LLM Gateway (拆分为多个子模块)
+│   │   ├── _streaming.py    # 流式响应
+│   │   ├── _execution.py    # 非流式执行
+│   │   ├── _prompt_caching.py # 提示缓存保护
+│   │   └── streaming_core/  # 流式核心模块
+│   │   └ execution_core/    # 执行核心模块
+│   ├── harness/             # 控制器 (拆分为 12 个子模块)
+│   │   ├── _streaming.py    # 流式处理
+│   │   ├── _streaming_loop.py # 流式循环
+│   │   ├── _tool_router.py  # 工具路由
+│   │   ├── _cycle.py        # 执行周期
+│   │   └── lifecycle_ctx/   # 钩子上下文
+│   ├── sandbox/             # 工作台 (拆分为 3 个子模块)
+│   │   ├── sandbox.py       # 主入口
+│   │   └ sandbox_core/      # 核心实现
+│   ├── lifecycle_hooks/     # 生命周期钩子 (拆分为多个子模块)
+│   │   ├── _message_bus.py  # 消息总线
+│   │   ├── _command_runner.py # 命令钩子
+│   │   ├── _http_runner.py  # HTTP 钩子
+│   │   └── _aggregator.py   # 钩子聚合器
+│   ├── tools/               # 工具注册系统 (拆分为多个子模块)
+│   │   ├── __init__.py      # ToolRegistry + ToolKind + PermissionDecision
+│   │   ├── _registry.py     # 延迟加载机制 (ToolFactory)
+│   │   ├── builtin_tools.py # 5 个核心工具
+│   │   ├── memory/          # 记忆工具 (拆分为 9 个子模块)
+│   │   │   ├── _memory_write.py # 行动验证 + 去重
+│   │   │   ├── _memory_search.py # Context Fencing
+│   │   │   ├── _ttrl.py     # TTRL 持续学习
+│   │   │   └── _extract_cursor.py # 提取光标
+│   │   ├── skill_loader/    # 技能加载器 (拆分为 9 个子模块)
+│   │   │   ├── _skillloader.py # 渐进式披露
+│   │   │   ├── _hub.py      # Skills Hub 集成
+│   │   │   └── _index.py    # 技能索引
+│   │   ├── session_db.py    # SQLite+FTS5 会话存储
+│   │   └── subagent_tools/  # Subagent 工具
+│   ├── security/            # 安全模块
+│   │   ├── credential_isolated/ # 凭证隔离沙盒
+│   │   ├── risk_classifier/ # 命令风险分类
+│   │   ├── secure_harness/  # 安全 Harness
+│   │   └ vault/             # 凭证 Vault
+│   ├── collaboration/       # 多智能体协作
+│   ├── ralph_loop.py        # 长周期任务执行器
+│   ├── scheduler/           # 任务调度 (拆分为 3 个子模块)
+│   ├── subagent/            # Subagent 管理 (拆分为多个子模块)
+│   └ context/               # 上下文裁剪
+│   └ abort_signal/          # 取消信号
+│   └ request_queue/         # 请求队列
+│   └ rate_limiter.py        # Token Bucket 限流
+│   └ rate_limit_db.py       # SQLite 限流状态
+│   └ models.py              # Pydantic 配置验证
 │
-├── core_principles/         # System prompts and core principles
-│   ├── system_prompts_en.md # English system prompts
-│   └── system_prompts_zh.md # Chinese system prompts
+├── core_principles/         # 系统提示和核心原则 (禁止修改)
+│   ├── system_prompts_en.md # 英文系统提示
+│   └── system_prompts_zh.md # 中文系统提示
 │
-├── memory/                  # Memory system (L1-L4 hierarchy)
-│   ├── memory.md            # Memory hierarchy details
-│   └── auto_dream.md        # Memory consolidation SOP
+├── memory/                  # 记忆系统 (L1-L4 层级)
+│   ├── memory.md            # 记忆层级详情
+│   └── auto_dream.md        # 记忆整合 SOP
 │
-├── auto/                    # Autonomous exploration module
-│   └── 自主探索 SOP.md       # Autonomous exploration SOP (Chinese)
+├── auto/                    # 自主探索模块
+│   └── 自主探索 SOP.md       # 自主探索 SOP
 │
-├── docs/                    # Design documentation
-│   ├── L4_SQLite_FTS5_Design.md        # L4 storage migration design
-│   ├── long_cycle_loop_enhancement_design.md  # Ralph Loop design
-│   └── ralph_loop.md        # Ralph Loop concept documentation
+├── docs/                    # 设计文档
+│   ├── wiki_knowledge_integration_analysis.md # Wiki 知识落地分析
+│   ├── harness/             # Harness 系列设计文档
+│   ├── L4_SQLite_FTS5_Design.md # L4 存储迁移设计
+│   └── ralph_loop.md        # Ralph Loop 概念
 │
-├── examples/                # Usage examples
-│   └── simple_agent.py      # Basic agent usage demo
-│
-├── scripts/                 # Utility scripts
-├── tests/                   # Test files
-└── tasks/                   # Task storage directory
+├── examples/                # 使用示例
+├── scripts/                 # 工具脚本
+├── tests/                   # 测试文件
+└── tasks/                   # 任务存储目录
 ```
 
 ---
@@ -482,6 +525,42 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 
 ---
 
+## Wiki Knowledge Integration
+
+基于 E:\projects\wiki 目录下五个开源项目的架构分析，提取并落地的优化点：
+
+### 已实现（P0+P1+P2 全部完成）
+
+| 优化点 | 来源 | 实现位置 | 状态 |
+|------|------|----------|------|
+| ToolKind 枚举分类 | qwen-code | `src/tools/__init__.py` | ✅ |
+| PermissionDecision 三级权限 | qwen-code | `src/tools/__init__.py` | ✅ |
+| LoopDetectionService | qwen-code | `src/harness/_loop_detection.py` | ✅ |
+| 整合锁机制 | qwen-code | `src/tools/memory/_consolidation_lock.py` | ✅ |
+| MessageBus.request() | qwen-code | `src/lifecycle_hooks/_message_bus.py` | ✅ |
+| 延迟加载机制 (ToolFactory) | qwen-code (P2) | `src/tools/_registry.py` | ✅ |
+| 命令钩子执行器 | qwen-code (P2) | `src/lifecycle_hooks/_command_runner.py` | ✅ |
+| HTTP 钩子执行器 | qwen-code (P2) | `src/lifecycle_hooks/_http_runner.py` | ✅ |
+| 渐进式披露 Skills | hermes | `src/tools/skill_loader/_skillloader.py` | ✅ |
+| Context Fencing | hermes (P2) | `src/tools/memory/_memory_search.py` | ✅ |
+| Skills Hub 集成 | hermes (P2) | `src/tools/skill_loader/_hub.py` | ✅ |
+| 提示缓存保护机制 | hermes (P2) | `src/client/_prompt_caching.py` | ✅ |
+| 行动验证原则 (VerifiedSource) | genericagent (P2) | `src/tools/memory/_memory_write.py` | ✅ |
+| win_rate 字段 | mia | `src/tools/session/_rate_calculation.py` | ✅ |
+| 记忆去重阈值 | mia (P2) | `src/tools/memory/_memory_write.py` | ✅ |
+| TTRL 持续学习 | mia (P2) | `src/tools/memory/_ttrl.py` | ✅ |
+| Subagent 上下文隔离 | open-agents | `src/subagent.py` | ✅ |
+
+详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
+
+---
+
 ## Acknowledgments
 
-Special thanks to [GenericAgent](https://github.com/lsdefine/GenericAgent) for inspiration to this project.
+Special thanks to the following projects for architectural inspiration:
+
+- [GenericAgent](https://github.com/lsdefine/GenericAgent) - Agent Loop、行动验证原则
+- [Hermes-Agent](https://github.com/ThakraX/Hermes-Agent) - Skills 系统、Context Fencing
+- [MIA](https://github.com/agiresearch/MIA) - 记忆系统、TTRL 持续学习
+- [Open-Agents](https://github.com/xlang-ai/OpenAgents) - Subagent 系统
+- [Qwen-Code](https://github.com/QwenLM/Qwen-Code) - 工具系统、Hooks、三级权限
