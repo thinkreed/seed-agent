@@ -654,13 +654,16 @@ class TestTodoLoading(unittest.TestCase):
     def test_load_nonexistent_todo(self):
         """测试加载不存在的 TODO 文件"""
         # 需要在创建 explorer 之前 mock，避免初始化时读取真实 TODO
-        # 由于测试使用 sys.path.insert(0, 'src')，模块名是 'autonomous'，需要 mock 相应路径
-        with patch('autonomous._executor_core.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
-            with patch('autonomous._explorer.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
-                with patch('autonomous._state_manager.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
-                    explorer = AutonomousExplorer(self.mock_agent)
-                    result = explorer._load_todo_content()
-                    self.assertEqual(result, "")
+        # _load_todo_content 方法内部从 src.shared_config 导入，需要 mock 该路径
+        # 同时 mock executor_core 中的 TodoCache 创建，确保缓存为空
+        with patch('src.shared_config.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
+            with patch('src.autonomous._executor_core.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
+                explorer = AutonomousExplorer(self.mock_agent)
+                # 清理缓存，确保从新路径读取
+                explorer._task_executor._todo_cache._cache = None
+                explorer._task_executor._todo_cache._cache_seed_dir = None
+                result = explorer._load_todo_content()
+                self.assertEqual(result, "")
 
 
 class TestTaskSignals(unittest.TestCase):
