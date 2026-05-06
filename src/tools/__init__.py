@@ -19,11 +19,13 @@ Wiki 知识落地 (基于 Qwen-Code 工具系统设计):
 - PermissionDecision: 权限三级模式 (allow/ask/deny)
 - MUTATOR_KINDS: 具有副作用的工具类型
 - CONCURRENCY_SAFE_KINDS: 可安全并发执行的工具类型
+- ToolFactory: 延迟加载工厂函数类型 (P2 新增)
+- register_factory/ensure_tool/warm_all: 延迟加载机制 (P2 新增)
 
-版本: v2.2 (模块拆分版)
+版本: v2.3 (Wiki 知识落地 P2 版)
 """
 
-from ._registry import ToolRegistry
+from ._registry import ToolFactory, ToolRegistry
 from ._types import (
     CONCURRENCY_SAFE_KINDS,
     MUTATOR_KINDS,
@@ -38,6 +40,8 @@ __all__ = [
     "PermissionDecision",
     "MUTATOR_KINDS",
     "CONCURRENCY_SAFE_KINDS",
+    # 延迟加载机制 (Wiki 知识落地 P2)
+    "ToolFactory",
     # 核心类
     "ToolRegistry",
 ]

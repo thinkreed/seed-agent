@@ -44,6 +44,7 @@ from ._memory_search import (
     read_memory_index,
     search_memory,
     start_long_term_update,
+    _build_memory_context_block,  # Wiki 知识落地: Context Fencing
 )
 from ._session_history import (
     _list_sessions,
@@ -126,6 +127,7 @@ __all__ = [
     "read_memory_index",
     "search_memory",
     "start_long_term_update",
+    "_build_memory_context_block",  # Wiki 知识落地: Context Fencing
     "_save_session_history",
     "_load_session_history",
     "_list_sessions",
