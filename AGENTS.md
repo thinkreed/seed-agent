@@ -90,7 +90,7 @@ agent.inject_user_input(AskUserResult(
 | **LifecycleHooks** | `src/lifecycle_hooks/` | 确定性生命周期钩子：关键节点自动触发、优先级执行、统计，已拆分为 `_global`, `_registry`, `_types`, `_aggregator`, `_command_runner`, `_http_runner` |
 | **LifecycleMessageBus** | `src/lifecycle_hooks/_message_bus.py` | 消息总线：请求/响应模式，AbortSignal支持 |
 | **CommandHookRunner** | `src/lifecycle_hooks/_command_runner.py` | 命令钩子执行器：外部命令触发、超时控制、白名单检查 |
-| **HttpHookRunner** | `src/lifecycle_hooks/_http_runner.py` | HTTP 钩子执行器：Webhook 触发、重试机制、域名白名单 |
+| **HttpHookRunner** | `src/lifecycle_hooks/_http_runner.py` + `_http_runner_*` | HTTP 钩子执行器：Webhook 触发、重试机制、域名白名单，已拆分为 `_types`, `_async`, `_sync` |
 | **LifecycleCtxBuilder** | `src/harness/lifecycle_ctx/` | 钩子上下文构建，已拆分为 `_session`, `_llm`, `_response`, `_tool` |
 | **BuiltinHooks** | `src/builtin_hooks.py` + `src/_*_hooks.py` | 内置钩子定义：会话、工具、LLM、响应等全生命周期覆盖，已拆分为 `_session_hooks`, `_tool_hooks`, `_llm_hooks`, `_response_hooks` |
 | **LLMGateway** | `src/client.py` | 多Provider网关：FallbackChain自动降级、重试逻辑 |
@@ -151,14 +151,14 @@ agent.inject_user_input(AskUserResult(
 |------|------|------|
 | **builtin_tools** | `src/tools/builtin_tools.py` | 5个核心工具：文件读写/编辑、代码执行、用户交互 |
 | **memory_tools** | `src/tools/memory_tools.py` | L1-L4记忆管理、经验沉淀 |
-| **skill_loader** | `src/tools/skill_loader/` | 动态技能加载（渐进式披露），已拆分为 `_types`, `_cache`, `_loader`, `_matching`, `_metadata`, `_api`, `_skillloader`, `_index` |
+| **skill_loader** | `src/tools/skill_loader/` | 动态技能加载（渐进式披露），已拆分为 `_types`, `_cache`, `_loader`, `_matching`, `_metadata`, `_api`, `_skillloader`, `_index`, `_hub` (Wiki P2: Skills Hub) |
 | **ralph_tools** | `src/tools/ralph_tools.py` + `src/tools/ralph_tools_core/` | Ralph Loop管理：启动/状态检查/完成标记，已拆分为 `_start`, `_status`, `_completion` |
 | **vision_api** | `src/tools/vision_api.py` + `src/tools/vision_api_core/` | 视觉识别：截图/图像分析，已拆分为 `_capture`, `_analysis`, `_utils` |
 | **procmem_scanner** | `src/tools/procmem_scanner.py` + `src/tools/procmem_scanner_core/` | 进程内存扫描：Hex/字符串搜索，已拆分为 `_types`, `_winapi`, `_scan` |
 | **subagent_tools** | `src/tools/subagent_tools.py` + `src/tools/subagent_tools_core/` | Subagent管理：创建/等待/聚合/终止，已拆分为 `_sync_tools`, `_async_tools` |
 | **session_db** | `src/tools/session_db.py` | SQLite+FTS5会话存储（jieba中文分词） |
 | **ask_user_types** | `src/tools/ask_user_types.py` + `src/tools/ask_user_types_core/` | Ask User数据类型，已拆分为 `_types`, `_request`, `_result_state` |
-| **memory** | `src/tools/memory/__init__.py` + `src/tools/memory/_*_wrapper.py` | 记忆工具：已拆分为 `_user_modeling_wrapper`, `_archive_wrapper` |
+| **memory** | `src/tools/memory/__init__.py` + `src/tools/memory/_*.py` | 记忆工具：已拆分为 `_user_modeling_wrapper`, `_archive_wrapper`, `_memory_write_types`, `_memory_write_validation`, `_memory_write_dedup`, `_memory_write_utils`, `_ttrl_types`, `_ttrl_processor`, `_ttrl_api` (Wiki P2: 行动验证 + 去重 + TTRL) |
 | **collaboration_tools** | `src/tools/collaboration_tools.py` | 多智能体协作工具：会话管理、三种模式操作、消息传递 |
 
 ### Ralph Loop 机制

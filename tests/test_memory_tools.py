@@ -40,14 +40,18 @@ def temp_memory_dir():
     with open(os.path.join(temp_dir, 'notes.md'), 'w', encoding='utf-8') as f:
         f.write("# L1 Index\n\n- Test Pointer")
 
-    # Patch _get_memory_root at its definition location in _memory_write.py
-    # The function is defined in src/tools/memory/_memory_write.py
-    patcher = patch('src.tools.memory._memory_write._get_memory_root', return_value=Path(temp_dir))
+    # Patch _get_memory_root at its definition location in _memory_write_utils.py
+    # The function is defined in src/tools/memory/_memory_write_utils.py
+    patcher = patch('src.tools.memory._memory_write_utils._get_memory_root', return_value=Path(temp_dir))
+    # Also patch the imported version in _memory_write.py for compatibility
+    patcher2 = patch('src.tools.memory._memory_write._get_memory_root', return_value=Path(temp_dir))
     patcher.start()
+    patcher2.start()
 
     yield temp_dir
 
     patcher.stop()
+    patcher2.stop()
     if os.path.exists(temp_dir):
         shutil.rmtree(temp_dir)
 
