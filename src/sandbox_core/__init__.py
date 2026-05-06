@@ -15,6 +15,7 @@ from src.sandbox_core._types import (
 )
 from src.sandbox_core._path import PathMapper, PermissionChecker
 from src.sandbox_core._execution import ToolExecutor
+from src.sandbox_core._compat import SandboxCompatMixin
 
 __all__ = [
     # 类型
@@ -30,4 +31,6 @@ __all__ = [
     "PermissionChecker",
     # 执行
     "ToolExecutor",
+    # 向后兼容
+    "SandboxCompatMixin",
 ]

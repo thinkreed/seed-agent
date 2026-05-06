@@ -1,5 +1,4 @@
-"""
-Sandbox (工作台) 模块
+"""Sandbox (工作台) 模块
 
 基于 Harness Engineering "三件套解耦架构" 设计：
 - Sandbox 是工作台，提供隔离的执行环境
@@ -8,9 +7,10 @@ Sandbox (工作台) 模块
 - 不存储凭证
 
 重构说明：
-- 类型定义移至 sandbox_core/_types.py
-- 路径映射移至 sandbox_core/_path.py
-- 执行逻辑移至 sandbox_core/_execution.py
+- 类型定义: sandbox_core/_types.py
+- 路径映射: sandbox_core/_path.py
+- 执行逻辑: sandbox_core/_execution.py
+- 向后兼容: sandbox_core/_compat.py
 """
 
 import logging
@@ -26,6 +26,7 @@ from src.sandbox_core import (
     PathMapper,
     PermissionAction,
     PermissionChecker,
+    SandboxCompatMixin,
     SandboxPermission,
     ToolExecutor,
 )
@@ -44,7 +45,7 @@ def _get_default_sandbox_root() -> Path:
         return Path.home() / ".seed" / "sandbox"
 
 
-class Sandbox:
+class Sandbox(SandboxCompatMixin):
     """隔离的执行沙盒
 
     三件套解耦架构中的"工作台"层：
@@ -60,7 +61,6 @@ class Sandbox:
     - 凭证隔离：不存储凭证
     """
 
-    # 类属性（向后兼容）
     ISOLATION_LEVELS = ISOLATION_LEVELS
     PATH_KEYS = [
         "path",
@@ -75,8 +75,6 @@ class Sandbox:
         "base_path",
         "output_path",
     ]
-
-    # 默认权限配置
     DEFAULT_PERMISSIONS: dict[str, SandboxPermission] = {
         name: SandboxPermission(name, PermissionAction.ALLOW)
         for name in DEFAULT_TOOL_NAMES
@@ -90,28 +88,16 @@ class Sandbox:
         permissions: dict[str, SandboxPermission] | None = None,
         workspace_path: Path | None = None,
     ):
-        """初始化 Sandbox
-
-        Args:
-            isolation_level: 隔离级别
-            file_system_root: 沙盒文件系统根目录
-            network_policy: 网络策略 {"allow": [...], "deny": [...]}
-            permissions: 权限配置
-            workspace_path: 工作目录映射
-        """
         self.isolation_level = isolation_level
         self._fs_root = file_system_root or _get_default_sandbox_root()
         self._network_policy = network_policy or {"allow": ["*"], "deny": []}
         self._permissions = permissions or self.DEFAULT_PERMISSIONS.copy()
         self._workspace_path = workspace_path or Path.cwd()
 
-        # 工具注册表
         self._tools: ToolRegistry | None = None
-
-        # 凭证代理
         self._credential_proxy: Any | None = None
 
-        # 核心组件（使用拆分模块）
+        # 核心组件
         self._path_mapper = PathMapper(self._fs_root, self._workspace_path)
         self._permission_checker = PermissionChecker(
             self._permissions, self._path_mapper
@@ -120,9 +106,7 @@ class Sandbox:
             self._tools, self._permissions, self._fs_root, self._workspace_path
         )
 
-        # 确保沙盒目录存在
         os.makedirs(self._fs_root, exist_ok=True)
-
         logger.info(
             f"Sandbox initialized: isolation={isolation_level.value}, "
             f"fs_root={self._fs_root}, workspace={self._workspace_path}"
@@ -154,30 +138,10 @@ class Sandbox:
     async def execute_tools(self, tool_calls: list[dict]) -> list[dict[str, Any]]:
         """在隔离环境中执行工具"""
         results: list[dict[str, Any]] = []
-
         for tc in tool_calls:
             result = await self._execute_single_tool(tc)
             results.append(result)
-
         return results
-
-    # === 代理方法（向后兼容测试） ===
-
-    def _map_single_path(self, path: str) -> str:
-        """映射单个路径（向后兼容）"""
-        return self._path_mapper._map_single_path(path)
-
-    def _map_paths(self, args: dict[str, Any]) -> dict[str, Any]:
-        """路径映射（向后兼容）"""
-        return self._path_mapper.map_paths(args)
-
-    def _check_permission(self, tool_name: str, args: dict[str, Any]) -> bool:
-        """权限检查（向后兼容）"""
-        return self._permission_checker.check_permission(tool_name, args)
-
-    def _truncate_output(self, output: str, tool_name: str) -> str:
-        """输出截断（向后兼容）"""
-        return self._tool_executor._truncate_output(output, tool_name)
 
     async def _execute_single_tool(self, tool_call: dict) -> dict[str, Any]:
         """执行单个工具"""
@@ -194,10 +158,7 @@ class Sandbox:
                 "content": "Error: Failed to parse arguments: invalid JSON",
             }
 
-        # 路径映射
         mapped_args = self._path_mapper.map_paths(tool_args)
-
-        # 权限检查
         if not self._permission_checker.check_permission(tool_name, mapped_args):
             return {
                 "tool_call_id": tool_call_id,
@@ -205,7 +166,6 @@ class Sandbox:
                 "content": f"Error: Permission denied for tool '{tool_name}' in sandbox",
             }
 
-        # 执行
         try:
             result = await self._tool_executor._execute_in_process(tool_name, mapped_args)
             truncated = self._tool_executor._truncate_output(str(result), tool_name)
@@ -217,7 +177,7 @@ class Sandbox:
                 "content": f"Error: {type(e).__name__}: {str(e)[:500]}",
             }
 
-    # === 路径映射（代理方法） ===
+    # === 路径映射 ===
 
     def reverse_map_path(self, host_path: str) -> str:
         """反向映射：主机路径 → 沙盒内路径"""
@@ -309,7 +269,6 @@ class Sandbox:
         return None
 
 
-# 导出类型（向后兼容）
 __all__ = [
     "Sandbox",
     "IsolationLevel",
