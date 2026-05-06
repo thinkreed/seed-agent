@@ -1,12 +1,15 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-06 (更新: P2 全部完成)
+## 日期: 2026-05-07 (更新: P3 评估完成)
 
 ## 概述
 
 基于 E:\projects\wiki 目录下五个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
-**验证结果**: 所有 P0 + P1 + P2 优化点已实现。
+**验证结果**: 所有 P0 + P1 + P2 优化点已实现，P3 评估完成。
+
+**P3 评估 (2026-05-07)**:
+- Snapshot-based Sandbox 持久化: **不适用** - seed-agent 使用本地执行环境，文件系统本身持久化，无需云端快照机制
 
 **新增内容 (2026-05-06 P2)**:
 - 延迟加载机制: `ToolFactory`, `register_factory`, `ensure_tool`, `warm_all` (Qwen-Code 设计)
@@ -166,7 +169,8 @@ NOT new user input. Do not respond to it as if the user asked these questions.]
 | 2026-05-05 | P0 全部 | 1130 passed |
 | 2026-05-06 早期 | P0 + P1 大部分 | 1132 passed |
 | 2026-05-06 中期 | P0 + P1 全部 | 1147 passed |
-| **2026-05-06 当前** | **P0 + P1 + P2 全部** | **待验证** |
+| 2026-05-06 P2 | P0 + P1 + P2 全部 | 1147 passed |
+| **2026-05-07** | **P0+P1+P2 全部 + P3 评估完成** | **1147 passed** |
 
 ---
 
@@ -247,7 +251,34 @@ NOT new user input. Do not respond to it as if the user asked these questions.]
 
 ---
 
-## 五、参考资料
+## 六、P3 评估详情 (2026-05-07)
+
+### 6.1 Snapshot-based Sandbox 持久化 (Open-Agents 设计)
+
+**来源**: `E:\projects\wiki\open-agents\03-sandbox-package.md`
+
+**Open-Agents 实现**:
+- `snapshot()` 方法 - 创建云端 Sandbox 快照，返回 `snapshotId`
+- `restoreSnapshotId` - 从快照恢复 Sandbox 状态
+- `SandboxState` 持久化 - 包含 `sandboxName`, `snapshotId`, `files` 等
+
+**适用性评估**: **不适用**
+
+**原因**:
+1. seed-agent 使用本地执行环境 (`~/.seed/sandbox/`)
+2. 本地文件系统本身持久化，无需云端快照
+3. 进程状态无法通过快照保存（云端 Sandbox 通过虚拟机快照实现）
+4. 会话恢复已有独立机制 (`SessionEventStream`, `RalphState`)
+
+**替代方案**:
+- 如需增强 Sandbox 持久化，可考虑：
+  - 文件变更追踪（类似 `files` 字段）
+  - Sandbox 状态序列化 (`getState()`)
+- 但这些功能优先级较低，暂不实施
+
+---
+
+## 七、参考资料
 
 - genericagent: `E:\projects\wiki\genericagent\`
 - hermes-agent: `E:\projects\wiki\hermes-agent\`
