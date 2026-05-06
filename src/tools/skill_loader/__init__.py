@@ -8,11 +8,20 @@
 4. 分类分组索引
 5. 三级渐进式披露: 索引(Tier1) → 内容(Tier2) → 参考文件(Tier3)
 
+Wiki 知识落地 P2 (Hermes-Agent):
+6. Skills Hub 集成 - GitHub/skills.sh 技能发现
+7. Trust Levels - builtin/trusted/community 分级
+
 使用方法:
     from src.tools.skill_loader import SkillLoader, load_skill
 
     loader = SkillLoader()
     content = loader.load_skill_content("my-skill")
+
+    # Skills Hub
+    from src.tools.skill_loader import skills_hub_list, skills_hub_install
+    skills_hub_list()  # 发现社区技能
+    skills_hub_install("example-skill")  # 安装技能
 """
 
 # 主类
@@ -38,6 +47,23 @@ from .skill_cache import SNAPSHOT_PATH, build_manifest, clear_snapshot, load_sna
 
 # 安全
 from .skill_security import INJECTION_PATTERNS, scan_for_injections, validate_path_within_dir, validate_skill_structure
+
+# Wiki 知识落地 P2: Skills Hub 集成 (Hermes-Agent)
+from ._hub import (
+    TrustLevel,
+    SkillSourceType,
+    HubSkillInfo,
+    HubSearchResult,
+    SkillSource,
+    GitHubSource,
+    WellKnownSkillSource,
+    SkillsHub,
+    skills_hub_list,
+    skills_hub_search,
+    skills_hub_install,
+    skills_hub_uninstall,
+    skills_hub_installed,
+)
 
 # 兼容别名
 _get_loader = get_loader
@@ -76,4 +102,18 @@ __all__ = [
     "validate_skill_structure",
     "_validate_skill_structure",
     "validate_path_within_dir",
+    # Wiki 知识落地 P2: Skills Hub
+    "TrustLevel",
+    "SkillSourceType",
+    "HubSkillInfo",
+    "HubSearchResult",
+    "SkillSource",
+    "GitHubSource",
+    "WellKnownSkillSource",
+    "SkillsHub",
+    "skills_hub_list",
+    "skills_hub_search",
+    "skills_hub_install",
+    "skills_hub_uninstall",
+    "skills_hub_installed",
 ]

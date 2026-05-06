@@ -9,9 +9,12 @@
 5. L5 长期归档 wrapper
 6. 整合锁机制 (防止并发 autodream)
 7. 提取光标机制 (跟踪已处理偏移量)
+8. 行动验证原则 (Wiki 知识落地 P2: GenericAgent)
+9. 记忆去重阈值 (Wiki 知识落地 P2: MIA)
+10. TTRL 持续学习 (Wiki 知识落地 P2: MIA)
 
 模块结构:
-- _memory_write.py: L1-L4 记忆写入
+- _memory_write.py: L1-L4 记忆写入 (行动验证 + 去重)
 - _memory_search.py: 记忆搜索
 - _session_history.py: 会话历史
 - _session_history_jsonl.py: JSONL fallback
@@ -20,8 +23,9 @@
 - _archive_wrapper.py: L5 归档 wrapper
 - _consolidation_lock.py: 整合锁 (Wiki 知识落地)
 - _extract_cursor.py: 提取光标 (Wiki 知识落地)
+- _ttrl.py: TTRL 持续学习 (Wiki 知识落地 P2)
 
-版本: v2.3 (Wiki 知识落地版)
+版本: v2.5 (Wiki 知识落地 P2 完整版)
 """
 
 import logging
@@ -39,6 +43,16 @@ from ._memory_write import (
     _get_sessions_dir,
     _validate_skill_format,
     write_memory,
+    # Wiki 知识落地 P2: 行动验证原则
+    VerifiedSource,
+    ValidationResult,
+    _validate_source,
+    ALLOWED_SOURCES_FOR_L1L2L3,
+    DENIED_SOURCES_FOR_L1L2L3,
+    # Wiki 知识落地 P2: 记忆去重阈值
+    DEDUPLICATION_THRESHOLD,
+    _compute_similarity,
+    _check_existing_memory,
 )
 from ._memory_search import (
     read_memory_index,
@@ -83,6 +97,21 @@ from ._extract_cursor import (
     get_extract_cursor,
     CURSOR_STALE_MS,
 )
+# Wiki 知识落地 P2: TTRL 持续学习 (MIA)
+from ._ttrl import (
+    JudgementType,
+    MemorySource,
+    ExecutionTrace,
+    MemoryEntry,
+    ConsolidationResult,
+    TTRLProcessor,
+    get_ttrl_processor,
+    ttrl_add_trace,
+    ttrl_batch_evaluate,
+    ttrl_add_memory,
+    ttrl_consolidate,
+    ttrl_get_stats,
+)
 
 
 def register_memory_tools(registry: "ToolRegistry") -> None:
@@ -119,7 +148,14 @@ def register_memory_tools(registry: "ToolRegistry") -> None:
     registry.register("get_archive_stats", _get_archive_stats)
     registry.register("get_memory_hierarchy", _get_memory_hierarchy)
 
-    logger.info("Memory tools registered: 22 tools")
+    # Wiki P2: TTRL 持续学习
+    registry.register("ttrl_add_trace", ttrl_add_trace)
+    registry.register("ttrl_batch_evaluate", ttrl_batch_evaluate)
+    registry.register("ttrl_add_memory", ttrl_add_memory)
+    registry.register("ttrl_consolidate", ttrl_consolidate)
+    registry.register("ttrl_get_stats", ttrl_get_stats)
+
+    logger.info("Memory tools registered: 27 tools")
 
 
 __all__ = [
@@ -128,6 +164,16 @@ __all__ = [
     "search_memory",
     "start_long_term_update",
     "_build_memory_context_block",  # Wiki 知识落地: Context Fencing
+    # Wiki 知识落地 P2: 行动验证原则
+    "VerifiedSource",
+    "ValidationResult",
+    "_validate_source",
+    "ALLOWED_SOURCES_FOR_L1L2L3",
+    "DENIED_SOURCES_FOR_L1L2L3",
+    # Wiki 知识落地 P2: 记忆去重阈值
+    "DEDUPLICATION_THRESHOLD",
+    "_compute_similarity",
+    "_check_existing_memory",
     "_save_session_history",
     "_load_session_history",
     "_list_sessions",
@@ -152,5 +198,18 @@ __all__ = [
     "ExtractCursor",
     "get_extract_cursor",
     "CURSOR_STALE_MS",
+    # Wiki 知识落地 P2: TTRL 持续学习
+    "JudgementType",
+    "MemorySource",
+    "ExecutionTrace",
+    "MemoryEntry",
+    "ConsolidationResult",
+    "TTRLProcessor",
+    "get_ttrl_processor",
+    "ttrl_add_trace",
+    "ttrl_batch_evaluate",
+    "ttrl_add_memory",
+    "ttrl_consolidate",
+    "ttrl_get_stats",
     "register_memory_tools",
 ]

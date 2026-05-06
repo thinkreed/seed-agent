@@ -61,7 +61,8 @@ class TestWriteMemory:
         result = memory_tools.write_memory(
             level="L3",
             content=content,
-            title="test-knowledge"
+            title="test-knowledge",
+            source="tool_call_success"  # Wiki P2: 行动验证原则
         )
 
         assert "Saved" in result
@@ -93,7 +94,8 @@ class TestWriteMemory:
         result = memory_tools.write_memory(
             level="L3",
             content="Test content",
-            title="../etc/passwd"
+            title="../etc/passwd",
+            source="tool_call_success"  # Wiki P2: 行动验证原则
         )
         # It should save successfully with sanitized name
         assert "Saved" in result or "Success" in result

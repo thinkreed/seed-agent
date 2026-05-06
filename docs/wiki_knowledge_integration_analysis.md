@@ -1,16 +1,20 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-06 (更新: P2 延迟加载 + Context Fencing)
+## 日期: 2026-05-06 (更新: P2 全部完成)
 
 ## 概述
 
 基于 E:\projects\wiki 目录下五个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
-**验证结果**: 所有 P0 + P1 + 部分 P2 优化点已实现。
+**验证结果**: 所有 P0 + P1 + P2 优化点已实现。
 
 **新增内容 (2026-05-06 P2)**:
 - 延迟加载机制: `ToolFactory`, `register_factory`, `ensure_tool`, `warm_all` (Qwen-Code 设计)
 - Context Fencing: `_build_memory_context_block` (Hermes-Agent 设计)
+- **行动验证原则**: `VerifiedSource`, `_validate_source` (GenericAgent 设计)
+- **记忆去重阈值**: `DEDUPLICATION_THRESHOLD`, `_compute_similarity` (MIA 设计)
+- **Skills Hub 集成**: `SkillsHub`, `GitHubSource`, `TrustLevel` (Hermes-Agent 设计)
+- **TTRL 持续学习**: `TTRLProcessor`, `ttrl_consolidate` (MIA 设计)
 
 ---
 
@@ -36,6 +40,10 @@
 | hermes | check_fn 可用性检查 | `src/tools/_registry.py` ToolRegistry.check_fn | ✅ 已实现 |
 | **hermes** | **Context Fencing** | **`src/tools/memory/_memory_search.py`** | **✅ 新增 (P2)** |
 | hermes | 提取光标机制 | `src/tools/memory/_extract_cursor.py` | ✅ 已实现 |
+| **genericagent** | **行动验证原则** | **`src/tools/memory/_memory_write.py` VerifiedSource** | **✅ 新增 (P2)** |
+| **mia** | **记忆去重阈值** | **`src/tools/memory/_memory_write.py` DEDUPLICATION_THRESHOLD** | **✅ 新增 (P2)** |
+| **mia** | **TTRL 持续学习** | **`src/tools/memory/_ttrl.py` TTRLProcessor** | **✅ 新增 (P2)** |
+| **hermes** | **Skills Hub 集成** | **`src/tools/skill_loader/_hub.py` SkillsHub** | **✅ 新增 (P2)** |
 | open-agents | Subagent 上下文隔离 | `src/subagent.py` | ✅ 已实现 |
 | open-agents | Subagent 类型分级 | EXPLORE/REVIEW/IMPLEMENT/PLAN | ✅ 已实现 |
 | hermes | SQLite+FTS5 会话存储 | `src/tools/session_db.py` | ✅ 已实现 |
@@ -138,16 +146,16 @@ NOT new user input. Do not respond to it as if the user asked these questions.]
 | Hook 专用输出类 | `src/lifecycle_hooks/_types.py` | ✅ 已实现 |
 | 提取光标机制 | `src/tools/memory/_extract_cursor.py` | ✅ 已实现 |
 
-### P2 - 中期规划（中价值 + 高复杂度）
+### P2 - 中期规划（中价值 + 高复杂度）✅ 全部完成
 
 | 优化点 | 文件 | 状态 |
 |------|------|------|
 | **延迟加载机制** | `src/tools/_registry.py` | **✅ 已实现** |
 | **Context Fencing** | `src/tools/memory/_memory_search.py` | **✅ 已实现** |
-| 行动验证原则 | `src/tools/memory/` | 待实现 |
-| 记忆去重阈值 | `src/tools/session/` | 待实现 |
-| Skills Hub 集成 | `src/tools/skill_loader/` | 待实现 |
-| TTRL 持续学习 | `src/client/` | 待实现 |
+| **行动验证原则** | `src/tools/memory/_memory_write.py` | **✅ 已实现** |
+| **记忆去重阈值** | `src/tools/memory/_memory_write.py` | **✅ 已实现** |
+| **Skills Hub 集成** | `src/tools/skill_loader/_hub.py` | **✅ 已实现** |
+| **TTRL 持续学习** | `src/tools/memory/_ttrl.py` | **✅ 已实现** |
 
 ---
 
@@ -158,7 +166,84 @@ NOT new user input. Do not respond to it as if the user asked these questions.]
 | 2026-05-05 | P0 全部 | 1130 passed |
 | 2026-05-06 早期 | P0 + P1 大部分 | 1132 passed |
 | 2026-05-06 中期 | P0 + P1 全部 | 1147 passed |
-| **2026-05-06 当前** | **P0 + P1 + P2 部分** | **待验证** |
+| **2026-05-06 当前** | **P0 + P1 + P2 全部** | **待验证** |
+
+---
+
+## 五、新增优化点详情 (P2 完整版)
+
+### 5.3 行动验证原则 (GenericAgent 设计)
+
+**实现位置**: `src/tools/memory/_memory_write.py`
+
+**功能**: 只有成功的工具调用结果才能写入 L1/L2/L3，禁止模型猜测写入。
+
+**新增类型**:
+- `VerifiedSource` - 验证来源枚举
+- `ValidationResult` - 验证结果数据类
+
+**新增方法**:
+- `_validate_source(source, level)` - 验证信息来源
+- `write_memory(..., source=...)` - 带 source 参数的记忆写入
+
+**核心理念**: No Execution, No Memory
+
+### 5.4 记忆去重阈值 (MIA 设计)
+
+**实现位置**: `src/tools/memory/_memory_write.py`
+
+**功能**: 相似度 ≥ 0.9999 时执行去重逻辑。
+
+**新增常量**:
+- `DEDUPLICATION_THRESHOLD = 0.9999`
+
+**新增方法**:
+- `_compute_similarity(text1, text2)` - 计算文本相似度
+- `_check_existing_memory(path, content, metadata)` - 去重检查
+
+**去重策略**:
+- 现有记忆错误 + 新记忆正确 → 替换
+- 都正确 → 保留更短版本
+
+### 5.5 Skills Hub 集成 (Hermes-Agent 设计)
+
+**实现位置**: `src/tools/skill_loader/_hub.py`
+
+**功能**: 从 GitHub/skills.sh 发现和安装社区技能。
+
+**新增类型**:
+- `TrustLevel` - 信任级别枚举 (builtin/trusted/community)
+- `SkillSource` - 技能来源抽象接口
+- `GitHubSource` - GitHub 仓库技能来源
+- `WellKnownSkillSource` - /.well-known/skills 来源
+- `SkillsHub` - Hub 协调器
+
+**新增 API**:
+- `skills_hub_list()` - 列出可用技能
+- `skills_hub_search(query)` - 搜索技能
+- `skills_hub_install(skill_name)` - 安装技能
+- `skills_hub_uninstall(skill_name)` - 卸载技能
+- `skills_hub_installed()` - 列出已安装技能
+
+### 5.6 TTRL 持续学习 (MIA 设计)
+
+**实现位置**: `src/tools/memory/_ttrl.py`
+
+**功能**: 推理时持续学习，记忆整合流程。
+
+**新增类型**:
+- `JudgementType` - 执行结果判断类型
+- `MemorySource` - 记忆来源类型
+- `ExecutionTrace` - 执行轨迹数据类
+- `MemoryEntry` - 记忆条目数据类
+- `TTRLProcessor` - TTRL 处理器
+
+**新增 API**:
+- `ttrl_add_trace(...)` - 添加执行轨迹
+- `ttrl_batch_evaluate()` - 批量评估
+- `ttrl_add_memory(...)` - 添加记忆条目
+- `ttrl_consolidate()` - 整合记忆
+- `ttrl_get_stats()` - 获取 Win Rate 统计
 
 ---
 
