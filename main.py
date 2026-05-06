@@ -391,15 +391,16 @@ async def interactive_loop(agent: AgentLoop, explorer: AutonomousExplorer) -> No
                 chunk_type = chunk.get("type")
 
                 if chunk_type == "chunk":
+                    # 思考内容直接输出（LLM 自己控制换行）
                     print(chunk["content"], end="", flush=True)
                 elif chunk_type == "tool_start":
-                    print(f"\n  [Tool: {chunk['tool_name']}]...", end="", flush=True)
+                    # 工具开始：换行显示，清晰区分思考内容和工具执行
+                    print(f"\n  ▶ [{chunk['tool_name']}]", end="", flush=True)
                 elif chunk_type == "tool_end":
-                    # 工具结果可能很长，截断显示
+                    # 工具完成：显示简短状态
                     result = chunk.get("result", "")
-                    if len(result) > 100:
-                        result = result[:100] + "..."
-                    print(f" done", end="", flush=True)
+                    status = "✓" if not result.startswith("Error") else "✗"
+                    print(f" {status}", end="", flush=True)
                 elif chunk_type == "awaiting_user_input":
                     # 处理 Ask User 等待
                     await handle_user_question(agent, chunk["request"])
