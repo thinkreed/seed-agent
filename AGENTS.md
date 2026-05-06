@@ -331,20 +331,25 @@ RalphSubagentOrchestrator 执行模式:
 
 ## Wiki 知识落地状态
 
-基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-06，测试通过: 1132 passed）：
+基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-06，测试通过: 1147 passed）：
 
-### 已实现（P0）
+### 已实现（P0+P1 全部）
 
 | 优化点 | 来源 | 实现位置 |
 |------|------|----------|
 | ToolKind 枚举分类 | qwen-code | `src/tools/__init__.py` |
+| PermissionDecision 三级权限 | qwen-code | `src/tools/__init__.py` |
+| MUTATOR_KINDS / CONCURRENCY_SAFE_KINDS | qwen-code | `src/tools/__init__.py` |
 | LoopDetectionService | qwen-code | `src/harness/_loop_detection.py` |
 | 整合锁机制 | qwen-code | `src/tools/memory/_consolidation_lock.py` |
-| win_rate 字段 | mia | `src/tools/session/_rate_calculation.py` (success_rate/laplace_rate) |
-| 渐进式披露 Skills | hermes | `src/tools/skill_loader/_skillloader.py` |
 | MessageBus.request() | qwen-code | `src/lifecycle_hooks/_message_bus.py` |
+| HookAggregator | qwen-code | `src/lifecycle_hooks/_message_bus.py` |
+| Hook 专用输出类 | qwen-code | `src/lifecycle_hooks/_types.py` |
+| win_rate 字段 | mia | `src/tools/session/_rate_calculation.py` |
+| 渐进式披露 Skills | hermes | `src/tools/skill_loader/_skillloader.py` |
+| check_fn 可用性检查 | hermes | `src/tools/__init__.py` |
 
-### 待落地（P1-P2）
+### 待落地（P2）
 
 详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
 
