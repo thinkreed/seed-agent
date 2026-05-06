@@ -15,6 +15,8 @@
 Wiki 知识落地 (基于 Qwen-Code Hooks 设计):
 - MessageBus.request(): 请求/响应模式 + AbortSignal 支持
 - HookAggregator: 多钩子结果合并，deny 优先
+- CommandHookRunner: 命令钩子执行器（新增 P2）
+- HttpHookRunner: HTTP 钩子执行器（新增 P2）
 """
 
 # 类型导出
@@ -49,6 +51,19 @@ from src.lifecycle_hooks._message_bus import (
     reset_message_bus,
 )
 
+# Wiki 知识落地: 命令/HTTP 钩子 (Qwen-Code P2)
+from src.lifecycle_hooks._command_runner import (
+    CommandHookConfig,
+    CommandHookResult,
+    CommandHookRunner,
+)
+from src.lifecycle_hooks._http_runner import (
+    HttpHookConfig,
+    HttpHookResult,
+    HttpHookRunner,
+    execute_http_hook_sync,
+)
+
 __all__ = [
     # Wiki 知识落地: Hook 输出类
     "DefaultHookOutput",
@@ -73,4 +88,12 @@ __all__ = [
     "LifecycleMessageBus",
     "get_message_bus",
     "reset_message_bus",
+    # Wiki 知识落地: 命令/HTTP 钩子 (Qwen-Code P2)
+    "CommandHookConfig",
+    "CommandHookResult",
+    "CommandHookRunner",
+    "HttpHookConfig",
+    "HttpHookResult",
+    "HttpHookRunner",
+    "execute_http_hook_sync",
 ]

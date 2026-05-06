@@ -87,8 +87,10 @@ agent.inject_user_input(AskUserResult(
 |------|------|------|
 | **AgentLoop** | `src/agent_loop/` | 主执行引擎：集成三件套、Session管理、摘要触发、生命周期钩子，已拆分为 `_init`, `_observability`, `_summarizer`, `_skill_tracker`, `_execution`, `_user_interaction` |
 | **SessionEventStream** | `src/session_event_stream.py` + `src/session_stream/` | 不可变事件流：只追加日志、状态重放、摘要标记，已拆分为 `_types`, `_persist`, `_replay`, `_cleanup`, `_summary`, `_context` |
-| **LifecycleHooks** | `src/lifecycle_hooks/` | 确定性生命周期钩子：关键节点自动触发、优先级执行、统计，已拆分为 `_global`, `_registry`, `_types`, `_aggregator` |
+| **LifecycleHooks** | `src/lifecycle_hooks/` | 确定性生命周期钩子：关键节点自动触发、优先级执行、统计，已拆分为 `_global`, `_registry`, `_types`, `_aggregator`, `_command_runner`, `_http_runner` |
 | **LifecycleMessageBus** | `src/lifecycle_hooks/_message_bus.py` | 消息总线：请求/响应模式，AbortSignal支持 |
+| **CommandHookRunner** | `src/lifecycle_hooks/_command_runner.py` | 命令钩子执行器：外部命令触发、超时控制、白名单检查 |
+| **HttpHookRunner** | `src/lifecycle_hooks/_http_runner.py` | HTTP 钩子执行器：Webhook 触发、重试机制、域名白名单 |
 | **LifecycleCtxBuilder** | `src/harness/lifecycle_ctx/` | 钩子上下文构建，已拆分为 `_session`, `_llm`, `_response`, `_tool` |
 | **BuiltinHooks** | `src/builtin_hooks.py` + `src/_*_hooks.py` | 内置钩子定义：会话、工具、LLM、响应等全生命周期覆盖，已拆分为 `_session_hooks`, `_tool_hooks`, `_llm_hooks`, `_response_hooks` |
 | **LLMGateway** | `src/client.py` | 多Provider网关：FallbackChain自动降级、重试逻辑 |
@@ -96,6 +98,7 @@ agent.inject_user_input(AskUserResult(
 | **RalphState** | `src/ralph_state.py` + `src/ralph_state_core/` | Ralph状态管理：安全上限、持久化，已拆分为 `_types`, `_limits`, `_persistence`, `_context` |
 | **SemanticIndex** | `src/core/semantic_index.py` + `src/core/_encoder.py` | 语义搜索：TF-IDF + FAISS，编码器已拆分 |
 | **StreamingClient** | `src/client/_streaming.py` + `src/client/streaming_core/` | 流式响应：thinking解析、重试、降级，已拆分为 `_thinking`, `_single`, `_retry`, `_fallback` |
+| **PromptCachingProtector** | `src/client/_prompt_caching.py` | 提示缓存保护：会话级缓存、变化检测、Anthropic 缓存控制 |
 | **ExecutionClient** | `src/client/_execution.py` + `src/client/execution_core/` | 非流式执行：单次调用、重试、降级，已拆分为 `_single`, `_retry`, `_fallback` |
 | **Scheduler** | `src/scheduler.py` | 定时任务调度：内置任务 + 自定义任务管理 |
 | **AutonomousExplorer** | `src/autonomous/_explorer.py` + `src/autonomous/` | 空闲自主探索：2小时触发、SOP驱动执行，已拆分为 `_idle_monitor`, `_defense`, `_explorer`, `_state_manager`, `_task_executor`, `_prompt_builder`, `_sop_loader` |
@@ -341,7 +344,7 @@ RalphSubagentOrchestrator 执行模式:
 
 基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-06，测试通过: 1147 passed）：
 
-### 已实现（P0+P1 全部）
+### 已实现（P0+P1+部分P2）
 
 | 优化点 | 来源 | 实现位置 |
 |------|------|----------|
@@ -356,10 +359,17 @@ RalphSubagentOrchestrator 执行模式:
 | win_rate 字段 | mia | `src/tools/session/_rate_calculation.py` |
 | 渐进式披露 Skills | hermes | `src/tools/skill_loader/_skillloader.py` |
 | check_fn 可用性检查 | hermes | `src/tools/__init__.py` |
+| **提示缓存保护机制** | hermes (P2) | `src/client/_prompt_caching.py` |
+| **命令钩子执行器** | qwen-code (P2) | `src/lifecycle_hooks/_command_runner.py` |
+| **HTTP 钩子执行器** | qwen-code (P2) | `src/lifecycle_hooks/_http_runner.py` |
 
-### 待落地（P2）
+### 待落地（剩余 P2）
 
 详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
+
+- Skills Hub 集成 (hermes)
+- TTRL 持续学习 (mia)
+- Snapshot-based Sandbox 持久化 (open-agents)
 
 ---
 
