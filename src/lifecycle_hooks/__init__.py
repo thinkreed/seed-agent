@@ -19,6 +19,11 @@ Wiki 知识落地 (基于 Qwen-Code Hooks 设计):
 
 # 类型导出
 from src.lifecycle_hooks._types import (
+    DefaultHookOutput,
+    PreToolUseHookOutput,
+    PostToolUseHookOutput,
+    LLMStreamHookOutput,
+    UserResponseHookOutput,
     HookExecutionResult,
     HookPoint,
     HookStats,
@@ -45,6 +50,12 @@ from src.lifecycle_hooks._message_bus import (
 )
 
 __all__ = [
+    # Wiki 知识落地: Hook 输出类
+    "DefaultHookOutput",
+    "PreToolUseHookOutput",
+    "PostToolUseHookOutput",
+    "LLMStreamHookOutput",
+    "UserResponseHookOutput",
     # 类型
     "HookPoint",
     "HookExecutionResult",

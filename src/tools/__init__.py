@@ -103,6 +103,7 @@ class ToolRegistry:
     - 工具分类 (ToolKind): 每个工具可指定类型
     - 权限决策 (PermissionDecision): 基于分类的默认权限
     - 并发安全判断: CONCURRENCY_SAFE_KINDS 判断是否可并发
+    - 可用性检查 (check_fn): 工具注册时检查 API Key 等要求
     """
 
     def __init__(self) -> None:
@@ -110,6 +111,7 @@ class ToolRegistry:
         self._tool_schemas: dict[str, dict] = {}
         self._tool_kinds: dict[str, ToolKind] = {}  # Wiki: 工具分类
         self._tool_permissions: dict[str, PermissionDecision] = {}  # Wiki: 权限决策
+        self._tool_check_fns: dict[str, Callable[[], bool] | None] = {}  # Wiki: 可用性检查
 
     def register(
         self,
@@ -118,6 +120,7 @@ class ToolRegistry:
         schema: dict[str, Any] | None = None,
         kind: ToolKind | None = None,
         permission: PermissionDecision | None = None,
+        check_fn: Callable[[], bool] | None = None,
     ) -> None:
         """注册工具
 
@@ -127,6 +130,7 @@ class ToolRegistry:
             schema: 工具的 JSON Schema 描述(用于 function calling)
             kind: 工具分类 (Wiki 知识落地)
             permission: 权限决策 (Wiki 知识落地，默认基于 kind 自动推断)
+            check_fn: 可用性检查函数 (Wiki 知识落地，检查 API Key 等要求)
         """
         self._tools[name] = func
         self._tool_schemas[name] = schema or self._infer_schema(func, name)
@@ -140,6 +144,9 @@ class ToolRegistry:
             self._tool_permissions[name] = permission
         else:
             self._tool_permissions[name] = self._infer_permission_from_kind(inferred_kind)
+
+        # Wiki 知识落地: 可用性检查函数
+        self._tool_check_fns[name] = check_fn
 
     def _infer_kind_from_name(self, name: str) -> ToolKind:
         """从工具名称推断分类"""
@@ -186,6 +193,56 @@ class ToolRegistry:
     def is_mutator(self, name: str) -> bool:
         """判断工具是否具有副作用"""
         return self.get_kind(name) in MUTATOR_KINDS
+
+    def is_available(self, name: str) -> bool:
+        """判断工具是否可用 (Wiki 知识落地)
+
+        检查工具是否满足执行条件：
+        - 无 check_fn: 默认可用
+        - 有 check_fn: 执行检查函数
+
+        Args:
+            name: 工具名称
+
+        Returns:
+            True 如果工具可用
+        """
+        check_fn = self._tool_check_fns.get(name)
+        if check_fn is None:
+            return True
+        try:
+            return check_fn()
+        except Exception:
+            return False
+
+    def get_available_tools(self) -> list[str]:
+        """获取所有可用的工具名称列表 (Wiki 知识落地)
+
+        Returns:
+            所有 is_available() 返回 True 的工具名称
+        """
+        return [name for name in self._tools if self.is_available(name)]
+
+    def get_unavailable_tools(self) -> list[tuple[str, str]]:
+        """获取不可用的工具及其原因 (Wiki 知识落地)
+
+        Returns:
+            (tool_name, reason) 列表
+        """
+        unavailable = []
+        for name in self._tools:
+            if not self.is_available(name):
+                check_fn = self._tool_check_fns.get(name)
+                if check_fn is None:
+                    reason = "Unknown"
+                else:
+                    try:
+                        check_fn()
+                        reason = "Unknown"
+                    except Exception as e:
+                        reason = str(e)
+                unavailable.append((name, reason))
+        return unavailable
 
     def get_tool(self, name: str) -> Callable:
         """获取工具函数"""
