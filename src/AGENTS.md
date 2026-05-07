@@ -8,30 +8,36 @@ The core engine consists of five main components that work together to create an
 
 ```
 src/
-├── agent_loop/           # Main agent loop (拆分: _init, _observability, _summarizer, _execution, _user_interaction)
-├── autonomous/           # Autonomous exploration (拆分: _idle_monitor, _explorer, _prompt_builder, _sop_loader)
-├── client/               # LLM Gateway (拆分: _streaming, _execution, _circuit_breaker, _complexity_scorer, _specificity_detector)
-├── context/              # Context engineering (拆分: _pruner, _pruner_core)
-├── harness/              # Controller (拆分: _manager, _streaming, _tool_router, _cycle)
-├── lifecycle_hooks/      # Lifecycle hooks (拆分: _registry, _types, _aggregator, _command_runner, _http_runner)
+├── agent_loop/           # Main agent loop (拆分: _init, _observability, _summarizer, _execution, _user_interaction, _skill_tracker)
+├── autonomous/           # Autonomous exploration (拆分: _idle_monitor, _explorer, _prompt_builder, _sop_loader, _defense, _state_manager, _task_executor, _executor_core/task/helpers/constants, _ralph_checks/execution/loop)
+├── client/               # LLM Gateway (拆分: _streaming, _execution, _circuit_breaker, _complexity_scorer, _specificity_detector, streaming_core, execution_core)
+├── context/              # Context engineering (拆分: _pruner, _pruner_core: entity_extraction/relevance)
+├── harness/              # Controller (拆分: _manager, _streaming, _tool_router, _cycle, _streaming_loop/iteration/executor/types/utils, _resume/utils/iteration, _cycle_utils/prepare/executor/tool_handling, _conversation_executor, _metrics, _single_tool, _write_conflict, _lifecycle_hooks, _loop_detection, _context_builder)
+├── lifecycle_hooks/      # Lifecycle hooks (拆分: _registry, _types, _aggregator, _command_runner, _http_runner/async/sync/types, _message_bus/types, _hook_point, _execution_types, _registration, _query, _output_types, _trigger/async/sync, _command_executor/types, _decorator, _global, _unregister)
 ├── llm_client/           # LLMClient brain (拆分: _types, _client)
 ├── ralph_core/           # Ralph loop core (拆分: _state, _completion, _execution, _factory)
-├── ralph_state_core/     # Ralph state (拆分: _types, _limits, _persistence)
+├── ralph_loop_core/      # Ralph loop execution (拆分: _state, _completion, _types, _execution, _factory, _state_persistence)
+├── ralph_state_core/     # Ralph state (拆分: _types, _limits, _persistence, _context)
 ├── rate_limiter/         # Rate limiting (拆分: _bucket, _window)
 ├── request_queue_core/   # Request queue (拆分: _stampede, _stats, _types)
 ├── sandbox_core/         # Sandbox execution (拆分: _execution, _path, _types)
-├── scheduler_core/       # Task scheduling (拆分: _scheduler, _types)
-├── security/             # Security components (credential_isolated, risk_classifier, vault)
-├── session_stream/       # Event stream (拆分: _types, _persist, _replay, _summary)
-├── subagent_manager_core/ # Subagent management (拆分: _manager, _orchestrator, _orphan_reaper, _agent_registry)
-├── tools/                # Tool registry and implementations (拆分: memory, skill_loader, session)
+├── scheduler/            # Task scheduling
+├── scheduler_core/       # Task scheduling core (拆分: _scheduler, _types)
+├── security/             # Security components (credential_isolated: types/environment/sanitize/execution/proxy/sandbox, risk_classifier_core: types/factors/classifier, secure_harness_core: api_calls/audit/stats/verification/credential_management/tool_routing, vault: _ops_core: store_get/rotation, single_purpose: _tool_configs)
+├── session_stream/       # Event stream (拆分: _types, _persist, _replay, _cleanup, _summary, _context)
+├── subagent_manager_core/ # Subagent management (拆分: _manager, _orchestrator, _orphan_reaper, _agent_registry, _task, _results, _status)
+├── tools/                # Tool registry and implementations (拆分: memory, skill_loader: _skillloader/_hub/_types/_cache/_matching/_metadata/_api/_index/_loader/_config/_hub_*, session: _rate_calculation, ask_user_types_core: types/request/result_state, ralph_tools_core: start/status/completion, vision_api_core: capture/analysis/utils, procmem_scanner_core: types/winapi/scan, subagent_tools_core: sync_tools/async_tools)
+│   ├── memory/           # Memory tools (拆分: _memory_write/types/validation/utils/dedup, _memory_search, _ttrl/types/api/processor, _consolidation_lock, _extract_cursor, _user_modeling_wrapper, _archive_wrapper, _session_history/jsonl, _skill_outcomes, _user_modeling)
+│   └── skill_loader/     # Skill loader (拆分: _skillloader, _hub/coordinator/wellknown/types/api/github/source, _types, _cache, _metadata, _api, _matching, _loader, _index, _config)
 ├── abort_signal.py       # Cancel signal propagation
-├── builtin_hooks.py      # Built-in lifecycle hooks
+├── abort_signal_core/    # Cancel signal core (拆分: _abort_signal, _cancellation_token)
+├── builtin_hooks.py      # Built-in lifecycle hooks (拆分: _session_hooks, _tool_hooks, _llm_hooks, _response_hooks)
 ├── context_engineering.py # Context engineering facade
 ├── harness.py            # Controller facade
 ├── lifecycle_hooks.py    # Lifecycle hooks facade
 ├── llm_client.py         # LLMClient facade
-├── models.py             # Pydantic configuration
+├── models/               # Pydantic models (拆分: _validators, _config_models, _session_models)
+├── observability/        # Observability (拆分: setup, metrics)
 ├── ralph_loop.py         # Ralph loop facade
 ├── ralph_state.py        # Ralph state facade
 ├── rate_limiter.py       # Rate limiter facade
@@ -42,7 +48,12 @@ src/
 ├── session_event_stream.py # Event stream facade
 ├── subagent_manager.py   # Subagent manager facade
 ├── subagent.py           # Independent context subagent
-└── shared_config.py      # Shared configuration
+├── collaboration.py      # Multi-agent collaboration (拆分: _session, _message, _one_brain_multi_hand, _multi_brain_one_hand, _multi_brain_multi_hand)
+├── collaboration_tools_core/ # Collaboration tools core
+├── background_task_registry.py # Background task management
+├── memory_manager/       # Memory manager facade
+├── shared_config.py      # Shared configuration
+└── core/                 # Core utilities (拆分: _merkle_dag, _file_synchronizer, _datahub/types, _query_invalidator, semantic_index: _encoder/_persist/_incremental)
 ```
 
 ---
