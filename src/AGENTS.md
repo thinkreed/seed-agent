@@ -8,24 +8,41 @@ The core engine consists of five main components that work together to create an
 
 ```
 src/
-├── agent_loop.py         # Main agent loop with message handling and tool execution
-├── autonomous.py         # Idle-time autonomous exploration (Ralph Loop enhanced)
-├── builtin_hooks.py      # Built-in lifecycle hooks for all hook points
-├── client.py             # LLM Gateway with multi-provider fallback
-├── context_engineering.py # Progressive compression + intelligent pruning
-├── harness.py            # Controller: drives loop, routes tools (stateless + hooks)
-├── lifecycle_hooks.py    # Lifecycle hook registry with priority and stats
-├── llm_client.py         # LLMClient: brain, responsible for reasoning
-├── models.py             # Pydantic configuration validation
-├── ralph_loop.py         # Long-cycle deterministic task executor
-├── rate_limiter.py       # Token Bucket + Rolling Window dual rate limiting
-├── rate_limit_db.py      # SQLite persistence for rate limit state
-├── request_queue.py      # TurnTicket request queue with priority and backpressure
-├── sandbox.py            # Sandbox: isolated execution environment
-├── scheduler.py          # Task scheduling and management
-├── session_event_stream.py # Immutable event stream (append-only)
-├── subagent_manager.py   # Subagent orchestration and lifecycle management
-└── subagent.py           # Independent context subagent execution
+├── agent_loop/           # Main agent loop (拆分: _init, _observability, _summarizer, _execution, _user_interaction)
+├── autonomous/           # Autonomous exploration (拆分: _idle_monitor, _explorer, _prompt_builder, _sop_loader)
+├── client/               # LLM Gateway (拆分: _streaming, _execution, _circuit_breaker, _complexity_scorer, _specificity_detector)
+├── context/              # Context engineering (拆分: _pruner, _pruner_core)
+├── harness/              # Controller (拆分: _manager, _streaming, _tool_router, _cycle)
+├── lifecycle_hooks/      # Lifecycle hooks (拆分: _registry, _types, _aggregator, _command_runner, _http_runner)
+├── llm_client/           # LLMClient brain (拆分: _types, _client)
+├── ralph_core/           # Ralph loop core (拆分: _state, _completion, _execution, _factory)
+├── ralph_state_core/     # Ralph state (拆分: _types, _limits, _persistence)
+├── rate_limiter/         # Rate limiting (拆分: _bucket, _window)
+├── request_queue_core/   # Request queue (拆分: _stampede, _stats, _types)
+├── sandbox_core/         # Sandbox execution (拆分: _execution, _path, _types)
+├── scheduler_core/       # Task scheduling (拆分: _scheduler, _types)
+├── security/             # Security components (credential_isolated, risk_classifier, vault)
+├── session_stream/       # Event stream (拆分: _types, _persist, _replay, _summary)
+├── subagent_manager_core/ # Subagent management (拆分: _manager, _orchestrator, _orphan_reaper, _agent_registry)
+├── tools/                # Tool registry and implementations (拆分: memory, skill_loader, session)
+├── abort_signal.py       # Cancel signal propagation
+├── builtin_hooks.py      # Built-in lifecycle hooks
+├── context_engineering.py # Context engineering facade
+├── harness.py            # Controller facade
+├── lifecycle_hooks.py    # Lifecycle hooks facade
+├── llm_client.py         # LLMClient facade
+├── models.py             # Pydantic configuration
+├── ralph_loop.py         # Ralph loop facade
+├── ralph_state.py        # Ralph state facade
+├── rate_limiter.py       # Rate limiter facade
+├── rate_limit_db.py      # SQLite persistence for rate limit
+├── request_queue.py      # Request queue facade
+├── sandbox.py            # Sandbox facade
+├── scheduler.py          # Scheduler facade
+├── session_event_stream.py # Event stream facade
+├── subagent_manager.py   # Subagent manager facade
+├── subagent.py           # Independent context subagent
+└── shared_config.py      # Shared configuration
 ```
 
 ---

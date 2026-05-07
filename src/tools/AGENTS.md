@@ -4,17 +4,27 @@ This module provides a comprehensive tool registration and execution framework f
 
 ## Module Overview
 
-The tool registry system is located in `src/tools/` and consists of seven main components:
+The tool registry system is located in `src/tools/` and consists of multiple components with modular architecture:
 
-| File | Purpose |
+| File/Directory | Purpose |
 |------|---------|
 | `__init__.py` | ToolRegistry class for registering and executing tools |
-| `builtin_tools.py` | Five core built-in tools for file operations and code execution |
-| `memory_tools.py` | L1-L4 memory management system and session history tools |
-| `skill_loader.py` | Dynamic skill loading with progressive disclosure pattern |
-| `ralph_tools.py` | Ralph Loop management tools for long-cycle task execution |
-| `session_db.py` | SQLite+FTS5 session storage with Chinese full-text search |
-| `subagent_tools.py` | Subagent management tools for spawning, waiting, aggregating |
+| `_registry.py` | ToolRegistry implementation with lazy loading (P2) |
+| `_types.py` | ToolKind, PermissionDecision, ToolCapability, ApprovalRequirement types |
+| `builtin/` | Core built-in tools (拆分: _file_read, _file_write, _code_execution) |
+| `memory/` | L1-L4 memory system (拆分: _memory_write, _memory_search, _ttrl, _archive) |
+| `skill_loader/` | Dynamic skill loading with Skills Hub (拆分: _loader, _hub, _cache) |
+| `ralph_tools_core/` | Ralph Loop tools (拆分: _start, _status, _completion) |
+| `session/` | Session tools (拆分: _rate_calculation, _history) |
+| `subagent_tools_core/` | Subagent tools (拆分: _sync_tools, _async_tools) |
+| `ask_user_types_core/` | Ask User types (拆分: _types, _request, _result_state) |
+| `vision_api_core/` | Vision API (拆分: _capture, _analysis, _utils) |
+| `procmem_scanner_core/` | Process memory scanner (拆分: _types, _winapi, _scan) |
+| `builtin_tools.py` | Built-in tools facade |
+| `memory_tools.py` | Memory tools facade |
+| `ralph_tools.py` | Ralph tools facade |
+| `session_db.py` | SQLite+FTS5 session storage |
+| `subagent_tools.py` | Subagent tools facade |
 
 ---
 
