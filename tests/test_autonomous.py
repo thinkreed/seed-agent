@@ -653,17 +653,25 @@ class TestTodoLoading(unittest.TestCase):
 
     def test_load_nonexistent_todo(self):
         """测试加载不存在的 TODO 文件"""
-        # 需要在创建 explorer 之前 mock，避免初始化时读取真实 TODO
-        # _load_todo_content 方法内部从 src.shared_config 导入，需要 mock 该路径
-        # 同时 mock executor_core 中的 TodoCache 创建，确保缓存为空
-        with patch('src.shared_config.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
-            with patch('src.autonomous._executor_core.get_seed_dir_with_fallback', return_value=Path(self.tmpdir.name)):
-                explorer = AutonomousExplorer(self.mock_agent)
-                # 清理缓存，确保从新路径读取
-                explorer._task_executor._todo_cache._cache = None
-                explorer._task_executor._todo_cache._cache_seed_dir = None
-                result = explorer._load_todo_content()
-                self.assertEqual(result, "")
+        # 直接替换方法 globals 中的函数引用
+        # 原因：method.__globals__ 和 module.__dict__ 是不同的字典
+        method = AutonomousExplorer._load_todo_content
+        original_func = method.__globals__['get_seed_dir_with_fallback']
+        
+        # 替换为返回临时目录的函数
+        method.__globals__['get_seed_dir_with_fallback'] = lambda: Path(self.tmpdir.name)
+        
+        explorer = AutonomousExplorer(self.mock_agent)
+        # 清理缓存，确保从新路径读取
+        explorer._task_executor._todo_cache._cache = None
+        explorer._task_executor._todo_cache._cache_seed_dir = None
+        explorer._task_executor._todo_cache._cache_time = 0.0
+        result = explorer._load_todo_content()
+        
+        # 恢复原始函数
+        method.__globals__['get_seed_dir_with_fallback'] = original_func
+        
+        self.assertEqual(result, "")
 
 
 class TestTaskSignals(unittest.TestCase):
