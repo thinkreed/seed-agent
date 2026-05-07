@@ -1,12 +1,20 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-07 (更新: P4 实现完成)
+## 日期: 2026-05-08 (更新: P5 实现完成)
 
 ## 概述
 
 基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
-**验证结果**: 所有 P0 + P1 + P2 + P3 + P4 优化点已实现，测试通过 1147 passed。
+**验证结果**: 所有 P0 + P1 + P2 + P3 + P4 + P5 优化点已实现，测试通过 1147 passed。
+
+**P5 实现 (2026-05-08)** - 基于 Wiki 新项目分析：
+- **Merkle DAG 增量索引**: `src/core/_merkle_dag.py` - O(1) 无变更检测 + O(k) 增量更新 (claude-context-docs 设计)
+- **FileSynchronizer**: `src/core/_file_synchronizer.py` - 文件哈希快照 + 变更检测 (claude-context-docs 设计)
+- **SemanticIndex 增量更新**: `src/core/semantic_index.py` - remove/update/incremental_build (claude-context-docs 设计)
+- **DataHub Pub/Sub**: `src/core/_datahub.py` - Topic 发布订阅 + 请求去重 (FinceptTerminal 设计)
+- **TopicPolicy**: `src/core/_datahub_types.py` - TTL/Rate Limit/Refresh 策略 (FinceptTerminal 设计)
+- **QueryInvalidator**: `src/core/_query_invalidator.py` - 失效策略 + 缓存管理 (multica 设计)
 
 **P4 实现 (2026-05-07)** - 基于 Wiki 新项目分析：
 - **Circuit Breaker 自动切换**: `src/client/_circuit_breaker.py` - 连续失败触发熔断 + 自动恢复探测 (claude-mem + worldmonitor 设计)
@@ -74,6 +82,12 @@
 | **ai-hedge-fund** | **AgentSignal 统一输出** | **`src/subagent_manager_core/_agent_registry.py` AgentSignal** | **✅ 新增 (P3)** |
 | **ai-hedge-fund** | **get_agents_list API** | **`src/subagent_manager_core/_agent_registry.py` get_agents_list** | **✅ 新增 (P3)** |
 | **shannon-architecture** | **Agent 依赖图拓扑排序** | **`src/subagent_manager_core/_agent_registry.py` resolve_agent_execution_order** | **✅ 新增 (P3)** |
+| **claude-context-docs** | **Merkle DAG 增量索引** | **`src/core/_merkle_dag.py` MerkleDAG** | **✅ 新增 (P5)** |
+| **claude-context-docs** | **FileSynchronizer** | **`src/core/_file_synchronizer.py` FileSynchronizer** | **✅ 新增 (P5)** |
+| **claude-context-docs** | **SemanticIndex 增量更新** | **`src/core/semantic_index.py` incremental_build** | **✅ 新增 (P5)** |
+| **FinceptTerminal** | **DataHub Pub/Sub** | **`src/core/_datahub.py` DataHub** | **✅ 新增 (P5)** |
+| **FinceptTerminal** | **TopicPolicy** | **`src/core/_datahub_types.py` TopicPolicy** | **✅ 新增 (P5)** |
+| **multica** | **QueryInvalidator** | **`src/core/_query_invalidator.py` QueryInvalidator** | **✅ 新增 (P5)** |
 
 ---
 

@@ -10,12 +10,18 @@ Architecture inspired by Claude Context hybrid search pattern:
 重构说明:
 - TFIDFEncoder 移至 _encoder.py
 - SemanticIndex 保留核心索引逻辑
+- P5 新增: 增量更新支持 (remove/update/incremental_build)
 
 Usage:
     idx = SemanticIndex(dim=128)
     idx.add("doc1", "text content here")
     idx.build()
     results = idx.search("query text", top_k=3)
+
+    # P5 增量更新
+    idx.remove("doc1")
+    idx.add("doc1", "new content")
+    idx.incremental_build()
 """
 
 import json
@@ -141,6 +147,181 @@ class SemanticIndex:
                     "rank": len(results) + 1,
                 })
         return results
+
+    # === P5 增量更新方法 ===
+
+    def remove(self, doc_id: str) -> bool:
+        """
+        移除文档（标记删除）。
+
+        注意：FAISS IndexFlatIP 不支持真正的删除，
+        此方法只是从 doc_ids 中移除，实际向量仍保留。
+        大量删除后应调用 rebuild() 重建索引。
+        """
+        if doc_id in self.doc_ids:
+            self.doc_ids.remove(doc_id)
+            return True
+        return False
+
+    def update(self, doc_id: str, new_text: str) -> bool:
+        """
+        更新文档内容。
+
+        此方法将文档添加到待更新列表，
+        需调用 incremental_build() 执行实际更新。
+        """
+        if doc_id not in self.doc_ids:
+            return False
+
+        if not hasattr(self, "_pending_updates"):
+            self._pending_updates: dict[str, str] = {}
+        self._pending_updates[doc_id] = new_text
+        return True
+
+    def incremental_build(
+        self,
+        changes: dict[str, list[str]] | None = None,
+        texts_map: dict[str, str] | None = None,
+    ) -> None:
+        """
+        增量构建索引。
+
+        Args:
+            changes: FileSynchronizer.check_for_changes() 返回的变更字典
+            texts_map: 文件路径到文本内容的映射
+
+        策略：
+            - 小变更（<30%）：使用旧词汇表编码新文档
+            - 大变更（>=30%）：完整重建
+        """
+        if not self._built:
+            self.build()
+            return
+
+        if changes is None:
+            # 仅处理 pending updates
+            if not hasattr(self, "_pending_updates") or not self._pending_updates:
+                return
+            changes = {
+                "added": [],
+                "removed": [],
+                "modified": list(self._pending_updates.keys()),
+            }
+            texts_map = self._pending_updates.copy()
+            self._pending_updates = {}
+
+        added = changes.get("added", [])
+        removed = changes.get("removed", [])
+        modified = changes.get("modified", [])
+
+        total_changes = len(added) + len(removed) + len(modified)
+        total_docs = len(self.doc_ids)
+
+        # 大变更 → 完整重建
+        if total_changes >= total_docs * 0.3 or total_docs == 0:
+            logger.info(
+                f"Large change ({total_changes}/{total_docs}), rebuilding index"
+            )
+            self._rebuild_with_changes(changes, texts_map or {})
+            return
+
+        # 小变更 → 增量添加
+        logger.info(f"Small change ({total_changes}/{total_docs}), incremental update")
+
+        # 移除文档
+        for doc_id in removed:
+            self.remove(doc_id)
+
+        # 添加新文档
+        if texts_map:
+            for doc_id in added:
+                if doc_id in texts_map:
+                    self._add_vector(doc_id, texts_map[doc_id])
+
+            for doc_id in modified:
+                if doc_id in texts_map:
+                    self._update_vector(doc_id, texts_map[doc_id])
+
+    def _add_vector(self, doc_id: str, text: str) -> None:
+        """添加单个向量（使用现有词汇表）"""
+        if self.index is None:
+            return
+
+        vec = self.encoder.transform(text).astype(np.float32)
+
+        if self.svd is not None:
+            vec = self.svd.transform(vec).astype(np.float32)
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+
+        # 调整维度
+        if vec.shape[1] != self.index.d:
+            if vec.shape[1] < self.index.d:
+                padded = np.zeros((1, self.index.d), dtype=np.float32)
+                padded[:, : vec.shape[1]] = vec
+                vec = padded
+            else:
+                vec = vec[:, : self.index.d]
+
+        self.index.add(vec)
+        self.doc_ids.append(doc_id)
+
+    def _update_vector(self, doc_id: str, new_text: str) -> None:
+        """
+        更新向量（伪更新：添加新向量，旧向量保留）。
+
+        注意：这会导致索引膨胀，定期应调用 rebuild()。
+        """
+        self._add_vector(doc_id, new_text)
+
+    def _rebuild_with_changes(
+        self,
+        changes: dict[str, list[str]],
+        texts_map: dict[str, str],
+    ) -> None:
+        """完整重建索引，处理变更"""
+        # 移除删除的文档
+        for doc_id in changes.get("removed", []):
+            self.remove(doc_id)
+
+        # 收集所有文档内容
+        if not hasattr(self, "_original_texts"):
+            self._original_texts: dict[str, str] = {}
+
+        # 添加新文档
+        for doc_id in changes.get("added", []):
+            if doc_id in texts_map:
+                self._original_texts[doc_id] = texts_map[doc_id]
+
+        # 更新修改的文档
+        for doc_id in changes.get("modified", []):
+            if doc_id in texts_map:
+                self._original_texts[doc_id] = texts_map[doc_id]
+
+        # 重建索引
+        if self._original_texts:
+            items = list(self._original_texts.items())
+            # 清空当前状态
+            self.doc_ids = []
+            self.index = None
+            self.svd = None
+            self._built = False
+
+            # 使用 add_batch + build
+            self.add_batch(items)
+            self.build()
+
+    def rebuild(self) -> None:
+        """强制完整重建索引"""
+        if hasattr(self, "_original_texts") and self._original_texts:
+            items = list(self._original_texts.items())
+            self.doc_ids = []
+            self.index = None
+            self.svd = None
+            self._built = False
+            self.add_batch(items)
+            self.build()
 
     def save(self, path: str | None = None) -> str:
         """Persist index to disk."""
