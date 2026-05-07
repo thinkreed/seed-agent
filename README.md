@@ -529,7 +529,7 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 
 基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取并落地的优化点：
 
-### 已实现（P0+P1+P2+P3+P4 全部完成）
+### 已实现（P0+P1+P2+P3+P4+P5 全部完成）
 
 | 优化点 | 来源 | 实现位置 | 状态 |
 |------|------|----------|------|
@@ -560,6 +560,12 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 | **Stampede Protection** | worldmonitor (P4) | `src/request_queue_core/_stampede.py` | ✅ |
 | **复杂度评分路由** | manifest-architecture (P4) | `src/client/_complexity_scorer.py` | ✅ |
 | **Specificity 检测** | manifest-architecture (P4) | `src/client/_specificity_detector.py` | ✅ |
+| **Merkle DAG 增量索引** | claude-context-docs (P5) | `src/core/_merkle_dag.py` | ✅ |
+| **FileSynchronizer** | claude-context-docs (P5) | `src/core/_file_synchronizer.py` | ✅ |
+| **SemanticIndex 增量更新** | claude-context-docs (P5) | `src/core/semantic_index.py` | ✅ |
+| **DataHub Pub/Sub** | FinceptTerminal (P5) | `src/core/_datahub.py` | ✅ |
+| **TopicPolicy 策略管理** | FinceptTerminal (P5) | `src/core/_datahub_types.py` | ✅ |
+| **QueryInvalidator** | multica (P5) | `src/core/_query_invalidator.py` | ✅ |
 
 详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
 
