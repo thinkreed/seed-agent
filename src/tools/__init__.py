@@ -22,26 +22,42 @@ Wiki 知识落地 (基于 Qwen-Code 工具系统设计):
 - ToolFactory: 延迟加载工厂函数类型 (P2 新增)
 - register_factory/ensure_tool/warm_all: 延迟加载机制 (P2 新增)
 
-版本: v2.3 (Wiki 知识落地 P2 版)
+Wiki 知识落地 P3 (基于 DeepSeek-TUI 工具系统设计):
+- ToolCapability: 工具能力声明枚举 (ReadOnly/WritesFiles/ExecutesCode 等)
+- ApprovalRequirement: 三级审批需求 (Auto/Suggest/Required)
+- CAPABILITY_APPROVAL_MAP: 能力到审批需求的映射
+
+版本: v2.4 (Wiki 知识落地 P3 版)
 """
 
 from ._registry import ToolFactory, ToolRegistry
 from ._types import (
+    CAPABILITY_APPROVAL_MAP,
     CONCURRENCY_SAFE_KINDS,
     MUTATOR_KINDS,
+    READ_ONLY_CAPABILITIES,
+    SANDBOX_REQUIRED_CAPABILITIES,
+    ApprovalRequirement,
     PermissionDecision,
+    ToolCapability,
     ToolKind,
 )
 
 
 __all__ = [
-    # 工具分类系统 (Wiki 知识落地)
+    # 工具分类系统 (Wiki 知识落地 - Qwen-Code)
     "ToolKind",
     "PermissionDecision",
     "MUTATOR_KINDS",
     "CONCURRENCY_SAFE_KINDS",
     # 延迟加载机制 (Wiki 知识落地 P2)
     "ToolFactory",
+    # Wiki 知识落地 P3 (DeepSeek-TUI)
+    "ToolCapability",
+    "ApprovalRequirement",
+    "CAPABILITY_APPROVAL_MAP",
+    "SANDBOX_REQUIRED_CAPABILITIES",
+    "READ_ONLY_CAPABILITIES",
     # 核心类
     "ToolRegistry",
 ]

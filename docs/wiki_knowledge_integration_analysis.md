@@ -1,15 +1,18 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-07 (更新: P3 评估完成)
+## 日期: 2026-05-07 (更新: P3 实现完成)
 
 ## 概述
 
-基于 E:\projects\wiki 目录下五个开源项目的架构分析，提取可落地的优化点并评估适用性。
+基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
-**验证结果**: 所有 P0 + P1 + P2 优化点已实现，P3 评估完成。
+**验证结果**: 所有 P0 + P1 + P2 + P3 优化点已实现，测试通过 1147 passed。
 
-**P3 评估 (2026-05-07)**:
-- Snapshot-based Sandbox 持久化: **不适用** - seed-agent 使用本地执行环境，文件系统本身持久化，无需云端快照机制
+**P3 实现 (2026-05-07)**:
+- **ToolCapability 枚举**: `src/tools/_types.py` - 6 种能力声明 (DeepSeek-TUI 设计)
+- **ApprovalRequirement 枚举**: `src/tools/_types.py` - Auto/Suggest/Required 三级审批 (DeepSeek-TUI 设计)
+- **AgentConfig 注册机制**: `src/subagent_manager_core/_agent_registry.py` - Agent 元数据 + 依赖图 (ai-hedge-fund 设计)
+- **AgentSignal 统一输出**: `src/subagent_manager_core/_agent_registry.py` - signal/confidence/reasoning 格式 (ai-hedge-fund 设计)
 
 **新增内容 (2026-05-06 P2)**:
 - 延迟加载机制: `ToolFactory`, `register_factory`, `ensure_tool`, `warm_all` (Qwen-Code 设计)
@@ -58,6 +61,12 @@
 | mia | MPE 三代理架构 | SubagentManager + Planner/Executor 分工 | ✅ 已实现 |
 | mia | win_rate 字段 | `src/tools/session/_rate_calculation.py` | ✅ 已实现 |
 | mia | 混合评分检索 | SessionDB FTS5 + 相关性计算 | ✅ 已实现 |
+| **deepseek-tui** | **ToolCapability 枚举** | **`src/tools/_types.py` ToolCapability** | **✅ 新增 (P3)** |
+| **deepseek-tui** | **ApprovalRequirement 三级审批** | **`src/tools/_types.py` ApprovalRequirement** | **✅ 新增 (P3)** |
+| **ai-hedge-fund** | **AgentConfig 注册机制** | **`src/subagent_manager_core/_agent_registry.py` AGENT_CONFIG** | **✅ 新增 (P3)** |
+| **ai-hedge-fund** | **AgentSignal 统一输出** | **`src/subagent_manager_core/_agent_registry.py` AgentSignal** | **✅ 新增 (P3)** |
+| **ai-hedge-fund** | **get_agents_list API** | **`src/subagent_manager_core/_agent_registry.py` get_agents_list** | **✅ 新增 (P3)** |
+| **shannon-architecture** | **Agent 依赖图拓扑排序** | **`src/subagent_manager_core/_agent_registry.py` resolve_agent_execution_order** | **✅ 新增 (P3)** |
 
 ---
 
@@ -170,7 +179,7 @@ NOT new user input. Do not respond to it as if the user asked these questions.]
 | 2026-05-06 早期 | P0 + P1 大部分 | 1132 passed |
 | 2026-05-06 中期 | P0 + P1 全部 | 1147 passed |
 | 2026-05-06 P2 | P0 + P1 + P2 全部 | 1147 passed |
-| **2026-05-07** | **P0+P1+P2 全部 + P3 评估完成** | **1147 passed** |
+| **2026-05-07 P3** | **P0 + P1 + P2 + P3 全部** | **1147 passed** |
 
 ---
 
@@ -278,10 +287,93 @@ NOT new user input. Do not respond to it as if the user asked these questions.]
 
 ---
 
-## 七、参考资料
+## 七、新增优化点详情 (P3 2026-05-07)
+
+基于 Wiki 新项目分析（ai-hedge-fund, codex-architecture, deepseek-tui, shannon-architecture, opensre-docs），提取并实施以下优化点：
+
+### 7.1 ToolCapability 能力声明枚举 (DeepSeek-TUI 设计)
+
+**实现位置**: `src/tools/_types.py`
+
+**功能**: 更细粒度的工具能力声明，与 ToolKind 互补。
+
+**新增类型**:
+- `ToolCapability` 枚举 - ReadOnly/WritesFiles/ExecutesCode/Network/Sandboxable/RequiresApproval
+- `ApprovalRequirement` 枚举 - Auto/Suggest/Required 三级审批需求
+
+**新增常量**:
+- `CAPABILITY_APPROVAL_MAP` - 能力到审批需求的映射
+- `SANDBOX_REQUIRED_CAPABILITIES` - 需要沙箱隔离的能力
+- `READ_ONLY_CAPABILITIES` - 只读能力集合
+
+```python
+# 使用示例
+from src.tools import ToolCapability, ApprovalRequirement, CAPABILITY_APPROVAL_MAP
+
+# 声明工具能力
+capabilities = [ToolCapability.ReadOnly, ToolCapability.Sandboxable]
+
+# 获取默认审批需求
+approval = CAPABILITY_APPROVAL_MAP[ToolCapability.ExecutesCode]  # Required
+```
+
+### 7.2 AgentConfig 注册机制 (ai-hedge-fund ANALYST_CONFIG 设计)
+
+**实现位置**: `src/subagent_manager_core/_agent_registry.py`
+
+**功能**: Agent 元数据注册和发现，支持依赖图拓扑排序。
+
+**新增类型**:
+- `AgentSignalType` 枚举 - Bullish/Bearish/Neutral 信号类型
+- `AgentSignal` dataclass - 统一信号输出格式（signal, confidence, reasoning）
+- `AgentConfig` dataclass - Agent 元数据配置
+
+**新增注册表**:
+- `AGENT_CONFIG` - Agent 配置字典（display_name, description, style, capabilities, order, prerequisites）
+
+**新增函数**:
+- `get_agent_nodes()` - 获取 Agent 名称到配置的映射
+- `get_agents_list()` - 获取 Agent 列表用于 API 响应
+- `get_agent_by_type()` - 根据 SubagentType 获取配置
+- `get_agent_dependencies()` - 获取前置依赖列表
+- `resolve_agent_execution_order()` - 依赖图拓扑排序
+
+```python
+# 使用示例
+from src.subagent_manager_core import AGENT_CONFIG, resolve_agent_execution_order
+
+# 查看 Agent 配置
+print(AGENT_CONFIG["explore"].display_name)  # "Explorer"
+
+# 解析执行顺序（基于依赖图）
+order = resolve_agent_execution_order(["implement", "review"])
+# ["review", "implement"] - review 是 implement 的前置依赖
+```
+
+### 7.3 其他评估但未实施的优化点
+
+| 来源 | 优化点 | 评估结果 |
+|------|--------|----------|
+| **codex-architecture** | ThreadManager + RolloutRecorder | seed-agent 已有 SubagentManager + SessionEventStream |
+| **codex-architecture** | SandboxPolicy 枚举 | seed-agent 已有 SandboxPolicy 实现 |
+| **shannon-architecture** | VulnType 枚举 + 依赖图 | 已整合到 AgentConfig.prerequisites |
+| **shannon-architecture** | "No Exploit No Report" 验证策略 | RalphLoop 已有类似外部验证机制 |
+| **opensre-docs** | ThreadPoolExecutor 并行执行 | SubagentManager 已有并发控制 |
+| **opensre-docs** | CostTier 成本等级 | 可作为后续优化 |
+| **opensre-docs** | investigation_loop 循环控制 | RalphLoop 已有迭代控制 |
+| **deepseek-tui** | RLM Context Busting | 需额外架构设计 |
+
+---
+
+## 八、参考资料
 
 - genericagent: `E:\projects\wiki\genericagent\`
 - hermes-agent: `E:\projects\wiki\hermes-agent\`
 - mia: `E:\projects\wiki\mia\`
 - open-agents: `E:\projects\wiki\open-agents\`
 - qwen-code-architecture: `E:\projects\wiki\qwen-code-architecture\`
+- ai-hedge-fund: `E:\projects\wiki\ai-hedge-fund\`
+- codex-architecture: `E:\projects\wiki\codex-architecture\`
+- deepseek-tui-architecture: `E:\projects\wiki\deepseek-tui-architecture\`
+- shannon-architecture: `E:\projects\wiki\shannon-architecture\`
+- opensre-docs: `E:\projects\wiki\opensre-docs\`
