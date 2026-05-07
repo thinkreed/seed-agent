@@ -121,6 +121,10 @@ agent.inject_user_input(AskUserResult(
 | **StampedeProtection** | `src/request_queue_core/_stampede.py` | 缓存击穿保护：单请求执行、其他等待共享结果 (Wiki P4) |
 | **ComplexityScorer** | `src/client/_complexity_scorer.py` + `_complexity_types.py` + `_model_selector.py` | 23维度复杂度评分：四级Tier路由模型选择 (Wiki P4) |
 | **SpecificityDetector** | `src/client/_specificity_detector.py` + `_specificity_types.py` + `_specificity_router.py` | 任务类型检测：路由到专用模型 (Wiki P4) |
+| **MerkleDAG** | `src/core/_merkle_dag.py` | Merkle DAG增量索引：O(1)无变更检测 + O(k)增量更新 (Wiki P5) |
+| **FileSynchronizer** | `src/core/_file_synchronizer.py` | 文件哈希快照 + 变更检测 (Wiki P5) |
+| **DataHub** | `src/core/_datahub.py` + `_datahub_types.py` | Pub/Sub发布订阅 + TopicPolicy策略管理 (Wiki P5) |
+| **QueryInvalidator** | `src/core/_query_invalidator.py` | 失效策略 + 缓存管理 (Wiki P5) |
 
 ### 多智能体协作模式
 
@@ -361,13 +365,28 @@ RalphSubagentOrchestrator 执行模式:
 - **Specificity 检测**：任务类型检测路由专用模型
 - **三层路由优先级**：Header Tiers → Specificity → Complexity
 
+### Claude-Context-Docs 借鉴 (P5)
+
+- **Merkle DAG 增量索引**：O(1) 无变更检测 + O(k) 增量更新
+- **FileSynchronizer**：文件哈希快照 + 变更检测
+- **SemanticIndex 增量更新**：remove/update/incremental_build
+
+### FinceptTerminal 借鉴 (P5)
+
+- **DataHub Pub/Sub**：Topic 发布订阅 + 请求去重
+- **TopicPolicy**：TTL/Rate Limit/Refresh 策略配置
+
+### Multica 借鉴 (P5)
+
+- **QueryInvalidator**：失效策略 + 缓存管理 + 乐观更新回滚
+
 ---
 
 ## Wiki 知识落地状态
 
-基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-07，测试通过: 1147 passed）：
+基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-08，测试通过: 1147 passed）：
 
-### 已实现（P0+P1+P2+P3+P4 全部完成）
+### 已实现（P0+P1+P2+P3+P4+P5 全部完成）
 
 | 优化点 | 来源 | 实现位置 |
 |------|------|----------|
@@ -401,6 +420,12 @@ RalphSubagentOrchestrator 执行模式:
 | **Stampede Protection** | worldmonitor (P4) | `src/request_queue_core/_stampede.py` StampedeProtection |
 | **复杂度评分路由** | manifest-architecture (P4) | `src/client/_complexity_scorer.py` ComplexityScorer |
 | **Specificity 检测** | manifest-architecture (P4) | `src/client/_specificity_detector.py` SpecificityDetector |
+| **Merkle DAG 增量索引** | claude-context-docs (P5) | `src/core/_merkle_dag.py` MerkleDAG |
+| **FileSynchronizer** | claude-context-docs (P5) | `src/core/_file_synchronizer.py` FileSynchronizer |
+| **SemanticIndex 增量更新** | claude-context-docs (P5) | `src/core/semantic_index.py` incremental_build |
+| **DataHub Pub/Sub** | FinceptTerminal (P5) | `src/core/_datahub.py` DataHub |
+| **TopicPolicy 策略管理** | FinceptTerminal (P5) | `src/core/_datahub_types.py` TopicPolicy |
+| **QueryInvalidator** | multica (P5) | `src/core/_query_invalidator.py` QueryInvalidator |
 
 ### 待落地
 
