@@ -14,12 +14,15 @@ import logging
 import os
 import tempfile
 
+from src.sandbox import IsolationLevel
 from src.security.credential_isolated._environment import (
     create_isolated_environment,
     detect_credential_access_attempt,
 )
-from src.security.credential_isolated._sanitize import sanitize_output, sanitize_error_message
-from src.sandbox import IsolationLevel
+from src.security.credential_isolated._sanitize import (
+    sanitize_error_message,
+    sanitize_output,
+)
 
 logger = logging.getLogger(__name__)
 

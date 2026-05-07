@@ -10,7 +10,13 @@ from src._subagent_config import DEFAULT_TIMEOUTS
 from src._subagent_tools import execute_tool_calls, get_system_prompt, setup_tools
 from src._subagent_types import SubagentState, SubagentType, _get_subagent_type_key
 from src.client import LLMGateway
-from src.observability import SPAN_SUBAGENT_EXECUTE, StatusCode, get_tracer, is_observability_enabled, set_subagent_span_attributes
+from src.observability import (
+    SPAN_SUBAGENT_EXECUTE,
+    StatusCode,
+    get_tracer,
+    is_observability_enabled,
+    set_subagent_span_attributes,
+)
 from src.tools import ToolRegistry
 
 _OBSERVABILITY_ENABLED = is_observability_enabled()

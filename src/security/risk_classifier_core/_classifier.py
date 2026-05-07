@@ -10,14 +10,14 @@ import logging
 
 from src.security.risk_classifier_core._factors import analyze_param_risk
 from src.security.risk_classifier_core._types import (
-    ClassificationResult,
     ISOLATION_LEVEL_MODIFIERS,
-    RiskAction,
-    RiskLevel,
-    RiskLevelConfig,
     RISK_LEVEL_CONFIGS,
     TOOL_BASE_RISKS,
     USER_LEVEL_MODIFIERS,
+    ClassificationResult,
+    RiskAction,
+    RiskLevel,
+    RiskLevelConfig,
 )
 
 logger = logging.getLogger(__name__)

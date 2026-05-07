@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -61,4 +61,4 @@ class BackgroundTaskEntry:
 CANCEL_GRACE_SECONDS = 5
 
 
-__all__ = ["TaskStatus", "BackgroundTaskEntry", "CANCEL_GRACE_SECONDS"]
+__all__ = ["CANCEL_GRACE_SECONDS", "BackgroundTaskEntry", "TaskStatus"]

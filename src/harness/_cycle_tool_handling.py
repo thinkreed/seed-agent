@@ -20,8 +20,8 @@ from ._tool_router import route_tool_calls_with_hooks
 
 if TYPE_CHECKING:
     from src.lifecycle_hooks import LifecycleHookRegistry
-    from src.session_event_stream import SessionEventStream
     from src.sandbox import Sandbox
+    from src.session_event_stream import SessionEventStream
 
 logger = logging.getLogger(__name__)
 

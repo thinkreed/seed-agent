@@ -59,8 +59,8 @@ class HubSearchResult:
 
 
 __all__ = [
-    "TrustLevel",
-    "SkillSourceType",
-    "HubSkillInfo",
     "HubSearchResult",
+    "HubSkillInfo",
+    "SkillSourceType",
+    "TrustLevel",
 ]

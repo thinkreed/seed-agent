@@ -27,9 +27,9 @@ from src.subagent_manager_core import (
 )
 
 __all__ = [
+    "RalphSubagentOrchestrator",
     "SubagentManager",
     "SubagentTask",
-    "RalphSubagentOrchestrator",
     "create_task",
     "get_default_timeout",
 ]

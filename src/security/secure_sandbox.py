@@ -23,10 +23,9 @@
 """
 
 # 从类型模块导入（向后兼容）
-from src.security._secure_sandbox_types import SecureExecutionResult
-
 # 从核心模块导入主类（向后兼容）
 from src.security._secure_sandbox_core import SecureSandbox
+from src.security._secure_sandbox_types import SecureExecutionResult
 
 __all__ = [
     "SecureExecutionResult",

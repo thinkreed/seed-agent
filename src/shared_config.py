@@ -8,5 +8,5 @@
 """
 
 # 从包导入所有内容
-from src.shared_config import *  # noqa: F401, F403
+from src.shared_config import *  # noqa: F403
 from src.shared_config import __all__  # noqa: F401

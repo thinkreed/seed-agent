@@ -15,24 +15,23 @@
 """
 
 # 导入所有模块
-from ._hub_types import (
-    TrustLevel,
-    SkillSourceType,
-    HubSkillInfo,
-    HubSearchResult,
-)
-from ._hub_source import SkillSource
-from ._hub_github import GitHubSource, DEFAULT_GITHUB_TAPS
-from ._hub_wellknown import WellKnownSkillSource
-from ._hub_coordinator import SkillsHub
 from ._hub_api import (
+    skills_hub_install,
+    skills_hub_installed,
     skills_hub_list,
     skills_hub_search,
-    skills_hub_install,
     skills_hub_uninstall,
-    skills_hub_installed,
 )
-
+from ._hub_coordinator import SkillsHub
+from ._hub_github import GitHubSource
+from ._hub_source import SkillSource
+from ._hub_types import (
+    HubSearchResult,
+    HubSkillInfo,
+    SkillSourceType,
+    TrustLevel,
+)
+from ._hub_wellknown import WellKnownSkillSource
 
 __all__ = [
     # 枚举和类型

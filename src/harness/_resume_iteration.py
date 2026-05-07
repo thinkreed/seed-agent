@@ -7,12 +7,15 @@ from typing import TYPE_CHECKING, Any
 
 from src.abort_signal import AbortSignal
 from src.lifecycle_hooks import HookPoint
-from src.request_queue import RequestPriority
 
 from ._context_builder import build_context_from_session
 from ._lifecycle_hooks import trigger_hook
 from ._metrics import ToolExecutionMetrics
-from ._resume_utils import check_and_handle_cancel, handle_tool_calls_result, process_llm_response
+from ._resume_utils import (
+    check_and_handle_cancel,
+    handle_tool_calls_result,
+    process_llm_response,
+)
 from ._tool_router import route_tool_calls_with_hooks
 
 if TYPE_CHECKING:

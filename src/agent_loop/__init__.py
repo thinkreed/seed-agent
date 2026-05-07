@@ -131,7 +131,6 @@ class AgentLoop(ExecutionMixin, UserInteractionMixin):
         self._pending_user_response: AskUserResult | None = None
 
         # Scheduler
-        from src.scheduler import TaskScheduler
         self.scheduler = TaskScheduler(self)
 
         logger.info(
@@ -146,7 +145,6 @@ class AgentLoop(ExecutionMixin, UserInteractionMixin):
 
     def _generate_session_id(self) -> str:
         """生成会话 ID"""
-        from src.tools.memory_tools import _generate_session_filename
         return _generate_session_filename()
 
     def _setup_all(
@@ -256,10 +254,13 @@ class AgentLoop(ExecutionMixin, UserInteractionMixin):
 from src.scheduler import TaskScheduler
 from src.subagent_manager import SubagentManager
 from src.tools import ToolRegistry
-from src.tools.skill_loader import SkillLoader
 from src.tools.memory_tools import _generate_session_filename
+from src.tools.skill_loader import SkillLoader
 
 __all__.extend([
-    "ToolRegistry", "SkillLoader", "TaskScheduler", "SubagentManager",
+    "SkillLoader",
+    "SubagentManager",
+    "TaskScheduler",
+    "ToolRegistry",
     "_generate_session_filename",
 ])

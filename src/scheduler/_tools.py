@@ -12,7 +12,6 @@ import json
 
 from src.tools import ToolRegistry
 
-
 # 模块级单例引用（由 _scheduler.py 设置）
 _scheduler_instance = None
 
@@ -66,8 +65,8 @@ def register_scheduler_tools(registry: ToolRegistry) -> None:
 __all__ = [
     "_get_scheduler",
     "create_scheduled_task",
-    "remove_scheduled_task",
-    "list_scheduled_tasks",
     "get_task_info",
+    "list_scheduled_tasks",
     "register_scheduler_tools",
+    "remove_scheduled_task",
 ]

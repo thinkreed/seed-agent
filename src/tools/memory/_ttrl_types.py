@@ -86,9 +86,9 @@ class ConsolidationResult:
 
 
 __all__ = [
-    "JudgementType",
-    "MemorySource",
-    "ExecutionTrace",
-    "MemoryEntry",
     "ConsolidationResult",
+    "ExecutionTrace",
+    "JudgementType",
+    "MemoryEntry",
+    "MemorySource",
 ]

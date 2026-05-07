@@ -19,6 +19,12 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from src.security._proxy_api import (
+    cleanup_expired_clients,
+    clear_audit_logs,
+    get_providers,
+    register_new_provider,
+)
 from src.security.credential_vault import CredentialScope, CredentialVault
 from src.security.proxy import (
     AuditLogManager,
@@ -27,12 +33,6 @@ from src.security.proxy import (
     execute_external_request,
     execute_streaming_request,
     finalize_streaming_request,
-)
-from src.security._proxy_api import (
-    cleanup_expired_clients,
-    clear_audit_logs,
-    get_providers,
-    register_new_provider,
 )
 
 logger = logging.getLogger(__name__)

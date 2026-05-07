@@ -4,13 +4,12 @@ Sandbox 工具执行模块
 处理工具在不同隔离级别下的执行逻辑。
 """
 
-import asyncio
 import json
 import logging
 from contextlib import closing
 from typing import Any
 
-from src.sandbox_core._types import ExecutionResult, IsolationLevel, SandboxPermission
+from src.sandbox_core._types import SandboxPermission
 from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 logger = logging.getLogger(__name__)
@@ -144,7 +143,7 @@ class ToolExecutor:
                 return (
                     container.decode() if isinstance(container, bytes) else str(container)
                 )
-        except Exception as e:
+        except Exception:
             logger.exception(f"Container execution failed for {tool_name}")
             return await self._execute_in_process(tool_name, args)
 

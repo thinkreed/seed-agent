@@ -8,8 +8,8 @@ import logging
 import urllib.request
 from pathlib import Path
 
-from ._hub_types import HubSkillInfo, SkillSourceType, TrustLevel
 from ._hub_source import SkillSource
+from ._hub_types import HubSkillInfo, SkillSourceType, TrustLevel
 
 logger = logging.getLogger(__name__)
 

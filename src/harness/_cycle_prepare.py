@@ -5,22 +5,19 @@
 
 import logging
 import time
-from collections import deque
 from typing import TYPE_CHECKING, Any
 
 from src.abort_signal import AbortSignal
 from src.lifecycle_hooks import HookPoint
-from src.request_queue import RequestPriority
 
 from ._context_builder import build_context_from_session
+from ._cycle_utils import _check_cancelled, _get_cancel_reason
 from ._lifecycle_hooks import (
     build_llm_call_after_ctx,
     build_llm_call_before_ctx,
     build_response_before_ctx,
     trigger_hook,
 )
-from ._metrics import ToolExecutionMetrics
-from ._cycle_utils import _check_cancelled, _get_cancel_reason
 
 if TYPE_CHECKING:
     from src.context_engineering import ContextEngineering

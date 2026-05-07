@@ -177,9 +177,9 @@ class StampedeProtection(Generic[T]):
                     self._wait_for_result(entry),
                     timeout=self._config.wait_timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._stats.timeout_requests += 1
-                raise asyncio.TimeoutError(
+                raise TimeoutError(
                     f"Stampede: timeout waiting for key={key}"
                 )
 

@@ -20,9 +20,9 @@
 # 从子模块导入所有内容
 from src.models._config_loader import (
     CONFIG_VERSION,
+    _migrate_to_v3,
     get_config_path,
     load_config,
-    _migrate_to_v3,
 )
 from src.models._paths_models import PathsConfig
 from src.models._provider_models import (

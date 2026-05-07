@@ -15,7 +15,7 @@
 """
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
@@ -201,8 +201,8 @@ class LoopDetectionService:
 
 
 __all__ = [
-    "LoopType",
-    "LoopEvent",
     "LoopDetectionConfig",
     "LoopDetectionService",
+    "LoopEvent",
+    "LoopType",
 ]

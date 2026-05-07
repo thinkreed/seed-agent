@@ -10,7 +10,7 @@ import asyncio
 import logging
 import threading
 
-from src.subagent import SubagentResult, SubagentState
+from src.subagent import SubagentResult
 from src.subagent_manager_core._task import SubagentTask
 
 logger = logging.getLogger(__name__)

@@ -96,4 +96,4 @@ def _execute_skill_outcome_insert(
     conn.commit()
 
 
-__all__ = ["record_skill_outcome", "_execute_skill_outcome_insert"]
+__all__ = ["_execute_skill_outcome_insert", "record_skill_outcome"]

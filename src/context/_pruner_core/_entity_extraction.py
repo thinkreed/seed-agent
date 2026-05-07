@@ -12,8 +12,6 @@
 """
 
 import logging
-import re
-from typing import Any
 
 from src.context._config import get_code_pattern, get_file_pattern, get_stop_words
 

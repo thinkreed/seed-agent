@@ -102,10 +102,10 @@ def get_all_preferences(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
 
 
 __all__ = [
+    "delete_preference",
+    "get_all_preferences",
     "get_preference",
     "get_preferences_batch",
     "save_preference",
     "update_preference_confidence",
-    "delete_preference",
-    "get_all_preferences",
 ]

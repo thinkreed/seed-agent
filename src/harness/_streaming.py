@@ -39,10 +39,10 @@ if TYPE_CHECKING:
 
 async def stream_conversation(
     initial_prompt: str,
-    llm_client: "LLMClient",
-    session: "SessionEventStream",
-    sandbox: "Sandbox",
-    hook_registry: "LifecycleHookRegistry | None",
+    llm_client: LLMClient,
+    session: SessionEventStream,
+    sandbox: Sandbox,
+    hook_registry: LifecycleHookRegistry | None,
     metrics_deque: deque[ToolExecutionMetrics],
     max_iterations: int,
     context_window: int,
@@ -72,11 +72,11 @@ async def stream_conversation(
 
 
 async def stream_resume_with_user_response(
-    response: "AskUserResult",
-    llm_client: "LLMClient",
-    session: "SessionEventStream",
-    sandbox: "Sandbox",
-    hook_registry: "LifecycleHookRegistry | None",
+    response: AskUserResult,
+    llm_client: LLMClient,
+    session: SessionEventStream,
+    sandbox: Sandbox,
+    hook_registry: LifecycleHookRegistry | None,
     metrics_deque: deque[ToolExecutionMetrics],
     max_iterations: int,
     context_window: int,

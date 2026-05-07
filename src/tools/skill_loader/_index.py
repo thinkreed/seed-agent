@@ -57,6 +57,6 @@ def build_skills_index(
 
 
 __all__ = [
-    "render_category",
     "build_skills_index",
+    "render_category",
 ]

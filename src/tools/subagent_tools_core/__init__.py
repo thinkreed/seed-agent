@@ -48,14 +48,14 @@ def register_subagent_tools(registry: "ToolRegistry") -> None:
 
 
 __all__ = [
+    "aggregate_subagent_results",
+    "get_subagent_status",
     "init_subagent_manager",
+    "kill_subagent",
+    "list_subagents",
+    "register_subagent_tools",
+    "spawn_parallel_subagents",
     "spawn_subagent",
     "wait_for_subagent",
     "wait_for_subagent_async",
-    "aggregate_subagent_results",
-    "list_subagents",
-    "kill_subagent",
-    "get_subagent_status",
-    "spawn_parallel_subagents",
-    "register_subagent_tools",
 ]

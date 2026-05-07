@@ -8,7 +8,11 @@
 import logging
 from typing import Any
 
-from ._command_executor import DEFAULT_ALLOWED_COMMANDS, check_command_allowed, execute_command
+from ._command_executor import (
+    DEFAULT_ALLOWED_COMMANDS,
+    check_command_allowed,
+    execute_command,
+)
 from ._command_types import CommandHookConfig, CommandHookResult
 
 logger = logging.getLogger("seed_agent")

@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.sandbox_core._path import PathMapper, PermissionChecker
 from src.sandbox_core._execution import ToolExecutor
-from src.sandbox_core._types import PermissionAction, SandboxPermission
+from src.sandbox_core._path import PathMapper, PermissionChecker
+from src.sandbox_core._types import SandboxPermission
 
 
 class SandboxCompatMixin:

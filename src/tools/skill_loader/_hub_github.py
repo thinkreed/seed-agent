@@ -9,8 +9,8 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from ._hub_types import HubSkillInfo, SkillSourceType, TrustLevel
 from ._hub_source import SkillSource
+from ._hub_types import HubSkillInfo, SkillSourceType
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +72,7 @@ class GitHubSource(SkillSource):
         matched = []
         for skill in all_skills:
             # 匹配名称、描述、类别
-            if query_lower in skill.name.lower():
-                matched.append(skill)
-            elif query_lower in skill.description.lower():
-                matched.append(skill)
-            elif query_lower in skill.category.lower():
+            if query_lower in skill.name.lower() or query_lower in skill.description.lower() or query_lower in skill.category.lower():
                 matched.append(skill)
 
         return matched[:limit]
@@ -178,4 +174,4 @@ class GitHubSource(SkillSource):
             return response.read().decode()
 
 
-__all__ = ["GitHubSource", "DEFAULT_GITHUB_TAPS"]
+__all__ = ["DEFAULT_GITHUB_TAPS", "GitHubSource"]

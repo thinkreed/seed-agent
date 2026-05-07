@@ -10,7 +10,7 @@
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from src.security.vault._ops_core import (
     ListingMixin,

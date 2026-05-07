@@ -59,7 +59,7 @@ class UserModelingLayer:
 
     _instance: "UserModelingLayer | None" = None
 
-    def __new__(cls, **kwargs) -> Self:  # noqa: ARG003
+    def __new__(cls, **kwargs) -> Self:
         """单例模式 - 接受 kwargs 以支持测试中重置单例"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)

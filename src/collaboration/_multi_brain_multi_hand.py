@@ -20,4 +20,4 @@ from src.collaboration._multi_brain_multi_hand._task_coordinator import (
     MAX_DYNAMIC_ITERATIONS,
 )
 
-__all__ = ["MultiBrainMultiHandOrchestrator", "MAX_DYNAMIC_ITERATIONS"]
+__all__ = ["MAX_DYNAMIC_ITERATIONS", "MultiBrainMultiHandOrchestrator"]

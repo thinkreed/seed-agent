@@ -11,8 +11,8 @@ import sqlite3
 
 from src.tools.fts_utils import sanitize_fts_query
 from src.tools.session._stats_calculation import (
-    BannedSkillInfo,
     MEMORY_GRAPH_CONFIG,
+    BannedSkillInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -170,4 +170,4 @@ def search_outcomes_by_signal(
         return []
 
 
-__all__ = ["list_banned_skills", "get_top_skills", "search_outcomes_by_signal"]
+__all__ = ["get_top_skills", "list_banned_skills", "search_outcomes_by_signal"]

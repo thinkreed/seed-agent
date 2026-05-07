@@ -7,12 +7,12 @@ Wiki 知识落地 (Qwen-Code): HTTP Hooks
 
 import asyncio
 import json
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Any
 
-from ._http_runner_types import HttpHookResult
 from ._http_runner_async import HttpHookRunner
+from ._http_runner_types import HttpHookResult
 
 
 def execute_http_hook_sync(

@@ -17,4 +17,4 @@ class RegistrationMixin(DecoratorMixin, UnregisterMixin):
     pass
 
 
-__all__ = ["RegistrationMixin", "DecoratorMixin", "UnregisterMixin"]
+__all__ = ["DecoratorMixin", "RegistrationMixin", "UnregisterMixin"]

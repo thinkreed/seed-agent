@@ -157,4 +157,4 @@ class ToolRegistry:
         return list(self._factories.keys())
 
 
-__all__ = ["ToolRegistry", "ToolFactory"]
+__all__ = ["ToolFactory", "ToolRegistry"]

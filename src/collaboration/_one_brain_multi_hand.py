@@ -20,10 +20,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from src.collaboration._types import AgentInstance
-from src.collaboration._one_brain_multi_hand_planning import MultiHandPlanner
-from src.collaboration._one_brain_multi_hand_execution import MultiHandExecutor
 from src.collaboration._one_brain_multi_hand_aggregation import MultiHandAggregator
+from src.collaboration._one_brain_multi_hand_execution import MultiHandExecutor
+from src.collaboration._one_brain_multi_hand_planning import MultiHandPlanner
+from src.collaboration._types import AgentInstance
 from src.llm_client import LLMClient
 from src.sandbox import IsolationLevel, Sandbox
 

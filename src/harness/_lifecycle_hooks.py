@@ -8,9 +8,7 @@ Harness 生命周期钩子模块
 - build_*_ctx: 从 lifecycle_ctx 子模块导出的上下文构建函数
 """
 
-from typing import TYPE_CHECKING, Any
-
-from src.lifecycle_hooks import HookPoint, HookTriggerReport, LifecycleHookRegistry
+from typing import Any
 
 # 从子模块导入所有上下文构建函数，保持向后兼容
 from src.harness.lifecycle_ctx import (
@@ -24,9 +22,7 @@ from src.harness.lifecycle_ctx import (
     build_tool_call_before_ctx,
     build_tool_call_error_ctx,
 )
-
-if TYPE_CHECKING:
-    from src.session_event_stream import SessionEventStream
+from src.lifecycle_hooks import HookPoint, HookTriggerReport, LifecycleHookRegistry
 
 
 async def trigger_hook(

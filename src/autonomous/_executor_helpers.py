@@ -8,12 +8,15 @@
 
 import asyncio
 import logging
-from collections.abc import Callable, Coroutine
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from src.autonomous._executor_constants import CONTEXT_RESET_ENABLED, CONTEXT_RESET_INTERVAL
-from src.autonomous._prompt_builder import extract_autonomous_prompt_core, extract_task_signals
+from src.autonomous._executor_constants import (
+    CONTEXT_RESET_ENABLED,
+    CONTEXT_RESET_INTERVAL,
+)
+from src.autonomous._prompt_builder import (
+    extract_autonomous_prompt_core,
+)
 from src.ralph_state import extract_critical_context
 from src.session_event_stream import EventType
 
@@ -119,8 +122,8 @@ def record_tool_calls(executor: "TaskExecutor") -> None:
 
 
 __all__ = [
-    "reset_context_if_needed",
     "handle_response",
     "notify_completion",
     "record_tool_calls",
+    "reset_context_if_needed",
 ]

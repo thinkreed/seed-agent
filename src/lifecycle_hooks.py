@@ -12,6 +12,7 @@
 
 # 从模块导入所有公共接口
 from src.lifecycle_hooks import (
+    HOOK_POINT_DESCRIPTIONS,
     HookExecutionResult,
     HookPoint,
     HookStats,
@@ -19,16 +20,15 @@ from src.lifecycle_hooks import (
     LifecycleHookRegistry,
     get_global_registry,
     reset_global_registry,
-    HOOK_POINT_DESCRIPTIONS,
 )
 
 __all__ = [
-    "HookPoint",
+    "HOOK_POINT_DESCRIPTIONS",
     "HookExecutionResult",
-    "HookTriggerReport",
+    "HookPoint",
     "HookStats",
+    "HookTriggerReport",
     "LifecycleHookRegistry",
     "get_global_registry",
     "reset_global_registry",
-    "HOOK_POINT_DESCRIPTIONS",
 ]

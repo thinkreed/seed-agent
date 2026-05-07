@@ -20,19 +20,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.ralph_core import (
-    CompletionChecker,
-    CompletionType,
     ITERATION_INTERVAL,
     MAX_DURATION,
     MAX_ITERATIONS,
+    CompletionChecker,
+    CompletionType,
     SafetyChecker,
     StateManager,
 )
-from src.shared_config import get_seed_dir_with_fallback
-
 from src.ralph_loop_core._execution import ExecutionMixin
 from src.ralph_loop_core._factory import FactoryMixin, create_ralph_loop
 from src.ralph_loop_core._state_persistence import StatePersistenceMixin
+from src.shared_config import get_seed_dir_with_fallback
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -110,7 +109,7 @@ class RalphLoop(ExecutionMixin, FactoryMixin, StatePersistenceMixin):
 
 
 __all__ = [
-    "RalphLoop",
     "CompletionType",
+    "RalphLoop",
     "create_ralph_loop",
 ]

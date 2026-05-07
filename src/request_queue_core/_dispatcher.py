@@ -5,10 +5,12 @@
 """
 
 import asyncio
-import contextlib
 import logging
 
-from src.request_queue_core._types import RequestPriority, TurnTicket, DISPATCH_LOOP_INTERVAL
+from src.request_queue_core._types import (
+    RequestPriority,
+    TurnTicket,
+)
 
 logger = logging.getLogger("seed_agent")
 

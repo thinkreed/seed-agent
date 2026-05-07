@@ -11,4 +11,4 @@ from ._listing import ListingMixin
 from ._rotation import RotationMixin
 from ._store_get import StoreGetMixin
 
-__all__ = ["StoreGetMixin", "RotationMixin", "ListingMixin"]
+__all__ = ["ListingMixin", "RotationMixin", "StoreGetMixin"]

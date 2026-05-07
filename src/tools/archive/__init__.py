@@ -38,7 +38,12 @@ from ._archive_operations import (
 from ._cleanup import cleanup_old_archives, get_archive_stats, sync_summary_markers
 from ._db_schema import ArchiveDBConnection, _get_archive_db_path
 from ._fts_search import search_by_time_range, search_with_context, tokenize_for_fts5
-from ._llm_summary import extract_key_findings, generate_summary, simple_findings, simple_summary
+from ._llm_summary import (
+    extract_key_findings,
+    generate_summary,
+    simple_findings,
+    simple_summary,
+)
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
@@ -207,7 +212,7 @@ def register_archive_tools(registry: Any) -> None:
             events = json.loads(events_json) if events_json else []
             if not events:
                 return "Error: No events to archive"
-            return f"提示: 请使用 LongTermArchiveLayer.archive_session() 在异步环境中调用"
+            return "提示: 请使用 LongTermArchiveLayer.archive_session() 在异步环境中调用"
         except json.JSONDecodeError as e:
             return f"Error parsing JSON: {type(e).__name__}"
 

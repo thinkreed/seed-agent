@@ -20,9 +20,13 @@ import threading
 
 from src.client import LLMGateway
 from src.subagent import SubagentInstance, SubagentResult, SubagentState, SubagentType
-from src.subagent_manager_core._task import SubagentTask, create_task, get_default_timeout
 from src.subagent_manager_core._results import ResultsManager
 from src.subagent_manager_core._status import StatusManager
+from src.subagent_manager_core._task import (
+    SubagentTask,
+    create_task,
+    get_default_timeout,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,6 @@ Ralph Loop 类型定义
 
 from enum import Enum
 
-
 # 默认配置常量
 MAX_ITERATIONS = 1000
 MAX_DURATION = 8 * 60 * 60  # 8小时

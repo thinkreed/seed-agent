@@ -37,28 +37,45 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # 导入核心子模块
+from ._archive_wrapper import (
+    _archive_session_events,
+    _get_archive_details,
+    _get_archive_stats,
+    _get_memory_hierarchy,
+    _search_archives,
+)
+from ._consolidation_lock import (
+    LOCK_STALE_MS,
+    ConsolidationLock,
+    acquire_dream_lock,
+)
+from ._extract_cursor import (
+    CURSOR_STALE_MS,
+    ExtractCursor,
+    get_extract_cursor,
+)
+from ._memory_search import (
+    _build_memory_context_block,  # Wiki 知识落地: Context Fencing
+    read_memory_index,
+    search_memory,
+    start_long_term_update,
+)
 from ._memory_write import (
+    ALLOWED_SOURCES_FOR_L1L2L3,
+    # Wiki 知识落地 P2: 记忆去重阈值
+    DEDUPLICATION_THRESHOLD,
+    DENIED_SOURCES_FOR_L1L2L3,
+    ValidationResult,
+    # Wiki 知识落地 P2: 行动验证原则
+    VerifiedSource,
+    _check_existing_memory,
+    _compute_similarity,
     _get_memory_root,
     _get_path,
     _get_sessions_dir,
     _validate_skill_format,
-    write_memory,
-    # Wiki 知识落地 P2: 行动验证原则
-    VerifiedSource,
-    ValidationResult,
     _validate_source,
-    ALLOWED_SOURCES_FOR_L1L2L3,
-    DENIED_SOURCES_FOR_L1L2L3,
-    # Wiki 知识落地 P2: 记忆去重阈值
-    DEDUPLICATION_THRESHOLD,
-    _compute_similarity,
-    _check_existing_memory,
-)
-from ._memory_search import (
-    read_memory_index,
-    search_memory,
-    start_long_term_update,
-    _build_memory_context_block,  # Wiki 知识落地: Context Fencing
+    write_memory,
 )
 from ._session_history import (
     _list_sessions,
@@ -73,44 +90,28 @@ from ._skill_outcomes import (
     _list_banned_skills,
     _record_skill_outcome,
 )
-from ._user_modeling_wrapper import (
-    _observe_user_preference,
-    _get_user_preference,
-    _get_user_profile_summary,
-    _update_user_model,
-    _list_user_preferences,
-)
-from ._archive_wrapper import (
-    _archive_session_events,
-    _search_archives,
-    _get_archive_details,
-    _get_archive_stats,
-    _get_memory_hierarchy,
-)
-from ._consolidation_lock import (
-    ConsolidationLock,
-    acquire_dream_lock,
-    LOCK_STALE_MS,
-)
-from ._extract_cursor import (
-    ExtractCursor,
-    get_extract_cursor,
-    CURSOR_STALE_MS,
-)
+
 # Wiki 知识落地 P2: TTRL 持续学习 (MIA)
 from ._ttrl import (
-    JudgementType,
-    MemorySource,
-    ExecutionTrace,
-    MemoryEntry,
     ConsolidationResult,
+    ExecutionTrace,
+    JudgementType,
+    MemoryEntry,
+    MemorySource,
     TTRLProcessor,
     get_ttrl_processor,
+    ttrl_add_memory,
     ttrl_add_trace,
     ttrl_batch_evaluate,
-    ttrl_add_memory,
     ttrl_consolidate,
     ttrl_get_stats,
+)
+from ._user_modeling_wrapper import (
+    _get_user_preference,
+    _get_user_profile_summary,
+    _list_user_preferences,
+    _observe_user_preference,
+    _update_user_model,
 )
 
 

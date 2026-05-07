@@ -25,13 +25,13 @@ logger = logging.getLogger("seed_agent")
 # 重新导出公共 API（向后兼容）
 __all__ = [
     "MemoryRegion",
-    "scan_memory",
-    "is_admin",
-    "open_process",
     "close_process",
-    "read_process_memory",
     "enumerate_memory_regions",
+    "is_admin",
     "is_readable_region",
+    "open_process",
+    "read_process_memory",
+    "scan_memory",
 ]
 
 

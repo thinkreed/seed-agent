@@ -5,7 +5,6 @@ Memory Scanner Windows API 调用封装
 import ctypes
 import logging
 import sys
-from typing import TYPE_CHECKING
 
 from ._types import (
     MEM_COMMIT,
@@ -19,9 +18,6 @@ from ._types import (
     USER_SPACE_LIMIT,
     MemoryRegion,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger("seed_agent")
 

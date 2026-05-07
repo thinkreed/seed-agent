@@ -124,9 +124,9 @@ def skills_hub_installed() -> str:
 
 
 __all__ = [
+    "skills_hub_install",
+    "skills_hub_installed",
     "skills_hub_list",
     "skills_hub_search",
-    "skills_hub_install",
     "skills_hub_uninstall",
-    "skills_hub_installed",
 ]

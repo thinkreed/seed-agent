@@ -4,8 +4,11 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from src.security._tool_expander_config import TOOL_TIER_CONFIGS, TIER_ORDER
-from src.security._tool_expander_determine import determine_expansion_reason, determine_tier
+from src.security._tool_expander_config import TIER_ORDER, TOOL_TIER_CONFIGS
+from src.security._tool_expander_determine import (
+    determine_expansion_reason,
+    determine_tier,
+)
 from src.security._tool_expander_types import ToolTier, create_expansion_event
 
 logger = logging.getLogger(__name__)

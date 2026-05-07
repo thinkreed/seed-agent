@@ -14,7 +14,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from src.lifecycle_hooks._types import HookPoint, HOOK_POINT_DESCRIPTIONS
+from src.lifecycle_hooks._types import HOOK_POINT_DESCRIPTIONS, HookPoint
 
 logger = logging.getLogger(__name__)
 

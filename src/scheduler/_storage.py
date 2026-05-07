@@ -10,7 +10,6 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final
 
 logger = logging.getLogger("seed_agent")
 
@@ -110,7 +109,7 @@ def get_log_file() -> Path:
 __all__ = [
     "_get_tasks_dir",
     "_get_tasks_file",
+    "get_log_file",
     "load_tasks",
     "save_tasks",
-    "get_log_file",
 ]

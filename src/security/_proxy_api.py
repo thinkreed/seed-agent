@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from src.security.proxy import register_provider, get_supported_providers
+from src.security.proxy import get_supported_providers, register_provider
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,8 @@ def clear_audit_logs(vault_path: Path) -> None:
 
 
 __all__ = [
-    "register_new_provider",
-    "get_providers",
     "cleanup_expired_clients",
     "clear_audit_logs",
+    "get_providers",
+    "register_new_provider",
 ]

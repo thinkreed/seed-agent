@@ -13,7 +13,6 @@ FTS5 全文搜索实现
 """
 
 import logging
-import re
 from typing import Any
 
 from src.tools.fts_utils import sanitize_fts_query

@@ -161,6 +161,7 @@ class FullConfig(BaseModel):
 def _update_full_config_forward_ref():
     """更新 FullConfig 的前向引用"""
     from src.models._paths_models import PathsConfig
+
     FullConfig.model_rebuild()
 
 

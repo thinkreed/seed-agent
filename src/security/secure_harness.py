@@ -28,7 +28,6 @@ import logging
 from typing import TYPE_CHECKING
 
 from src.harness import Harness
-from src.security.credential_isolated_sandbox import CredentialIsolatedSandbox
 from src.security.credential_proxy import CredentialProxy
 from src.security.credential_vault import CredentialVault
 from src.security.secure_harness_core import (

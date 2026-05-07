@@ -18,7 +18,7 @@ from ._db_crud import (
     save_preference,
     update_preference_confidence,
 )
-from ._db_init import DBConnectionManager, get_connection_manager
+from ._db_init import get_connection_manager
 from ._db_schema import create_schema
 
 

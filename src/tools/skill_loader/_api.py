@@ -7,10 +7,7 @@ Skill Loader API 模块
 import threading
 from typing import TYPE_CHECKING
 
-from ._loader import get_gene_slice, load_skill_content
-
 if TYPE_CHECKING:
-    from ._types import SkillMeta
     from src.tools import ToolRegistry
 
 # === 全局单例 ===
@@ -98,10 +95,10 @@ _get_loader = get_loader  # 兼容别名
 
 
 __all__ = [
-    "get_loader",
     "_get_loader",
-    "load_skill",
+    "get_loader",
     "list_skills",
-    "search_skill",
+    "load_skill",
     "register_skill_tools",
+    "search_skill",
 ]

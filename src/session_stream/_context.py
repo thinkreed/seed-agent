@@ -6,9 +6,9 @@ Session 上下文构建模块
 
 from typing import Any
 
-from src.session_stream._types import EventType
-from src.session_stream._summary import SummaryManager
 from src.session_stream._replay import StateReplay
+from src.session_stream._summary import SummaryManager
+from src.session_stream._types import EventType
 
 
 class ContextBuilder:

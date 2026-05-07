@@ -10,6 +10,7 @@
 from src.lifecycle_hooks._async_trigger import AsyncTriggerMixin
 from src.lifecycle_hooks._sync_trigger import SyncTriggerMixin
 
+
 # 组合两个 mixin
 class TriggerMixin(AsyncTriggerMixin, SyncTriggerMixin):
     """钩子触发方法 mixin
@@ -19,4 +20,4 @@ class TriggerMixin(AsyncTriggerMixin, SyncTriggerMixin):
     pass
 
 
-__all__ = ["TriggerMixin", "AsyncTriggerMixin", "SyncTriggerMixin"]
+__all__ = ["AsyncTriggerMixin", "SyncTriggerMixin", "TriggerMixin"]

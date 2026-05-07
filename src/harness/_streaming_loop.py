@@ -19,7 +19,11 @@ from src.session_event_stream import EventType
 
 from ._context_builder import build_context_from_session
 from ._lifecycle_hooks import build_session_end_ctx, trigger_hook
-from ._streaming_executor import execute_iteration, extract_iteration_result, is_iteration_result
+from ._streaming_executor import (
+    execute_iteration,
+    extract_iteration_result,
+    is_iteration_result,
+)
 from ._streaming_iteration import IterationOutcome, handle_tool_execution
 from ._streaming_types import StreamChunkType
 from ._streaming_utils import check_cancelled, get_cancel_reason

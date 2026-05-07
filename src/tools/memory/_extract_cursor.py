@@ -13,7 +13,6 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("seed_agent")
 
@@ -37,7 +36,7 @@ class ExtractCursor:
         cursor.set_offset("session_db", new_offset)
     """
 
-    def __init__(self, cursor_dir: Optional[Path] = None) -> None:
+    def __init__(self, cursor_dir: Path | None = None) -> None:
         """初始化提取光标
 
         Args:
@@ -153,7 +152,7 @@ class ExtractCursor:
         return cleaned
 
 
-def get_extract_cursor(project_root: Optional[Path] = None) -> ExtractCursor:
+def get_extract_cursor(project_root: Path | None = None) -> ExtractCursor:
     """获取提取光标的便捷函数
 
     Args:
@@ -171,7 +170,7 @@ def get_extract_cursor(project_root: Optional[Path] = None) -> ExtractCursor:
 
 
 __all__ = [
+    "CURSOR_STALE_MS",
     "ExtractCursor",
     "get_extract_cursor",
-    "CURSOR_STALE_MS",
 ]

@@ -22,14 +22,6 @@ OpenTelemetry 嵌入:
 """
 
 # 从类型模块导入（向后兼容）
-from src._subagent_types import (
-    SubagentResult,
-    SubagentState,
-    SubagentStatus,
-    SubagentType,
-    _get_subagent_type_key,
-)
-
 # 从配置模块导入（向后兼容）
 from src._subagent_config import (
     DEFAULT_TIMEOUTS,
@@ -41,17 +33,24 @@ from src._subagent_config import (
 
 # 从核心模块导入主类（向后兼容）
 from src._subagent_core import SubagentInstance
+from src._subagent_types import (
+    SubagentResult,
+    SubagentState,
+    SubagentStatus,
+    SubagentType,
+    _get_subagent_type_key,
+)
 
 __all__ = [
-    "SubagentType",
-    "SubagentStatus",
-    "SubagentState",
-    "SubagentResult",
-    "SubagentInstance",
-    "PERMISSION_SETS",
-    "SUBAGENT_TYPE_PERMISSIONS",
-    "SUBAGENT_SYSTEM_PROMPTS",
     "DEFAULT_TIMEOUTS",
     "MAX_SUBAGENT_ITERATIONS",
+    "PERMISSION_SETS",
+    "SUBAGENT_SYSTEM_PROMPTS",
+    "SUBAGENT_TYPE_PERMISSIONS",
+    "SubagentInstance",
+    "SubagentResult",
+    "SubagentState",
+    "SubagentStatus",
+    "SubagentType",
     "_get_subagent_type_key",
 ]

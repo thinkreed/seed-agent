@@ -28,11 +28,11 @@ from src.client.execution_core._single import chat_completion_single
 
 __all__ = [
     "chat_completion_single",
-    "try_provider_with_retry",
-    "try_fallback_providers",
+    "chat_completion_with_fallback_internal",
     "get_fallback_model_id",
     "iterate_fallback_models",
-    "chat_completion_with_fallback_internal",
+    "try_fallback_providers",
+    "try_provider_with_retry",
 ]
 
 

@@ -9,7 +9,6 @@
 
 import re
 
-from src.sandbox import IsolationLevel
 from src.security.constants import (
     BLOCKED_ENV_VARS,
     ENV_VAR_BLOCK_PATTERNS,

@@ -11,7 +11,7 @@ from typing import Any, TypeVar
 
 from opentelemetry.trace import Span, StatusCode
 
-from ._tracing_constants import SpanAttributeValue, SPAN_TOOL_PREFIX
+from ._tracing_constants import SPAN_TOOL_PREFIX, SpanAttributeValue
 from .setup import get_tracer
 
 T = TypeVar("T")

@@ -116,6 +116,11 @@ agent.inject_user_input(AskUserResult(
 | **Harness** | `src/harness/` | 控制器：驱动循环、路由工具，已拆分为 `_manager`, `_resume`, `_resume_utils`, `_context_builder`, `_streaming`, `_streaming_loop`, `_streaming_iteration`, `_streaming_executor`, `_streaming_types`, `_streaming_utils`, `_metrics`, `_cycle`, `_tool_router` |
 | **Sandbox** | `src/sandbox.py` + `src/sandbox_core/` | 工作台：隔离执行环境，已拆分为 `_execution`, `_path`, `_types` |
 | **ContextPruner** | `src/context/_pruner.py` + `src/context/_pruner_core/` | 智能上下文裁剪：相关性计算，已拆分为 `_entity_extraction`, `_relevance` |
+| **CircuitBreaker** | `src/client/_circuit_breaker.py` | Provider 熔断器：连续失败自动切换、自动恢复探测 (Wiki P4) |
+| **OrphanReaper** | `src/subagent_manager_core/_orphan_reaper.py` | 孤儿进程回收器：定期扫描超时进程、两阶段终止 (Wiki P4) |
+| **StampedeProtection** | `src/request_queue_core/_stampede.py` | 缓存击穿保护：单请求执行、其他等待共享结果 (Wiki P4) |
+| **ComplexityScorer** | `src/client/_complexity_scorer.py` | 23维度复杂度评分：四级Tier路由模型选择 (Wiki P4) |
+| **SpecificityDetector** | `src/client/_specificity_detector.py` | 任务类型检测：路由到专用模型 (Wiki P4) |
 
 ### 多智能体协作模式
 
@@ -338,13 +343,31 @@ RalphSubagentOrchestrator 执行模式:
 - **Hooks 系统**：Command/HTTP/Function 三种钩子类型
 - **MessageBus**：请求/响应模式的事件总线
 
+### Claude-Mem 借鉴 (P4)
+
+- **Circuit Breaker**：Provider 熔断器，连续失败自动切换备用
+- **Orphan Reaper**：定期扫描超时进程，两阶段终止回收
+- **CLAIM-CONFIRM 队列**：异步任务状态管理
+
+### WorldMonitor 借鉴 (P4)
+
+- **Stampede Protection**：并发缓存击穿保护，单请求执行其他等待
+- **五级缓存分层**：L1-L5 缓存架构
+- **独立熔断配置**：每个数据域独立熔断策略
+
+### Manifest-Architecture 借鉴 (P4)
+
+- **复杂度评分路由**：23 维度评分 → 四级 Tier (simple/standard/complex/reasoning)
+- **Specificity 检测**：任务类型检测路由专用模型
+- **三层路由优先级**：Header Tiers → Specificity → Complexity
+
 ---
 
 ## Wiki 知识落地状态
 
 基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-07，测试通过: 1147 passed）：
 
-### 已实现（P0+P1+P2+P3 全部完成）
+### 已实现（P0+P1+P2+P3+P4 全部完成）
 
 | 优化点 | 来源 | 实现位置 |
 |------|------|----------|
@@ -373,6 +396,11 @@ RalphSubagentOrchestrator 执行模式:
 | **AgentConfig 注册机制** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` AGENT_CONFIG |
 | **AgentSignal 统一输出** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` AgentSignal |
 | **Agent 依赖图拓扑排序** | shannon-architecture (P3) | `src/subagent_manager_core/_agent_registry.py` resolve_agent_execution_order |
+| **Circuit Breaker 熔断器** | claude-mem + worldmonitor (P4) | `src/client/_circuit_breaker.py` CircuitBreakerRegistry |
+| **Orphan Reaper 孤儿回收** | claude-mem (P4) | `src/subagent_manager_core/_orphan_reaper.py` OrphanReaper |
+| **Stampede Protection** | worldmonitor (P4) | `src/request_queue_core/_stampede.py` StampedeProtection |
+| **复杂度评分路由** | manifest-architecture (P4) | `src/client/_complexity_scorer.py` ComplexityScorer |
+| **Specificity 检测** | manifest-architecture (P4) | `src/client/_specificity_detector.py` SpecificityDetector |
 
 ### 待落地
 

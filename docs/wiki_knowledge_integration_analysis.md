@@ -539,7 +539,7 @@ model, routing_info = router.route(messages, has_tools=True)
 | 2026-05-06 中期 | P0 + P1 全部 | 1147 passed |
 | 2026-05-06 P2 | P0 + P1 + P2 全部 | 1147 passed |
 | 2026-05-07 P3 | P0 + P1 + P2 + P3 全部 | 1147 passed |
-| **2026-05-07 P4** | **P0-P4 全部** | **待验证** |
+| **2026-05-07 P4** | **P0-P4 全部** | **1147 passed** |
 
 ---
 

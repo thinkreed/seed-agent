@@ -13,7 +13,6 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("seed_agent")
 
@@ -41,7 +40,7 @@ class ConsolidationLock:
             logger.info("Another process is consolidating memories")
     """
 
-    def __init__(self, lock_path: Optional[Path] = None) -> None:
+    def __init__(self, lock_path: Path | None = None) -> None:
         """初始化整合锁
 
         Args:
@@ -127,7 +126,7 @@ class ConsolidationLock:
         except OSError as e:
             logger.error(f"Failed to force release lock: {e}")
 
-    def _read_lock_pid(self) -> Optional[int]:
+    def _read_lock_pid(self) -> int | None:
         """读取锁文件中记录的 PID"""
         try:
             content = self._lock_path.read_text(encoding="utf-8").strip()
@@ -144,7 +143,7 @@ class ConsolidationLock:
         return self._lock_path
 
 
-def acquire_dream_lock(project_root: Optional[Path] = None) -> ConsolidationLock:
+def acquire_dream_lock(project_root: Path | None = None) -> ConsolidationLock:
     """获取记忆整合锁的便捷函数
 
     Args:
@@ -171,7 +170,7 @@ def acquire_dream_lock(project_root: Optional[Path] = None) -> ConsolidationLock
 
 
 __all__ = [
+    "LOCK_STALE_MS",
     "ConsolidationLock",
     "acquire_dream_lock",
-    "LOCK_STALE_MS",
 ]

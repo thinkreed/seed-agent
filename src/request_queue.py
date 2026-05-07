@@ -19,15 +19,15 @@ from collections import deque
 from typing import Any
 
 from src.request_queue_core import (
-    ConfigAdjuster,
     DISPATCH_LOOP_INTERVAL,
+    ConfigAdjuster,
     QueueConfig,
-    QueueFullError,
-    QueueStats,
     QueueDispatcher,
-    TicketCanceler,
+    QueueFullError,
     QueueMetrics,
+    QueueStats,
     RequestPriority,
+    TicketCanceler,
     TurnTicket,
     TurnWaitTimeoutError,
 )
@@ -246,11 +246,11 @@ class RequestQueue:
 
 
 __all__ = [
-    "RequestQueue",
-    "RequestPriority",
     "QueueConfig",
-    "TurnTicket",
     "QueueFullError",
-    "TurnWaitTimeoutError",
     "QueueStats",
+    "RequestPriority",
+    "RequestQueue",
+    "TurnTicket",
+    "TurnWaitTimeoutError",
 ]

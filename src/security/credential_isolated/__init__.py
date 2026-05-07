@@ -13,7 +13,7 @@ from src.security.credential_isolated._types import (
 )
 
 __all__ = [
-    "CredentialIsolatedSandbox",
     "CREDENTIAL_ACCESS_PATTERNS",
     "DEFAULT_BLOCKED_ENV_VARS",
+    "CredentialIsolatedSandbox",
 ]

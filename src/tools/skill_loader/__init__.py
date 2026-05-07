@@ -25,44 +25,62 @@ Wiki 知识落地 P2 (Hermes-Agent):
 """
 
 # 主类
-from ._skillloader import SkillLoader
-
 # API 函数
-from ._api import get_loader, list_skills, load_skill, register_skill_tools, search_skill, _global_loader, _set_global_loader
-
-# 类型
-from ._types import SkillMeta, SkillMetadata
+from ._api import (
+    _global_loader,
+    _set_global_loader,
+    get_loader,
+    list_skills,
+    load_skill,
+    register_skill_tools,
+    search_skill,
+)
 
 # 缓存
 from ._cache import SkillContentCache
 
-# 加载器函数
-from ._loader import get_gene_slice, load_skill_content
-
 # 配置
-from ._config import MEMORY_GRAPH_CONFIG, PLATFORM_MAP, MAX_LOADED_SKILL_CACHE
-
-# 磁盘缓存
-from .skill_cache import SNAPSHOT_PATH, build_manifest, clear_snapshot, load_snapshot, save_snapshot
-
-# 安全
-from .skill_security import INJECTION_PATTERNS, scan_for_injections, validate_path_within_dir, validate_skill_structure
+from ._config import MAX_LOADED_SKILL_CACHE, MEMORY_GRAPH_CONFIG, PLATFORM_MAP
 
 # Wiki 知识落地 P2: Skills Hub 集成 (Hermes-Agent)
 from ._hub import (
-    TrustLevel,
-    SkillSourceType,
-    HubSkillInfo,
-    HubSearchResult,
-    SkillSource,
     GitHubSource,
-    WellKnownSkillSource,
+    HubSearchResult,
+    HubSkillInfo,
     SkillsHub,
+    SkillSource,
+    SkillSourceType,
+    TrustLevel,
+    WellKnownSkillSource,
+    skills_hub_install,
+    skills_hub_installed,
     skills_hub_list,
     skills_hub_search,
-    skills_hub_install,
     skills_hub_uninstall,
-    skills_hub_installed,
+)
+
+# 加载器函数
+from ._loader import get_gene_slice, load_skill_content
+from ._skillloader import SkillLoader
+
+# 类型
+from ._types import SkillMeta, SkillMetadata
+
+# 磁盘缓存
+from .skill_cache import (
+    SNAPSHOT_PATH,
+    build_manifest,
+    clear_snapshot,
+    load_snapshot,
+    save_snapshot,
+)
+
+# 安全
+from .skill_security import (
+    INJECTION_PATTERNS,
+    scan_for_injections,
+    validate_path_within_dir,
+    validate_skill_structure,
 )
 
 # 兼容别名

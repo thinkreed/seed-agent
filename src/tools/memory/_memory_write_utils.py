@@ -120,7 +120,7 @@ def _get_path(level: str, filename: str | None = None) -> str | None:
 
 __all__ = [
     "_get_memory_root",
+    "_get_path",
     "_get_sessions_dir",
     "_validate_skill_format",
-    "_get_path",
 ]

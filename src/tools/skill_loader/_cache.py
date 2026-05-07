@@ -6,7 +6,6 @@ Skill 内容缓存模块
 
 import threading
 from collections import OrderedDict
-from typing import Any
 
 
 class SkillContentCache:

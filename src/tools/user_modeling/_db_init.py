@@ -92,4 +92,4 @@ def get_connection_manager(db_path: str | Path | None = None) -> DBConnectionMan
     return DBConnectionManager(db_path)
 
 
-__all__ = ["DBConnectionManager", "get_connection_manager", "_ensure_db_path"]
+__all__ = ["DBConnectionManager", "_ensure_db_path", "get_connection_manager"]

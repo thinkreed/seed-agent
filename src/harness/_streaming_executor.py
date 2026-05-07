@@ -18,9 +18,7 @@ from ._streaming_types import IterationResult, StreamChunkType
 from ._streaming_utils import collect_tool_calls, process_tool_delta
 
 if TYPE_CHECKING:
-    from src.abort_signal import AbortSignal
     from src.llm_client import LLMClient
-    from src.session_event_stream import SessionEventStream
 
 
 async def stream_llm_reasoning(

@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.collaboration_tools_core import (
+    _collaboration_sessions,  # 向后兼容
+    _message_buses,  # 向后兼容
+    _orchestrators,  # 向后兼容
     broadcast_message,
     collaborative_improve,
     create_collaboration_session,
@@ -30,17 +33,14 @@ from src.collaboration_tools_core import (
     cross_environment_test,
     destroy_collaboration_session,
     get_collaboration_status,
+    get_orchestrator_registry,
+    get_session_registry,
     multi_angle_analysis,
     receive_agent_messages,
     register_message_handler,
     send_agent_message,
     setup_multi_brain_one_hand,
     setup_one_brain_multi_hand,
-    get_session_registry,
-    get_orchestrator_registry,
-    _collaboration_sessions,  # 向后兼容
-    _orchestrators,  # 向后兼容
-    _message_buses,  # 向后兼容
 )
 
 if TYPE_CHECKING:
@@ -179,6 +179,10 @@ def register_tools(registry: "ToolRegistry") -> None:
 
 
 __all__ = [
+    # 向后兼容（测试需要）
+    "_collaboration_sessions",
+    "_orchestrators",
+    "_message_buses",
     # 会话管理
     "create_collaboration_session",
     "get_collaboration_status",

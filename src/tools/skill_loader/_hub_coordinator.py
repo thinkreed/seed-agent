@@ -9,9 +9,9 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from ._hub_types import HubSkillInfo, HubSearchResult, TrustLevel
-from ._hub_source import SkillSource
 from ._hub_github import GitHubSource
+from ._hub_source import SkillSource
+from ._hub_types import HubSearchResult, TrustLevel
 
 logger = logging.getLogger(__name__)
 

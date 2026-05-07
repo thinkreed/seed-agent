@@ -16,7 +16,11 @@ from src.lifecycle_hooks import HookPoint
 from src.session_event_stream import EventType
 from src.tools.builtin_tools import clear_ask_user_state, get_pending_ask_user_request
 
-from ._lifecycle_hooks import build_response_after_ctx, build_session_end_ctx, trigger_hook
+from ._lifecycle_hooks import (
+    build_response_after_ctx,
+    build_session_end_ctx,
+    trigger_hook,
+)
 from ._streaming_types import IterationResult
 from ._tool_router import route_tool_calls_with_hooks
 

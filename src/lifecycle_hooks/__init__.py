@@ -20,48 +20,47 @@ Wiki 知识落地 (基于 Qwen-Code Hooks 设计):
 """
 
 # 类型导出
-from src.lifecycle_hooks._types import (
-    DefaultHookOutput,
-    PreToolUseHookOutput,
-    PostToolUseHookOutput,
-    LLMStreamHookOutput,
-    UserResponseHookOutput,
-    HookExecutionResult,
-    HookPoint,
-    HookStats,
-    HookTriggerReport,
-    HOOK_POINT_DESCRIPTIONS,
-)
-
-# 注册中心导出
-from src.lifecycle_hooks._registry import LifecycleHookRegistry
-
-# 全局管理导出
-from src.lifecycle_hooks._global import (
-    get_global_registry,
-    reset_global_registry,
-)
-
-# Wiki 知识落地: MessageBus 导出
-from src.lifecycle_hooks._message_bus import (
-    PermissionDecision,
-    HookAggregator,
-    LifecycleMessageBus,
-    get_message_bus,
-    reset_message_bus,
-)
-
 # Wiki 知识落地: 命令/HTTP 钩子 (Qwen-Code P2)
 from src.lifecycle_hooks._command_runner import (
     CommandHookConfig,
     CommandHookResult,
     CommandHookRunner,
 )
+
+# 全局管理导出
+from src.lifecycle_hooks._global import (
+    get_global_registry,
+    reset_global_registry,
+)
 from src.lifecycle_hooks._http_runner import (
     HttpHookConfig,
     HttpHookResult,
     HttpHookRunner,
     execute_http_hook_sync,
+)
+
+# Wiki 知识落地: MessageBus 导出
+from src.lifecycle_hooks._message_bus import (
+    HookAggregator,
+    LifecycleMessageBus,
+    PermissionDecision,
+    get_message_bus,
+    reset_message_bus,
+)
+
+# 注册中心导出
+from src.lifecycle_hooks._registry import LifecycleHookRegistry
+from src.lifecycle_hooks._types import (
+    HOOK_POINT_DESCRIPTIONS,
+    DefaultHookOutput,
+    HookExecutionResult,
+    HookPoint,
+    HookStats,
+    HookTriggerReport,
+    LLMStreamHookOutput,
+    PostToolUseHookOutput,
+    PreToolUseHookOutput,
+    UserResponseHookOutput,
 )
 
 __all__ = [

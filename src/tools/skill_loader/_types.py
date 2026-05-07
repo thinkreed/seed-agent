@@ -43,6 +43,6 @@ class SkillMeta(dict):
 
 
 __all__ = [
-    "SkillMetadata",
     "SkillMeta",
+    "SkillMetadata",
 ]

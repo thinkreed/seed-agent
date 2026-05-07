@@ -123,8 +123,8 @@ def extract_desc_words(description: str) -> set[str]:
 
 
 __all__ = [
-    "tokenize_query",
     "compute_match_score",
     "compute_trigger_score",
     "extract_desc_words",
+    "tokenize_query",
 ]

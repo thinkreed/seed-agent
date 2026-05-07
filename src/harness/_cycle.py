@@ -13,13 +13,13 @@
 """
 
 # 从子模块导入
+from src.harness._conversation_executor import run_conversation_impl
 from src.harness._cycle_executor import run_cycle_impl
 from src.harness._cycle_utils import _check_cancelled, _get_cancel_reason
-from src.harness._conversation_executor import run_conversation_impl
 
 __all__ = [
     "_check_cancelled",
     "_get_cancel_reason",
-    "run_cycle_impl",
     "run_conversation_impl",
+    "run_cycle_impl",
 ]

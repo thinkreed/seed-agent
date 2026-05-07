@@ -12,7 +12,6 @@ Ask User 机制
 """
 
 import logging
-from typing import Any
 
 try:
     # 尝试从 src.tools 导入（正式运行时）

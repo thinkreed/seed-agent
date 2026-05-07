@@ -12,7 +12,11 @@ import yaml
 
 from ._cache import SkillContentCache
 from ._types import SkillMetadata
-from .skill_security import scan_for_injections, validate_path_within_dir, validate_skill_structure
+from .skill_security import (
+    scan_for_injections,
+    validate_path_within_dir,
+    validate_skill_structure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +145,7 @@ def load_skill_ref(name: str, ref_path: str, skills_meta: dict[str, SkillMetadat
 
 
 __all__ = [
-    "load_skill_content",
     "get_gene_slice",
+    "load_skill_content",
     "load_skill_ref",
 ]

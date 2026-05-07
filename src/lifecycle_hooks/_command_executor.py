@@ -5,7 +5,7 @@ import logging
 import os
 import shlex
 
-from ._command_types import CommandHookConfig, CommandHookResult
+from ._command_types import CommandHookResult
 
 logger = logging.getLogger("seed_agent")
 
@@ -51,7 +51,7 @@ async def execute_command(
 
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             process.kill()
             await process.wait()
             duration_ms = (asyncio.get_event_loop().time() - start_time) * 1000

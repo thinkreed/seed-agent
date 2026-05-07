@@ -9,7 +9,6 @@
 
 import logging
 import os
-from pathlib import Path
 
 from ._memory_write import _get_memory_root, _get_path
 

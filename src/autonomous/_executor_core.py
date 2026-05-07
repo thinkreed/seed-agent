@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.autonomous._defense import DefenseState, check_completion_promise
-from src.autonomous._executor_constants import RALPH_MAX_DURATION, RALPH_MAX_ITERATIONS
 from src.autonomous._executor_helpers import (
     handle_response,
     notify_completion,

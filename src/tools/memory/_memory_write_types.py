@@ -53,8 +53,8 @@ class ValidationResult:
 
 
 __all__ = [
-    "VerifiedSource",
     "ALLOWED_SOURCES_FOR_L1L2L3",
     "DENIED_SOURCES_FOR_L1L2L3",
     "ValidationResult",
+    "VerifiedSource",
 ]

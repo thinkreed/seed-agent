@@ -8,24 +8,24 @@
 - 此文件保持向后兼容，从新模块导入所有内容
 """
 
-from src.context._compressor_tier_sync import (
-    apply_all_tiers_sync,
-    apply_tier_1_and_2_sync,
-    apply_tier_1_only,
-)
 from src.context._compressor_tier_async import (
     abstract_summarize,
     apply_all_tiers_async,
     apply_tier_1_and_2_async,
     light_summarize,
 )
+from src.context._compressor_tier_sync import (
+    apply_all_tiers_sync,
+    apply_tier_1_and_2_sync,
+    apply_tier_1_only,
+)
 
 __all__ = [
-    "apply_tier_1_only",
-    "apply_tier_1_and_2_sync",
-    "apply_tier_1_and_2_async",
-    "apply_all_tiers_sync",
-    "apply_all_tiers_async",
-    "light_summarize",
     "abstract_summarize",
+    "apply_all_tiers_async",
+    "apply_all_tiers_sync",
+    "apply_tier_1_and_2_async",
+    "apply_tier_1_and_2_sync",
+    "apply_tier_1_only",
+    "light_summarize",
 ]

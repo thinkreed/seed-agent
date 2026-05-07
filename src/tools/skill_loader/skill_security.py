@@ -107,9 +107,9 @@ _validate_skill_structure = validate_skill_structure
 
 __all__ = [
     "INJECTION_PATTERNS",
-    "scan_for_injections",
     "_scan_for_injections",
-    "validate_skill_structure",
     "_validate_skill_structure",
+    "scan_for_injections",
     "validate_path_within_dir",
+    "validate_skill_structure",
 ]

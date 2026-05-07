@@ -11,12 +11,8 @@ Subagent 异步工具模块
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
 
 from src.tools.utils import safe_int_convert
-
-if TYPE_CHECKING:
-    from src.subagent_manager import SubagentManager
 
 logger = logging.getLogger(__name__)
 

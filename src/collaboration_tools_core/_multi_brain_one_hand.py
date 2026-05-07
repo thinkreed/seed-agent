@@ -5,15 +5,14 @@
 """
 
 import asyncio
-import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.collaboration_tools_core._session import (
+    _collaboration_sessions,
     _orchestrators,
     _session_lock,
-    _collaboration_sessions,
 )
 
 if TYPE_CHECKING:

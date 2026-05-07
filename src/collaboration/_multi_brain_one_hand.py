@@ -15,7 +15,9 @@ MultiBrainOneHandOrchestrator: 多脑一手编排器
 
 # 导入核心类和分析混入
 from src.collaboration._mboh_analysis import MultiBrainOneHandAnalysisMixin
-from src.collaboration._mboh_core import MultiBrainOneHandOrchestrator as _CoreOrchestrator
+from src.collaboration._mboh_core import (
+    MultiBrainOneHandOrchestrator as _CoreOrchestrator,
+)
 
 
 class MultiBrainOneHandOrchestrator(_CoreOrchestrator, MultiBrainOneHandAnalysisMixin):

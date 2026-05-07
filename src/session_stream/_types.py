@@ -6,7 +6,6 @@ Session 事件流类型定义
 
 from enum import StrEnum
 
-
 # 事件清理配置
 MAX_IN_MEMORY_EVENTS = 10000  # 内存中最大事件数
 MAX_EVENT_AGE_DAYS = 30  # 事件最大保留天数

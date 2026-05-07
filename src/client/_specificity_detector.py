@@ -353,7 +353,10 @@ class SpecificityRouter:
             return spec_result.model_override or "gpt-4o", routing_info
 
         # 3. Complexity 评分
-        from src.client._complexity_scorer import ComplexityScorer, ComplexityTier, select_model_for_tier
+        from src.client._complexity_scorer import (
+            ComplexityScorer,
+            select_model_for_tier,
+        )
 
         scorer = ComplexityScorer()
         comp_result = scorer.score_messages(messages, has_tools, str(spec_result.detected_type), context)

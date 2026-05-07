@@ -8,7 +8,6 @@
 """
 
 import datetime as dt_module
-import json
 import logging
 from typing import Any
 
@@ -78,7 +77,7 @@ def cleanup_old_archives(
     """
     from ._archive_operations import delete_archive
 
-    cutoff_date = dt_module.datetime.now(dt_module.timezone.utc) - dt_module.timedelta(days=max_age_days)
+    cutoff_date = dt_module.datetime.now(dt_module.UTC) - dt_module.timedelta(days=max_age_days)
     cutoff_str = cutoff_date.isoformat()
 
     # 检查总数

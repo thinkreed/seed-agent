@@ -8,16 +8,13 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from src.autonomous._defense import DefenseState, check_completion_promise
-from src.autonomous._executor_constants import RALPH_MAX_DURATION, RALPH_MAX_ITERATIONS
+from src.autonomous._defense import DefenseState
 from src.autonomous._executor_helpers import notify_completion
 from src.autonomous._prompt_builder import build_autonomous_prompt, extract_task_signals
 from src.autonomous._ralph_loop import run_ralph_loop
-from src.autonomous._sop_loader import expand_sop_paths, load_sop
+from src.autonomous._sop_loader import expand_sop_paths
 from src.autonomous._state_manager import StateManager, TodoCache
-from src.ralph_state import check_safety_limits as check_global_safety_limits
 from src.session_event_stream import EventType
-from src.shared_config import get_autonomous_config, get_seed_dir_with_fallback
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -180,4 +177,4 @@ def build_full_prompt(agent: "AgentLoop", sop_content: str | None, todo_content:
     )
 
 
-__all__ = ["execute_autonomous_task", "build_full_prompt"]
+__all__ = ["build_full_prompt", "execute_autonomous_task"]

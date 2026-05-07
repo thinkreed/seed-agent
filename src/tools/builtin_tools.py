@@ -20,49 +20,47 @@ Builtin 工具模块 - 兼容层
 """
 
 # 从新的子包导入所有功能
+# 从 ask_user_types 导入状态管理函数
+from src.tools.ask_user_types import (
+    clear_ask_user_state,
+    get_ask_user_state,
+    get_pending_ask_user_request,
+    reset_ask_user_state,
+)
 from src.tools.builtin import (
-    # 文件操作
-    file_read,
-    file_write,
-    file_edit,
+    # 用户交互
+    ask_user,
     # 代码执行
     code_as_policy,
     code_as_policy_async,
-    # 用户交互
-    ask_user,
+    file_edit,
+    # 文件操作
+    file_read,
+    file_write,
     # 注册
     register_builtin_tools,
+)
+from src.tools.builtin._code_execution import (
+    DEFAULT_EXECUTION_TIMEOUT,
+    MAX_CODE_LENGTH,
+    POWERSHELL_BLACKLIST,
+    SHELL_BLACKLIST,
+    _build_command,
+    _check_code_security,
+    _format_execution_result,
+    _resolve_execution_cwd,
 )
 
 # 从子模块导入私有函数（供测试使用）
 from src.tools.builtin._path_validation import (
-    _resolve_path,
-    _validate_path_safety,
-    _is_path_in_allowed_dirs,
     ALLOWED_DIRS,
     DEFAULT_WORK_DIR,
     DEFAULT_WORK_DIR_RESOLVED,
     PROJECT_ROOT,
     PROJECT_ROOT_RESOLVED,
-)
-
-from src.tools.builtin._code_execution import (
-    _check_code_security,
-    _resolve_execution_cwd,
-    _build_command,
-    _format_execution_result,
-    SHELL_BLACKLIST,
-    POWERSHELL_BLACKLIST,
-    MAX_CODE_LENGTH,
-    DEFAULT_EXECUTION_TIMEOUT,
-)
-
-# 从 ask_user_types 导入状态管理函数
-from src.tools.ask_user_types import (
-    clear_ask_user_state,
-    get_pending_ask_user_request,
-    reset_ask_user_state,
-    get_ask_user_state,
+    _is_path_in_allowed_dirs,
+    _resolve_path,
+    _validate_path_safety,
 )
 
 

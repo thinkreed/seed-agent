@@ -18,10 +18,9 @@
 """
 
 # 导入所有模块
-from ._http_runner_types import HttpHookConfig, HttpHookResult
 from ._http_runner_async import HttpHookRunner
 from ._http_runner_sync import execute_http_hook_sync
-
+from ._http_runner_types import HttpHookConfig, HttpHookResult
 
 __all__ = [
     "HttpHookConfig",

@@ -13,7 +13,6 @@ from src.collaboration._mboh_analysis_methods import (
     _read_target,
     analyze_from_multiple_angles,
 )
-from src.collaboration._mboh_core import MultiBrainOneHandOrchestrator
 from src.collaboration._mboh_improve_methods import (
     _execute_improvements,
     _merge_suggestions,

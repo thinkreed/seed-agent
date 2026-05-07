@@ -120,4 +120,4 @@ HOOK_POINT_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-__all__ = ["HookPoint", "HOOK_POINT_DESCRIPTIONS"]
+__all__ = ["HOOK_POINT_DESCRIPTIONS", "HookPoint"]

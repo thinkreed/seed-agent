@@ -17,7 +17,6 @@ from src.session_event_stream import EventType
 
 from ._cycle_prepare import call_llm, prepare_cycle
 from ._cycle_tool_handling import handle_tool_calls
-from ._cycle_utils import _check_cancelled, _get_cancel_reason
 from ._lifecycle_hooks import build_response_after_ctx, trigger_hook
 from ._metrics import ToolExecutionMetrics
 

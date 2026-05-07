@@ -7,11 +7,10 @@ import asyncio
 import logging
 import threading
 from datetime import UTC, datetime
-from typing import Any
 
 from src.background_task_registry._types import (
-    BackgroundTaskEntry,
     CANCEL_GRACE_SECONDS,
+    BackgroundTaskEntry,
     TaskStatus,
 )
 

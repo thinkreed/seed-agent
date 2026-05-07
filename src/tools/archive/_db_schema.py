@@ -16,7 +16,7 @@ import logging
 import os
 import sqlite3
 from pathlib import Path
-from typing import Any, Self, cast
+from typing import Self, cast
 
 logger = logging.getLogger(__name__)
 

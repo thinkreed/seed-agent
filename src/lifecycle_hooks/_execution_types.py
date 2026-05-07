@@ -87,4 +87,4 @@ class HookStats:
         }
 
 
-__all__ = ["HookExecutionResult", "HookTriggerReport", "HookStats"]
+__all__ = ["HookExecutionResult", "HookStats", "HookTriggerReport"]

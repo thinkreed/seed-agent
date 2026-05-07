@@ -13,13 +13,13 @@ from src.request_queue import RequestPriority
 from src.session_event_stream import EventType
 
 from ._cycle_executor import run_cycle_impl
+from ._cycle_utils import _check_cancelled, _get_cancel_reason
 from ._lifecycle_hooks import (
     build_session_end_ctx,
     build_session_start_ctx,
     trigger_hook,
 )
 from ._metrics import ToolExecutionMetrics
-from ._cycle_utils import _check_cancelled, _get_cancel_reason
 
 if TYPE_CHECKING:
     from src.context_engineering import ContextEngineering

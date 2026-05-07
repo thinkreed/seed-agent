@@ -12,7 +12,7 @@ Wiki 知识落地 P3 (基于 ai-hedge-fund Agent 系统设计)
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 from src._subagent_types import SubagentType
 

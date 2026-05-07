@@ -121,7 +121,7 @@ def infer_schema(func: Callable, name: str | None = None) -> dict:
 
 
 __all__ = [
+    "infer_schema",
     "parse_docstring",
     "resolve_type_to_schema",
-    "infer_schema",
 ]

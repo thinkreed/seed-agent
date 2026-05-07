@@ -16,7 +16,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from src.tools import PermissionDecision
 
@@ -67,7 +67,7 @@ class LifecycleMessageBus:
         request_type: str,
         payload: dict[str, Any],
         timeout_ms: int = 60000,
-        abort_signal: Optional[Any] = None,
+        abort_signal: Any | None = None,
     ) -> dict[str, Any]:
         """发送请求并等待响应"""
         correlation_id = str(uuid.uuid4())
@@ -102,7 +102,7 @@ class LifecycleMessageBus:
         try:
             result = await asyncio.wait_for(future, timeout=timeout_ms / 1000)
             return result
-        except asyncio.TimeoutError:
+        except TimeoutError:
             async with self._lock:
                 self._pending_requests.pop(correlation_id, None)
             raise TimeoutError(f"Request timeout: {request_type}")
@@ -185,7 +185,7 @@ class LifecycleMessageBus:
 
 
 # 全局单例
-_global_message_bus: Optional[LifecycleMessageBus] = None
+_global_message_bus: LifecycleMessageBus | None = None
 
 
 def get_message_bus() -> LifecycleMessageBus:
@@ -203,9 +203,9 @@ def reset_message_bus() -> None:
 
 
 __all__ = [
+    "HookAggregator",
     "LifecycleMessageBus",
     "PendingRequest",
-    "HookAggregator",
     "get_message_bus",
     "reset_message_bus",
 ]

@@ -103,8 +103,8 @@ def check_completion_markers(response: str | None, markers: list[str]) -> bool:
 
 
 __all__ = [
+    "check_completion_markers",
+    "check_defense_layers",
     "check_iteration_budget",
     "check_safety_limits",
-    "check_defense_layers",
-    "check_completion_markers",
 ]

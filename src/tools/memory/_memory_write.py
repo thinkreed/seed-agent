@@ -13,10 +13,10 @@
 import logging
 import os
 
-from ._memory_write_types import VerifiedSource
-from ._memory_write_validation import _validate_source
 from ._memory_write_dedup import _check_existing_memory
+from ._memory_write_types import VerifiedSource
 from ._memory_write_utils import _get_path, _validate_skill_format
+from ._memory_write_validation import _validate_source
 
 logger = logging.getLogger(__name__)
 
@@ -130,24 +130,20 @@ def write_memory(
 
 
 # 导出所有公共接口
-from ._memory_write_types import (
-    VerifiedSource,
-    ValidationResult,
-    ALLOWED_SOURCES_FOR_L1L2L3,
-    DENIED_SOURCES_FOR_L1L2L3,
-)
 from ._memory_write_dedup import (
     DEDUPLICATION_THRESHOLD,
     _compute_similarity,
-    _check_existing_memory,
+)
+from ._memory_write_types import (
+    ALLOWED_SOURCES_FOR_L1L2L3,
+    DENIED_SOURCES_FOR_L1L2L3,
+    ValidationResult,
+    VerifiedSource,
 )
 from ._memory_write_utils import (
     _get_memory_root,
     _get_sessions_dir,
-    _get_path,
-    _validate_skill_format,
 )
-
 
 __all__ = [
     # 类型

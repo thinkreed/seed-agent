@@ -5,7 +5,6 @@
 
 import logging
 import time
-from typing import Any
 
 from src.security.proxy._temp_client import TemporaryClient
 

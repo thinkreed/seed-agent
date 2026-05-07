@@ -222,8 +222,8 @@ _build_manifest = build_manifest
 
 __all__ = [
     "SNAPSHOT_PATH",
-    "build_manifest",
     "_build_manifest",
+    "build_manifest",
     "clear_snapshot",
     "load_snapshot",
     "save_snapshot",

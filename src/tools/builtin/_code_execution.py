@@ -271,6 +271,6 @@ async def code_as_policy_async(
     except FileNotFoundError:
         return f"Error: Interpreter not found for '{language}'"
     except PermissionError:
-        return f"Error: Permission denied"
+        return "Error: Permission denied"
     except Exception as e:
         return f"Error executing code: {type(e).__name__}: {str(e)[:100]}"

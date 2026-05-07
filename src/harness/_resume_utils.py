@@ -10,7 +10,6 @@
 """
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from src.session_event_stream import EventType
@@ -18,9 +17,6 @@ from src.tools.builtin_tools import clear_ask_user_state, get_pending_ask_user_r
 
 if TYPE_CHECKING:
     from src.abort_signal import AbortSignal
-    from src.lifecycle_hooks import LifecycleHookRegistry
-    from src.llm_client import LLMClient
-    from src.sandbox import Sandbox
     from src.session_event_stream import SessionEventStream
     from src.tools.ask_user_types import AskUserResult
 

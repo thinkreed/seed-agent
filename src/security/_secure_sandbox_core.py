@@ -8,9 +8,17 @@ from typing import Any
 from src.sandbox import IsolationLevel, Sandbox
 from src.security._secure_sandbox_execution import execute_single_tool_secure
 from src.security._secure_sandbox_types import SecureExecutionResult
-from src.security.risk_classifier import ClassificationResult, CommandRiskClassifier, RiskLevel
+from src.security.risk_classifier import (
+    ClassificationResult,
+    CommandRiskClassifier,
+    RiskLevel,
+)
 from src.security.single_purpose_tools import SinglePurposeToolFactory
-from src.security.tool_expander import TOOL_TIER_CONFIGS, ProgressiveToolExpander, ToolTier
+from src.security.tool_expander import (
+    TOOL_TIER_CONFIGS,
+    ProgressiveToolExpander,
+    ToolTier,
+)
 
 logger = logging.getLogger(__name__)
 

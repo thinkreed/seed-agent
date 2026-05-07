@@ -42,7 +42,10 @@ from src.harness._context_builder import (
 )
 from src.harness._cycle import run_conversation_impl, run_cycle_impl
 from src.harness._lifecycle_hooks import build_session_end_ctx, trigger_hook
-from src.harness._loop_detection import LoopDetectionConfig, LoopDetectionService, LoopType
+from src.harness._loop_detection import (
+    LoopDetectionService,
+    LoopType,
+)
 from src.harness._manager import MAX_ITERATIONS, HarnessManager
 
 # 从子模块导入

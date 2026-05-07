@@ -7,7 +7,6 @@
 
 import json
 import logging
-from pathlib import Path
 
 from ._completion import _get_ralph_state_dir
 

@@ -8,7 +8,11 @@ import logging
 import time
 from typing import Any
 
-from src.session_stream._types import EventType, MAX_EVENT_AGE_DAYS, MAX_IN_MEMORY_EVENTS
+from src.session_stream._types import (
+    MAX_EVENT_AGE_DAYS,
+    MAX_IN_MEMORY_EVENTS,
+    EventType,
+)
 
 logger = logging.getLogger(__name__)
 

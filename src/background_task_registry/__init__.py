@@ -53,8 +53,8 @@ def reset_background_task_registry() -> None:
 
 
 __all__ = [
-    "BackgroundTaskRegistry",
     "BackgroundTaskEntry",
+    "BackgroundTaskRegistry",
     "TaskStatus",
     "get_background_task_registry",
     "init_background_task_registry",

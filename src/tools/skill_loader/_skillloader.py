@@ -9,7 +9,12 @@ import threading
 from pathlib import Path
 
 from ._cache import SkillContentCache
-from ._config import CURRENT_PLATFORM, MAX_LOADED_SKILL_CACHE, MEMORY_GRAPH_CONFIG, _ensure_skills_dir
+from ._config import (
+    CURRENT_PLATFORM,
+    MAX_LOADED_SKILL_CACHE,
+    MEMORY_GRAPH_CONFIG,
+    _ensure_skills_dir,
+)
 from ._index import build_skills_index
 from ._loader import get_gene_slice, load_skill_content, load_skill_ref
 from ._matching import compute_match_score, compute_trigger_score, tokenize_query

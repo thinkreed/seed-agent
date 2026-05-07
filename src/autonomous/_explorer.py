@@ -262,7 +262,6 @@ class AutonomousExplorer:
 
     def _load_todo_content(self) -> str:
         """加载 TODO 内容"""
-        from src.shared_config import get_seed_dir_with_fallback
         return self._task_executor._todo_cache.load_todo_content(get_seed_dir_with_fallback())
 
     def _build_autonomous_prompt(self, todo_content: str, has_todo: bool) -> str:
@@ -276,7 +275,6 @@ class AutonomousExplorer:
 
     def _build_task_instruction(self, todo_content: str, has_todo: bool) -> str:
         """构建任务指令"""
-        from src.shared_config import get_seed_dir_with_fallback
         return build_task_instruction(todo_content, has_todo, get_seed_dir_with_fallback())
 
     def _extract_autonomous_prompt_core(self, full_prompt: str) -> str:

@@ -22,12 +22,6 @@
 """
 
 # 从类型模块导入（向后兼容）
-from src.security._tool_expander_types import (
-    ExpansionEvent,
-    ToolTier,
-    ToolTierConfig,
-)
-
 # 从配置模块导入（向后兼容）
 from src.security._tool_expander_config import (
     TASK_TYPE_TIER_MAP,
@@ -37,13 +31,18 @@ from src.security._tool_expander_config import (
 
 # 从核心模块导入主类（向后兼容）
 from src.security._tool_expander_core import ProgressiveToolExpander
+from src.security._tool_expander_types import (
+    ExpansionEvent,
+    ToolTier,
+    ToolTierConfig,
+)
 
 __all__ = [
+    "TASK_TYPE_TIER_MAP",
+    "TOOL_TIER_CONFIGS",
+    "USER_PERMISSION_TIER_LIMITS",
+    "ExpansionEvent",
+    "ProgressiveToolExpander",
     "ToolTier",
     "ToolTierConfig",
-    "ExpansionEvent",
-    "TOOL_TIER_CONFIGS",
-    "TASK_TYPE_TIER_MAP",
-    "USER_PERMISSION_TIER_LIMITS",
-    "ProgressiveToolExpander",
 ]

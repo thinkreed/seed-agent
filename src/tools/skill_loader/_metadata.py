@@ -139,9 +139,9 @@ def convert_lists_to_sets(meta: dict) -> None:
 
 
 __all__ = [
-    "parse_frontmatter",
-    "normalize_triggers",
-    "normalize_str_list",
-    "parse_skill_meta",
     "convert_lists_to_sets",
+    "normalize_str_list",
+    "normalize_triggers",
+    "parse_frontmatter",
+    "parse_skill_meta",
 ]

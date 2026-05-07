@@ -10,7 +10,7 @@ import logging
 import threading
 from collections.abc import Callable
 
-from src.subagent import SubagentResult, SubagentState, SubagentType
+from src.subagent import SubagentResult
 from src.subagent_manager_core._task import SubagentTask
 
 logger = logging.getLogger(__name__)

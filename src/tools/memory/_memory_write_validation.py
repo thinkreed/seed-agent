@@ -7,10 +7,10 @@ Wiki 知识落地 P2 (GenericAgent): 行动验证原则
 """
 
 from ._memory_write_types import (
-    VerifiedSource,
-    ValidationResult,
     ALLOWED_SOURCES_FOR_L1L2L3,
     DENIED_SOURCES_FOR_L1L2L3,
+    ValidationResult,
+    VerifiedSource,
 )
 
 

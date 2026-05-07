@@ -12,7 +12,6 @@ LLM 摘要生成
 - format_events_for_summary: 格式化事件用于摘要
 """
 
-import json
 import logging
 from typing import TYPE_CHECKING, Any
 

@@ -14,7 +14,6 @@
 """
 
 import logging
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +108,9 @@ def _list_user_preferences() -> str:
 
 
 __all__ = [
-    "_observe_user_preference",
     "_get_user_preference",
     "_get_user_profile_summary",
-    "_update_user_model",
     "_list_user_preferences",
+    "_observe_user_preference",
+    "_update_user_model",
 ]

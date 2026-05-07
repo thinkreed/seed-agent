@@ -19,23 +19,22 @@
 """
 
 # 导入所有模块
-from ._ttrl_types import (
-    JudgementType,
-    MemorySource,
-    ExecutionTrace,
-    MemoryEntry,
-    ConsolidationResult,
-)
-from ._ttrl_processor import TTRLProcessor
 from ._ttrl_api import (
     get_ttrl_processor,
+    ttrl_add_memory,
     ttrl_add_trace,
     ttrl_batch_evaluate,
-    ttrl_add_memory,
     ttrl_consolidate,
     ttrl_get_stats,
 )
-
+from ._ttrl_processor import TTRLProcessor
+from ._ttrl_types import (
+    ConsolidationResult,
+    ExecutionTrace,
+    JudgementType,
+    MemoryEntry,
+    MemorySource,
+)
 
 __all__ = [
     # 枚举和类型

@@ -10,15 +10,15 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from src.client import LLMGateway
 
-from src.context._compressor_prompts import (
-    ABSTRACT_SUMMARY_PROMPT,
-    LIGHT_SUMMARY_PROMPT,
-)
 from src.context._compressor_format import (
     format_abstract,
     format_messages_for_summary,
     format_simplified,
     simplify_messages,
+)
+from src.context._compressor_prompts import (
+    ABSTRACT_SUMMARY_PROMPT,
+    LIGHT_SUMMARY_PROMPT,
 )
 
 logger = logging.getLogger(__name__)

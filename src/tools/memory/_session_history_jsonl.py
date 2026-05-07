@@ -16,7 +16,6 @@ import json
 import logging
 import os
 from datetime import UTC, datetime
-from pathlib import Path
 
 from ._memory_write import _get_sessions_dir
 

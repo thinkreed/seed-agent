@@ -5,9 +5,8 @@ Wiki 知识落地 P2 (MIA): Test-Time Reinforcement Learning
 
 from typing import Any
 
-from ._ttrl_types import JudgementType, MemorySource, ExecutionTrace, MemoryEntry
 from ._ttrl_processor import TTRLProcessor
-
+from ._ttrl_types import ExecutionTrace, JudgementType, MemoryEntry, MemorySource
 
 _processor: TTRLProcessor | None = None
 
@@ -70,7 +69,7 @@ def ttrl_batch_evaluate() -> str:
     results = processor.batch_evaluate()
 
     lines = [
-        f"TTRL Evaluation Results:",
+        "TTRL Evaluation Results:",
         f"- Total traces: {results['total']}",
         f"- Correct: {results['correct']}",
         f"- Incorrect: {results['incorrect']}",
@@ -145,7 +144,7 @@ def ttrl_consolidate(threshold: float = 0.9999) -> str:
     result = processor.consolidate_memories(threshold)
 
     lines = [
-        f"TTRL Consolidation Results:",
+        "TTRL Consolidation Results:",
         f"- Total traces: {result.total_traces}",
         f"- Correct: {result.correct_count}",
         f"- Incorrect: {result.incorrect_count}",
@@ -172,7 +171,7 @@ def ttrl_get_stats() -> str:
     stats = processor.get_win_rate_stats()
 
     lines = [
-        f"TTRL Win Rate Statistics:",
+        "TTRL Win Rate Statistics:",
         f"- Total memories: {stats['total_memories']}",
         f"- Avg win rate: {stats['avg_win_rate']:.2f}",
         f"- High win rate (>=0.8): {len(stats['high_win_rate'])}",
@@ -189,9 +188,9 @@ def ttrl_get_stats() -> str:
 
 __all__ = [
     "get_ttrl_processor",
+    "ttrl_add_memory",
     "ttrl_add_trace",
     "ttrl_batch_evaluate",
-    "ttrl_add_memory",
     "ttrl_consolidate",
     "ttrl_get_stats",
 ]

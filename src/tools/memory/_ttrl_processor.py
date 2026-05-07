@@ -13,11 +13,11 @@ import re
 from pathlib import Path
 
 from ._ttrl_types import (
-    JudgementType,
-    MemorySource,
-    ExecutionTrace,
-    MemoryEntry,
     ConsolidationResult,
+    ExecutionTrace,
+    JudgementType,
+    MemoryEntry,
+    MemorySource,
 )
 
 logger = logging.getLogger(__name__)
@@ -172,8 +172,8 @@ class TTRLProcessor:
     ) -> str:
         """写入记忆（带去重逻辑）"""
         from ._memory_write import (
-            write_memory,
             VerifiedSource,
+            write_memory,
         )
 
         # 映射 MemorySource 到 VerifiedSource

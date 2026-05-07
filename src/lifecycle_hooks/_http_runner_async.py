@@ -212,7 +212,7 @@ class HttpHookRunner:
                                 await asyncio.sleep(retry_delay)
                                 continue
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = f"Timeout after {t}s"
                 if attempts <= retries:
                     await asyncio.sleep(retry_delay)

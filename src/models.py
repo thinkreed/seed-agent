@@ -9,5 +9,5 @@
 """
 
 # 从包导入所有内容
-from src.models import *  # noqa: F401, F403
+from src.models import *  # noqa: F403
 from src.models import __all__  # noqa: F401

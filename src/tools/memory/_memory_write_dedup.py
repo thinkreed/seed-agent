@@ -129,6 +129,6 @@ def _check_existing_memory(path: str, content: str, metadata: str = "") -> str |
 
 __all__ = [
     "DEDUPLICATION_THRESHOLD",
-    "_compute_similarity",
     "_check_existing_memory",
+    "_compute_similarity",
 ]

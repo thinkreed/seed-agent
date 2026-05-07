@@ -16,7 +16,7 @@ Ralph Loop 执行流程模块
 import asyncio
 import logging
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -85,7 +85,7 @@ class ExecutionMixin:
             # 执行一轮 Agent Loop
             try:
                 response = await self.agent.run(prompt)
-            except ConfigurationError as e:
+            except ConfigurationError:
                 logger.critical(f"Configuration error at iteration {self._iteration_count}")
                 self._cleanup()
                 raise
