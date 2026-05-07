@@ -1,12 +1,19 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-07 (更新: P3 实现完成)
+## 日期: 2026-05-07 (更新: P4 实现完成)
 
 ## 概述
 
 基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
-**验证结果**: 所有 P0 + P1 + P2 + P3 优化点已实现，测试通过 1147 passed。
+**验证结果**: 所有 P0 + P1 + P2 + P3 + P4 优化点已实现，测试通过 1147 passed。
+
+**P4 实现 (2026-05-07)** - 基于 Wiki 新项目分析：
+- **Circuit Breaker 自动切换**: `src/client/_circuit_breaker.py` - 连续失败触发熔断 + 自动恢复探测 (claude-mem + worldmonitor 设计)
+- **Orphan Reaper**: `src/subagent_manager_core/_orphan_reaper.py` - 定期回收孤儿 Subagent 进程 (claude-mem 设计)
+- **Stampede Protection**: `src/request_queue_core/_stampede.py` - 并发缓存击穿保护 (worldmonitor 设计)
+- **复杂度评分路由**: `src/client/_complexity_scorer.py` - 23 维度评分 → 四级 Tier (manifest-architecture 设计)
+- **Specificity 检测**: `src/client/_specificity_detector.py` - 任务类型检测路由特定模型 (manifest-architecture 设计)
 
 **P3 实现 (2026-05-07)**:
 - **ToolCapability 枚举**: `src/tools/_types.py` - 6 种能力声明 (DeepSeek-TUI 设计)
@@ -365,8 +372,180 @@ order = resolve_agent_execution_order(["implement", "review"])
 
 ---
 
-## 八、参考资料
+## 八、新增优化点详情 (P4 2026-05-07)
 
+基于 Wiki 新项目分析（claude-context-docs, claude-mem-docs, codebrain, FinceptTerminal-Architecture, manifest-architecture, multica, omi, qdrant-docs, worldmonitor-architecture），实施以下 P1 级优化点：
+
+### 8.1 Circuit Breaker 自动切换 (claude-mem + worldmonitor 设计)
+
+**实现位置**: `src/client/_circuit_breaker.py`
+
+**功能**: Provider 熔断器，连续失败自动切换备用，自动恢复探测。
+
+**新增类型**:
+- `CircuitState` 枚举 - CLOSED/OPEN/HALF_OPEN 状态
+- `CircuitConfig` dataclass - 熔断器配置（failure_threshold, recovery_timeout）
+- `CircuitStats` dataclass - 统计信息
+- `CircuitBreaker` - 单个 Provider 熔断器
+- `CircuitBreakerRegistry` - 多 Provider 熔断注册表
+
+**新增方法**:
+- `can_execute()` - 检查是否可执行
+- `record_success()` / `record_failure()` - 记录结果
+- `reset()` - 强制重置
+
+```python
+# 使用示例
+from src.client._circuit_breaker import CircuitBreakerRegistry, CircuitConfig
+
+registry = CircuitBreakerRegistry()
+
+# 配置熔断器
+registry.configure("openai", CircuitConfig(failure_threshold=3, recovery_timeout=30.0))
+
+# 检查是否可执行
+if await registry.can_execute("openai"):
+    try:
+        result = await call_llm()
+        await registry.record_success("openai")
+    except Exception:
+        await registry.record_failure("openai")
+```
+
+### 8.2 Orphan Reaper (claude-mem 设计)
+
+**实现位置**: `src/subagent_manager_core/_orphan_reaper.py`
+
+**功能**: 定期扫描和回收超时的孤儿 Subagent 进程。
+
+**新增类型**:
+- `OrphanStatus` 枚举 - ALIVE/TIMEOUT/TERMINATED/KILLED/CLEANED
+- `ProcessInfo` dataclass - 进程信息
+- `ReaperConfig` dataclass - Reaper 配置
+- `OrphanReaper` - 孤儿进程回收器
+
+**新增方法**:
+- `register(pid, task_id, timeout)` - 注册新进程
+- `unregister(pid)` - 取消注册
+- `start()` / `stop()` - 启动/停止 Reaper
+
+```python
+# 使用示例
+from src.subagent_manager_core._orphan_reaper import get_orphan_reaper
+
+reaper = get_orphan_reaper()
+await reaper.start()
+
+# 注册进程
+reaper.register(pid=12345, task_id="abc", timeout=300)
+
+# 正常完成后取消注册
+reaper.unregister(pid=12345)
+```
+
+### 8.3 Stampede Protection (worldmonitor 设计)
+
+**实现位置**: `src/request_queue_core/_stampede.py`
+
+**功能**: 并发缓存击穿保护，单个请求实际调用，其他等待共享结果。
+
+**新增类型**:
+- `StampedeConfig` dataclass - 配置
+- `StampedeEntry` dataclass - 条目
+- `StampedeStats` dataclass - 统计
+- `StampedeProtection` - 保护器
+- `StampedeRegistry` - 注册表
+
+**新增方法**:
+- `get_or_refresh(key, refresh_fn)` - 获取或刷新
+- `invalidate(key)` - 失效缓存
+- `get_stats()` - 获取统计
+
+```python
+# 使用示例
+from src.request_queue_core._stampede import StampedeProtection
+
+stampede = StampedeProtection[str]()
+
+async def refresh():
+    return await fetch_from_backend()
+
+# 第一个请求执行刷新，其他等待
+result = await stampede.get_or_refresh("cache_key", refresh)
+```
+
+### 8.4 复杂度评分路由 (manifest-architecture 设计)
+
+**实现位置**: `src/client/_complexity_scorer.py`
+
+**功能**: 23 维度复杂度评分，四级 Tier 路由（simple/standard/complex/reasoning）。
+
+**新增类型**:
+- `ComplexityTier` 枚举 - SIMPLE/STANDARD/COMPLEX/REASONING
+- `ComplexityDimension` dataclass - 维度定义
+- `ComplexityScore` dataclass - 评分结果
+- `ComplexityScorer` - 评分器
+
+**23 维度**:
+- 代码复杂度（5维）：file_count, line_count, function_count, nesting_depth, dependency_count
+- 任务复杂度（6维）：step_count, decision_points, parallel_tasks, verification_needed, documentation_needed, test_needed
+- 上下文复杂度（4维）：message_count, token_count, file_references, history_length
+- 工具复杂度（4维）：tool_count, tool_types, cross_domain_calls, permission_level
+- 知识复杂度（4维）：domain_count, concept_count, reasoning_depth, uncertainty_level
+
+```python
+# 使用示例
+from src.client._complexity_scorer import ComplexityScorer, ComplexityTier, select_model_for_tier
+
+scorer = ComplexityScorer()
+score = scorer.score_messages(messages, has_tools=True)
+
+# 根据 Tier 选择模型
+model = select_model_for_tier(score.tier)
+```
+
+### 8.5 Specificity 检测 (manifest-architecture 设计)
+
+**实现位置**: `src/client/_specificity_detector.py`
+
+**功能**: 任务类型自动检测，路由到专用模型。
+
+**新增类型**:
+- `SpecificityType` 枚举 - CODING/DATA_ANALYSIS/WEB_BROWSING/PLANNING/REASONING/CONVERSATION/GENERAL
+- `SpecificityResult` dataclass - 检测结果
+- `SpecificityDetector` - 检测器
+- `SpecificityRouter` - 路由器
+
+**三层路由优先级**: Header Tiers → Specificity → Complexity
+
+```python
+# 使用示例
+from src.client._specificity_detector import SpecificityRouter
+
+router = SpecificityRouter()
+model, routing_info = router.route(messages, has_tools=True)
+
+# routing_info["route_source"] 可为 "header", "specificity", "complexity"
+```
+
+---
+
+## 九、P4 落地进度追踪
+
+| 日期 | 已落地 | 测试状态 |
+|------|--------|----------|
+| 2026-05-05 | P0 全部 | 1130 passed |
+| 2026-05-06 早期 | P0 + P1 大部分 | 1132 passed |
+| 2026-05-06 中期 | P0 + P1 全部 | 1147 passed |
+| 2026-05-06 P2 | P0 + P1 + P2 全部 | 1147 passed |
+| 2026-05-07 P3 | P0 + P1 + P2 + P3 全部 | 1147 passed |
+| **2026-05-07 P4** | **P0-P4 全部** | **待验证** |
+
+---
+
+## 十、参考资料
+
+### 原有项目
 - genericagent: `E:\projects\wiki\genericagent\`
 - hermes-agent: `E:\projects\wiki\hermes-agent\`
 - mia: `E:\projects\wiki\mia\`
@@ -377,3 +556,14 @@ order = resolve_agent_execution_order(["implement", "review"])
 - deepseek-tui-architecture: `E:\projects\wiki\deepseek-tui-architecture\`
 - shannon-architecture: `E:\projects\wiki\shannon-architecture\`
 - opensre-docs: `E:\projects\wiki\opensre-docs\`
+
+### 新增项目（P4 参考）
+- claude-context-docs: `E:\projects\wiki\claude-context-docs\` - Merkle DAG 增量索引、混合搜索
+- claude-mem-docs: `E:\projects\wiki\claude-mem-docs\` - Hooks 系统、CLAIM-CONFIRM 队列、Circuit Breaker
+- codebrain: `E:\projects\wiki\codebrain\` - Fallback Chain、意图导向工具合并、增量 SymbolIndex
+- FinceptTerminal-Architecture: `E:\projects\wiki\FinceptTerminal-Architecture\` - Result<T> 错误处理、DataHub Pub/Sub
+- manifest-architecture: `E:\projects\wiki\manifest-architecture\` - 复杂度评分路由、Specificity 检测
+- multica: `E:\projects\wiki\multica\` - 失效策略、乐观更新回滚
+- omi: `E:\projects\wiki\omi\` - VAD Gate、Fail-open 策略
+- qdrant-docs: `E:\projects\wiki\qdrant-docs\` - Segment 分层、量化压缩
+- worldmonitor-architecture: `E:\projects\wiki\worldmonitor-architecture\` - Stampede Protection、五级缓存分层
