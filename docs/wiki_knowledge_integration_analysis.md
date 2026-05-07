@@ -495,7 +495,9 @@ result = await stampede.get_or_refresh("cache_key", refresh)
 
 ```python
 # 使用示例
-from src.client._complexity_scorer import ComplexityScorer, ComplexityTier, select_model_for_tier
+from src.client._complexity_scorer import ComplexityScorer
+from src.client._complexity_types import ComplexityTier
+from src.client._model_selector import select_model_for_tier
 
 scorer = ComplexityScorer()
 score = scorer.score_messages(messages, has_tools=True)
@@ -520,7 +522,7 @@ model = select_model_for_tier(score.tier)
 
 ```python
 # 使用示例
-from src.client._specificity_detector import SpecificityRouter
+from src.client._specificity_router import SpecificityRouter
 
 router = SpecificityRouter()
 model, routing_info = router.route(messages, has_tools=True)

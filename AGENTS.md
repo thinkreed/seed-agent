@@ -119,8 +119,8 @@ agent.inject_user_input(AskUserResult(
 | **CircuitBreaker** | `src/client/_circuit_breaker.py` | Provider 熔断器：连续失败自动切换、自动恢复探测 (Wiki P4) |
 | **OrphanReaper** | `src/subagent_manager_core/_orphan_reaper.py` | 孤儿进程回收器：定期扫描超时进程、两阶段终止 (Wiki P4) |
 | **StampedeProtection** | `src/request_queue_core/_stampede.py` | 缓存击穿保护：单请求执行、其他等待共享结果 (Wiki P4) |
-| **ComplexityScorer** | `src/client/_complexity_scorer.py` | 23维度复杂度评分：四级Tier路由模型选择 (Wiki P4) |
-| **SpecificityDetector** | `src/client/_specificity_detector.py` | 任务类型检测：路由到专用模型 (Wiki P4) |
+| **ComplexityScorer** | `src/client/_complexity_scorer.py` + `_complexity_types.py` + `_model_selector.py` | 23维度复杂度评分：四级Tier路由模型选择 (Wiki P4) |
+| **SpecificityDetector** | `src/client/_specificity_detector.py` + `_specificity_types.py` + `_specificity_router.py` | 任务类型检测：路由到专用模型 (Wiki P4) |
 
 ### 多智能体协作模式
 

@@ -1,19 +1,7 @@
 """
-复杂度评分路由模块
+复杂度评分核心模块
 
-借鉴 manifest-architecture 设计的智能模型路由器。
-
-核心功能:
-- 23 维度复杂度评分
-- 四级 Tier 路由（simple/standard/complex/reasoning）
-- Sigmoid 置信度平滑
-- Tier Floor 机制（有 Tools 时提升）
-
-参考 manifest-architecture:
-- 三层路由优先级：Header Tiers → Specificity → Complexity
-- 23 维度评分 → 四级 Tier
-- Sigmoid 置信度计算：平滑 Tier 边界过渡
-- Tier Floor 机制：有 Tools 时强制提升 Tier
+基于 23 维度评估任务复杂度，决定模型路由 Tier。
 
 维度设计:
 1. 代码复杂度（5维）：文件数、行数、函数数、嵌套深度、依赖数
@@ -26,87 +14,17 @@
 import logging
 import math
 import re
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any
 
+from src.client._complexity_types import (
+    DIMENSION_CONFIGS,
+    TIER_RANGES,
+    ComplexityDimension,
+    ComplexityScore,
+    ComplexityTier,
+)
+
 logger = logging.getLogger("seed_agent")
-
-
-class ComplexityTier(Enum):
-    """复杂度层级"""
-    SIMPLE = "simple"      # 简单任务：直接回答、单文件编辑
-    STANDARD = "standard"  # 标准任务：多文件编辑、简单分析
-    COMPLEX = "complex"    # 复杂任务：重构、架构设计、多模块
-    REASONING = "reasoning"  # 推理任务：复杂分析、决策、规划
-
-
-@dataclass
-class ComplexityDimension:
-    """复杂度维度"""
-    name: str
-    weight: float
-    value: float = 0.0
-    normalized: float = 0.0
-    threshold: float = 1.0  # 归一化阈值
-
-
-@dataclass
-class ComplexityScore:
-    """复杂度评分结果"""
-    tier: ComplexityTier
-    raw_score: float
-    confidence: float
-    dimensions: dict[str, ComplexityDimension] = field(default_factory=dict)
-    has_tools: bool = False
-    specificity_type: str | None = None
-    tier_floor_applied: bool = False
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-# 23 维度配置
-DIMENSION_CONFIGS: dict[str, tuple[float, float]] = {
-    # 代码复杂度（5维）
-    "file_count": (0.8, 5.0),      # 文件数阈值
-    "line_count": (1.0, 500.0),    # 行数阈值
-    "function_count": (0.6, 20.0), # 函数数阈值
-    "nesting_depth": (0.5, 4.0),   # 嵌套深度阈值
-    "dependency_count": (0.7, 10.0), # 依赖数阈值
-
-    # 任务复杂度（6维）
-    "step_count": (0.9, 5.0),       # 步骤数阈值
-    "decision_points": (1.2, 3.0),  # 决策点阈值
-    "parallel_tasks": (1.0, 2.0),   # 并行任务阈值
-    "verification_needed": (1.5, 1.0), # 验证需求阈值
-    "documentation_needed": (0.8, 1.0), # 文档需求阈值
-    "test_needed": (1.0, 1.0),      # 测试需求阈值
-
-    # 上下文复杂度（4维）
-    "message_count": (0.5, 10.0),   # 消息数阈值
-    "token_count": (0.8, 2000.0),   # Token 数阈值
-    "file_references": (0.6, 5.0),  # 文件引用阈值
-    "history_length": (0.4, 5.0),   # 历史长度阈值
-
-    # 工具复杂度（4维）
-    "tool_count": (0.7, 3.0),       # 工具数阈值
-    "tool_types": (1.0, 2.0),       # 工具类型阈值
-    "cross_domain_calls": (1.2, 1.0), # 跨域调用阈值
-    "permission_level": (0.5, 2.0), # 权限需求阈值
-
-    # 知识复杂度（4维）
-    "domain_count": (0.6, 2.0),     # 领域数阈值
-    "concept_count": (0.8, 5.0),    # 概念数阈值
-    "reasoning_depth": (1.5, 2.0),  # 推理深度阈值
-    "uncertainty_level": (1.0, 1.0), # 不确定性阈值
-}
-
-# Tier 分值范围
-TIER_RANGES: dict[ComplexityTier, tuple[float, float]] = {
-    ComplexityTier.SIMPLE: (0.0, 2.0),
-    ComplexityTier.STANDARD: (2.0, 5.0),
-    ComplexityTier.COMPLEX: (5.0, 10.0),
-    ComplexityTier.REASONING: (10.0, 15.0),
-}
 
 
 class ComplexityScorer:
@@ -204,31 +122,16 @@ class ComplexityScorer:
         context: dict[str, Any] | None,
     ) -> None:
         """分析代码复杂度"""
-        # 从上下文或消息中提取代码信息
-        code_context = context.get("code_context", {})
+        code_context = context.get("code_context", {}) if context else {}
 
-        # 文件数
-        file_count = code_context.get("file_count", 0)
-        self._set_dimension("file_count", file_count)
-
-        # 行数
-        line_count = code_context.get("line_count", 0)
-        self._set_dimension("line_count", line_count)
-
-        # 函数数
-        function_count = code_context.get("function_count", 0)
-        self._set_dimension("function_count", function_count)
-
-        # 嵌套深度（从代码分析）
-        nesting_depth = code_context.get("nesting_depth", 0)
-        self._set_dimension("nesting_depth", nesting_depth)
-
-        # 依赖数
-        dependency_count = code_context.get("dependency_count", 0)
-        self._set_dimension("dependency_count", dependency_count)
-
-        # 如果没有提供上下文，从消息推断
-        if not code_context:
+        # 从上下文或消息推断
+        if code_context:
+            self._set_dimension("file_count", code_context.get("file_count", 0))
+            self._set_dimension("line_count", code_context.get("line_count", 0))
+            self._set_dimension("function_count", code_context.get("function_count", 0))
+            self._set_dimension("nesting_depth", code_context.get("nesting_depth", 0))
+            self._set_dimension("dependency_count", code_context.get("dependency_count", 0))
+        else:
             self._infer_code_complexity(messages)
 
     def _infer_code_complexity(self, messages: list[dict]) -> None:
@@ -297,7 +200,7 @@ class ComplexityScorer:
 
         # Token 数（估算）
         total_tokens = sum(
-            len(msg.get("content", "").split()) * 1.5  # 估算 Token
+            len(msg.get("content", "").split()) * 1.5
             for msg in messages
         )
         self._set_dimension("token_count", total_tokens)
@@ -320,12 +223,12 @@ class ComplexityScorer:
         context: dict[str, Any] | None,
     ) -> None:
         """分析工具复杂度"""
-        tool_context = context.get("tool_context", {})
+        tool_context = context.get("tool_context", {}) if context else {}
 
         # 工具数
         tool_count = tool_context.get("tool_count", 0)
         if has_tools and tool_count == 0:
-            tool_count = 1  # 有工具但未指定数量，假设至少 1
+            tool_count = 1
         self._set_dimension("tool_count", tool_count)
 
         # 工具类型
@@ -381,11 +284,10 @@ class ComplexityScorer:
         if name in self._dimensions:
             dim = self._dimensions[name]
             dim.value = value
-            dim.normalized = min(value / dim.threshold, 1.0)  # 归一化到 [0, 1]
+            dim.normalized = min(value / dim.threshold, 1.0)
 
     def _sigmoid_confidence(self, score: float) -> float:
         """Sigmoid 置信度平滑"""
-        # 使用 Sigmoid 函数平滑置信度
         k = 0.3  # 增益系数
         x0 = 5.0  # 中点
         return 1.0 / (1.0 + math.exp(-k * (score - x0)))
@@ -407,7 +309,6 @@ class ComplexityScorer:
         if not has_tools:
             return tier, False
 
-        # 有 Tools 时强制提升
         tier_order = list(ComplexityTier)
         current_idx = tier_order.index(tier)
 
@@ -434,26 +335,3 @@ class ComplexityScorer:
             self._dimensions["cross_domain_calls"].normalized +
             self._dimensions["permission_level"].normalized
         )
-
-
-def select_model_for_tier(
-    tier: ComplexityTier,
-    model_mapping: dict[ComplexityTier, str] | None = None,
-) -> str:
-    """根据 Tier 选择模型
-
-    Args:
-        tier: 复杂度层级
-        model_mapping: Tier 到模型的映射
-
-    Returns:
-        模型 ID
-    """
-    default_mapping = {
-        ComplexityTier.SIMPLE: "gpt-4o-mini",
-        ComplexityTier.STANDARD: "gpt-4o",
-        ComplexityTier.COMPLEX: "claude-3-5-sonnet",
-        ComplexityTier.REASONING: "claude-3-opus",
-    }
-    mapping = model_mapping or default_mapping
-    return mapping.get(tier, default_mapping[ComplexityTier.STANDARD])
