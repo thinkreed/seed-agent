@@ -342,9 +342,9 @@ RalphSubagentOrchestrator 执行模式:
 
 ## Wiki 知识落地状态
 
-基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-06，测试通过: 1147 passed）：
+基于 Wiki 知识库分析的实际落地情况（验证日期: 2026-05-07，测试通过: 1147 passed）：
 
-### 已实现（P0+P1+P2 全部完成）
+### 已实现（P0+P1+P2+P3 全部完成）
 
 | 优化点 | 来源 | 实现位置 |
 |------|------|----------|
@@ -368,12 +368,17 @@ RalphSubagentOrchestrator 执行模式:
 | **提示缓存保护机制** | hermes (P2) | `src/client/_prompt_caching.py` |
 | **命令钩子执行器** | qwen-code (P2) | `src/lifecycle_hooks/_command_runner.py` |
 | **HTTP 钩子执行器** | qwen-code (P2) | `src/lifecycle_hooks/_http_runner.py` |
+| **ToolCapability 能力声明** | deepseek-tui (P3) | `src/tools/_types.py` ToolCapability |
+| **ApprovalRequirement 三级审批** | deepseek-tui (P3) | `src/tools/_types.py` ApprovalRequirement |
+| **AgentConfig 注册机制** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` AGENT_CONFIG |
+| **AgentSignal 统一输出** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` AgentSignal |
+| **Agent 依赖图拓扑排序** | shannon-architecture (P3) | `src/subagent_manager_core/_agent_registry.py` resolve_agent_execution_order |
 
-### 待落地（P3 规划）
+### 待落地
 
 详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
 
-- Snapshot-based Sandbox 持久化 (open-agents)
+- **无** - 所有规划优化点已实现或评估为不适用
 
 ---
 
