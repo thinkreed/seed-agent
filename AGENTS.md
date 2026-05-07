@@ -96,7 +96,7 @@ agent.inject_user_input(AskUserResult(
 | **LLMGateway** | `src/client.py` | 多Provider网关：FallbackChain自动降级、重试逻辑 |
 | **RalphLoop** | `src/ralph_loop.py` + `src/ralph_core/` + `src/ralph_loop_core/` | 长周期任务执行器：外部验证驱动完成、上下文重置防漂移，已拆分为 `_state`, `_completion`, `_types`, `_execution`, `_factory`, `_state_persistence` |
 | **RalphState** | `src/ralph_state.py` + `src/ralph_state_core/` | Ralph状态管理：安全上限、持久化，已拆分为 `_types`, `_limits`, `_persistence`, `_context` |
-| **SemanticIndex** | `src/core/semantic_index.py` + `src/core/_encoder.py` | 语义搜索：TF-IDF + FAISS，编码器已拆分 |
+| **SemanticIndex** | `src/core/semantic_index.py` + `_encoder.py` + `_persist.py` + `_incremental.py` | 语义搜索：TF-IDF + FAISS，持久化与增量更新已拆分 |
 | **StreamingClient** | `src/client/_streaming.py` + `src/client/streaming_core/` | 流式响应：thinking解析、重试、降级，已拆分为 `_thinking`, `_single`, `_retry`, `_fallback` |
 | **PromptCachingProtector** | `src/client/_prompt_caching.py` | 提示缓存保护：会话级缓存、变化检测、Anthropic 缓存控制 |
 | **ExecutionClient** | `src/client/_execution.py` + `src/client/execution_core/` | 非流式执行：单次调用、重试、降级，已拆分为 `_single`, `_retry`, `_fallback` |
