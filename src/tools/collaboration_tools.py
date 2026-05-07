@@ -181,28 +181,28 @@ def register_tools(registry: "ToolRegistry") -> None:
 __all__ = [
     # 向后兼容（测试需要）
     "_collaboration_sessions",
-    "_orchestrators",
     "_message_buses",
+    "_orchestrators",
+    "broadcast_message",
+    "collaborative_improve",
+    "coordinated_task",
     # 会话管理
     "create_collaboration_session",
-    "get_collaboration_status",
-    "destroy_collaboration_session",
-    # 多脑一手
-    "setup_multi_brain_one_hand",
-    "multi_angle_analysis",
-    "collaborative_improve",
-    # 一脑多手
-    "setup_one_brain_multi_hand",
     "cross_environment_execute",
     "cross_environment_test",
-    # 多脑多手
-    "setup_multi_brain_multi_hand",
-    "coordinated_task",
-    # 消息传递
-    "send_agent_message",
-    "broadcast_message",
+    "destroy_collaboration_session",
+    "get_collaboration_status",
+    "multi_angle_analysis",
     "receive_agent_messages",
     "register_message_handler",
     # 注册
     "register_tools",
+    # 消息传递
+    "send_agent_message",
+    # 多脑多手
+    "setup_multi_brain_multi_hand",
+    # 多脑一手
+    "setup_multi_brain_one_hand",
+    # 一脑多手
+    "setup_one_brain_multi_hand",
 ]

@@ -97,9 +97,7 @@ def check_completion_markers(response: str | None, markers: list[str]) -> bool:
     Returns:
         bool: 是否检测到完成
     """
-    if response and any(marker in response for marker in markers):
-        return True
-    return False
+    return bool(response and any(marker in response for marker in markers))
 
 
 __all__ = [

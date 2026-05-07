@@ -23,7 +23,7 @@ Agent 主循环模块
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.abort_signal import AbortController
 from src.builtin_hooks import register_builtin_hooks
@@ -34,7 +34,6 @@ from src.request_queue import RequestPriority
 from src.sandbox import IsolationLevel, Sandbox
 from src.security.secure_sandbox import SecureSandbox
 from src.session_event_stream import SessionEventStream
-from src.tools.ask_user_types import AskUserResult
 
 from ._execution import ExecutionMixin
 from ._init import (
@@ -49,6 +48,9 @@ from ._observability import ObservabilityManager
 from ._skill_tracker import SkillTracker
 from ._summarizer import Summarizer
 from ._user_interaction import UserInteractionMixin
+
+if TYPE_CHECKING:
+    from src.tools.ask_user_types import AskUserResult
 
 logger = logging.getLogger(__name__)
 

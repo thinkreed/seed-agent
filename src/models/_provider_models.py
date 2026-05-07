@@ -12,7 +12,12 @@
 - FullConfig: 完整配置
 """
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, ConfigDict, field_validator
+
+if TYPE_CHECKING:
+    from src.models._paths_models import PathsConfig
 
 
 class RateLimitConfig(BaseModel):
@@ -160,8 +165,13 @@ class FullConfig(BaseModel):
 # 延迟导入解决循环依赖
 def _update_full_config_forward_ref():
     """更新 FullConfig 的前向引用"""
+    # Pydantic v2: 导入后直接 rebuild，前向引用会自动解析
+    import sys
+
     from src.models._paths_models import PathsConfig
 
+    # 将 PathsConfig 添加到当前模块的全局命名空间
+    globals()["PathsConfig"] = PathsConfig
     FullConfig.model_rebuild()
 
 

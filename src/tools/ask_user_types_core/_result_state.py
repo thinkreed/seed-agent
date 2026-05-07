@@ -17,9 +17,10 @@ from __future__ import annotations
 import asyncio
 import threading
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ._request import AskUserRequest, UserResponse
+if TYPE_CHECKING:
+    from ._request import AskUserRequest, UserResponse
 
 
 @dataclass

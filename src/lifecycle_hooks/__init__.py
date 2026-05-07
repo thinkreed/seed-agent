@@ -64,35 +64,35 @@ from src.lifecycle_hooks._types import (
 )
 
 __all__ = [
-    # Wiki 知识落地: Hook 输出类
-    "DefaultHookOutput",
-    "PreToolUseHookOutput",
-    "PostToolUseHookOutput",
-    "LLMStreamHookOutput",
-    "UserResponseHookOutput",
-    # 类型
-    "HookPoint",
-    "HookExecutionResult",
-    "HookTriggerReport",
-    "HookStats",
     "HOOK_POINT_DESCRIPTIONS",
-    # 注册中心
-    "LifecycleHookRegistry",
-    # 全局管理
-    "get_global_registry",
-    "reset_global_registry",
-    # Wiki 知识落地: MessageBus
-    "PermissionDecision",
-    "HookAggregator",
-    "LifecycleMessageBus",
-    "get_message_bus",
-    "reset_message_bus",
     # Wiki 知识落地: 命令/HTTP 钩子 (Qwen-Code P2)
     "CommandHookConfig",
     "CommandHookResult",
     "CommandHookRunner",
+    # Wiki 知识落地: Hook 输出类
+    "DefaultHookOutput",
+    "HookAggregator",
+    "HookExecutionResult",
+    # 类型
+    "HookPoint",
+    "HookStats",
+    "HookTriggerReport",
     "HttpHookConfig",
     "HttpHookResult",
     "HttpHookRunner",
+    "LLMStreamHookOutput",
+    # 注册中心
+    "LifecycleHookRegistry",
+    "LifecycleMessageBus",
+    # Wiki 知识落地: MessageBus
+    "PermissionDecision",
+    "PostToolUseHookOutput",
+    "PreToolUseHookOutput",
+    "UserResponseHookOutput",
     "execute_http_hook_sync",
+    # 全局管理
+    "get_global_registry",
+    "get_message_bus",
+    "reset_global_registry",
+    "reset_message_bus",
 ]

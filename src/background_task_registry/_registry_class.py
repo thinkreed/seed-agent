@@ -6,11 +6,14 @@
 import asyncio
 import logging
 import threading
+from typing import TYPE_CHECKING
 
 from src.background_task_registry._cancel import CancelMixin
 from src.background_task_registry._lifecycle import LifecycleMixin
 from src.background_task_registry._query import QueryMixin
-from src.background_task_registry._types import BackgroundTaskEntry
+
+if TYPE_CHECKING:
+    from src.background_task_registry._types import BackgroundTaskEntry
 
 logger = logging.getLogger(__name__)
 

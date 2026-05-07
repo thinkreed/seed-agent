@@ -61,39 +61,39 @@ from src.tools.memory import (
 
 # 导出所有公共 API（保持向后兼容）
 __all__ = [
-    # 核心写入
-    "write_memory",
-    "_get_path",
-    "_validate_skill_format",
-    "_get_memory_root",
-    "_get_sessions_dir",
-    # 搜索和索引
-    "read_memory_index",
-    "search_memory",
-    "start_long_term_update",
-    # 会话历史
-    "_save_session_history",
-    "_load_session_history",
-    "_list_sessions",
-    "_search_history",
-    "_generate_session_filename",
-    # Skill 结果追踪
-    "_record_skill_outcome",
-    "_get_skill_stats",
-    "_list_banned_skills",
-    "_get_top_skills",
-    # 用户建模
-    "_observe_user_preference",
-    "_get_user_preference",
-    "_get_user_profile_summary",
-    "_update_user_model",
-    "_list_user_preferences",
     # 长期归档
     "_archive_session_events",
-    "_search_archives",
+    "_generate_session_filename",
     "_get_archive_details",
     "_get_archive_stats",
     "_get_memory_hierarchy",
+    "_get_memory_root",
+    "_get_path",
+    "_get_sessions_dir",
+    "_get_skill_stats",
+    "_get_top_skills",
+    "_get_user_preference",
+    "_get_user_profile_summary",
+    "_list_banned_skills",
+    "_list_sessions",
+    "_list_user_preferences",
+    "_load_session_history",
+    # 用户建模
+    "_observe_user_preference",
+    # Skill 结果追踪
+    "_record_skill_outcome",
+    # 会话历史
+    "_save_session_history",
+    "_search_archives",
+    "_search_history",
+    "_update_user_model",
+    "_validate_skill_format",
+    # 搜索和索引
+    "read_memory_index",
     # 注册函数
     "register_memory_tools",
+    "search_memory",
+    "start_long_term_update",
+    # 核心写入
+    "write_memory",
 ]

@@ -97,7 +97,7 @@ class ExecutionMixin:
                 logger.warning(f"Recoverable error: {e}")
                 response = f"Error: {e!s}"
             except Exception as e:
-                error_type, severity = classify_error(e)
+                _error_type, severity = classify_error(e)
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
                     logger.exception(f"Severe error at iteration {self._iteration_count}")
                     self._cleanup()

@@ -38,19 +38,19 @@ def _ensure_ralph_dir() -> Path:
 
 # 导出所有公共 API（向后兼容）
 __all__ = [
-    # Types
-    "RalphState",
-    # Limits
-    "check_safety_limits",
-    # Persistence
-    "persist_state",
-    "load_or_init_state",
-    "cleanup_state_file",
-    "generate_status_report",
-    # Context
-    "extract_critical_context",
-    "reset_context",
     # Legacy
     "RALPH_STATE_DIR",
+    # Types
+    "RalphState",
     "_ensure_ralph_dir",
+    # Limits
+    "check_safety_limits",
+    "cleanup_state_file",
+    # Context
+    "extract_critical_context",
+    "generate_status_report",
+    "load_or_init_state",
+    # Persistence
+    "persist_state",
+    "reset_context",
 ]

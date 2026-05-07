@@ -37,19 +37,19 @@ from ._ttrl_types import (
 )
 
 __all__ = [
+    "ConsolidationResult",
+    "ExecutionTrace",
     # 枚举和类型
     "JudgementType",
-    "MemorySource",
-    "ExecutionTrace",
     "MemoryEntry",
-    "ConsolidationResult",
+    "MemorySource",
     # 处理器
     "TTRLProcessor",
     "get_ttrl_processor",
+    "ttrl_add_memory",
     # 公共 API
     "ttrl_add_trace",
     "ttrl_batch_evaluate",
-    "ttrl_add_memory",
     "ttrl_consolidate",
     "ttrl_get_stats",
 ]

@@ -230,16 +230,16 @@ def resolve_agent_execution_order(agent_keys: list[str]) -> list[str]:
 
 
 __all__ = [
-    # 类型定义
-    "AgentSignalType",
-    "AgentSignal",
-    "AgentConfig",
     # 注册表
     "AGENT_CONFIG",
+    "AgentConfig",
+    "AgentSignal",
+    # 类型定义
+    "AgentSignalType",
+    "get_agent_by_type",
+    "get_agent_dependencies",
     # 工具函数
     "get_agent_nodes",
     "get_agents_list",
-    "get_agent_by_type",
-    "get_agent_dependencies",
     "resolve_agent_execution_order",
 ]

@@ -75,40 +75,40 @@ def run_diagnosis() -> str:
 
 # 导出所有公共 API（保持向后兼容）
 __all__ = [
-    # 文件操作
-    "file_read",
-    "file_write",
-    "file_edit",
-    # 代码执行
-    "code_as_policy",
-    "code_as_policy_async",
-    # 用户交互
-    "ask_user",
-    # 诊断
-    "run_diagnosis",
-    # 状态管理
-    "clear_ask_user_state",
-    "get_pending_ask_user_request",
-    "reset_ask_user_state",
-    "get_ask_user_state",
-    # 注册
-    "register_builtin_tools",
+    "ALLOWED_DIRS",
+    "DEFAULT_EXECUTION_TIMEOUT",
+    "DEFAULT_WORK_DIR",
+    "DEFAULT_WORK_DIR_RESOLVED",
+    "MAX_CODE_LENGTH",
+    "POWERSHELL_BLACKLIST",
+    "PROJECT_ROOT",
+    "PROJECT_ROOT_RESOLVED",
+    "SHELL_BLACKLIST",
+    "_build_command",
+    # 代码执行（私有函数，供测试）
+    "_check_code_security",
+    "_format_execution_result",
+    "_is_path_in_allowed_dirs",
+    "_resolve_execution_cwd",
     # 路径验证（私有函数，供测试）
     "_resolve_path",
     "_validate_path_safety",
-    "_is_path_in_allowed_dirs",
-    "ALLOWED_DIRS",
-    "DEFAULT_WORK_DIR",
-    "DEFAULT_WORK_DIR_RESOLVED",
-    "PROJECT_ROOT",
-    "PROJECT_ROOT_RESOLVED",
-    # 代码执行（私有函数，供测试）
-    "_check_code_security",
-    "_resolve_execution_cwd",
-    "_build_command",
-    "_format_execution_result",
-    "SHELL_BLACKLIST",
-    "POWERSHELL_BLACKLIST",
-    "MAX_CODE_LENGTH",
-    "DEFAULT_EXECUTION_TIMEOUT",
+    # 用户交互
+    "ask_user",
+    # 状态管理
+    "clear_ask_user_state",
+    # 代码执行
+    "code_as_policy",
+    "code_as_policy_async",
+    "file_edit",
+    # 文件操作
+    "file_read",
+    "file_write",
+    "get_ask_user_state",
+    "get_pending_ask_user_request",
+    # 注册
+    "register_builtin_tools",
+    "reset_ask_user_state",
+    # 诊断
+    "run_diagnosis",
 ]

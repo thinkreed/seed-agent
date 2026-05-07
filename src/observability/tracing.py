@@ -42,25 +42,25 @@ from ._tracing_error import classify_error, record_llm_span_error
 from ._tracing_span import start_as_current_span, start_span, traced
 
 __all__ = [
+    "SPAN_LLM_FALLBACK",
+    "SPAN_LLM_REQUEST",
     # 常量
     "SPAN_SESSION",
-    "SPAN_LLM_REQUEST",
-    "SPAN_LLM_FALLBACK",
-    "SPAN_TOOL_PREFIX",
     "SPAN_SUBAGENT_EXECUTE",
+    "SPAN_TOOL_PREFIX",
     "SpanAttributeValue",
-    # 错误处理
-    "classify_error",
-    "record_llm_span_error",
-    # Context 传播
-    "create_task_with_context",
-    # Span 创建
-    "start_span",
-    "start_as_current_span",
-    "traced",
     # 属性设置
     "add_fallback_event",
+    # 错误处理
+    "classify_error",
+    # Context 传播
+    "create_task_with_context",
+    "record_llm_span_error",
     "set_llm_span_attributes",
-    "set_tool_span_attributes",
     "set_subagent_span_attributes",
+    "set_tool_span_attributes",
+    "start_as_current_span",
+    # Span 创建
+    "start_span",
+    "traced",
 ]

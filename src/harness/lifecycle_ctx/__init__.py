@@ -29,17 +29,17 @@ from src.harness.lifecycle_ctx._tool import (
 )
 
 __all__ = [
-    # Session hooks
-    "build_session_start_ctx",
-    "build_session_end_ctx",
+    "build_llm_call_after_ctx",
     # LLM hooks
     "build_llm_call_before_ctx",
-    "build_llm_call_after_ctx",
+    "build_response_after_ctx",
     # Response hooks
     "build_response_before_ctx",
-    "build_response_after_ctx",
+    "build_session_end_ctx",
+    # Session hooks
+    "build_session_start_ctx",
+    "build_tool_call_after_ctx",
     # Tool hooks
     "build_tool_call_before_ctx",
-    "build_tool_call_after_ctx",
     "build_tool_call_error_ctx",
 ]

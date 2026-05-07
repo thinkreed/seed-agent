@@ -34,21 +34,21 @@ from ._hub_types import (
 from ._hub_wellknown import WellKnownSkillSource
 
 __all__ = [
-    # 枚举和类型
-    "TrustLevel",
-    "SkillSourceType",
-    "HubSkillInfo",
+    "GitHubSource",
     "HubSearchResult",
+    "HubSkillInfo",
     # 来源类
     "SkillSource",
-    "GitHubSource",
-    "WellKnownSkillSource",
+    "SkillSourceType",
     # 协调器
     "SkillsHub",
+    # 枚举和类型
+    "TrustLevel",
+    "WellKnownSkillSource",
+    "skills_hub_install",
+    "skills_hub_installed",
     # 公共 API
     "skills_hub_list",
     "skills_hub_search",
-    "skills_hub_install",
     "skills_hub_uninstall",
-    "skills_hub_installed",
 ]

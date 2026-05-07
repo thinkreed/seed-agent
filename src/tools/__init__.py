@@ -44,19 +44,19 @@ from ._types import (
 )
 
 __all__ = [
-    # 工具分类系统 (Wiki 知识落地 - Qwen-Code)
-    "ToolKind",
-    "PermissionDecision",
-    "MUTATOR_KINDS",
+    "CAPABILITY_APPROVAL_MAP",
     "CONCURRENCY_SAFE_KINDS",
-    # 延迟加载机制 (Wiki 知识落地 P2)
-    "ToolFactory",
+    "MUTATOR_KINDS",
+    "READ_ONLY_CAPABILITIES",
+    "SANDBOX_REQUIRED_CAPABILITIES",
+    "ApprovalRequirement",
+    "PermissionDecision",
     # Wiki 知识落地 P3 (DeepSeek-TUI)
     "ToolCapability",
-    "ApprovalRequirement",
-    "CAPABILITY_APPROVAL_MAP",
-    "SANDBOX_REQUIRED_CAPABILITIES",
-    "READ_ONLY_CAPABILITIES",
+    # 延迟加载机制 (Wiki 知识落地 P2)
+    "ToolFactory",
+    # 工具分类系统 (Wiki 知识落地 - Qwen-Code)
+    "ToolKind",
     # 核心类
     "ToolRegistry",
 ]

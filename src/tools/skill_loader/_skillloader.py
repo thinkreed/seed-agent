@@ -7,6 +7,7 @@ SkillLoader 主类模块
 import logging
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ._cache import SkillContentCache
 from ._config import (
@@ -19,8 +20,10 @@ from ._index import build_skills_index
 from ._loader import get_gene_slice, load_skill_content, load_skill_ref
 from ._matching import compute_match_score, compute_trigger_score, tokenize_query
 from ._metadata import convert_lists_to_sets, parse_skill_meta
-from ._types import SkillMeta
 from .skill_cache import clear_snapshot, load_snapshot, save_snapshot
+
+if TYPE_CHECKING:
+    from ._types import SkillMeta
 
 logger = logging.getLogger(__name__)
 

@@ -73,7 +73,7 @@ class ResultsManager:
         summaries: list[str] = []
         for task_id in task_ids:
             result = results.get(task_id)
-            task = tasks.get(task_id)
+            tasks.get(task_id)
 
             if not result:
                 summaries.append(f"[{task_id}] Not found")

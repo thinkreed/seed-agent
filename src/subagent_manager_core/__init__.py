@@ -35,21 +35,21 @@ from src.subagent_manager_core._task import (
 )
 
 __all__ = [
-    # 核心类
-    "SubagentManager",
-    "SubagentTask",
-    "RalphSubagentOrchestrator",
+    "AGENT_CONFIG",
     # Wiki 知识落地 P3 (ai-hedge-fund Agent 系统)
     "AgentConfig",
     "AgentSignal",
     "AgentSignalType",
-    "AGENT_CONFIG",
-    "get_agent_nodes",
-    "get_agents_list",
-    "get_agent_by_type",
-    "get_agent_dependencies",
-    "resolve_agent_execution_order",
+    "RalphSubagentOrchestrator",
+    # 核心类
+    "SubagentManager",
+    "SubagentTask",
     # 辅助函数
     "create_task",
+    "get_agent_by_type",
+    "get_agent_dependencies",
+    "get_agent_nodes",
+    "get_agents_list",
     "get_default_timeout",
+    "resolve_agent_execution_order",
 ]

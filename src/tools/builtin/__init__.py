@@ -48,18 +48,18 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
 
 # 导出公共 API
 __all__ = [
-    # 文件操作
-    "file_read",
-    "file_write",
-    "file_edit",
-    # 代码执行
-    "code_as_policy",
-    "code_as_policy_async",
-    # 用户交互
-    "ask_user",
     # 路径验证
     "_resolve_path",
     "_validate_path_safety",
+    # 用户交互
+    "ask_user",
+    # 代码执行
+    "code_as_policy",
+    "code_as_policy_async",
+    "file_edit",
+    # 文件操作
+    "file_read",
+    "file_write",
     # 注册
     "register_builtin_tools",
 ]

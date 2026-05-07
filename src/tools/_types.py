@@ -153,15 +153,15 @@ READ_ONLY_CAPABILITIES: set[ToolCapability] = {
 
 
 __all__ = [
-    # Wiki 知识落地 (Qwen-Code)
-    "ToolKind",
-    "PermissionDecision",
-    "MUTATOR_KINDS",
+    "CAPABILITY_APPROVAL_MAP",
     "CONCURRENCY_SAFE_KINDS",
+    "MUTATOR_KINDS",
+    "READ_ONLY_CAPABILITIES",
+    "SANDBOX_REQUIRED_CAPABILITIES",
+    "ApprovalRequirement",
+    "PermissionDecision",
     # Wiki 知识落地 P3 (DeepSeek-TUI)
     "ToolCapability",
-    "ApprovalRequirement",
-    "CAPABILITY_APPROVAL_MAP",
-    "SANDBOX_REQUIRED_CAPABILITIES",
-    "READ_ONLY_CAPABILITIES",
+    # Wiki 知识落地 (Qwen-Code)
+    "ToolKind",
 ]

@@ -14,7 +14,6 @@ from collections import deque
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
-from src.abort_signal import AbortSignal
 from src.lifecycle_hooks import HookPoint
 from src.request_queue import RequestPriority
 from src.session_event_stream import EventType
@@ -28,6 +27,7 @@ from ._streaming_utils import process_tool_delta
 __all__ = ["process_tool_delta", "stream_conversation", "stream_resume_with_user_response"]
 
 if TYPE_CHECKING:
+    from src.abort_signal import AbortSignal
     from src.lifecycle_hooks import LifecycleHookRegistry
     from src.llm_client import LLMClient
     from src.sandbox import Sandbox

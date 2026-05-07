@@ -5,11 +5,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from src.sandbox_core._execution import ToolExecutor
-from src.sandbox_core._path import PathMapper, PermissionChecker
-from src.sandbox_core._types import SandboxPermission
+if TYPE_CHECKING:
+    from src.sandbox_core._execution import ToolExecutor
+    from src.sandbox_core._path import PathMapper, PermissionChecker
+    from src.sandbox_core._types import SandboxPermission
 
 
 class SandboxCompatMixin:

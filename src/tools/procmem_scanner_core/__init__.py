@@ -40,30 +40,30 @@ from ._winapi import (
 )
 
 __all__ = [
-    # 数据类
-    "MemoryRegion",
-    # 核心功能
-    "scan_memory",
-    # Windows API 封装
-    "is_admin",
-    "open_process",
-    "close_process",
-    "read_process_memory",
-    "enumerate_memory_regions",
-    "is_readable_region",
-    # 常量
-    "PROCESS_QUERY_INFORMATION",
-    "PROCESS_VM_READ",
-    "PROCESS_VM_OPERATION",
-    "PAGE_READWRITE",
-    "PAGE_READONLY",
+    "MEM_COMMIT",
+    "MEM_IMAGE",
+    "MEM_MAPPED",
+    "MEM_PRIVATE",
     "PAGE_EXECUTE_READ",
     "PAGE_EXECUTE_READWRITE",
     "PAGE_GUARD",
     "PAGE_NOACCESS",
-    "MEM_PRIVATE",
-    "MEM_MAPPED",
-    "MEM_IMAGE",
-    "MEM_COMMIT",
+    "PAGE_READONLY",
+    "PAGE_READWRITE",
+    # 常量
+    "PROCESS_QUERY_INFORMATION",
+    "PROCESS_VM_OPERATION",
+    "PROCESS_VM_READ",
     "USER_SPACE_LIMIT",
+    # 数据类
+    "MemoryRegion",
+    "close_process",
+    "enumerate_memory_regions",
+    # Windows API 封装
+    "is_admin",
+    "is_readable_region",
+    "open_process",
+    "read_process_memory",
+    # 核心功能
+    "scan_memory",
 ]

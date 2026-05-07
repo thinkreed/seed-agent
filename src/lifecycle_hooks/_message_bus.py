@@ -86,7 +86,8 @@ class LifecycleMessageBus:
         # AbortSignal 监听器
         cancel_callback = None
         if abort_signal is not None:
-            cancel_callback = lambda: self._cancel_request(correlation_id)
+            def cancel_callback():
+                return self._cancel_request(correlation_id)
             if hasattr(abort_signal, "add_listener"):
                 abort_signal.add_listener(cancel_callback)
             elif hasattr(abort_signal, "add_done_callback"):

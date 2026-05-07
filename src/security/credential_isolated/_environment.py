@@ -87,8 +87,4 @@ def detect_credential_access_attempt(
         "API_KEY",
     ]
 
-    for pattern in check_patterns:
-        if pattern.lower() in content.lower():
-            return True
-
-    return False
+    return any(pattern.lower() in content.lower() for pattern in check_patterns)
