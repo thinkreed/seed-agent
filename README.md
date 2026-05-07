@@ -529,7 +529,7 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 
 基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取并落地的优化点：
 
-### 已实现（P0+P1+P2+P3 全部完成）
+### 已实现（P0+P1+P2+P3+P4 全部完成）
 
 | 优化点 | 来源 | 实现位置 | 状态 |
 |------|------|----------|------|
@@ -555,6 +555,11 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 | **AgentConfig 注册机制** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` | ✅ |
 | **AgentSignal 统一输出** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` | ✅ |
 | **Agent 依赖图拓扑排序** | shannon-architecture (P3) | `src/subagent_manager_core/_agent_registry.py` | ✅ |
+| **Circuit Breaker 自动切换** | claude-mem + worldmonitor (P4) | `src/client/_circuit_breaker.py` | ✅ |
+| **Orphan Reaper 孤儿回收** | claude-mem (P4) | `src/subagent_manager_core/_orphan_reaper.py` | ✅ |
+| **Stampede Protection** | worldmonitor (P4) | `src/request_queue_core/_stampede.py` | ✅ |
+| **复杂度评分路由** | manifest-architecture (P4) | `src/client/_complexity_scorer.py` | ✅ |
+| **Specificity 检测** | manifest-architecture (P4) | `src/client/_specificity_detector.py` | ✅ |
 
 详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
 
