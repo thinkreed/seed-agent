@@ -527,9 +527,9 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 
 ## Wiki Knowledge Integration
 
-基于 E:\projects\wiki 目录下五个开源项目的架构分析，提取并落地的优化点：
+基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取并落地的优化点：
 
-### 已实现（P0+P1+P2 全部完成）
+### 已实现（P0+P1+P2+P3 全部完成）
 
 | 优化点 | 来源 | 实现位置 | 状态 |
 |------|------|----------|------|
@@ -550,6 +550,11 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 | 记忆去重阈值 | mia (P2) | `src/tools/memory/_memory_write.py` | ✅ |
 | TTRL 持续学习 | mia (P2) | `src/tools/memory/_ttrl.py` | ✅ |
 | Subagent 上下文隔离 | open-agents | `src/subagent.py` | ✅ |
+| **ToolCapability 能力声明** | deepseek-tui (P3) | `src/tools/_types.py` | ✅ |
+| **ApprovalRequirement 三级审批** | deepseek-tui (P3) | `src/tools/_types.py` | ✅ |
+| **AgentConfig 注册机制** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` | ✅ |
+| **AgentSignal 统一输出** | ai-hedge-fund (P3) | `src/subagent_manager_core/_agent_registry.py` | ✅ |
+| **Agent 依赖图拓扑排序** | shannon-architecture (P3) | `src/subagent_manager_core/_agent_registry.py` | ✅ |
 
 详见 [docs/wiki_knowledge_integration_analysis.md](docs/wiki_knowledge_integration_analysis.md)
 
@@ -564,3 +569,6 @@ Special thanks to the following projects for architectural inspiration:
 - [MIA](https://github.com/agiresearch/MIA) - 记忆系统、TTRL 持续学习
 - [Open-Agents](https://github.com/xlang-ai/OpenAgents) - Subagent 系统
 - [Qwen-Code](https://github.com/QwenLM/Qwen-Code) - 工具系统、Hooks、三级权限
+- [DeepSeek-TUI](https://github.com/Scerlee/TUI) - ToolCapability 能力声明
+- [AI-Hedge-Fund](https://github.com/virattt/ai-hedge-fund) - AgentConfig 注册机制
+- [Shannon-Architecture](https://github.com/shannon-architecture) - Agent 依赖图拓扑排序
