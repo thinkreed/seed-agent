@@ -151,9 +151,36 @@ def load_svd_model(path: str):
         return None
 
 
+def load_semantic_index(path: str, encoder_class):
+    """
+    Load complete SemanticIndex from disk.
+
+    Args:
+        path: Index file path
+        encoder_class: TFIDFEncoder class to instantiate
+
+    Returns:
+        Tuple of (index, encoder, svd, meta)
+    """
+    index = load_faiss_index(path)
+    meta = load_index_metadata(path)
+
+    encoder = encoder_class()
+    encoder.vocab = meta["vocab"]
+    encoder.idf = meta["idf"]
+    encoder._doc_count = meta["doc_count"]
+
+    svd = None
+    if meta.get("has_svd"):
+        svd = load_svd_model(path)
+
+    return index, encoder, svd, meta
+
+
 __all__ = [
     "save_index",
     "load_index_metadata",
     "load_faiss_index",
     "load_svd_model",
+    "load_semantic_index",
 ]

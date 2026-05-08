@@ -118,7 +118,7 @@ agent.inject_user_input(AskUserResult(
 | **ContextPruner** | `src/context/_pruner.py` + `src/context/_pruner_core/` | 智能上下文裁剪：相关性计算，已拆分为 `_entity_extraction`, `_relevance` |
 | **CircuitBreaker** | `src/client/_circuit_breaker.py` | Provider 熔断器：连续失败自动切换、自动恢复探测 (Wiki P4) |
 | **OrphanReaper** | `src/subagent_manager_core/_orphan_reaper.py` | 孤儿进程回收器：定期扫描超时进程、两阶段终止 (Wiki P4) |
-| **StampedeProtection** | `src/request_queue_core/_stampede.py` | 缓存击穿保护：单请求执行、其他等待共享结果 (Wiki P4) |
+| **StampedeProtection** | `src/request_queue_core/_stampede.py` + `_stampede_types.py` + `_stampede_base.py` + `_stampede_protection.py` | 缓存击穿保护：单请求执行、其他等待共享结果 (Wiki P4) |
 | **ComplexityScorer** | `src/client/_complexity_scorer.py` + `_complexity_types.py` + `_model_selector.py` | 23维度复杂度评分：四级Tier路由模型选择 (Wiki P4) |
 | **SpecificityDetector** | `src/client/_specificity_detector.py` + `_specificity_types.py` + `_specificity_router.py` | 任务类型检测：路由到专用模型 (Wiki P4) |
 | **MerkleDAG** | `src/core/_merkle_dag.py` | Merkle DAG增量索引：O(1)无变更检测 + O(k)增量更新 (Wiki P5) |
@@ -417,7 +417,7 @@ RalphSubagentOrchestrator 执行模式:
 | **Agent 依赖图拓扑排序** | shannon-architecture (P3) | `src/subagent_manager_core/_agent_registry.py` resolve_agent_execution_order |
 | **Circuit Breaker 熔断器** | claude-mem + worldmonitor (P4) | `src/client/_circuit_breaker.py` CircuitBreakerRegistry |
 | **Orphan Reaper 孤儿回收** | claude-mem (P4) | `src/subagent_manager_core/_orphan_reaper.py` OrphanReaper |
-| **Stampede Protection** | worldmonitor (P4) | `src/request_queue_core/_stampede.py` StampedeProtection |
+| **Stampede Protection** | worldmonitor (P4) | `src/request_queue_core/_stampede.py` + `_stampede_protection.py` StampedeProtection |
 | **复杂度评分路由** | manifest-architecture (P4) | `src/client/_complexity_scorer.py` ComplexityScorer |
 | **Specificity 检测** | manifest-architecture (P4) | `src/client/_specificity_detector.py` SpecificityDetector |
 | **Merkle DAG 增量索引** | claude-context-docs (P5) | `src/core/_merkle_dag.py` MerkleDAG |

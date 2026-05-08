@@ -1,17 +1,4 @@
-"""
-Ralph Loop 执行流程模块
-
-提供核心执行方法：
-- run: 执行 Ralph Loop
-- stop: 停止执行
-- _reset_context: 上下文重置
-- _load_task_prompt: 加载任务 prompt
-
-核心特性：
-- 外部验证驱动完成
-- 新鲜上下文防漂移
-- 状态持久化
-"""
+"""Ralph Loop 执行流程：run, stop, 上下文重置, prompt 加载"""
 
 import asyncio
 import logging
@@ -21,12 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.errors import ConfigurationError, ErrorSeverity, SeedAgentError, classify_error
-from src.ralph_core import (
-    CompletionChecker,
-    CompletionType,
-    SafetyChecker,
-    StateManager,
-)
+from src.ralph_core import CompletionChecker, CompletionType, SafetyChecker, StateManager
 
 if TYPE_CHECKING:
     from src.agent_loop import AgentLoop
@@ -35,9 +17,9 @@ logger = logging.getLogger("seed_agent.ralph")
 
 
 class ExecutionMixin:
-    """Ralph Loop 执行流程功能 Mixin"""
+    """Ralph Loop 执行流程 Mixin"""
 
-    if False:  # TYPE_CHECKING 替代
+    if False:  # 类型检查占位
         agent: "AgentLoop"
         completion_type: CompletionType
         completion_criteria: dict | None
@@ -60,29 +42,20 @@ class ExecutionMixin:
         self._is_running = True
         self._start_time = time.time()
         self._iteration_count = 0
-
         self._state_manager.ensure_dir_exists()
         self._load_or_init_state()
-
         logger.info(f"Ralph Loop started: {self.task_prompt_path}")
 
         while self._is_running:
             self._iteration_count += 1
-
-            # 安全检查
             if self._safety_checker.check_limits(
                 self._iteration_count, self.max_iterations,
                 self._start_time, self._accumulated_duration, self.max_duration,
             ):
                 break
-
-            # 上下文重置
             self._reset_context()
-
-            # 加载任务 prompt
             prompt = self._load_task_prompt()
 
-            # 执行一轮 Agent Loop
             try:
                 response = await self.agent.run(prompt)
             except ConfigurationError:
@@ -97,7 +70,7 @@ class ExecutionMixin:
                 logger.warning(f"Recoverable error: {e}")
                 response = f"Error: {e!s}"
             except Exception as e:
-                _error_type, severity = classify_error(e)
+                _, severity = classify_error(e)
                 if severity in (ErrorSeverity.HIGH, ErrorSeverity.CRITICAL):
                     logger.exception(f"Severe error at iteration {self._iteration_count}")
                     self._cleanup()
@@ -105,10 +78,7 @@ class ExecutionMixin:
                 logger.warning(f"Agent execution failed: {e}")
                 response = f"Error: {e!s}"
 
-            # 持久化状态
             self._persist_state(response)
-
-            # 外部完成验证
             if await self._completion_checker.check_completion(
                 self.completion_type, self.completion_criteria
             ):
@@ -116,7 +86,6 @@ class ExecutionMixin:
                 self._cleanup()
                 return "DONE"
 
-            # 回调通知
             if self.on_iteration_complete:
                 try:
                     if asyncio.iscoroutinefunction(self.on_iteration_complete):
@@ -125,7 +94,6 @@ class ExecutionMixin:
                         self.on_iteration_complete(self._iteration_count, response)
                 except Exception as e:
                     logger.warning(f"Callback failed: {e}")
-
             await asyncio.sleep(1)
 
         return self._generate_status_report()
@@ -154,21 +122,12 @@ class ExecutionMixin:
         return f"继续执行任务。当前迭代: {self._iteration_count}"
 
 
-# === 辅助函数 ===
-
-
 def _extract_critical_context(history: list[Any]) -> str:
     """提取关键上下文"""
     if not history:
         return ""
-
-    preserved = []
-    for item in history[-5:]:
-        if isinstance(item, dict):
-            content = item.get("content", "")
-            if content:
-                preserved.append(content[:200])
-
+    preserved = [item.get("content", "")[:200] for item in history[-5:]
+                  if isinstance(item, dict) and item.get("content")]
     return "\n".join(preserved)
 
 
@@ -178,20 +137,12 @@ def _reset_context(
     """重置上下文"""
     if iteration % reset_interval != 0:
         return
-
-    system_messages = []
-    for item in history:
-        if isinstance(item, dict) and item.get("role") == "system":
-            system_messages.append(item)
-
+    system_messages = [item for item in history
+                       if isinstance(item, dict) and item.get("role") == "system"]
     history.clear()
     history.extend(system_messages)
-
     if preserved_context:
-        history.append({
-            "role": "system",
-            "content": f"[迭代 {iteration} 关键上下文]\n{preserved_context}",
-        })
+        history.append({"role": "system", "content": f"[迭代 {iteration} 关键上下文]\n{preserved_context}"})
 
 
 __all__ = ["ExecutionMixin", "_extract_critical_context", "_reset_context"]

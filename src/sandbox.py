@@ -10,6 +10,8 @@
 - 类型定义: sandbox_core/_types.py
 - 路径映射: sandbox_core/_path.py
 - 执行逻辑: sandbox_core/_execution.py
+- 权限配置: sandbox_core/_permission_config.py
+- 凭证代理: sandbox_core/_credential.py
 - 向后兼容: sandbox_core/_compat.py
 """
 
@@ -21,17 +23,19 @@ from typing import Any
 from src.sandbox_core import (
     DEFAULT_TOOL_NAMES,
     ISOLATION_LEVELS,
+    CredentialProxyMixin,
     ExecutionResult,
     IsolationLevel,
     PathMapper,
     PermissionAction,
     PermissionChecker,
+    PermissionConfigMixin,
     SandboxCompatMixin,
     SandboxPermission,
+    ToolExecutionMixin,
     ToolExecutor,
 )
 from src.tools import ToolRegistry
-from src.tools.utils import is_parse_failed, parse_tool_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +49,9 @@ def _get_default_sandbox_root() -> Path:
         return Path.home() / ".seed" / "sandbox"
 
 
-class Sandbox(SandboxCompatMixin):
+class Sandbox(
+    SandboxCompatMixin, PermissionConfigMixin, CredentialProxyMixin, ToolExecutionMixin
+):
     """隔离的执行沙盒
 
     三件套解耦架构中的"工作台"层：
@@ -136,46 +142,8 @@ class Sandbox(SandboxCompatMixin):
     # === 工具执行 ===
 
     async def execute_tools(self, tool_calls: list[dict]) -> list[dict[str, Any]]:
-        """在隔离环境中执行工具"""
-        results: list[dict[str, Any]] = []
-        for tc in tool_calls:
-            result = await self._execute_single_tool(tc)
-            results.append(result)
-        return results
-
-    async def _execute_single_tool(self, tool_call: dict) -> dict[str, Any]:
-        """执行单个工具"""
-        tool_call_id = tool_call.get("id", "unknown")
-        func_data = tool_call.get("function", {})
-        tool_name = func_data.get("name", "unknown")
-        raw_args = func_data.get("arguments", "{}")
-
-        tool_args = parse_tool_arguments(raw_args)
-        if is_parse_failed(tool_args):
-            return {
-                "tool_call_id": tool_call_id,
-                "role": "tool",
-                "content": "Error: Failed to parse arguments: invalid JSON",
-            }
-
-        mapped_args = self._path_mapper.map_paths(tool_args)
-        if not self._permission_checker.check_permission(tool_name, mapped_args):
-            return {
-                "tool_call_id": tool_call_id,
-                "role": "tool",
-                "content": f"Error: Permission denied for tool '{tool_name}' in sandbox",
-            }
-
-        try:
-            result = await self._tool_executor._execute_in_process(tool_name, mapped_args)
-            truncated = self._tool_executor._truncate_output(str(result), tool_name)
-            return {"tool_call_id": tool_call_id, "role": "tool", "content": truncated}
-        except Exception as e:
-            return {
-                "tool_call_id": tool_call_id,
-                "role": "tool",
-                "content": f"Error: {type(e).__name__}: {str(e)[:500]}",
-            }
+        """在隔离环境中执行工具（委托给 mixin）"""
+        return await self.execute_tools_proxy(tool_calls)
 
     # === 路径映射 ===
 
@@ -199,74 +167,6 @@ class Sandbox(SandboxCompatMixin):
             "network_policy": self._network_policy,
             "permissions_count": len(self._permissions),
         }
-
-    # === 权限配置 ===
-
-    def set_permission(
-        self,
-        tool_name: str,
-        action: PermissionAction,
-        path_patterns: list[str] | None = None,
-        max_output_size: int = 10000,
-    ) -> None:
-        """设置单个工具权限"""
-        self._permissions[tool_name] = SandboxPermission(
-            tool_name, action, path_patterns, max_output_size
-        )
-        self._permission_checker._permissions = self._permissions
-        logger.info(f"Permission set: {tool_name} -> {action.value}")
-
-    def get_permissions(self) -> dict[str, Any]:
-        """获取所有权限配置"""
-        return {
-            name: {
-                "action": perm.action.value,
-                "path_patterns": perm.path_patterns,
-                "max_output_size": perm.max_output_size,
-            }
-            for name, perm in self._permissions.items()
-        }
-
-    def deny_all_tools(self) -> None:
-        """拒绝所有工具"""
-        for name in self._permissions:
-            self._permissions[name].action = PermissionAction.DENY
-        self._permission_checker._permissions = self._permissions
-        logger.info("All tools denied")
-
-    def allow_readonly_tools(self) -> None:
-        """只允许只读工具"""
-        readonly_tools = [
-            "file_read",
-            "list_directory",
-            "search_memory",
-            "load_memory",
-            "load_skill",
-            "ask_user_question",
-            "list_subagents",
-            "check_ralph_status",
-            "list_scheduled_tasks",
-        ]
-        for name, perm in self._permissions.items():
-            if name in readonly_tools:
-                perm.action = PermissionAction.ALLOW
-            else:
-                perm.action = PermissionAction.DENY
-        self._permission_checker._permissions = self._permissions
-        logger.info("Readonly mode enabled")
-
-    # === 凭证代理 ===
-
-    def set_credential_proxy(self, proxy: Any) -> None:
-        """设置凭证代理"""
-        self._credential_proxy = proxy
-        logger.info("Credential proxy set")
-
-    def get_credential(self, credential_name: str) -> str | None:
-        """通过代理获取凭证"""
-        if self._credential_proxy:
-            return self._credential_proxy.get_credential(credential_name)
-        return None
 
 
 __all__ = [

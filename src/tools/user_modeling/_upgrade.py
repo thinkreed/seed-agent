@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ._db import get_db
+from ._upgrade_ops import add_exception, set_preference, upgrade_preference
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +46,13 @@ class ModelUpgradeEngine:
                     db.update_preference_confidence(pref_key, new_confidence, timestamp)
                 elif obs.get("context"):
                     # 不同值但有上下文：添加例外
-                    self._add_exception(pref_key, pref_value, obs["context"], obs["confidence"])
+                    add_exception(pref_key, pref_value, obs["context"], obs["confidence"])
                 elif obs["confidence"] > existing["confidence"]:
                     # 不同值无上下文：偏好升级
-                    self._upgrade_preference(pref_key, pref_value, obs["confidence"])
+                    upgrade_preference(pref_key, pref_value, obs["confidence"])
             else:
                 # 新偏好，直接设置
-                self._set_preference(pref_key, pref_value, obs["confidence"])
+                set_preference(pref_key, pref_value, obs["confidence"])
 
     def upgrade_model(self, resolution: dict[str, Any]) -> list[dict[str, Any]]:
         """升级模型而非简单覆盖"""
@@ -136,67 +137,6 @@ class ModelUpgradeEngine:
             "confidence": resolution["confidence"],
             "last_updated": datetime.now(tz=UTC).isoformat(),
         }
-
-    def _set_preference(self, key: str, value: str, confidence: float) -> None:
-        """设置新偏好"""
-        pref_data = {
-            "usual": value,
-            "exceptions": {},
-            "confidence": confidence,
-            "last_updated": datetime.now(tz=UTC).isoformat(),
-        }
-        db = get_db()
-        db.save_preference(key, pref_data)
-
-    def _add_exception(
-        self, key: str, value: str, context: str, confidence: float
-    ) -> None:
-        """添加例外情况"""
-        db = get_db()
-        existing = db.get_preference(key)
-        if not existing:
-            return
-
-        exceptions = existing.get("exceptions", {})
-        when_key = context[:50]
-        exceptions[when_key] = {
-            "value": value,
-            "when": context,
-            "confidence": confidence,
-        }
-
-        pref_data = {
-            "usual": existing.get("usual", existing.get("value")),
-            "exceptions": exceptions,
-            "confidence": existing["confidence"],
-            "last_updated": datetime.now(tz=UTC).isoformat(),
-        }
-        db.save_preference(key, pref_data)
-
-    def _upgrade_preference(
-        self, key: str, new_value: str, new_confidence: float
-    ) -> None:
-        """升级偏好值"""
-        db = get_db()
-        existing = db.get_preference(key)
-        if not existing:
-            return
-
-        exceptions = existing.get("exceptions", {})
-        old_usual = existing.get("usual", existing.get("value"))
-        exceptions["previously"] = {
-            "value": old_usual,
-            "when": "升级前的偏好值",
-            "confidence": existing["confidence"],
-        }
-
-        pref_data = {
-            "usual": new_value,
-            "exceptions": exceptions,
-            "confidence": new_confidence,
-            "last_updated": datetime.now(tz=UTC).isoformat(),
-        }
-        db.save_preference(key, pref_data)
 
 
 # 单例

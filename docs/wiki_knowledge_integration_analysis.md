@@ -410,7 +410,8 @@ order = resolve_agent_execution_order(["implement", "review"])
 
 ```python
 # 使用示例
-from src.client._circuit_breaker import CircuitBreakerRegistry, CircuitConfig
+from src.client._circuit_breaker_registry import CircuitBreakerRegistry
+from src.client._circuit_breaker_types import CircuitConfig
 
 registry = CircuitBreakerRegistry()
 

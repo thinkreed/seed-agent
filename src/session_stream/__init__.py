@@ -20,6 +20,12 @@ from src.session_stream._context import ContextBuilder
 from src.session_stream._persist import EventPersistence, _get_default_storage_path
 from src.session_stream._replay import StateReplay
 from src.session_stream._summary import SummaryManager
+from src.session_stream._summary_api import SummaryAPI
+from src.session_stream._record import (
+    record_error,
+    record_session_end,
+    record_session_start,
+)
 from src.session_stream._types import (
     MAX_EVENT_AGE_DAYS,
     MAX_IN_MEMORY_EVENTS,
@@ -35,5 +41,9 @@ __all__ = [
     "EventType",
     "StateReplay",
     "SummaryManager",
+    "SummaryAPI",
     "_get_default_storage_path",
+    "record_error",
+    "record_session_end",
+    "record_session_start",
 ]

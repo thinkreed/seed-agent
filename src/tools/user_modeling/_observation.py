@@ -3,7 +3,6 @@
 
 职责:
 - 观察用户行为和偏好
-- 从交互中提取观察
 - 观察记录管理
 """
 
@@ -13,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ._db import get_db
+from ._observation_extractor import get_observation_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,6 @@ class ObservationManager:
         """
         if evidence_type not in ("preference", "behavior", "feedback", "context"):
             return f"Invalid evidence type: {evidence_type}"
-
         if not (0.0 <= confidence <= 1.0):
             return f"Invalid confidence: {confidence} (must be 0.0-1.0)"
 
@@ -50,116 +49,31 @@ class ObservationManager:
 
         try:
             db._ensure_conn().execute(
-                """
-                INSERT INTO user_observations
+                """INSERT INTO user_observations
                     (observation_type, observation_data, context, confidence, timestamp)
-                VALUES (?, ?, ?, ?, ?)
-            """,
+                VALUES (?, ?, ?, ?, ?)""",
                 (evidence_type, data_json, context or "", confidence, timestamp),
             )
             db._ensure_conn().commit()
-
-            return (
-                f"Observation recorded: {evidence_type} -> {data.get('key', 'unknown')}"
-            )
+            return f"Observation recorded: {evidence_type} -> {data.get('key', 'unknown')}"
         except Exception as e:
             return f"Error recording observation: {type(e).__name__}: {e}"
 
     def observe_from_interaction(self, interaction: dict[str, Any]) -> list[str]:
-        """从用户交互中提取观察
-
-        Args:
-            interaction: {
-                "user_message": str,
-                "agent_response": str,
-                "tool_calls": list,
-                "feedback": str | None
-            }
-
-        Returns:
-            观察记录列表
-        """
+        """从用户交互中提取观察并记录"""
         results = []
+        extractor = get_observation_extractor()
+        observations = extractor.extract_from_interaction(interaction)
 
-        user_message = interaction.get("user_message", "")
-        feedback = interaction.get("feedback")
-
-        # 提取偏好线索
-        preferences = self._extract_preferences_from_message(user_message)
-        for pref in preferences:
+        for obs in observations:
             result = self.observe(
-                evidence_type="preference",
-                data=pref,
-                context=user_message[:200],
-                confidence=0.7,
+                evidence_type=obs["evidence_type"],
+                data=obs["data"],
+                context=obs["context"],
+                confidence=obs["confidence"],
             )
             results.append(result)
-
-        # 提取行为模式
-        tool_calls = interaction.get("tool_calls", [])
-        if tool_calls:
-            behaviors = self._extract_behaviors_from_tools(tool_calls)
-            for beh in behaviors:
-                result = self.observe(
-                    evidence_type="behavior",
-                    data=beh,
-                    context=json.dumps(tool_calls[:3], ensure_ascii=False),
-                    confidence=0.6,
-                )
-                results.append(result)
-
-        # 显式反馈
-        if feedback:
-            result = self.observe(
-                evidence_type="feedback",
-                data={"key": "explicit_feedback", "value": feedback},
-                context=user_message[:200],
-                confidence=0.9,
-            )
-            results.append(result)
-
         return results
-
-    def _extract_preferences_from_message(self, message: str) -> list[dict[str, Any]]:
-        """从用户消息中提取偏好线索"""
-        preferences = []
-
-        # 正向偏好
-        if "我喜欢" in message or "prefer" in message.lower():
-            preferences.append(
-                {"key": "general_style", "value": "user_likes", "raw": message[:100]}
-            )
-
-        # 格式偏好
-        if "格式" in message or "format" in message.lower():
-            preferences.append(
-                {
-                    "key": "output_format",
-                    "value": "specified_format",
-                    "raw": message[:100],
-                }
-            )
-
-        # 语言偏好
-        if "用中文" in message or "用英文" in message:
-            lang = "中文" if "中文" in message else "英文"
-            preferences.append({"key": "language", "value": lang, "raw": message[:100]})
-
-        return preferences
-
-    def _extract_behaviors_from_tools(
-        self, tool_calls: list[dict]
-    ) -> list[dict[str, Any]]:
-        """从工具调用中提取行为模式"""
-        behaviors = []
-
-        for tc in tool_calls[:5]:
-            tool_name = tc.get("function", {}).get("name", "unknown")
-            behaviors.append(
-                {"key": "tool_usage", "value": tool_name, "frequency": "observed"}
-            )
-
-        return behaviors
 
     def get_unprocessed_observations(self, limit: int = 50) -> list[dict[str, Any]]:
         """获取未处理的观察记录"""
@@ -167,13 +81,11 @@ class ObservationManager:
         rows = (
             db._ensure_conn()
             .execute(
-                """
-            SELECT id, observation_type, observation_data, context, confidence, timestamp
-            FROM user_observations
-            WHERE processed = 0
-            ORDER BY timestamp ASC
-            LIMIT ?
-        """,
+                """SELECT id, observation_type, observation_data, context, confidence, timestamp
+                FROM user_observations
+                WHERE processed = 0
+                ORDER BY timestamp ASC
+                LIMIT ?""",
                 (limit,),
             )
             .fetchall()
@@ -182,30 +94,28 @@ class ObservationManager:
         observations = []
         for row in rows:
             data = json.loads(row["observation_data"])
-            observations.append(
-                {
-                    "id": row["id"],
-                    "type": row["observation_type"],
-                    "data": data,
-                    "context": row["context"],
-                    "confidence": row["confidence"],
-                    "timestamp": row["timestamp"],
-                }
-            )
-
+            observations.append({
+                "id": row["id"],
+                "type": row["observation_type"],
+                "data": data,
+                "context": row["context"],
+                "confidence": row["confidence"],
+                "timestamp": row["timestamp"],
+            })
         return observations
 
     def mark_observations_processed(self, observations: list[dict[str, Any]]) -> None:
         """标记观察已处理"""
         ids = [str(o["id"]) for o in observations]
-        if ids:
-            db = get_db()
-            placeholders = ",".join("?" * len(ids))
-            db._ensure_conn().execute(
-                f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",
-                ids,
-            )
-            db._ensure_conn().commit()
+        if not ids:
+            return
+        db = get_db()
+        placeholders = ",".join("?" * len(ids))
+        db._ensure_conn().execute(
+            f"UPDATE user_observations SET processed = 1 WHERE id IN ({placeholders})",
+            ids,
+        )
+        db._ensure_conn().commit()
 
     def clear_all_observations(self) -> str:
         """清除所有观察记录"""

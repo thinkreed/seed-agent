@@ -9,44 +9,23 @@
 import logging
 
 from src.security.risk_classifier_core._factors import analyze_param_risk
+from src.security.risk_classifier_core._history import (
+    ClassificationHistory,
+    log_classification_result,
+)
+from src.security.risk_classifier_core._scoring import (
+    calculate_final_score,
+    get_isolation_risk_modifier,
+    get_tool_base_risk,
+    get_user_risk_modifier,
+    score_to_level,
+)
 from src.security.risk_classifier_core._types import (
-    ISOLATION_LEVEL_MODIFIERS,
     RISK_LEVEL_CONFIGS,
-    TOOL_BASE_RISKS,
-    USER_LEVEL_MODIFIERS,
     ClassificationResult,
-    RiskAction,
-    RiskLevel,
-    RiskLevelConfig,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def score_to_level(score: float) -> RiskLevel:
-    """分数映射到风险等级"""
-    if score < 0.3:
-        return RiskLevel.SAFE
-    if score < 0.6:
-        return RiskLevel.CAUTION
-    if score < 1.2:
-        return RiskLevel.RISKY
-    return RiskLevel.DANGEROUS
-
-
-def get_tool_base_risk(tool_name: str) -> float:
-    """获取工具基础风险分数"""
-    return TOOL_BASE_RISKS.get(tool_name, TOOL_BASE_RISKS["default"])
-
-
-def get_user_risk_modifier(user_level: str) -> float:
-    """获取用户权限等级风险修正"""
-    return USER_LEVEL_MODIFIERS.get(user_level, 0.0)
-
-
-def get_isolation_risk_modifier(isolation_level: str) -> float:
-    """获取 Sandbox 隔离等级风险修正"""
-    return ISOLATION_LEVEL_MODIFIERS.get(isolation_level, 0.0)
 
 
 class CommandRiskClassifier:
@@ -81,19 +60,13 @@ class CommandRiskClassifier:
         """
         self._isolation_level = isolation_level
         self._user_permission_level = user_permission_level
-        self._classification_history: list[ClassificationResult] = []
-        self._max_history_size = max_history_size
-
+        self._history = ClassificationHistory(max_history_size)
         logger.info(
             f"CommandRiskClassifier initialized: "
             f"isolation={isolation_level}, user_level={user_permission_level}"
         )
 
-    def classify(
-        self,
-        tool_name: str,
-        args: dict,
-    ) -> ClassificationResult:
+    def classify(self, tool_name: str, args: dict) -> ClassificationResult:
         """分类命令风险
 
         Args:
@@ -125,94 +98,46 @@ class CommandRiskClassifier:
             factors.append(f"isolation_modifier={isolation_modifier:.2f}")
 
         # 5. 综合评估
-        final_score = base_risk + param_risk + user_modifier + isolation_modifier
-        final_score = max(0.0, final_score)
+        final_score = calculate_final_score(
+            base_risk, param_risk, user_modifier, isolation_modifier
+        )
 
         # 6. 映射到风险等级
         risk_level = score_to_level(final_score)
         config = RISK_LEVEL_CONFIGS[risk_level]
-        action = config.action
 
         # 7. 创建分类结果
         result = ClassificationResult(
             risk_level=risk_level,
-            action=action,
+            action=config.action,
             score=final_score,
             tool_name=tool_name,
             args=args,
             factors=factors,
         )
 
-        # 8. 记录分类历史
-        self._record_classification(result)
-
-        # 9. 日志记录
-        self._log_classification(result, config)
+        # 8. 记录并日志
+        self._history.record(result)
+        log_classification_result(result, config)
 
         return result
 
-    def _record_classification(self, result: ClassificationResult) -> None:
-        """记录分类历史"""
-        self._classification_history.append(result)
-
-        if len(self._classification_history) > self._max_history_size:
-            self._classification_history = self._classification_history[-self._max_history_size:]
-
-    def _log_classification(
-        self,
-        result: ClassificationResult,
-        config: RiskLevelConfig,
-    ) -> None:
-        """日志记录分类结果"""
-        log_msg = (
-            f"Risk classification: tool={result.tool_name}, "
-            f"level={result.risk_level.value}, "
-            f"score={result.score:.2f}, "
-            f"action={result.action.value}, "
-            f"factors=[{', '.join(result.factors)}]"
-        )
-
-        if config.log_level == "INFO":
-            logger.info(log_msg)
-        elif config.log_level == "WARNING":
-            logger.warning(log_msg)
-        elif config.log_level == "ERROR":
-            logger.error(log_msg)
+    @property
+    def _classification_history(self) -> list[ClassificationResult]:
+        """向后兼容：提供对历史记录列表的直接访问"""
+        return self._history._history
 
     def get_classification_stats(self) -> dict:
         """获取分类统计"""
-        stats: dict = {
-            "total_classifications": len(self._classification_history),
-            "by_level": {},
-            "by_action": {},
-            "average_score": 0.0,
-        }
-
-        for level in RiskLevel:
-            stats["by_level"][level.value] = sum(
-                1 for c in self._classification_history if c.risk_level == level
-            )
-
-        for action in RiskAction:
-            stats["by_action"][action.value] = sum(
-                1 for c in self._classification_history if c.action == action
-            )
-
-        if self._classification_history:
-            stats["average_score"] = sum(
-                c.score for c in self._classification_history
-            ) / len(self._classification_history)
-
-        return stats
+        return self._history.get_stats()
 
     def get_recent_classifications(self, limit: int = 10) -> list[ClassificationResult]:
         """获取最近的分类记录"""
-        return self._classification_history[-limit:]
+        return self._history.get_recent(limit)
 
     def clear_history(self) -> None:
         """清空分类历史"""
-        self._classification_history.clear()
-        logger.info("Classification history cleared")
+        self._history.clear()
 
     def update_user_level(self, new_level: str) -> None:
         """更新用户权限等级"""

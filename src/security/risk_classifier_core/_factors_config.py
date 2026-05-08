@@ -1,0 +1,131 @@
+"""
+命令风险分类器 - 参数风险因素配置
+
+包含:
+- 参数风险因素配置字典
+"""
+
+from typing import Any
+
+# 参数风险因素
+PARAM_RISK_FACTORS: dict[str, dict[str, Any]] = {
+    "path_traversal": {
+        "patterns": ["../", "..\\", "~/"],
+        "risk_boost": 0.8,
+        "description": "路径遍历模式",
+    },
+    "system_paths": {
+        "patterns": [
+            "/etc/",
+            "/var/",
+            "/usr/",
+            "/bin/",
+            "/sbin/",
+            "/root/",
+            "/home/",
+            "/sys/",
+            "/proc/",
+            "C:\\Windows\\",
+            "C:\\Program Files\\",
+            "/System/",
+            "/Library/",
+        ],
+        "risk_boost": 0.5,
+        "description": "系统路径访问",
+    },
+    "overwrite_mode": {
+        "param_conditions": {"mode": ["overwrite", "w"]},
+        "risk_boost": 0.2,
+        "description": "覆盖写入模式",
+    },
+    "shell_language": {
+        "param_conditions": {
+            "language": ["shell", "bash", "sh", "powershell", "ps", "pwsh"]
+        },
+        "risk_boost": 0.3,
+        "description": "Shell 语言执行",
+    },
+    "dangerous_commands": {
+        "code_patterns": [
+            "rm -rf",
+            "rm -r",
+            "rm -fr",
+            "rmdir",
+            "del /s",
+            "del /q",
+            "Remove-Item",
+            "Delete-Item",
+            "sudo",
+            "su",
+            "chmod 777",
+            "chmod 666",
+            "chown",
+            "mkfs",
+            "dd if=",
+            "fdisk",
+            "format",
+            "shutdown",
+            "reboot",
+            "wget",
+            "curl -o",
+            "nc ",
+            "netcat",
+            "telnet",
+            "kill -9",
+            "pkill",
+            "killall",
+            "Stop-Process -Force",
+            "> /dev/",
+            "mv /*",
+            ":(){ :|:& };:",
+            "Format-Volume",
+            "Stop-Process",
+            "Remove-Item -Recurse",
+            "eval(",
+            "exec(",
+            "__import__",
+            "import os",
+            "import subprocess",
+            "os.system",
+            "os.popen",
+            "subprocess.call",
+            "subprocess.run",
+            "shell=True",
+            "$(",
+            "${",
+            "`",
+            "\\x",
+            "\\u",
+            "base64",
+            "hex",
+        ],
+        "risk_boost": 1.5,
+        "description": "危险命令模式",
+    },
+    "sensitive_files": {
+        "path_patterns": [
+            "passwd",
+            "shadow",
+            "hosts",
+            "ssh",
+            ".env",
+            "credentials",
+            "secrets",
+            "api_key",
+            "private_key",
+            "token",
+        ],
+        "risk_boost": 0.4,
+        "description": "敏感文件访问",
+    },
+    "recursive_flag": {
+        "param_conditions": {"recursive": [True, "true", "yes"]},
+        "risk_boost": 0.2,
+        "description": "递归操作",
+    },
+    "force_flag": {
+        "param_conditions": {"force": [True, "true", "yes", "-f", "--force"]},
+        "risk_boost": 0.3,
+        "description": "强制执行标志",
+    },
+}

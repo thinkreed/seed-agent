@@ -15,22 +15,16 @@
         duration_ms = timer.duration_ms
 
     # 3. 装饰器（用于函数计时）
-    @timed("operation_name")
-    async def my_function():
+    @timed_sync("operation_name")
+    def my_function():
         # ... 执行操作 ...
 """
 
 import logging
 import time
-from collections.abc import Callable, Coroutine, Generator
-from contextlib import contextmanager
-from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import Any
 
 logger = logging.getLogger("seed_agent.timer")
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 
 class Timer:
@@ -136,119 +130,15 @@ class Timer:
             self.stop()
 
 
-@contextmanager
-def timed_context(name: str | None = None) -> Generator[Timer, None, None]:
-    """计时上下文管理器
+# 从子模块导入并导出公共 API
+from src._timer_decorators import timed_async, timed_context, timed_sync
+from src._timer_utils import measure_duration, measure_duration_sec
 
-    Args:
-        name: 计时器名称（用于日志）
-
-    Yields:
-        Timer: 计时器实例
-
-    Example:
-        with timed_context("api_call") as timer:
-            # ... 执行操作 ...
-        logger.info(f"{timer._name} took {timer.duration_ms:.2f}ms")
-    """
-    timer = Timer(name)
-    timer.start()
-    yield timer
-    timer.stop()
-
-    if name:
-        logger.debug(f"{name} completed in {timer.duration_ms:.2f}ms")
-
-
-def timed_async(name: str) -> Callable[[Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]]:
-    """异步函数计时装饰器
-
-    Args:
-        name: 操作名称（用于日志）
-
-    Returns:
-        装饰后的函数
-
-    Example:
-        @timed_async("llm_call")
-        async def call_llm(prompt: str) -> dict:
-            # ... 执行操作 ...
-    """
-    def decorator(func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Coroutine[Any, Any, R]]:
-        @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            timer = Timer(name)
-            timer.start()
-            try:
-                result = await func(*args, **kwargs)
-                timer.stop()
-                logger.debug(f"{name} completed in {timer.duration_ms:.2f}ms")
-                return result
-            except Exception as e:
-                timer.stop()
-                logger.warning(f"{name} failed after {timer.duration_ms:.2f}ms: {type(e).__name__}")
-                raise
-        return wrapper
-    return decorator
-
-
-def timed_sync(name: str) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """同步函数计时装饰器
-
-    Args:
-        name: 操作名称（用于日志）
-
-    Returns:
-        装饰后的函数
-
-    Example:
-        @timed_sync("file_read")
-        def read_file(path: str) -> str:
-            # ... 执行操作 ...
-    """
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        @wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            timer = Timer(name)
-            timer.start()
-            try:
-                result = func(*args, **kwargs)
-                timer.stop()
-                logger.debug(f"{name} completed in {timer.duration_ms:.2f}ms")
-                return result
-            except Exception as e:
-                timer.stop()
-                logger.warning(f"{name} failed after {timer.duration_ms:.2f}ms: {type(e).__name__}")
-                raise
-        return wrapper
-    return decorator
-
-
-# 简化函数：直接计算持续时间
-def measure_duration(start_time: float) -> float:
-    """计算持续时间（毫秒）
-
-    Args:
-        start_time: 开始时间（time.time() 返回值）
-
-    Returns:
-        float: 持续时间（毫秒）
-
-    Example:
-        start = time.time()
-        # ... 执行操作 ...
-        duration_ms = measure_duration(start)
-    """
-    return (time.time() - start_time) * 1000
-
-
-def measure_duration_sec(start_time: float) -> float:
-    """计算持续时间（秒）
-
-    Args:
-        start_time: 开始时间（time.time() 返回值）
-
-    Returns:
-        float: 持续时间（秒）
-    """
-    return time.time() - start_time
+__all__ = [
+    "Timer",
+    "timed_context",
+    "timed_async",
+    "timed_sync",
+    "measure_duration",
+    "measure_duration_sec",
+]
