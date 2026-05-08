@@ -8,11 +8,14 @@ This directory contains design documents that capture architectural decisions, i
 
 | Document | Description |
 |----------|-------------|
+| `wiki_knowledge_integration_analysis.md` | Wiki 知识落地分析：P0-P5 全部优化点实施记录 |
 | `memory_graph_enhancement_design.md` | Memory Graph architecture for skill evolution and outcome tracking |
 | `L4_SQLite_FTS5_Design.md` | L4 session storage migration from JSONL to SQLite+FTS5 |
 | `long_cycle_loop_enhancement_design.md` | Ralph Loop architecture and implementation design |
 | `ralph_loop.md` | Ralph Loop concept and motivation |
 | `rate_limiting_system_design.md` | LLM request rate limiting system (Token Bucket + Queue + Persistence) |
+| `request_queue_turn_ticket_design.md` | Request Queue TurnTicket 公平调度设计 |
+| `harness/` | Harness 系列设计文档（6 个子文档） |
 
 ---
 
@@ -165,7 +168,6 @@ Planned design documents to add:
 | Planned Document | Purpose |
 |------------------|---------|
 | Scheduler Design | Task scheduling architecture and built-in tasks |
-| FallbackChain Design | Multi-provider failover mechanism |
 
 **Completed documents:**
 - ✅ Memory Graph Enhancement Design (skill evolution and outcome tracking)
@@ -174,4 +176,97 @@ Planned design documents to add:
 - ✅ Ralph Loop Concept (design philosophy)
 - ✅ Subagent Design (in `subagents.md`)
 - ✅ Rate Limiting System Design (LLM request rate control)
-- ✅ Credential Security Design (Vault + Proxy architecture, see `harness/08_credential_security_design.md`) |
+- ✅ Credential Security Design (Vault + Proxy architecture, see `harness/08_credential_security_design.md`)
+- ✅ Wiki Knowledge Integration (P0-P5 全部完成，详见 `wiki_knowledge_integration_analysis.md`)
+
+---
+
+## Wiki Knowledge Integration (P4+P5 新功能)
+
+详见 `wiki_knowledge_integration_analysis.md`，以下为 P4+P5 新增功能模块：
+
+### Circuit Breaker 自动切换 (P4)
+
+**实现位置**: `src/client/_circuit_breaker.py`
+
+**功能**: Provider 熔断器，连续失败自动切换备用 Provider，自动恢复探测。
+
+**核心机制**:
+- 状态机: Closed → Open (连续失败达阈值) → HalfOpen (冷却结束) → Closed (探测成功)
+- 独立 Provider 熔断配置（借鉴 worldmonitor "每个数据域独立熔断")
+- 并发安全：asyncio.Lock 保护状态变更
+
+### Orphan Reaper 孤儿回收 (P4)
+
+**实现位置**: `src/subagent_manager_core/_orphan_reaper.py`
+
+**功能**: 定期扫描和回收超时的孤儿 Subagent 进程。
+
+**核心机制**:
+- 每 30 秒扫描活跃进程
+- 两阶段终止: SIGTERM → 等待 5s → SIGKILL
+- 进程注册/注销 API
+
+### Stampede Protection 缓存击穿保护 (P4)
+
+**实现位置**: `src/request_queue_core/_stampede.py`
+
+**功能**: 并发缓存击穿保护，单个请求实际调用，其他等待共享结果。
+
+**核心机制**:
+- `get_or_refresh(key, refresh_fn)` - 获取或刷新
+- 防重复请求：`inflight` Map 共享 Task
+- 失效策略：`invalidate(key)` 触发重新刷新
+
+### 复杂度评分路由 (P4)
+
+**实现位置**: `src/client/_complexity_scorer.py`
+
+**功能**: 23 维度复杂度评分 → 四级 Tier 路由（simple/standard/complex/reasoning）。
+
+**23 维度**:
+- 代码复杂度（5维）：file_count, line_count, function_count, nesting_depth, dependency_count
+- 任务复杂度（6维）：step_count, decision_points, parallel_tasks, verification_needed, documentation_needed, test_needed
+- 上下文复杂度（4维）：message_count, token_count, file_references, history_length
+- 工具复杂度（4维）：tool_count, tool_types, cross_domain_calls, permission_level
+- 知识复杂度（4维）：domain_count, concept_count, reasoning_depth, uncertainty_level
+
+### Specificity 检测 (P4)
+
+**实现位置**: `src/client/_specificity_detector.py`
+
+**功能**: 任务类型自动检测，路由到专用模型。
+
+**三层路由优先级**: Header Tiers → Specificity → Complexity
+
+### Merkle DAG 增量索引 (P5)
+
+**实现位置**: `src/core/_merkle_dag.py`
+
+**功能**: O(1) 无变更检测 + O(k) 增量更新。
+
+**核心机制**:
+- Merkle 哈希树：文件变更检测
+- 增量构建：只更新变更节点
+- 快照管理：历史版本追踪
+
+### DataHub Pub/Sub (P5)
+
+**实现位置**: `src/core/_datahub.py`
+
+**功能**: Topic 发布订阅 + 请求去重。
+
+**核心机制**:
+- `publish(topic, data)` - 发布数据
+- `subscribe(topic, handler)` -订阅处理
+- TopicPolicy 策略：TTL/Rate Limit/Refresh
+
+### QueryInvalidator 失效策略 (P5)
+
+**实现位置**: `src/core/_query_invalidator.py`
+
+**功能**: 失效策略 + 缓存管理 + 乐观更新回滚。
+
+**核心机制**:
+- `invalidate(query_pattern)` - 失效匹配查询
+- `with_optimistic_update(query, update, rollback)` - 乐观更新回滚 |
