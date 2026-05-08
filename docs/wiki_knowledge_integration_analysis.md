@@ -1,12 +1,25 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-08 (更新: P5 实现完成)
+## 日期: 2026-05-08 (更新: P5 实现完成 + 大文件重构)
 
 ## 概述
 
 基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
 **验证结果**: 所有 P0 + P1 + P2 + P3 + P4 + P5 优化点已实现，测试通过 1147 passed。
+
+**大文件重构 (2026-05-08)** - 将超过 180 行的文件拆分为不超过 150 行的小模块：
+- `_persist.py` → `_persist_save.py` + `_persist_load.py`
+- `_llm_summary.py` → `_llm_summary_format.py` + `_llm_summary_generate.py`
+- `_rolling_window.py` → `_rolling_window_types.py` + `_rolling_window_tracker.py`
+- `_summarizer.py` → `_summarizer_types.py` + `_summarizer_core.py` + `_summarizer_formatting.py` + `_summarizer_context.py`
+- `_manager.py` → `_manager_types.py` + `_manager_metrics.py`
+- `_executor_task.py` → `_executor_prompt.py`
+- `_audit.py` → `_audit_utils.py` + `_audit_manager.py`
+- `_cleanup.py` → `_cleanup_stats.py` + `_cleanup_operations.py`
+- `_hub_coordinator.py` → `_hub_discovery.py` + `_hub_management.py`
+- `_stats.py` → `_stats_queue.py` + `_stats_adjuster.py`
+- `task_stop.py` → `_task_stop_tools.py`
 
 **P5 实现 (2026-05-08)** - 基于 Wiki 新项目分析：
 - **Merkle DAG 增量索引**: `src/core/_merkle_dag.py` - O(1) 无变更检测 + O(k) 增量更新 (claude-context-docs 设计)

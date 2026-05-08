@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.autonomous._defense import DefenseState
 from src.autonomous._executor_helpers import notify_completion
-from src.autonomous._prompt_builder import build_autonomous_prompt, extract_task_signals
+from src.autonomous._executor_prompt import build_full_prompt
 from src.autonomous._ralph_loop import run_ralph_loop
 from src.autonomous._sop_loader import expand_sop_paths
 from src.autonomous._state_manager import StateManager, TodoCache
@@ -144,37 +144,4 @@ async def execute_autonomous_task(
         agent.max_iterations = original_max_iterations
 
 
-def build_full_prompt(agent: "AgentLoop", sop_content: str | None, todo_content: str, seed_dir: Path) -> str:
-    """构建完整的自主探索 prompt"""
-    base_system_prompt = agent.system_prompt or ""
-
-    skills_prompt = ""
-    best_skill = None
-    gene_slice = None
-
-    skill_loader = getattr(agent, "skill_loader", None)
-    if skill_loader:
-        skills_prompt = skill_loader.get_skills_prompt()
-        signals = extract_task_signals(todo_content, bool(todo_content))
-        best_skill = skill_loader.select_best_skill(
-            signals=signals,
-            available_tools=getattr(agent.tools, "get_tool_names", lambda: None)(),
-        )
-        if best_skill:
-            gene_slice = skill_loader.get_gene_slice(best_skill)
-
-    expanded_sop = expand_sop_paths(sop_content or "", seed_dir)
-
-    return build_autonomous_prompt(
-        base_system_prompt=base_system_prompt,
-        skills_prompt=skills_prompt,
-        sop_content=expanded_sop,
-        todo_content=todo_content,
-        has_todo=bool(todo_content),
-        seed_dir=seed_dir,
-        best_skill=best_skill,
-        gene_slice=gene_slice,
-    )
-
-
-__all__ = ["build_full_prompt", "execute_autonomous_task"]
+__all__ = ["execute_autonomous_task"]

@@ -15,49 +15,30 @@ from typing import TYPE_CHECKING, Any, cast
 from src.llm_client import LLMClient
 from src.sandbox import Sandbox
 from src.session_event_stream import SessionEventStream
+from src.harness._manager_metrics import calculate_total_metrics
+from src.harness._manager_types import MAX_ITERATIONS
 
 if TYPE_CHECKING:
     from src.client import LLMGateway
 
 logger = logging.getLogger(__name__)
 
-# 最大迭代次数（安全上限）
-MAX_ITERATIONS = 100
-
 
 class HarnessManager:
-    """Harness 管理器 - 支持多实例
-
-    用于管理多个 Harness 实例，支持：
-    - 创建新 Harness（牲畜可替换）
-    - 销毁 Harness
-    - 多实例协作
-    - 状态持久化
-
-    使用场景：
-    - 多用户并发对话
-    - 多任务并行执行
-    - 容错恢复
-    """
+    """Harness 管理器 - 支持多实例"""
 
     def __init__(self, gateway_config_path: str) -> None:
-        """初始化 HarnessManager
-
-        Args:
-            gateway_config_path: Gateway 配置文件路径
-        """
+        """初始化 HarnessManager"""
         self._gateway_config_path = gateway_config_path
-        self._harnesses: dict[str, Any] = {}  # harness_id -> Harness
-        self._sandboxes: dict[str, Sandbox] = {}  # harness_id -> Sandbox
+        self._harnesses: dict[str, Any] = {}
+        self._sandboxes: dict[str, Sandbox] = {}
         self._gateway: LLMGateway | None = None
-
         logger.info("HarnessManager initialized")
 
     def _ensure_gateway(self) -> LLMGateway:
         """确保 Gateway 已创建"""
         if not self._gateway:
             from src.client import LLMGateway
-
             self._gateway = LLMGateway(self._gateway_config_path)
         return self._gateway
 
@@ -69,69 +50,30 @@ class HarnessManager:
         sandbox_config: dict[str, Any] | None = None,
         max_iterations: int = MAX_ITERATIONS,
     ) -> Any:
-        """创建新的 Harness 实例
-
-        Args:
-            harness_id: Harness 实例 ID
-            model_id: 模型 ID
-            system_prompt: 系统提示
-            sandbox_config: Sandbox 配置
-            max_iterations: 最大迭代次数
-
-        Returns:
-            Harness 实例
-        """
+        """创建新的 Harness 实例"""
         gateway = self._ensure_gateway()
-
-        # 创建 LLMClient
         llm_client = LLMClient(gateway, model_id)
-
-        # 创建 Sandbox
         sandbox_config = sandbox_config or {}
         sandbox = Sandbox(**sandbox_config)
-
-        # 创建 Session
         session = SessionEventStream(harness_id)
 
-        # 创建 Harness（延迟导入避免循环依赖）
-        # 使用 cast 告诉 mypy 这是可调用的
         from src.harness import Harness as HarnessClass
-
         harness = cast("Any", HarnessClass)(
-            llm_client,
-            session,
-            sandbox,
-            max_iterations=max_iterations,
-            system_prompt=system_prompt,
+            llm_client, session, sandbox,
+            max_iterations=max_iterations, system_prompt=system_prompt,
         )
 
-        # 注册
         self._harnesses[harness_id] = harness
         self._sandboxes[harness_id] = sandbox
-
         logger.info(f"Harness created: id={harness_id}, model={model_id}")
         return harness
 
     def get_harness(self, harness_id: str) -> Any | None:
-        """获取 Harness 实例
-
-        Args:
-            harness_id: Harness 实例 ID
-
-        Returns:
-            Harness 实例或 None
-        """
+        """获取 Harness 实例"""
         return self._harnesses.get(harness_id)
 
     def destroy_harness(self, harness_id: str) -> bool:
-        """销毁 Harness（牲畜可替换）
-
-        Args:
-            harness_id: Harness 实例 ID
-
-        Returns:
-            是否成功销毁
-        """
+        """销毁 Harness"""
         if harness_id in self._harnesses:
             harness = self._harnesses[harness_id]
             harness.session.record_session_end("destroyed")
@@ -146,19 +88,11 @@ class HarnessManager:
         return True
 
     def list_harnesses(self) -> list[str]:
-        """列出所有 Harness ID
-
-        Returns:
-            Harness ID 列表
-        """
+        """列出所有 Harness ID"""
         return list(self._harnesses.keys())
 
     def get_all_status(self) -> dict[str, dict[str, Any]]:
-        """获取所有 Harness 状态
-
-        Returns:
-            harness_id -> status 字典
-        """
+        """获取所有 Harness 状态"""
         return {h_id: harness.get_status() for h_id, harness in self._harnesses.items()}
 
     def destroy_all(self) -> None:
@@ -168,30 +102,8 @@ class HarnessManager:
         logger.info("All harnesses destroyed")
 
     def get_total_metrics(self) -> dict[str, Any]:
-        """获取所有 Harness 的总指标
+        """获取所有 Harness 的总指标"""
+        return calculate_total_metrics(self._harnesses)
 
-        Returns:
-            总指标统计
-        """
-        total_tools = 0
-        total_success = 0
-        total_failed = 0
-        total_duration_ms = 0.0
 
-        for harness in self._harnesses.values():
-            metrics = harness.get_metrics()
-            total_tools += len(metrics)
-            for m in metrics:
-                if m["success"]:
-                    total_success += 1
-                else:
-                    total_failed += 1
-                total_duration_ms += m["duration_ms"]
-
-        return {
-            "total_tool_calls": total_tools,
-            "successful_calls": total_success,
-            "failed_calls": total_failed,
-            "total_duration_ms": total_duration_ms,
-            "average_duration_ms": total_duration_ms / total_tools if total_tools > 0 else 0,
-        }
+__all__ = ["MAX_ITERATIONS", "HarnessManager"]
