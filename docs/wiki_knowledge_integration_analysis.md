@@ -395,7 +395,7 @@ order = resolve_agent_execution_order(["implement", "review"])
 | **opensre-docs** | ThreadPoolExecutor 并行执行 | SubagentManager 已有并发控制 |
 | **opensre-docs** | CostTier 成本等级 | 可作为后续优化 |
 | **opensre-docs** | investigation_loop 循环控制 | RalphLoop 已有迭代控制 |
-| **deepseek-tui** | RLM Context Busting | 需额外架构设计 |
+| **deepseek-tui** | RLM Context Busting | 不适用（Python 实现无需 Rust-Python IPC，已有 ContextPruner 替代） |
 
 ---
 
