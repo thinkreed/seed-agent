@@ -12,7 +12,7 @@
 
 import logging
 
-from ._error_types import ErrorSeverity, ErrorType, classify_error
+from ._error_types import ErrorSeverity, classify_error
 
 
 def get_log_level(severity: ErrorSeverity) -> int:
