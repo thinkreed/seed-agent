@@ -71,7 +71,31 @@
 
 ---
 
-## 六、禁忌
+## 六、Subagent 工具使用
+
+当需要并行执行或隔离上下文时，可使用 subagent 工具：
+
+### spawn_subagent
+创建独立上下文的子代理任务：
+```python
+spawn_subagent(
+    subagent_type="explore",  # 必须是: explore/review/implement/plan
+    prompt="任务指令",
+    timeout=300  # 可选，默认300秒
+)
+```
+
+**有效类型**：
+- `explore`: 只读探索（搜索文件、阅读代码）
+- `review`: 审查验证（只读 + 代码执行）
+- `implement`: 实现执行（全权限）
+- `plan`: 规划分析（只读 + 记忆写入）
+
+**❌ 错误用法**: 使用 `AutonomousExplorer`、`general` 等无效类型
+
+---
+
+## 七、禁忌
 
 ❌ 推诿"无法操作"，无方案需提建议
 ❌ 未推演直接执行

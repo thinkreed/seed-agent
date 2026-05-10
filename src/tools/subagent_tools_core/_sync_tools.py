@@ -46,7 +46,17 @@ def spawn_subagent(
     custom_tools: list[str] | None = None,
     timeout: int | None = None,
 ) -> str:
-    """创建并启动一个子代理任务"""
+    """创建并启动一个子代理任务
+
+    subagent_type: 子代理类型，必须是以下之一：
+        - "explore": 只读探索（搜索文件、阅读代码）
+        - "review": 审查验证（只读 + 代码执行）
+        - "implement": 实现执行（全权限）
+        - "plan": 规划分析（只读 + 记忆写入）
+    prompt: 任务指令内容
+    custom_tools: 自定义工具列表（可选）
+    timeout: 执行超时时间（秒，默认300）
+    """
     if _subagent_manager is None:
         return "Error: SubagentManager not initialized"
 
@@ -80,7 +90,13 @@ def spawn_subagent(
 
 
 def spawn_parallel_subagents(tasks: list[dict]) -> str:
-    """创建并并行启动多个子代理任务"""
+    """创建并并行启动多个子代理任务
+
+    tasks: 任务列表，每个任务包含：
+        - type: 子代理类型（"explore"/"review"/"implement"/"plan")
+        - prompt: 任务指令
+        - timeout: 超时时间（秒，可选）
+    """
     if _subagent_manager is None:
         return "Error: SubagentManager not initialized"
 
