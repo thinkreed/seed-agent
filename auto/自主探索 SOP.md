@@ -1,109 +1,61 @@
-# 自主探索 SOP
-**记忆层级**：L1索引 | L2技能 | L3知识 | L4用户建模 | L5工作日志
+# 自主探索 SOP (Standard Operating Procedure)
 
----
+## 概述
+本SOP指导 Autonomous Explorer 在系统空闲时执行自主探索任务。
 
-## 一、任务规划
+## 目标
+- 发现并分析新模块和代码结构
+- 生成 L3 知识文档
+- 优化现有 Skills 和知识
+- 维护系统健康状态
 
-### 前提
-价值公式：`实际可落地 × 进化沉淀价值 × 稀缺性 × 长期任务推进度`
+## 执行流程
 
-**强制**：每轮必执行长期任务(STR-01/02/03/04轮换)，完成前调用 `start_long_term_update`
-**强制**: 禁止停下来询问，完全自己进行探索
+### 1. 环境准备
+- 检查 TODO.md 获取当前任务优先级
+- 检查 ralph_state.json 恢复上次状态
+- 加载 Memory Graph 选择最佳 Skill
 
-### 流程
-- **有TODO**: 推演后执行，优先长期任务
-- **无TODO**: 规划模式 → 复盘history.md → 产5-7条TODO(含1-2条STR) → subagent评审 → 更新工作记忆
+### 2. 探索策略 (优先级顺序)
 
----
+#### STR-01: 外部知识库集成
+- 分析外部系统架构和模式
+- 生成集成指南和配置文档
+- 输出: L3 知识文件
 
-## 二、执行流程
+#### STR-02: SOP 文档化
+- 从成功实践中提取可复用流程
+- 创建或更新 SKILL.md 文件
+- 输出: L2 Skill 文件
 
-1. 读取TODO，推演逻辑(优先长期任务)
-2. 适配权限，不可逆操作确认用户
-3. 失败升级：1次重试 → 2次调策略 → 3次换方案/询用户
-4. 核对验收标准，长期任务未完成不得下一轮
-5. 更新工作记忆，调用 `start_long_term_update`
-6. **用户偏好观察**: 发现偏好线索 → `observe_user_preference`
-7. 未完成长期任务纳入下一轮TODO
-8. 归纳至history.md
+#### STR-03: 源代码分析优化
+- 深度分析核心模块实现
+- 识别性能瓶颈和改进点
+- 输出: L3 分析文档 + 优化建议
 
----
+#### STR-04: Skill 压缩与优化
+- 评估现有 Skills 的有效性
+- 合并重复或过时的技能
+- 输出: 更新后的 SKILL.md
 
-## 三、长期任务(STR) - 每轮必执行
+### 3. 执行规则
+- 每轮只选择一个策略执行
+- 完成后更新 TODO.md 状态
+- 生成详细的过程记录
+- 保存状态到 ralph_state.json
 
-| STR | 来源 | 目标 | 策略 |
-|------|------|------|------|
-| STR-01 | `wikiDir/` | 架构优化 | 1篇/轮，输出PR/Skill/L3 |
-| STR-02 | `projects/GenericAgent/` | 能力扩展 | 1文件/轮，转L2 Skills |
-| STR-03 | `seedBaseDir/memory/skills/` | Skill精简(Gene化) | 1文件/轮，Token降50%+ |
-| STR-04 | `seedBaseDir/memory/` | 记忆维护 | L1完整性，L4合并，L5清理 |
+### 4. 完成标志
+当任务完成时，在响应中包含:
+- "任务完成" 或 "DONE" 或 "COMPLETE"
 
-**STR-03 Gene格式**: signals + strategy + constraints + validation
+### 5. 质量要求
+- 文档必须包含实际代码示例
+- 分析必须基于真实文件内容
+- 建议必须具体可执行
+- 所有输出必须保存到正确位置
 
----
-
-## 四、记忆工具(L1-L5)
-
-### L1-L3
-- `write_memory(level, content, title)` - 写入
-- `search_memory(keyword, levels)` - 跨层搜索
-
-### L4 用户建模
-- `observe_user_preference(key, value, context?, confidence)` - 观察偏好
-- `get_user_preference(key, context?)` - 获取偏好(上下文感知)
-- 辩证式升级：不覆盖，添加例外
-
-### L5 工作日志
-- `search_archives(keyword)` - FTS5检索归档
-- `get_archive_stats()` - 归档统计
-
----
-
-## 五、排序原则(降序)
-
-1. 执行落地 + 能力扩展
-2. 环境探测 + 资源挖掘
-3. 进化策略优化
-4. 经验复用迭代
-5. 用户偏好观察(低频)
-6. 工作记忆审查(每3TODO清理)
-
----
-
-## 六、Subagent 工具使用
-
-当需要并行执行或隔离上下文时，可使用 subagent 工具：
-
-### spawn_subagent
-创建独立上下文的子代理任务：
-```python
-spawn_subagent(
-    subagent_type="explore",  # 必须是: explore/review/implement/plan
-    prompt="任务指令",
-    timeout=300  # 可选，默认300秒
-)
-```
-
-**有效类型**：
-- `explore`: 只读探索（搜索文件、阅读代码）
-- `review`: 审查验证（只读 + 代码执行）
-- `implement`: 实现执行（全权限）
-- `plan`: 规划分析（只读 + 记忆写入）
-
-**❌ 错误用法**: 使用 `AutonomousExplorer`、`general` 等无效类型
-
----
-
-## 七、禁忌
-
-❌ 推诿"无法操作"，无方案需提建议
-❌ 未推演直接执行
-❌ 未调用 `start_long_term_update`
-❌ 不可逆操作未确认用户
-❌ 浅层验证/重复探索/泛采集
-❌ 机械操作/标题搬运/不复盘
-❌ 跳过长期任务
-❌ L4直接覆盖(非辩证升级)
-❌ L5手动删除摘要
-❌ Skill精简仅表面压缩
+## 注意事项
+- 避免重复分析已文档化的模块
+- 优先处理 TODO.md 中标记的任务
+- 保持知识的一致性和准确性
+- 遇到不确定的内容时标注待验证
