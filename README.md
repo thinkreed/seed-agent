@@ -527,7 +527,7 @@ jieba>=0.42.0        # Chinese text segmentation (FTS5)
 
 ## Wiki Knowledge Integration
 
-基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取并落地的优化点：
+基于 `$WIKI_HOME` 目录下十个开源项目的架构分析，提取并落地的优化点：
 
 ### 已实现（P0+P1+P2+P3+P4+P5 全部完成）
 

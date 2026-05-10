@@ -8,7 +8,7 @@ type: project
 
 ## 检查内容
 
-**新文档**: `E:\projects\wiki\genericagent\GenericAgent_Memory_Cleanup_Mechanism.md`
+**新文档**: `$WIKI_HOME/genericagent/GenericAgent_Memory_Cleanup_Mechanism.md`
 
 GenericAgent 记忆清理机制文档，包含：
 - L0-L4 分层记忆架构

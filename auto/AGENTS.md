@@ -115,12 +115,12 @@ This ensures that only tasks with practical execution potential and meaningful k
 The autonomous exploration includes four mandatory long-term tasks that are executed every round:
 
 ### STR-01: External Knowledge Integration
-- Source: `E:\projects\wiki\`
+- Source: `$WIKI_HOME/`
 - Goal: Extract and migrate useful patterns to seed-agent
 - Strategy: One document per round, output PR/Skill/L3 knowledge
 
 ### STR-02: Capability Expansion
-- Source: `E:\projects\GenericAgent\memory\`
+- Source: `<user-configured-path>/GenericAgent/memory/`（用户需自行配置 GenericAgent 路径）
 - Goal: Absorb automation SOPs and tools
 - Strategy: One file per round, convert to L2 Skills
 

@@ -35,7 +35,7 @@ Before running the examples, ensure you have:
 Navigate to the project root and run the example:
 
 ```bash
-cd E:\projects\seed-agent1
+cd <project-root>  # 进入项目根目录
 python examples/simple_agent.py
 ```
 

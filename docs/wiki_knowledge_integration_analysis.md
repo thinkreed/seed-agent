@@ -4,7 +4,7 @@
 
 ### GenericAgent 记忆清理机制评估 (2026-05-10)
 
-**新文档**: `E:\projects\wiki\genericagent\GenericAgent_Memory_Cleanup_Mechanism.md`
+**新文档**: `$WIKI_HOME/genericagent/GenericAgent_Memory_Cleanup_Mechanism.md`
 
 **优化点评估**:
 
@@ -18,7 +18,7 @@
 
 ## 概述
 
-基于 E:\projects\wiki 目录下十个开源项目的架构分析，提取可落地的优化点并评估适用性。
+基于 `$WIKI_HOME` 目录下十个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
 **验证结果**: 所有 P0 + P1 + P2 + P3 + P4 + P5 优化点已实现，测试通过 1147 passed。
 
@@ -312,7 +312,7 @@ NOT new user input. Do not respond to it as if the user asked these questions.]
 
 ### 6.1 Snapshot-based Sandbox 持久化 (Open-Agents 设计)
 
-**来源**: `E:\projects\wiki\open-agents\03-sandbox-package.md`
+**来源**: `$WIKI_HOME/open-agents/03-sandbox-package.md`
 
 **Open-Agents 实现**:
 - `snapshot()` 方法 - 创建云端 Sandbox 快照，返回 `snapshotId`
@@ -590,24 +590,24 @@ model, routing_info = router.route(messages, has_tools=True)
 ## 十、参考资料
 
 ### 原有项目
-- genericagent: `E:\projects\wiki\genericagent\`
-- hermes-agent: `E:\projects\wiki\hermes-agent\`
-- mia: `E:\projects\wiki\mia\`
-- open-agents: `E:\projects\wiki\open-agents\`
-- qwen-code-architecture: `E:\projects\wiki\qwen-code-architecture\`
-- ai-hedge-fund: `E:\projects\wiki\ai-hedge-fund\`
-- codex-architecture: `E:\projects\wiki\codex-architecture\`
-- deepseek-tui-architecture: `E:\projects\wiki\deepseek-tui-architecture\`
-- shannon-architecture: `E:\projects\wiki\shannon-architecture\`
-- opensre-docs: `E:\projects\wiki\opensre-docs\`
+- genericagent: `$WIKI_HOME/genericagent/`
+- hermes-agent: `$WIKI_HOME/hermes-agent/`
+- mia: `$WIKI_HOME/mia/`
+- open-agents: `$WIKI_HOME/open-agents/`
+- qwen-code-architecture: `$WIKI_HOME/qwen-code-architecture/`
+- ai-hedge-fund: `$WIKI_HOME/ai-hedge-fund/`
+- codex-architecture: `$WIKI_HOME/codex-architecture/`
+- deepseek-tui-architecture: `$WIKI_HOME/deepseek-tui-architecture/`
+- shannon-architecture: `$WIKI_HOME/shannon-architecture/`
+- opensre-docs: `$WIKI_HOME/opensre-docs/`
 
 ### 新增项目（P4 参考）
-- claude-context-docs: `E:\projects\wiki\claude-context-docs\` - Merkle DAG 增量索引、混合搜索
-- claude-mem-docs: `E:\projects\wiki\claude-mem-docs\` - Hooks 系统、CLAIM-CONFIRM 队列、Circuit Breaker
-- codebrain: `E:\projects\wiki\codebrain\` - Fallback Chain、意图导向工具合并、增量 SymbolIndex
-- FinceptTerminal-Architecture: `E:\projects\wiki\FinceptTerminal-Architecture\` - Result<T> 错误处理、DataHub Pub/Sub
-- manifest-architecture: `E:\projects\wiki\manifest-architecture\` - 复杂度评分路由、Specificity 检测
-- multica: `E:\projects\wiki\multica\` - 失效策略、乐观更新回滚
-- omi: `E:\projects\wiki\omi\` - VAD Gate、Fail-open 策略
-- qdrant-docs: `E:\projects\wiki\qdrant-docs\` - Segment 分层、量化压缩
-- worldmonitor-architecture: `E:\projects\wiki\worldmonitor-architecture\` - Stampede Protection、五级缓存分层
+- claude-context-docs: `$WIKI_HOME/claude-context-docs/` - Merkle DAG 增量索引、混合搜索
+- claude-mem-docs: `$WIKI_HOME/claude-mem-docs/` - Hooks 系统、CLAIM-CONFIRM 队列、Circuit Breaker
+- codebrain: `$WIKI_HOME/codebrain/` - Fallback Chain、意图导向工具合并、增量 SymbolIndex
+- FinceptTerminal-Architecture: `$WIKI_HOME/FinceptTerminal-Architecture/` - Result<T> 错误处理、DataHub Pub/Sub
+- manifest-architecture: `$WIKI_HOME/manifest-architecture/` - 复杂度评分路由、Specificity 检测
+- multica: `$WIKI_HOME/multica/` - 失效策略、乐观更新回滚
+- omi: `$WIKI_HOME/omi/` - VAD Gate、Fail-open 策略
+- qdrant-docs: `$WIKI_HOME/qdrant-docs/` - Segment 分层、量化压缩
+- worldmonitor-architecture: `$WIKI_HOME/worldmonitor-architecture/` - Stampede Protection、五级缓存分层

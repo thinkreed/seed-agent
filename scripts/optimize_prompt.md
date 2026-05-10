@@ -14,7 +14,7 @@
 - 更新所有引用该模块的文档
 
 ### 2. Wiki 知识落地
-- 读取 E:\projects\wiki 目录下的 markdown 文章
+- 读取 `$WIKI_HOME` 目录下的 markdown 文档（用户需配置 WIKI_HOME 环境变量指向 wiki 目录）
 - 重点阅读以下项目的架构设计：
   - genericagent/ - Agent 核心循环、工具系统、记忆系统
   - hermes-agent/ - Self-Improving 模式、技能系统

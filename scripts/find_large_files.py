@@ -1,7 +1,11 @@
 import os
+from pathlib import Path
+
+# 获取项目根目录（脚本所在目录的上一级）
+project_root = Path(__file__).parent.parent
 
 files = []
-for root, dirs, filenames in os.walk('E:/projects/seed-agent/src'):
+for root, dirs, filenames in os.walk(project_root / 'src'):
     dirs[:] = [d for d in dirs if not d.startswith('_') and d != '__pycache__']
     for f in filenames:
         if f.endswith('.py'):

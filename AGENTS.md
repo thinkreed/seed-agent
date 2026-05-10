@@ -307,7 +307,7 @@ RalphSubagentOrchestrator 执行模式:
 
 ## Wiki 知识落地
 
-基于 `E:\projects\wiki` 目录下多个开源项目的架构分析，提取可落地的优化：
+基于 `$WIKI_HOME` 目录下多个开源项目的架构分析，提取可落地的优化：
 
 ### GenericAgent 借鉴
 

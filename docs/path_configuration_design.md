@@ -70,7 +70,7 @@ db_path = paths.sessions_db
 └── vault/               ← credential_vault.py
 
 硬编码外部路径:
-- E:/projects/wiki       ← shared_config.py:122
+- `$WIKI_HOME`（通过环境变量配置）← shared_config.py:122
 - 项目根目录              ← shared_config.py:109
 ```
 
@@ -79,7 +79,7 @@ db_path = paths.sessions_db
 | 文件 | 行号 | 当前代码 | 迁移策略 |
 |------|------|----------|----------|
 | `src/shared_config.py` | 18 | `SEED_DIR = Path.home() / ".seed"` | 从配置读取 |
-| `src/shared_config.py` | 122 | `Path("E:/projects/wiki")` | 配置文件定义 |
+| `src/shared_config.py` | 122 | `Path("$WIKI_HOME")` 或环境变量 | 配置文件定义 |
 | `src/models.py` | 27 | `DEFAULT_CONFIG_PATH = Path.home() / ".seed" / "config.json"` | 动态计算 |
 | `main.py` | 21 | `LOG_DIR = Path.home() / ".seed" / "logs"` | 从配置读取 |
 | `main.py` | 425 | `config_path = os.path.join(..., ".seed", "config.json")` | 使用 SEED_HOME |
@@ -139,11 +139,11 @@ db_path = paths.sessions_db
   "paths": {
     "seedBaseDir": "~/.seed",
     "projectRoot": null,
-    "wikiDir": "E:/projects/wiki",
+    "wikiDir": "$WIKI_HOME",  // wiki 目录路径
     "allowedDirs": [
       "~/.seed",
       "~/Documents",
-      "E:/projects/wiki"
+      "$WIKI_HOME",  // 用户配置的 wiki 目录
     ]
   },
   "models": {
@@ -573,13 +573,13 @@ class PathValidationConfig:
   "version": 3,
   "paths": {
     "seedBaseDir": "~/.seed",
-    "projectRoot": "E:/projects/seed-agent",
-    "wikiDir": "E:/projects/wiki",
+    "projectRoot": "<project-path>",  // 用户项目路径
+    "wikiDir": "$WIKI_HOME",  // 或绝对路径，如 "/path/to/wiki"
     "allowedDirs": [
       "~/.seed",
       "~/Documents",
-      "E:/projects/wiki",
-      "D:/backup"
+      "$WIKI_HOME",  // wiki 目录路径
+      "<backup-path>"  // 用户配置的备份目录
     ]
   },
   "models": { ... },
