@@ -10,6 +10,7 @@ import logging
 from src.agent_loop._summarizer_context import estimate_context_size, should_summarize
 from src.agent_loop._summarizer_formatting import format_events_for_summary
 from src.agent_loop._summarizer_types import SUMMARY_PROMPT
+from src.session_stream._types import EventType
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ class Summarizer:
     def format_events_for_summary(self) -> str:
         """将事件格式化为摘要文本"""
         events = self.session.get_events_since_last_summary(
-            [type("EventType", (), {"USER_INPUT": "user_input", "LLM_RESPONSE": "llm_response", "TOOL_RESULT": "tool_result"})]
+            [EventType.USER_INPUT, EventType.LLM_RESPONSE, EventType.TOOL_RESULT]
         )
         return format_events_for_summary(events)
 
