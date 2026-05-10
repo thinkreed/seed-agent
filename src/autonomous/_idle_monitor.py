@@ -80,7 +80,6 @@ class IdleMonitor:
 
         self._running = True
         self._task = asyncio.create_task(self._idle_monitor_loop())
-        logger.warning("Autonomous explorer started")
 
     async def stop(self) -> None:
         """停止空闲监控"""
