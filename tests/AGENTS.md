@@ -1,105 +1,53 @@
-# Module Overview - Test Suite
+# 测试套件目录
 
-This directory contains test files for validating the Seed Agent system components. Tests cover Ralph Loop functionality, verification mechanisms, and core system behaviors.
-
----
-
-## Test Files
-
-| Test File | Description |
-|-----------|-------------|
-| `test_ralph_loop.py` | Ralph Loop execution and verification tests |
-| `verify_ralph.py` | Ralph Loop verification mechanism tests |
+验证 Seed Agent 系统组件的测试文件。
 
 ---
 
-## test_ralph_loop.py
+## 测试文件
 
-**Purpose:** Tests Ralph Loop execution scenarios, completion verification, and safety mechanisms.
-
-**Test Categories:**
-
-### Completion Verification Tests
-- Test `TEST_PASS` completion with pytest output parsing
-- Test `FILE_EXISTS` completion with file creation
-- Test `MARKER_FILE` completion with marker detection
-- Test `GIT_CLEAN` completion with git status
-- Test `CUSTOM_CHECK` completion with custom function
-
-### Safety Limit Tests
-- Test iteration limit enforcement (max 1000)
-- Test duration limit enforcement (max 8 hours)
-- Test safety limit exit with status report
-
-### Context Management Tests
-- Test context reset at specified intervals
-- Test critical context extraction
-- Test history clearing and re-injection
-
-### State Persistence Tests
-- Test state file creation
-- Test crash recovery from persisted state
-- Test state cleanup on completion
+| 文件 | 描述 |
+|------|------|
+| `test_ralph_loop.py` | Ralph Loop 执行和验证测试 |
+| `verify_ralph.py` | Ralph Loop 验证机制测试 |
 
 ---
 
-## verify_ralph.py
+## 测试类别
 
-**Purpose:** Validates Ralph Loop verification mechanisms and edge cases.
+### Ralph Loop 测试
 
-**Test Categories:**
-
-### Marker File Tests
-- Test marker file creation and detection
-- Test marker content validation
-- Test marker cleanup on completion
-- Test custom marker paths
-
-### Test Pass Rate Tests
-- Test pytest output parsing
-- Test pass rate calculation
-- Test timeout handling
-- Test test command execution
-
-### Git Clean Tests
-- Test git status parsing
-- Test clean vs dirty detection
-- Test repository path handling
+- 完成验证（TEST_PASS/FILE_EXISTS/MARKER_FILE/GIT_CLEAN/CUSTOM_CHECK）
+- 安全上限（1000 轮 / 8 小时）
+- 上下文管理（重置 + 提取）
+- 状态持久化（崩溃恢复）
 
 ---
 
-## Running Tests
+## 执行测试
 
 ```bash
-# Run all tests
+# 全部测试
 pytest tests/ -v
 
-# Run specific test file
+# 单文件
 pytest tests/test_ralph_loop.py -v
 
-# Run with coverage
+# 覆盖率
 pytest tests/ --cov=src --cov-report=html
 ```
 
 ---
 
-## Test Dependencies
+## 依赖
 
-Tests require the following packages:
-- `pytest`: Test framework
-- `pytest-asyncio`: Async test support
-- `pytest-cov`: Coverage reporting
+- `pytest` - 测试框架
+- `pytest-asyncio` - 异步测试
+- `pytest-cov` - 覆盖率报告
 
 ---
 
-## Future Tests
+## 相关文档
 
-Planned test files to add:
-
-| Planned Test | Purpose |
-|--------------|---------|
-| `test_session_db.py` | SQLite+FTS5 session storage tests |
-| `test_scheduler.py` | Task scheduling tests |
-| `test_autonomous.py` | Autonomous exploration tests |
-| `test_llm_gateway.py` | Multi-provider gateway tests |
-| `test_memory_tools.py` | Memory system tests |
+- Ralph 设计：[docs/long_cycle_loop_enhancement_design.md](../docs/long_cycle_loop_enhancement_design.md)
+- 核心引擎：[src/AGENTS.md](../src/AGENTS.md)

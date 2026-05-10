@@ -1,58 +1,41 @@
-# Module Overview - Utility Scripts
+# 工具脚本目录
 
-This directory contains utility scripts for system maintenance, migration, and diagnostics. These scripts are standalone tools that support the Seed Agent system but are not part of the core agent execution.
+系统维护、迁移和诊断的独立工具脚本。
 
 ---
 
-## Available Scripts
+## 脚本列表
 
-| Script | Description |
-|--------|-------------|
-| `migrate_jsonl_to_sqlite.py` | Migration tool for converting JSONL session files to SQLite+FTS5 |
+| 脚本 | 描述 |
+|------|------|
+| `migrate_jsonl_to_sqlite.py` | JSONL Session 文件迁移到 SQLite+FTS5 |
 
 ---
 
 ## migrate_jsonl_to_sqlite.py
 
-**Purpose:** Migrates existing JSONL session history files to SQLite+FTS5 database format.
+**用途**：迁移 JSONL Session 历史到 SQLite+FTS5
 
-**Usage:**
+**执行**：
 ```bash
 python scripts/migrate_jsonl_to_sqlite.py
 ```
 
-**Features:**
-- Reads all JSONL files from `~/.seed/memory/raw/sessions/`
-- Creates SQLite database with proper schema
-- Tokenizes content with jieba for FTS5 indexing
-- Preserves all session metadata and summaries
-- Validates migration integrity
-- Creates backup of original JSONL files
+**选项**：
+- `--dry-run`：预览迁移
+- `--backup-dir`：指定 JSONL 备份位置
+- `--verbose`：详细日志
 
-**Migration Process:**
-1. Connect to SQLite database (`sessions.db`)
-2. Read each JSONL session file
-3. Parse metadata and message entries
-4. Insert into `session_messages` table
-5. Tokenize content and insert into `session_messages_fts`
-6. Update `sessions_meta` with summaries
-7. Verify row counts match
-8. Create backup directory for JSONL files
-
-**Options:**
-- `--dry-run`: Preview migration without executing
-- `--backup-dir`: Specify backup location for JSONL files
-- `--verbose`: Detailed logging output
+**流程**：
+1. 连接 SQLite
+2. 读取 JSONL 文件
+3. jieba 分词 → FTS5 索引
+4. 验证迁移完整性
+5. 创建 JSONL 备份
 
 ---
 
-## Future Scripts
+## 相关文档
 
-Planned utility scripts to add:
-
-| Planned Script | Purpose |
-|----------------|---------|
-| `diagnose_seed_agent.py` | System health check and diagnostics |
-| `seed_config_manager.py` | Configuration validation and setup |
-| `memory_cleanup.py` | Memory consolidation and cleanup tool |
-| `ralph_task_manager.py` | Ralph Loop task file management |
+- L4 设计：[docs/L4_SQLite_FTS5_Design.md](../docs/L4_SQLite_FTS5_Design.md)
+- Session 工具：[src/tools/AGENTS.md](../src/tools/AGENTS.md)

@@ -1,224 +1,96 @@
-# Module Overview - Autonomous Exploration SOP
+# 自主探索 SOP 模块
 
-This module enables the agent to perform autonomous exploration tasks when idle. It monitors user activity and automatically triggers the Self-Driven Exploration SOP (Standard Operating Procedure) after detecting prolonged inactivity. The system operates as a physics-level, fully capable evolutionary executor that proactively identifies and executes tasks without waiting for explicit user instructions.
-
-The autonomous exploration framework is designed around two core principles: execution viability and evolutionary沉淀 (knowledge accumulation/refinement). The agent continuously evaluates opportunities for task execution and knowledge building, ensuring productive use of idle time while advancing its capabilities.
+空闲时自主执行任务，监控用户活动并在 2 小时空闲后自动触发 SOP 驱动的探索任务。
 
 ---
 
-## Ralph Loop Integration
+## 触发条件
 
-The AutonomousExplorer is now enhanced with Ralph Loop mechanisms for long-cycle deterministic task execution:
-
-### Completion Promise Detection
-
-External completion markers drive task exit, ensuring objective task completion:
-- Checks `~/.seed/completion_promise` file for completion tokens (DONE, COMPLETE, TASK_FINISHED)
-- Automatically clears marker on detection
-- Prevents infinite loops through external verification
-
-### Context Reset Mechanism
-
-Periodic history reset prevents drift in long-running tasks:
-- **Reset Interval**: Every 5 iterations (configurable via `CONTEXT_RESET_INTERVAL`)
-- **Critical Context Extraction**: Preserves key decisions and findings from previous iterations
-- **Fresh Context Injection**: Re-injects summarized state for continuity
-
-### State Persistence
-
-Task state saved to filesystem for crash recovery:
-- State file: `~/.seed/ralph_state.json`
-- Contains: iteration count, start time, last response, timestamp
-- Enables resumption after process crash
-
-### Safety Limits
-
-Maximum iteration and duration protection:
-- **Max Iterations**: 1000 (configurable via `RALPH_MAX_ITERATIONS`)
-- **Max Duration**: 8 hours (configurable via `RALPH_MAX_DURATION`)
-- Automatic exit with status report when limits reached
+- **空闲超时**：2 小时（可通过 `src/shared_config.py` 的 `AutonomousConfig.idle_timeout_hours` 配置）
+- **监控机制**：每 30 秒检查空闲时间
 
 ---
 
-## Memory System Integration (L1-L5)
+## Ralph Loop 集成
 
-The autonomous exploration leverages the five-layer memory architecture:
-
-### L1 (Index) - Quick Reference
-- Trigger word routing for SOP selection
-- Fast lookup of available skills and knowledge
-
-### L2 (Skills) - Execution SOPs
-- Procedural guides for common operations
-- Skill selection based on task requirements
-
-### L3 (Knowledge) - Patterns & Principles
-- Cross-task insights for decision making
-- Historical patterns for optimization
-
-### L4 (User Modeling) - Preference Awareness
-- **NEW**: Dialectical user understanding
-- Context-aware preference retrieval
-- Example: Use `get_user_preference("output_format")` to adapt response style
-
-### L5 (Work Archive) - Historical Context
-- **NEW**: Cross-session knowledge retrieval
-- Search past sessions for relevant solutions
-- Example: Use `search_archives("similar_issue")` to find precedent
+| 机制 | 配置 | 功能 |
+|------|------|------|
+| **完成承诺检测** | `~/.seed/completion_promise` | 外部标记驱动退出（DONE/COMPLETE/TASK_FINISHED） |
+| **上下文重置** | 每 5 轮迭代 | 防止漂移，提取关键上下文 |
+| **状态持久化** | `~/.seed/ralph_state.json` | 崩溃恢复 |
+| **安全上限** | 1000 轮 / 8 小时 | 最大迭代和时长保护 |
 
 ---
 
-## Trigger Conditions
+## SOP 流程
 
-The autonomous exploration activates when specific conditions are met:
-
-**Idle Timeout**: The system monitors for a continuous idle period of **2 hours** (configurable via `AutonomousConfig.idle_timeout_hours` in `src/shared_config.py`). Default value is 2 hours.
-
-**Monitoring Mechanism**: The AutonomousExplorer class runs an idle monitoring loop that checks the time since the last user activity every 30 seconds. When the idle duration exceeds the threshold, the exploration workflow is triggered automatically.
-
-**Activity Recording**: User activities reset the idle timer via the record_activity() method. This ensures the autonomous mode only engages during genuine idle periods.
+1. **检查 TODO.md** → 存在任务则执行模式，否则规划模式
+2. **执行模式** → 逐项处理，`<thinking>` 内推演
+3. **规划模式** → 生成 5-7 TODO 项（格式：`[ ] Type | Goal | Criteria | 沉淀`）
 
 ---
 
-## SOP Workflow
-
-The autonomous exploration follows a structured workflow:
-
-**1. Check TODO.md for Pending Tasks**
-
-The system first examines the TODO.md file in the seed directory to determine whether executable tasks exist.
-
-**2. Execute or Enter Planning Mode**
-
-- **If TODO exists**: The agent enters execution mode, processing each TODO item sequentially. Before execution, the agent performs reasoning within <thinking> tags to plan the approach.
-
-- **If no TODO exists**: The agent enters planning mode, which involves:
-  - Critically reviewing history.md and working memory to identify low-value operations
-  - Reflecting on optimization opportunities
-  - Generating 5-7 new TODO items with the format: `[ ] Type | Goal | Acceptance Criteria | Expected沉淀`
-  - Updating the TODO.md file for future execution
-
-**3. Value Formula**
-
-Every task is evaluated using the formula:
+## 价值公式
 
 > **实际执行可落地性 × 进化沉淀价值**
 
-(Execution Viability × Evolutionary Knowledge Value)
+---
 
-This ensures that only tasks with practical execution potential and meaningful knowledge accumulation are pursued.
+## 长期战略任务（STR）
+
+| 任务 | 来源 | 目标 |
+|------|------|------|
+| **STR-01** | `$WIKI_HOME/` | 外部知识迁移 → PR/Skill/L3 |
+| **STR-02** | GenericAgent `memory/` | 吸收自动化 SOP → L2 Skills |
+| **STR-03** | `skills/` | 基因压缩（信号+策略+约束+验证）→ 减少 50%+ Token |
+| **STR-04** | `memory/` L1-L5 | Auto-Dream 清理策略 |
 
 ---
 
-## Long-term Strategic Tasks (STR)
+## 记忆集成（L1-L5）
 
-The autonomous exploration includes four mandatory long-term tasks that are executed every round:
-
-### STR-01: External Knowledge Integration
-- Source: `$WIKI_HOME/`
-- Goal: Extract and migrate useful patterns to seed-agent
-- Strategy: One document per round, output PR/Skill/L3 knowledge
-
-### STR-02: Capability Expansion
-- Source: `<user-configured-path>/GenericAgent/memory/`（用户需自行配置 GenericAgent 路径）
-- Goal: Absorb automation SOPs and tools
-- Strategy: One file per round, convert to L2 Skills
-
-### STR-03: Skill Gene Compression
-- Source: `~/.seed/memory/skills/`
-- Goal: Compress Skills to Gene format (signals + strategy + constraints + validation)
-- Strategy: One file per round, reduce token count by 50%+
-
-### STR-04: Memory System Maintenance
-- Source: `~/.seed/memory/` (L1-L5)
-- Goal: Execute Auto-Dream cleanup strategy
-- Strategy: Check L1 index, L4 preferences, L5 archives per round
+| 层级 | 使用方式 |
+|------|----------|
+| L1 | 触发词路由 SOP 选择 |
+| L2 | 任务驱动的技能选择 |
+| L3 | 决策的历史模式 |
+| L4 | `get_user_preference()` 适配用户偏好 |
+| L5 | `search_archives()` 搜索历史解决方案 |
 
 ---
 
-## Memory Tools Usage
+## 失败升级协议
 
-### During Execution
-```python
-# Observe user preference when detected
-observe_user_preference("work_style", "deep_focus", confidence=0.8)
-
-# Search historical solutions
-search_archives("similar_bug", limit=5)
-
-# Get context-aware preference
-format_pref = get_user_preference("output_format", "code_review")
-```
-
-### After Completion
-```python
-# Trigger experience refinement
-start_long_term_update()
-
-# Get full hierarchy summary
-get_memory_hierarchy()
-```
+| 次数 | 行动 |
+|------|------|
+| 1 次 | 重试操作 |
+| 2 次 | 探测根因，调整策略 |
+| 3 次 | 换方案或询用户 |
 
 ---
 
-## Key Principles
+## 核心原则
 
-The autonomous exploration adheres to these foundational principles:
-
-**No Shirking (不推诿)**: The agent never refuses tasks with "cannot operate." When no solution exists, alternative suggestions must be provided.
-
-**Logical Approach (有逻辑)**: Every operation requires prior reasoning within <thinking> tags. Blind execution is prohibited.
-
-**Evolution Focus (重沉淀)**: After task completion, working memory must be updated. When conditions are met, the agent must call experience refinement tools before concluding.
-
-**User Modeling (懂用户)**: Use L4 tools to observe and adapt to user preferences over time.
-
-**Failure Escalation Protocol**: When encountering failures:
-1. First attempt: Retry the operation
-2. Second attempt: Probe for root causes and adjust strategy
-3. Third attempt: Switch approach or consult the user
+- **不推诿**：无方案时提建议
+- **有逻辑**：每步 `<thinking>` 推演
+- **重沉淀**：任务结束必总结，调用 `start_long_term_update()`
+- **懂用户**：使用 L4 工具观察和适配用户偏好
 
 ---
 
-## Integration
+## 文件索引
 
-The autonomous exploration module is integrated into the agent system as follows:
-
-**AutonomousExplorer Class**: Located in `src/autonomous.py`, this class manages the idle monitoring loop and task execution. Key components include:
-- `_idle_monitor_loop()`: Checks idle time every 30 seconds
-- `_execute_autonomous_task()`: Runs the exploration workflow with Ralph Loop enhanced iteration
-- `_build_autonomous_prompt()`: Constructs the complete prompt including system prompt, skills, and SOP
-- `_check_completion_promise()`: Ralph Loop mechanism for external completion detection
-- `_check_safety_limits()`: Ralph Loop safety protection (iterations/duration)
-- `_reset_context_if_needed()`: Ralph Loop context reset for drift prevention
-- `_persist_state()`: Ralph Loop state persistence for crash recovery
-
-**Ralph Loop Configuration** (in autonomous.py):
-- `COMPLETION_PROMISE_FILE`: `~/.seed/completion_promise`
-- `COMPLETION_PROMISE_TOKENS`: ["DONE", "COMPLETE", "TASK_FINISHED"]
-- `CONTEXT_RESET_ENABLED`: True (default)
-- `CONTEXT_RESET_INTERVAL`: 5 (iterations)
-- `RALPH_MAX_ITERATIONS`: 1000
-- `RALPH_MAX_DURATION`: 8 * 60 * 60 (8 hours)
-
-**SOP Document Loading**: The SOP is loaded from `auto/自主探索 SOP.md` during initialization. This document contains the complete guidelines for autonomous task execution.
-
-**Memory Manager Integration**: Uses `src/memory_manager.py` for unified L1-L5 management.
+| 文件 | 描述 |
+|------|------|
+| `自主探索 SOP.md` | 自主探索详细 SOP（中文） |
+| `src/autonomous/` | AutonomousExplorer 实现（模块化拆分） |
+| `src/ralph_loop.py` | Ralph Loop 实现 |
+| `src/tools/ralph_tools.py` | Ralph 管理工具 |
 
 ---
 
-## Files in this Module
+## 相关文档
 
-| File | Description |
-|------|-------------|
-| 自主探索 SOP.md | The autonomous exploration SOP document (Chinese filename) - contains detailed workflow, principles, and guidelines |
-| src/autonomous.py | Implementation of the AutonomousExplorer class with Ralph Loop integration |
-| src/memory_manager.py | Unified memory manager for L1-L5 |
-| src/tools/user_modeling.py | L4 user modeling layer (dialectical evolution) |
-| src/tools/long_term_archive.py | L5 archive layer (LLM summaries + FTS5) |
-| src/ralph_loop.py | Ralph Loop implementation for long-cycle deterministic task execution |
-| src/tools/ralph_tools.py | Tools for Ralph Loop management |
-| docs/long_cycle_loop_enhancement_design.md | Ralph Loop design documentation |
-| docs/ralph_loop.md | Ralph Loop concept documentation |
-| memory/AGENTS.md | Memory system documentation (L1-L5) |
-| memory/auto_dream.md | Auto-Dream SOP for memory consolidation |
+- 核心引擎：[src/AGENTS.md](../src/AGENTS.md)
+- 记忆系统：[memory/AGENTS.md](../memory/AGENTS.md)
+- Ralph 设计：[docs/long_cycle_loop_enhancement_design.md](../docs/long_cycle_loop_enhancement_design.md)
