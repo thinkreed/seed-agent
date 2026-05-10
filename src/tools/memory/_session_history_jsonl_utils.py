@@ -4,15 +4,15 @@
 提供目录管理和文件名生成的辅助功能。
 """
 
-import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 from ._memory_write import _get_sessions_dir
 
 
 def _ensure_sessions_dir() -> None:
     """确保 sessions 目录存在"""
-    os.makedirs(_get_sessions_dir(), exist_ok=True)
+    Path(_get_sessions_dir()).mkdir(parents=True, exist_ok=True)
 
 
 def _generate_session_filename() -> str:
@@ -30,21 +30,21 @@ def _resolve_session_filepath(session_id: str) -> tuple[str, bool]:
     Returns:
         (文件路径, 是否找到)
     """
-    filepath = os.path.join(_get_sessions_dir(), session_id)
+    sessions_dir = Path(_get_sessions_dir())
+    filepath = sessions_dir / session_id
 
-    if os.path.exists(filepath):
-        return filepath, True
+    if filepath.exists():
+        return str(filepath), True
 
     # 尝试模糊匹配
-    sessions_dir = _get_sessions_dir()
     matches = [
-        f for f in os.listdir(sessions_dir)
-        if f.startswith(session_id) or session_id in f
+        f for f in sessions_dir.iterdir()
+        if f.name.startswith(session_id) or session_id in f.name
     ]
     if matches:
-        return os.path.join(sessions_dir, matches[0]), True
+        return str(matches[0]), True
 
-    return filepath, False
+    return str(filepath), False
 
 
 def _iter_jsonl_lines(filepath: str):
@@ -58,8 +58,8 @@ def _iter_jsonl_lines(filepath: str):
     """
     import json
 
-    with open(filepath, encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            yield json.loads(line)
+    path = Path(filepath)
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        yield json.loads(line)

@@ -4,7 +4,6 @@
 """
 
 import logging
-import os
 import re
 from pathlib import Path
 
@@ -105,7 +104,7 @@ def _get_path(level: str, filename: str | None = None) -> str | None:
 
     # L1 是单个文件，无需 filename
     if level == "L1":
-        return os.path.join(memory_root, base)
+        return str(memory_root / base)
 
     # L2-L4 需要指定 filename
     if not filename:
@@ -113,9 +112,9 @@ def _get_path(level: str, filename: str | None = None) -> str | None:
 
     # L2 特殊处理：skill 目录结构，自动补全 SKILL.md
     if level == "L2" and not filename.endswith("/SKILL.md") and filename != "SKILL.md":
-        filename = os.path.join(filename, "SKILL.md")
+        filename = str(Path(filename) / "SKILL.md")
 
-    return os.path.join(memory_root, base, filename)
+    return str(memory_root / base / filename)
 
 
 __all__ = [

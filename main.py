@@ -482,11 +482,10 @@ async def main(args=None):
     config_path = str(get_config_path())
 
     # Load system prompt
-    prompt_path = os.path.join(os.path.dirname(__file__), 'core_principles', 'system_prompts_en.md')
+    prompt_path = Path(__file__).parent / 'core_principles' / 'system_prompts_en.md'
     system_prompt = None
-    if os.path.exists(prompt_path):
-        with open(prompt_path, 'r', encoding='utf-8') as f:
-            system_prompt = f.read()
+    if prompt_path.exists():
+        system_prompt = prompt_path.read_text(encoding='utf-8')
 
     print("Initializing Agent...")
 

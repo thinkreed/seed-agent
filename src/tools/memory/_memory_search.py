@@ -8,7 +8,7 @@
 """
 
 import logging
-import os
+from pathlib import Path
 
 from ._memory_write import _get_memory_root, _get_path
 
@@ -23,11 +23,10 @@ def read_memory_index() -> str:
         Content of notes.md or error message
     """
     path = _get_path("L1")
-    if path is None or not os.path.exists(path):
+    if path is None or not Path(path).exists():
         return "Memory index not found."
     try:
-        with open(path, encoding="utf-8") as f:
-            return f.read()
+        return Path(path).read_text(encoding="utf-8")
     except Exception as e:
         return f"Error reading index: {e!s}"
 
@@ -71,32 +70,31 @@ def search_memory(keyword: str, levels: list[str] | None = None) -> str:
     results = []
     memory_root = _get_memory_root()
 
-    if not os.path.exists(memory_root):
+    if not memory_root.exists():
         return _build_memory_context_block("Memory root not found.")
 
-    for root, _, files in os.walk(memory_root):
-        if ".git" in root or "__pycache__" in root:
+    for root, _, files in memory_root.walk():
+        if ".git" in root.parts or "__pycache__" in root.parts:
             continue
         for file in files:
-            if file.endswith((".md", ".txt")):
+            if file.suffix in (".md", ".txt"):
                 # Determine level
-                rel = os.path.relpath(root, memory_root)
+                rel_parts = [p.lower() for p in root.relative_to(memory_root).parts]
                 lvl = "Unknown"
-                if "notes" in rel or file == "notes.md":
+                if "notes" in rel_parts or file.name == "notes.md":
                     lvl = "L1"
-                elif "skills" in rel:
+                elif "skills" in rel_parts:
                     lvl = "L2"
-                elif "knowledge" in rel:
+                elif "knowledge" in rel_parts:
                     lvl = "L3"
-                elif "raw" in rel:
+                elif "raw" in rel_parts:
                     lvl = "L4"
 
                 if lvl in levels:
                     try:
-                        fpath = os.path.join(root, file)
-                        with open(fpath, encoding="utf-8", errors="ignore") as f:
-                            if keyword.lower() in f.read().lower():
-                                results.append(f"[{lvl}] {file}")
+                        content = file.read_text(encoding="utf-8", errors="ignore")
+                        if keyword.lower() in content.lower():
+                            results.append(f"[{lvl}] {file.name}")
                     except Exception as e:
                         logger.debug(
                             f"Failed to read memory file {file}: {type(e).__name__}"
@@ -119,14 +117,11 @@ def start_long_term_update(args: dict, **kwargs) -> str:
     Returns:
         经验提炼 SOP 指令
     """
-    memory_md_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "memory", "memory.md"
-    )
+    memory_md_path = Path(__file__).parent.parent.parent.parent / "memory" / "memory.md"
     sop_content = "[Error: Unable to load memory.md]"
 
     try:
-        with open(memory_md_path, encoding="utf-8") as f:
-            sop_content = f.read()
+        sop_content = memory_md_path.read_text(encoding="utf-8")
     except Exception as e:
         sop_content = f"Error reading SOP: {e!s}"
 

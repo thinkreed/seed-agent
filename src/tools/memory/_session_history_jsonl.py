@@ -14,8 +14,8 @@
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
+from pathlib import Path
 
 from ._memory_write import _get_sessions_dir
 from ._session_history_jsonl_list import _list_sessions_jsonl, _search_history_jsonl
@@ -46,19 +46,20 @@ def _save_session_history_jsonl(
         if not session_id:
             session_id = _generate_session_filename()
 
-        filepath = os.path.join(_get_sessions_dir(), session_id)
+        filepath = _get_sessions_dir() / session_id
 
-        with open(filepath, "a", encoding="utf-8") as f:
-            # 写入元数据
-            if not os.path.exists(filepath) or os.stat(filepath).st_size == 0:
-                meta = {
-                    "type": "session_meta",
-                    "session_id": session_id,
-                    "created_at": datetime.now(UTC).isoformat(),
-                }
+        # 写入元数据
+        if not filepath.exists() or filepath.stat().st_size == 0:
+            meta = {
+                "type": "session_meta",
+                "session_id": session_id,
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+            with filepath.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(meta, ensure_ascii=False) + "\n")
 
-            # 写入消息
+        # 写入消息
+        with filepath.open("a", encoding="utf-8") as f:
             for msg in messages:
                 msg["timestamp"] = datetime.now(UTC).isoformat()
                 msg["type"] = "message"

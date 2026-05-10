@@ -8,7 +8,6 @@
 """
 
 import logging
-import os
 from pathlib import Path
 
 from src.autonomous._prompt_extraction import (
@@ -112,23 +111,23 @@ def build_task_instruction(
         "## 重要路径说明（使用绝对路径）",
         "",
         "### 记忆系统路径（位于用户目录）",
-        f"- 记忆目录: {os.path.join(seed_dir_absolute, 'memory')}",
-        f"- Skills目录: {os.path.join(seed_dir_absolute, 'memory', 'skills')}",
-        f"- TODO文件: {os.path.join(seed_dir_absolute, 'TODO.md')}",
-        f"- 日志目录: {os.path.join(seed_dir_absolute, 'logs')}",
+        f"- 记忆目录: {Path(seed_dir_absolute) / 'memory'}",
+        f"- Skills目录: {Path(seed_dir_absolute) / 'memory' / 'skills'}",
+        f"- TODO文件: {Path(seed_dir_absolute) / 'TODO.md'}",
+        f"- 日志目录: {Path(seed_dir_absolute) / 'logs'}",
         "",
         "### 项目源码路径（位于项目目录）",
         f"- 项目根目录: {project_root_absolute}",
-        f"- 源码目录: {os.path.join(project_root_absolute, 'src')}",
-        f"- Agent模块: {os.path.join(project_root_absolute, 'src', 'agent_loop.py')}",
-        f"- LLM Gateway: {os.path.join(project_root_absolute, 'src', 'client.py')}",
-        f"- 工具模块: {os.path.join(project_root_absolute, 'src', 'tools')}",
+        f"- 源码目录: {Path(project_root_absolute) / 'src'}",
+        f"- Agent模块: {Path(project_root_absolute) / 'src' / 'agent_loop.py'}",
+        f"- LLM Gateway: {Path(project_root_absolute) / 'src' / 'client.py'}",
+        f"- 工具模块: {Path(project_root_absolute) / 'src' / 'tools'}",
         "",
         "**关键提示**: ",
         "1. 记忆系统文件（Skills、TODO等）使用 `.seed` 目录下的绝对路径",
         "2. 项目源码文件（src/*.py）使用项目目录下的绝对路径",
-        f"3. 不要混淆两者：`src/client.py` 应为 `{os.path.join(project_root_absolute, 'src', 'client.py')}`，"
-        f"而非 `{os.path.join(seed_dir_absolute, 'src', 'client.py')}`",
+        f"3. 不要混淆两者：`src/client.py` 应为 `{Path(project_root_absolute) / 'src' / 'client.py'}`，"
+        f"而非 `{Path(seed_dir_absolute) / 'src' / 'client.py'}`",
         "",
     ]
 

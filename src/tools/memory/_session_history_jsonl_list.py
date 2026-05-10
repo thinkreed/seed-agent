@@ -4,7 +4,7 @@
 提供列出和搜索会话历史的 JSONL fallback 实现。
 """
 
-import os
+from pathlib import Path
 
 from ._session_history_jsonl_utils import (
     _ensure_sessions_dir,
@@ -25,19 +25,19 @@ def _list_sessions_jsonl(limit: int = 10) -> str:
     try:
         _ensure_sessions_dir()
         sessions_dir = _get_sessions_dir()
-        files = sorted(os.listdir(sessions_dir), reverse=True)
-        session_files = [
-            f for f in files if f.startswith("session_") and f.endswith(".jsonl")
-        ]
+        files = sorted(
+            [f for f in sessions_dir.iterdir() if f.name.startswith("session_") and f.suffix == ".jsonl"],
+            key=lambda f: f.name,
+            reverse=True,
+        )
 
         results = []
-        for f in session_files[:limit]:
-            filepath = os.path.join(sessions_dir, f)
+        for f in files[:limit]:
             msg_count = 0
             created_at = "unknown"
             summary = None
 
-            for obj in _iter_jsonl_lines(filepath):
+            for obj in _iter_jsonl_lines(str(f)):
                 if obj.get("type") == "session_meta":
                     created_at = obj.get("created_at", "unknown")
                 elif obj.get("type") == "message":
@@ -46,7 +46,7 @@ def _list_sessions_jsonl(limit: int = 10) -> str:
                     summary = obj.get("content", "")[:100]
 
             results.append({
-                "session_id": f,
+                "session_id": f.name,
                 "created_at": created_at,
                 "message_count": msg_count,
                 "summary": summary,
@@ -82,18 +82,17 @@ def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
         sessions_dir = _get_sessions_dir()
         files = [
             f
-            for f in os.listdir(sessions_dir)
-            if f.startswith("session_") and f.endswith(".jsonl")
+            for f in sessions_dir.iterdir()
+            if f.name.startswith("session_") and f.suffix == ".jsonl"
         ]
 
         results = []
         keyword_lower = keyword.lower()
 
         for f in files:
-            filepath = os.path.join(sessions_dir, f)
             messages = []
 
-            for obj in _iter_jsonl_lines(filepath):
+            for obj in _iter_jsonl_lines(str(f)):
                 if obj.get("type") == "message":
                     messages.append(obj)
 
@@ -105,7 +104,7 @@ def _search_history_jsonl(keyword: str, limit: int = 20) -> str:
                     context = messages[context_start:context_end]
 
                     results.append({
-                        "session_id": f,
+                        "session_id": f.name,
                         "timestamp": msg.get("timestamp", "unknown"),
                         "role": msg.get("role"),
                         "matched": content[:300] + "..." if len(content) > 300 else content,
