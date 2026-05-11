@@ -425,13 +425,22 @@ async def interactive_loop(agent: AgentLoop, explorer: AutonomousExplorer) -> No
 
                 elif chunk_type == "tool_start":
                     # 工具开始：换行显示，清晰区分思考和工具执行
-                    print(f"\n  ▶ [{chunk['tool_name']}]", end="", flush=True)
+                    print(f"\n  ▶ {chunk['tool_name']}", end="", flush=True)
 
                 elif chunk_type == "tool_end":
-                    # 工具完成：显示简短状态
+                    # 工具完成：显示简练结果（最多40字符）
                     result = chunk.get("result", "")
-                    status = "✓" if not result.startswith("Error") else "✗"
-                    print(f" {status}", end="", flush=True)
+                    if result.startswith("Error"):
+                        # 错误：显示简短错误信息
+                        error_msg = result[:60] if len(result) > 60 else result
+                        print(f" → ✗ {error_msg}", flush=True)
+                    else:
+                        # 成功：显示简短结果摘要
+                        if len(result) > 40:
+                            result_display = result[:37] + "..."
+                        else:
+                            result_display = result if result else "(空)"
+                        print(f" → ✓ {result_display}", flush=True)
 
                 elif chunk_type == "awaiting_user_input":
                     # 处理 Ask User 等待

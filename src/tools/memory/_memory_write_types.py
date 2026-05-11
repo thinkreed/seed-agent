@@ -20,6 +20,7 @@ class VerifiedSource(Enum):
     EXTERNAL_VERIFICATION = "external_verification"  # 外部验证（用户确认）
     READ_FROM_FILE = "read_from_file"  # 从文件读取（只读操作）
     SYSTEM_INIT = "system_init"  # 系统初始化配置
+    AUTODREAM = "autodream"  # 定时记忆整理任务（系统自动执行）
 
     # 禁止的来源（不允许写入 L1/L2/L3，只能写入 L4）
     MODEL_INFERENCE = "model_inference"  # 模型推理/猜测
@@ -33,6 +34,7 @@ ALLOWED_SOURCES_FOR_L1L2L3 = {
     VerifiedSource.EXTERNAL_VERIFICATION,
     VerifiedSource.READ_FROM_FILE,
     VerifiedSource.SYSTEM_INIT,
+    VerifiedSource.AUTODREAM,
 }
 
 # 禁止的来源（只能写入 L4）

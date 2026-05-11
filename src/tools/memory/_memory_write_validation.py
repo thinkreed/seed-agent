@@ -37,12 +37,19 @@ def _validate_source(source: str | VerifiedSource | None, level: str) -> Validat
         )
 
     if isinstance(source, str):
+        # 检查是否误用了层级名作为 source
+        if source.upper() in ("L1", "L2", "L3", "L4"):
+            return ValidationResult(
+                allowed=False,
+                reason=f"'{source}' is a memory LEVEL, not a SOURCE. Use one of: tool_call_success, external_verification, read_from_file, system_init, autodream",
+                fallback_level="L4",
+            )
         try:
             source = VerifiedSource(source.lower())
         except ValueError:
             return ValidationResult(
                 allowed=False,
-                reason=f"Unknown source type: {source}",
+                reason=f"Unknown source type: {source}. Valid sources: tool_call_success, external_verification, read_from_file, system_init, autodream",
                 fallback_level="L4",
             )
 

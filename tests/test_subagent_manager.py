@@ -218,7 +218,7 @@ class TestSubagentManagerSpawn(unittest.TestCase):
         task_id = self.manager.create_task(SubagentType.EXPLORE, "Explore")
         instance = self.manager.spawn_subagent(task_id)
         self.assertEqual(instance.model_id, "gpt-4o")
-        self.assertEqual(instance.max_iterations, 15)  # DEFAULT_MAX_ITERATIONS
+        self.assertEqual(instance.max_iterations, 100)  # DEFAULT_MAX_ITERATIONS
 
     def test_spawn_subagent_uses_task_timeout(self):
         """测试使用任务超时"""
