@@ -22,7 +22,7 @@ class SubagentManager:
 
     DEFAULT_MAX_CONCURRENT = 3
     DEFAULT_TIMEOUT = 300
-    DEFAULT_MAX_ITERATIONS = 15
+    DEFAULT_MAX_ITERATIONS = 100
 
     def __init__(
         self, gateway: LLMGateway, model_id: str | None = None,

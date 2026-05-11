@@ -14,7 +14,7 @@ class SubagentTimeoutConfig:
     review: int = 600  # REVIEW: 审查+测试 (10m)
     implement: int = 900  # IMPLEMENT: 实现+调试 (15m)
     plan: int = 300  # PLAN: 规划分析 (5m)
-    max_iterations: int = 15  # 最大迭代次数
+    max_iterations: int = 100  # 最大迭代次数
 
 
 @dataclass

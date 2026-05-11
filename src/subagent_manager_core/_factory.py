@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class SubagentFactory:
     """Subagent 工厂"""
 
-    DEFAULT_MAX_ITERATIONS = 15
+    DEFAULT_MAX_ITERATIONS = 100
 
     def __init__(
         self,
