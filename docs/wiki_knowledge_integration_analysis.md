@@ -1,6 +1,31 @@
 # Wiki 知识落地分析报告
 
-## 日期: 2026-05-10 (验证: 新增 GenericAgent 记忆清理机制文档，已评估无新增落地)
+## 日期: 2026-05-11 (验证: P6 ToolRegistryBuilder + ModelAliasRegistry 已实现)
+
+### DeepSeek-TUI P6 评估 (2026-05-11)
+
+**文档**: `$WIKI_HOME/deepseek-tui-architecture/07-tools-and-rlm.md`
+
+**已实现优化点 (P6)**:
+
+| 优化点 | 功能 | 实现位置 |
+|------|------|----------|
+| ToolRegistryBuilder | 流式 API 工具注册构建器 | `src/tools/_builder.py` |
+| ModelAliasRegistry | 模型别名映射注册表 | `src/models/_alias_registry.py` |
+| ProviderKind 枚举 | 提供商类型分类 | `src/models/_alias_types.py` |
+| ResolvedModel | 解析后的模型信息 | `src/models/_alias_types.py` |
+
+**评估的未实施优化点（低优先级）**:
+
+| 来源 | 优化点 | 评估结果 |
+|------|--------|----------|
+| deepseek-tui | Cost-Class Caps | 低优先级 - Token 限制基于成本级别 |
+| deepseek-tui | fuzzy_find 模糊解析 | 低优先级 - 工具名称模糊匹配 |
+| deepseek-tui | RLM Context Busting | 不适用 - Python 实现无需 Rust-Python IPC |
+
+**结论**: P6 已实现，无新增高优先级优化点
+
+---
 
 ### GenericAgent 记忆清理机制评估 (2026-05-10)
 
@@ -20,7 +45,7 @@
 
 基于 `$WIKI_HOME` 目录下十个开源项目的架构分析，提取可落地的优化点并评估适用性。
 
-**验证结果**: 所有 P0 + P1 + P2 + P3 + P4 + P5 优化点已实现，测试通过 1147 passed。
+**验证结果**: 所有 P0 + P1 + P2 + P3 + P4 + P5 + P6 优化点已实现。
 
 **大文件重构 (2026-05-08)** - 将超过 180 行的文件拆分为不超过 150 行的小模块：
 - `_persist.py` → `_persist_save.py` + `_persist_load.py`
@@ -115,6 +140,9 @@
 | **FinceptTerminal** | **DataHub Pub/Sub** | **`src/core/_datahub.py` DataHub** | **✅ 新增 (P5)** |
 | **FinceptTerminal** | **TopicPolicy** | **`src/core/_datahub_types.py` TopicPolicy** | **✅ 新增 (P5)** |
 | **multica** | **QueryInvalidator** | **`src/core/_query_invalidator.py` QueryInvalidator** | **✅ 新增 (P5)** |
+| **deepseek-tui** | **ToolRegistryBuilder** | **`src/tools/_builder.py` ToolRegistryBuilder** | **✅ 新增 (P6)** |
+| **deepseek-tui** | **ModelAliasRegistry** | **`src/models/_alias_registry.py` ModelAliasRegistry** | **✅ 新增 (P6)** |
+| **deepseek-tui** | **ProviderKind 枚举** | **`src/models/_alias_types.py` ProviderKind** | **✅ 新增 (P6)** |
 
 ---
 
@@ -574,7 +602,7 @@ model, routing_info = router.route(messages, has_tools=True)
 
 ---
 
-## 九、P4 落地进度追踪
+## 九、落地进度追踪
 
 | 日期 | 已落地 | 测试状态 |
 |------|--------|----------|
@@ -583,7 +611,9 @@ model, routing_info = router.route(messages, has_tools=True)
 | 2026-05-06 中期 | P0 + P1 全部 | 1147 passed |
 | 2026-05-06 P2 | P0 + P1 + P2 全部 | 1147 passed |
 | 2026-05-07 P3 | P0 + P1 + P2 + P3 全部 | 1147 passed |
-| **2026-05-07 P4** | **P0-P4 全部** | **1147 passed** |
+| 2026-05-07 P4 | P0-P4 全部 | 1147 passed |
+| 2026-05-08 P5 | P0-P5 全部 | 1147 passed |
+| **2026-05-11 P6** | **P0-P6 全部** | **1147 passed** |
 
 ---
 
