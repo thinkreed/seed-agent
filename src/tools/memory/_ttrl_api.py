@@ -10,6 +10,7 @@ _processor: TTRLProcessor | None = None
 
 def get_ttrl_processor() -> TTRLProcessor:
     """获取 TTRL 处理器单例"""
+    global _processor
     if _processor is None:
         _processor = TTRLProcessor()
     return _processor
