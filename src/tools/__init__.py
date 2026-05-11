@@ -1,5 +1,4 @@
-"""
-工具系统模块
+"""工具系统模块
 
 负责:
 1. 工具注册与发现 (ToolRegistry、动态加载)
@@ -9,6 +8,7 @@
 
 核心组件:
 - ToolRegistry: 全局工具注册表
+- ToolRegistryBuilder: 流式 API 构建器 (P6 新增)
 - builtin_tools: 内置工具实现
 - memory_tools: 记忆系统工具
 - skill_loader: 技能加载器
@@ -27,9 +27,14 @@ Wiki 知识落地 P3 (基于 DeepSeek-TUI 工具系统设计):
 - ApprovalRequirement: 三级审批需求 (Auto/Suggest/Required)
 - CAPABILITY_APPROVAL_MAP: 能力到审批需求的映射
 
-版本: v2.4 (Wiki 知识落地 P3 版)
+Wiki 知识落地 P6 (基于 DeepSeek-TUI ToolRegistryBuilder 设计):
+- ToolRegistryBuilder: 流式 API 工具注册构建器
+- 分类注册方法: with_file_tools(), with_shell_tools() 等
+
+版本: v2.5 (Wiki 知识落地 P6 版)
 """
 
+from ._builder import ToolRegistryBuilder
 from ._registry import ToolFactory, ToolRegistry
 from ._types import (
     CAPABILITY_APPROVAL_MAP,
@@ -59,4 +64,6 @@ __all__ = [
     "ToolKind",
     # 核心类
     "ToolRegistry",
+    # Wiki 知识落地 P6 (DeepSeek-TUI ToolRegistryBuilder)
+    "ToolRegistryBuilder",
 ]
