@@ -30,12 +30,10 @@ Wiki 知识落地 P6 (DeepSeek-TUI ModelAliasRegistry):
 # 从子模块导入所有内容
 from src.models._alias_registry import (
     ModelAliasRegistry,
-    ModelInfo,
-    ProviderKind,
-    ResolvedModel,
     get_global_registry,
     reset_global_registry,
 )
+from src.models._alias_types import ModelInfo, ProviderKind, ResolvedModel
 from src.models._config_loader import (
     CONFIG_VERSION,
     _migrate_to_v3,
