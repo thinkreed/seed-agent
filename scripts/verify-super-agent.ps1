@@ -104,6 +104,11 @@ if ($Slow) {
     Report 'speculation smoke' ($spec -match 'SPECULATION SMOKE OK') (($spec -split "`n" | Where-Object { $_ -match 'case1:|channel sent:' }) -join ' ')
     $daemon = & $node 'packages/super-agent/host/tests/daemon-smoke.mjs' 2>&1 | Out-String
     Report 'daemon smoke' ($daemon -match 'DAEMON SMOKE OK') (($daemon -split "`n" | Where-Object { $_ -match 'daemon file:|ticket dir leaked' }) -join ' ')
+    Push-Location $Repo
+    try {
+      $bench = & $node 'scripts/bench-super-agent.mjs' 2>&1 | Out-String
+      Report 'benchmark' ($bench -match 'BENCH OK') (($bench -split "`n" | Where-Object { $_ -match '"speedup"' }) -join ' ')
+    } finally { Pop-Location }
     $out = & $node 'packages/super-agent/host/tests/sdk-smoke.mjs' 2>&1 | Out-String
     Report 'sdk smoke' ($out -match 'DSH EXECUTOR SMOKE OK') ''
   } catch { Report 'router/sdk smoke' $false $_.Exception.Message } finally { Pop-Location }

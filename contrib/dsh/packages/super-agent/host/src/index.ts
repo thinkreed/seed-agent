@@ -41,6 +41,7 @@ import {
 import { SdkDshExecutor } from './executor.ts'
 export { spillInstruction, workerPrompt } from './executor.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
+export { RouterSession, createRouterClient } from './router_session.ts'
 import { LlmWatchdogJudge } from '@deepseek-ai/dsh-super-agent-core'
 import { FeishuHttpClient } from './sources/feishu_http.ts'
 import { FeishuSource } from './sources/feishu.ts'

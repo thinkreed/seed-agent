@@ -33,6 +33,7 @@
 > - 2026-11-01：**P1-5 面板补全（第一批）完成**——工单列表加 stage 徽标与搜索，详情头显示 stage，底部显示运行配置（router/watchdog/sources/speculation/replay）；host snapshot 暴露 `stage` 与 `config`。证据：桌面探活断言 `stage=idle router=llm spec=True`（verify 通过），截图 `docs/dsh-desktop-panel.png`。
 > - 2026-11-01：**P1-6 多信道交付规范完成**——新增 `format.ts`（IM 去 Markdown 压缩 ≤100 字、GitHub/异步信道结构化标题+结论+落款），出站统一经 `ChannelFormattingWriter`。证据：`CHANNEL FORMAT SMOKE OK`（IM 94 字、GitHub 结构化、写手按地址分派）；`CHANNEL FORMAT LIVE OK`（飞书 `om_x100b6144d87a…` + GitHub 评论 `gh-thinkreed/seed-agent-e2e-3`）；`CHANNELS SMOKE OK`（飞书真实回帖）。
 > - 2026-11-01：**P2-1 存算分离（端侧 daemon）完成**——新增无状态 daemon 包（`/exec`、`/read`、`/write`，root 内路径约束、token 鉴权）与 `tool-remote`（worker 用 `super_agent_remote_exec/write/read` 在 daemon 所在机器执行）；host 只传 daemon URL/token，状态仍在 SQLite。证据：`DAEMON SMOKE OK`——daemon 独立进程执行命令后，产物 `remote-ok` 落在 daemon root 而**不在**工单目录（证明执行环境在外、计算/状态在 host）。
+> - 2026-11-01：**P2-2 文章 §7 实验复现（机制级）完成**——`scripts/bench-super-agent.mjs` 用确定性假模型测 Router 批处理与消融：N=4 threads 时批量 1 次模型调用 43ms，逐条 4 次 179ms（≈4×）；单 Session 串行 2172ms vs Super-agent（批处理+2 slots）≈1043ms（≈2×）；`--real` 真实模型 3 threads 合并 1 次调用（1995ms）。结果写入 `docs/bench-super-agent.{md,json}`，纳入 verify -Slow（BENCH OK）。
 
 
 ## 2. 逐条差距（文章 §2–§6）

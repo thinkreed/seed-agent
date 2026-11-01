@@ -72,6 +72,7 @@
 - [x] **M7 可复现**：scripts/desktop-super-agent.ps1（凭据→补丁→构建→隔离 home→link 包→注入 profile 行→启动）与 scripts/verify-super-agent.ps1（core/host 冒烟 + 桌面启动探活，-Slow/-Network 追加真机项）；实测 VERIFY OK
 - [x] **订阅扇出**：同线程第二条消息 anned_out 到已有工单（	ests/fanout-smoke.mjs：1 ticket、inp-000001→tk-000001）
 - [x] **Inline & Spill + 链式召回**：超预算指令落盘 spills/<ticket>.txt，worker prompt 只留摘要 + 可读取路径（	ests/spill-smoke.mjs，SPILL SMOKE OK）
+- [x] **P2-2 §7 实验复现（机制级）**：`scripts/bench-super-agent.mjs`（Router 批处理 ≈4×、消融 ≈2×，`--real` 3 threads 合并 1 次调用）；结果 `docs/bench-super-agent.md`。
 - [x] **P2-1 存算分离**：无状态 daemon（exec/read/write）+ `super_agent_remote_*` 工具；`DAEMON SMOKE OK`（产物在 daemon root、不在工单目录）。
 - [x] **P1-6 多信道交付规范**：IM ≤100 字压缩、GitHub 结构化；`ChannelFormattingWriter` 统一出口；`CHANNEL FORMAT SMOKE OK`、live 飞书+GitHub 消息 ID。
 - [x] **P1-5 面板补全（第一批）**：stage 徽标、工单搜索、配置摘要；桌面探活 `stage=idle router=llm spec=True`，截图 `docs/dsh-desktop-panel.png`。
