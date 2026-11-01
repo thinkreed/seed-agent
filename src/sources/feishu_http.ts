@@ -40,12 +40,14 @@ interface ListResponse {
 export class FeishuHttpClient implements FeishuClient {
   private readonly options: FeishuHttpOptions;
   private token: { value: string; expiresAt: number } | undefined;
+  private botOpenId: string | null | undefined;
 
   constructor(options: FeishuHttpOptions) {
     this.options = options;
   }
 
   async listMessages(): Promise<FeishuMessage[]> {
+    const botOpenId = await this.resolveBotOpenId();
     const collected: FeishuMessage[] = [];
     for (const chatId of this.options.chatIds) {
       const response = await this.request<ListResponse>(
@@ -54,10 +56,21 @@ export class FeishuHttpClient implements FeishuClient {
       );
       for (const item of response.data?.items ?? []) {
         const message = this.toMessage(item, chatId);
-        if (message) collected.push(message);
+        if (message && message.sender !== botOpenId) collected.push(message);
       }
     }
     return collected;
+  }
+
+  private async resolveBotOpenId(): Promise<string | null> {
+    if (this.botOpenId !== undefined) return this.botOpenId;
+    try {
+      const info = await this.request<{ bot?: { open_id?: string } }>("GET", "/open-apis/bot/v3/info");
+      this.botOpenId = info.bot?.open_id ?? null;
+    } catch {
+      this.botOpenId = null;
+    }
+    return this.botOpenId;
   }
 
   async reply(chatId: string, threadId: string | undefined, text: string): Promise<{ id: string }> {

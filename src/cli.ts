@@ -2,6 +2,7 @@
 
 import { App } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { loadDefaultEnv, loadEnvFile } from "./env.ts";
 import { createCheckers, formatChecks, runChecks } from "./health.ts";
 import { render, renderJson } from "./panel.ts";
 import { SqliteStore } from "./store.ts";
@@ -32,7 +33,10 @@ export function showPanel(path: string, asJson = false): number {
 /** 真实体检：凭证、端点、gh、飞书、文件系统。 */
 export async function doctor(configPath?: string): Promise<number> {
   const config = loadConfig(configPath);
-  const checks = await runChecks(createCheckers(config, { env: process.env }));
+  const env: Record<string, string | undefined> = { ...process.env };
+  if (process.env.SEED_ENV_FILE) loadEnvFile(process.env.SEED_ENV_FILE, env);
+  else loadDefaultEnv(env);
+  const checks = await runChecks(createCheckers(config, { env }));
   console.log(formatChecks(checks));
   const failed = checks.filter((check) => !check.ok && check.required);
   if (failed.length > 0) console.error(`\n${failed.length} required check(s) failed`);

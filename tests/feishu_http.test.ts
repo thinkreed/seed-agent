@@ -22,6 +22,10 @@ function mockFeishu(): Promise<MockFeishu> {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify(payload));
       };
+      if (request.url?.includes("/open-apis/bot/v3/info")) {
+        send({ code: 0, bot: { open_id: "ou_bot" } });
+        return;
+      }
       if (request.url?.includes("tenant_access_token")) {
         send({ code: 0, tenant_access_token: "t-123", expire: 7200 });
         return;
@@ -38,6 +42,13 @@ function mockFeishu(): Promise<MockFeishu> {
                 create_time: "1700000000000",
                 sender: { id: "ou_alice" },
                 body: { content: JSON.stringify({ text: "帮我修个 bug" }) },
+              },
+              {
+                message_id: "om_bot",
+                chat_id: "oc_1",
+                create_time: "1700000000500",
+                sender: { id: "ou_bot" },
+                body: { content: JSON.stringify({ text: "机器人自己的消息" }) },
               },
               {
                 message_id: "om_2",
@@ -74,6 +85,7 @@ test("FeishuHttpClient：拉取群消息（token 只取一次）并映射 thread
     const messages = await client.listMessages();
 
     assert.equal(messages.length, 2);
+    assert.ok(messages.every((message) => message.sender !== "ou_bot"), "机器人的消息应被过滤");
     assert.equal(messages[0]?.sender, "ou_alice");
     assert.equal(messages[0]?.text, "帮我修个 bug");
     assert.equal(messages[0]?.threadId, "om_root");

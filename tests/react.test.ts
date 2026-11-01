@@ -103,11 +103,10 @@ test("未知工具只产生 observation，不崩溃", async () => {
   assert.equal(report.status, "failed");
 });
 
-test("无法解析的动作直接 failed", async () => {
+test("无法解析的动作：先给修复提示，最终 failed", async () => {
   const { loop } = setup(["I will think about it."], {});
   const report = await loop.run(h.ticket(), []);
   assert.equal(report.status, "failed");
-  assert.match(report.summary, /unparsable/);
 });
 
 test("超过 maxSteps 报 failed", async () => {

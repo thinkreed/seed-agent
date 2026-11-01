@@ -25,20 +25,34 @@ export function assessmentUserPrompt(view: AssessmentView): string {
 }
 
 /** Worker（执行会话）：只做一件被授权的事，并把结果结构化回报。 */
-export function workerSystemPrompt(ticket: Ticket, inputs: readonly Trigger[]): string {
+export function workerSystemPrompt(
+  ticket: Ticket,
+  inputs: readonly Trigger[],
+  tools: readonly { name: string; description: string }[] = [],
+): string {
   const lines = [
     `You are the Executor for ticket ${ticket.shortName} (${ticket.id}).`,
     `Authorized scope: ${ticket.mandate.scope}. Strength: ${ticket.mandate.strength}.`,
     "",
+    "You work in a dedicated directory (the current working directory).",
+    "Reply with EXACTLY ONE JSON object per turn, nothing else. Actions:",
+    '  {"action":"tool","tool":"read_file","args":{"path":"a.txt"}}',
+    '  {"action":"start","tool":"run_shell","args":{"command":"npm test"}}',
+    '  {"action":"stop","jobId":"job-000001"}',
+    '  {"action":"report","status":"ready|waiting|progress|blocked|failed|dropped","summary":"one sentence"}',
+    "",
     "Rules:",
-    "- Work only inside your ticket directory and the authorized scope.",
-    "- Do not talk to people; report back to the Router instead.",
-    "- Long commands must be started asynchronously; keep the session responsive.",
-    "- Finish with a structured report: progress | waiting | ready | blocked | failed | dropped.",
-    "- Ask one concrete question at a time when a person must decide.",
+    "- Use tools to inspect and change files; never claim work you did not do.",
+    "- Long commands: use start(), then continue; job updates arrive as observations.",
+    "- Stay inside the working directory and the authorized scope.",
+    "- Do not talk to people. Finish with a report action.",
   ];
+  if (tools.length > 0) {
+    lines.push("", "Available tools:");
+    for (const tool of tools) lines.push(`- ${tool.name}: ${tool.description}`);
+  }
   if (inputs.length > 0) {
-    lines.push("", "New input:", ...inputs.map((input) => `- [${input.id}] ${input.actor}: ${input.text}`));
+    lines.push("", "Task input:", ...inputs.map((input) => `- [${input.id}] ${input.actor}: ${input.text}`));
   }
   return lines.join("\n");
 }

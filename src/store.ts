@@ -142,6 +142,12 @@ export class SqliteStore {
     return row ? toItem(row) : null;
   }
 
+  /** 是否还有未完成的 stored work（含尚未到退避时间的）。 */
+  outboxHasPending(): boolean {
+    const row = this.db.prepare("SELECT 1 AS found FROM outbox WHERE state = 'pending' LIMIT 1").get();
+    return row !== undefined;
+  }
+
   cursorGet(source: string): string | null {
     const row = this.db.prepare("SELECT position FROM cursors WHERE source = ?").get(source) as
       | { position: string }

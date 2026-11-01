@@ -77,12 +77,24 @@ const model = new OpenAIClient({
   apiKey: required("SEED_MODEL_API_KEY"),
   model: required("SEED_MODEL_NAME"),
 });
+const tools = {
+  ...fileTools(root),
+  run_shell: shellTool({ root }),
+};
+const descriptions: Record<string, string> = {
+  read_file: "Read a text file inside the workspace (path, optional start/count not needed).",
+  write_file: "Create or overwrite a text file inside the workspace (path, content).",
+  edit_file: "Replace exact text in a file (path, old, new, optional all=true).",
+  list_files: "List entries of a directory inside the workspace (path).",
+  run_shell: "Run one shell command in the workspace (command). Prefer start() for long commands.",
+};
+for (const [name, tool] of Object.entries(tools)) {
+  (tool as { description?: string }).description = descriptions[name] ?? "";
+}
+
 const loop = new ReactLoop({
   model,
-  tools: {
-    ...fileTools(root),
-    run_shell: shellTool({ root }),
-  },
+  tools,
   jobs,
   clock,
   maxSteps: Number(env("SEED_WORKER_MAX_STEPS", "12")),

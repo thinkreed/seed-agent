@@ -28,3 +28,20 @@ export function loadEnvFile(path: string, env: Record<string, string | undefined
     if (env[key] === undefined) env[key] = value;
   }
 }
+
+/** 默认依次尝试 seed.env、.env（都不覆盖已有变量）。 */
+export function loadDefaultEnv(env: Record<string, string | undefined>): void {
+  loadEnvFile("seed.env", env);
+  loadEnvFile(".env", env);
+}
+
+/** 合并进程环境、env 文件与显式覆盖；显式覆盖优先级最高。 */
+export function mergeEnv(
+  overrides: Readonly<Record<string, string | undefined>> | undefined,
+  envFile?: string,
+  base: Record<string, string | undefined> = { ...process.env },
+): Record<string, string | undefined> {
+  if (envFile) loadEnvFile(envFile, base);
+  else loadDefaultEnv(base);
+  return { ...base, ...(overrides ?? {}) };
+}

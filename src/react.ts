@@ -25,6 +25,7 @@ const STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 export interface ReactTool {
+  readonly description?: string;
   run(args: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
 }
 
@@ -53,8 +54,12 @@ export class ReactLoop {
   }
 
   async run(ticket: Ticket, inputs: readonly Trigger[]): Promise<Report> {
+    const toolList = Object.entries(this.options.tools).map(([name, tool]) => ({
+      name,
+      description: tool.description ?? "",
+    }));
     const messages: ModelMessage[] = [
-      { role: "system", content: workerSystemPrompt(ticket, inputs) },
+      { role: "system", content: workerSystemPrompt(ticket, inputs, toolList) },
       { role: "user", content: "Begin. Reply with exactly one JSON action." },
     ];
 
@@ -63,7 +68,15 @@ export class ReactLoop {
       const raw = await this.options.model.complete(messages);
       messages.push({ role: "assistant", content: raw });
       const action = parseAction(raw);
-      if (!action) return this.finish(ticket, "failed", "unparsable action");
+      if (!action) {
+        messages.push({
+          role: "user",
+          content:
+            "Your reply was not a valid action. Reply with exactly one JSON object: " +
+            '{"action":"tool","tool":"...","args":{}} or {"action":"report","status":"...","summary":"..."}',
+        });
+        continue;
+      }
       if (action.action === "report") {
         return this.finish(ticket, action.status, action.summary);
       }
