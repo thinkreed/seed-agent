@@ -57,7 +57,7 @@
 - [x] **M0 构建通过**：`pnpm build` 10/10 gates（native addon / host typert / host compiler / host bundle / desktop bundle / client compiler / client bundle / web build / aggregate checks），366 个 client artifact，`apps/web/dist` 产出
 - [x] **M1 内核包**：`packages/super-agent/core` 在 fork 内编译（tsc -b + tsdown）通过，产物 `lib/index.js` 74.9kB；冒烟 `scripts/smoke-super-agent.mjs`：12 events、ticket 创建、assignment 启动、回放哈希稳定 → `CORE SMOKE OK`
 - [x] **M2 host 插件**：packages/super-agent/host（cordis Service，服务名 superAgent）：ingest/tick/state/tickets/retry/reply/pause/resume，ctx.effect 关库；冒烟 HOST SMOKE OK（ticket t-000001 + launched 1 + replay hash 与 core 一致）
-- [ ] M3：executor 接 DSH session（真实模型 + 工具）
+- [ ] M3：executor 接 DSH session（真实模型 + 工具）——**已接官方 SDK**：SdkDshExecutor（DeepSeekHarness.run，sessionId 复用），host 配置 dshBin/dshHome 即启用；待跑真实 runtime 回合
 
 > 注意：scripts/apply-dsh-patches.ps1 会重写 dsh/packages/super-agent/* 源码目录（清掉 lib），应用补丁后需要重新 pnpm --filter ... run build。
 - [ ] M4：client 工作台
