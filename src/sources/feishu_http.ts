@@ -56,7 +56,8 @@ export class FeishuHttpClient implements FeishuClient {
       );
       for (const item of response.data?.items ?? []) {
         const message = this.toMessage(item, chatId);
-        if (message && message.sender !== botOpenId) collected.push(message);
+        const self = message !== null && (message.sender === botOpenId || message.sender === this.options.appId);
+        if (message && !self) collected.push(message);
       }
     }
     return collected;

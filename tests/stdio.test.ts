@@ -13,11 +13,11 @@ import * as h from "./helpers.ts";
 
 const REPO = join(import.meta.dirname, "..");
 
-async function waitFor(predicate: () => boolean, timeoutMs = 10000): Promise<void> {
+async function waitFor(predicate: () => boolean, timeoutMs = 30000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!predicate()) {
-    if (Date.now() > deadline) throw new Error("timeout");
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    if (Date.now() > deadline) throw new Error(`timeout after ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
 

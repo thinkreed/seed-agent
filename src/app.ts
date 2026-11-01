@@ -97,7 +97,7 @@ export class App {
         throw new AppError(`missing env ${feishu.appIdEnv} / ${feishu.appSecretEnv} for feishu`);
       }
       const client = new FeishuHttpClient({ appId, appSecret, chatIds: feishu.chatIds });
-      sources.push(new FeishuSource(client));
+      sources.push(new FeishuSource(client, { now: () => clock.now() }));
       routes.push({ prefix: "fs:", writer: new FeishuChannel(client) });
     }
     if (sources.length === 0) throw new AppError("config.sources is empty: configure local/github/feishu");

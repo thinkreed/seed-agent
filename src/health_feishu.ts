@@ -52,15 +52,30 @@ export function feishuCheckers(config: SeedConfig, deps: CheckDeps): Checker[] {
         const response = await doFetch("https://open.feishu.cn/open-apis/im/v1/chats?page_size=50", {
           headers: { authorization: `Bearer ${value}` },
         });
-        const payload = (await response.json()) as { data?: { items?: { chat_id?: string }[] } };
+        const payload = (await response.json()) as {
+          code?: number;
+          data?: { items?: { chat_id?: string }[] };
+        };
         const chats = payload.data?.items ?? [];
-        if (chats.length === 0) {
-          return { ok: false, detail: "bot is not in any chat: add it to a group (or give a chat_id)" };
+        if (chats.length > 0) {
+          const visible = chats.filter((chat) => feishu.chatIds.includes(chat.chat_id ?? ""));
+          return visible.length > 0
+            ? { ok: true, detail: `${visible.length} configured chat(s) visible` }
+            : { ok: false, detail: `configured chatIds not visible (bot in ${chats.length} chats)` };
         }
-        const visible = chats.filter((chat) => feishu.chatIds.includes(chat.chat_id ?? ""));
-        return visible.length > 0
-          ? { ok: true, detail: `${visible.length} configured chat(s) visible` }
-          : { ok: false, detail: `configured chatIds not visible (bot in ${chats.length} chats)` };
+        if (payload.code === 99991672) {
+          // 没有 im:chat 权限时退化为直接探测配置的群能否读消息
+          const chatId = feishu.chatIds[0] ?? "";
+          const probe = await doFetch(
+            `https://open.feishu.cn/open-apis/im/v1/messages?container_id_type=chat&container_id=${encodeURIComponent(chatId)}&page_size=1`,
+            { headers: { authorization: `Bearer ${value}` } },
+          );
+          const probePayload = (await probe.json()) as { code?: number; msg?: string };
+          return probePayload.code === 0
+            ? { ok: true, detail: `chat ${chatId} readable (no im:chat scope, probed messages)` }
+            : { ok: false, detail: `chat probe failed: code ${String(probePayload.code)} ${probePayload.msg ?? ""}` };
+        }
+        return { ok: false, detail: "bot is not in any chat: add it to a group (or give a chat_id)" };
       },
     },
   ];

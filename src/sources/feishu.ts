@@ -28,17 +28,29 @@ export function parseFeishuAddress(address: string): { chatId: string; threadId?
   return threadId ? { chatId: chatId as string, threadId } : { chatId: chatId as string };
 }
 
+export interface FeishuSourceOptions {
+  /** 只处理最近 N 秒的消息，避免首次启动把历史消息全部当成新任务。 */
+  readonly sinceSeconds?: number;
+  readonly now?: () => number;
+}
+
 export class FeishuSource implements Source {
   readonly name = "feishu";
   private readonly client: FeishuClient;
+  private readonly sinceSeconds: number;
+  private readonly now: () => number;
 
-  constructor(client: FeishuClient) {
+  constructor(client: FeishuClient, options: FeishuSourceOptions = {}) {
     this.client = client;
+    this.sinceSeconds = options.sinceSeconds ?? 600;
+    this.now = options.now ?? (() => Date.now() / 1000);
   }
 
   async poll(): Promise<Trigger[]> {
+    const threshold = this.now() - this.sinceSeconds;
     const messages = await this.client.listMessages();
     return messages
+      .filter((message) => message.at >= threshold && isHumanText(message))
       .map((message) => ({
         id: `fs:${message.chatId}:${message.id}`,
         source: "feishu",
@@ -50,6 +62,12 @@ export class FeishuSource implements Source {
       }))
       .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
   }
+}
+
+/** 过滤系统/模板消息：发送者为空或内容是群事件模板的，都不算人的指令。 */
+function isHumanText(message: FeishuMessage): boolean {
+  if (!message.sender || !message.text.trim()) return false;
+  return !message.text.includes('"template"');
 }
 
 export class FeishuChannel implements ChannelWriter {

@@ -50,7 +50,7 @@ test("FeishuSource：消息 -> Trigger，同一话题归同一 Thread", async ()
     message({ id: "m-1", at: 1_700_000_100 }),
     message({ id: "m-3", threadId: undefined, at: 1_700_000_300 }),
   ];
-  const source = new FeishuSource(client);
+  const source = new FeishuSource(client, { sinceSeconds: 1e12 });
   const triggers = await source.poll();
 
   assert.equal(triggers.length, 3);
@@ -66,10 +66,29 @@ test("FeishuSource：消息 -> Trigger，同一话题归同一 Thread", async ()
 test("FeishuSource：重复轮询产生相同 id（引擎侧幂等）", async () => {
   const client = new FakeFeishu();
   client.messages = [message()];
-  const source = new FeishuSource(client);
+  const source = new FeishuSource(client, { sinceSeconds: 1e12 });
   const first = await source.poll();
   const second = await source.poll();
   assert.deepEqual(first.map((item) => item.id), second.map((item) => item.id));
+});
+
+test("FeishuSource：默认只处理最近消息，历史消息不重复触发", async () => {
+  const client = new FakeFeishu();
+  client.messages = [message({ id: "old", at: 1_700_000_000 }), message({ id: "new", at: 2_000_000_000 })];
+  const source = new FeishuSource(client, { sinceSeconds: 600, now: () => 2_000_000_100 });
+  const triggers = await source.poll();
+  assert.deepEqual(triggers.map((item) => item.id), ["fs:oc_123:new"]);
+});
+
+test("FeishuSource：系统/模板消息与空发送者不算指令", async () => {
+  const client = new FakeFeishu();
+  client.messages = [
+    message({ id: "sys", sender: "", text: '{"template":"{from_user} invited {to_chatters}"}', at: 2_000_000_000 }),
+    message({ id: "real", at: 2_000_000_050 }),
+  ];
+  const source = new FeishuSource(client, { sinceSeconds: 600, now: () => 2_000_000_100 });
+  const triggers = await source.poll();
+  assert.deepEqual(triggers.map((item) => item.id), ["fs:oc_123:real"]);
 });
 
 test("FeishuChannel：回复发到对应话题", async () => {
