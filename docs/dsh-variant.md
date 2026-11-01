@@ -67,7 +67,7 @@
   - 真机链路：面板/HTTP ingest → Ticket → `SdkDshExecutor` 嵌套启动 `dsh --profile sdk` → 真实模型写 `desktop-hello.txt` → 报告 ready → ticket ended
   - 窗口底部显示事件库路径与 replay hash
 - [x] **M5a Watchdog**：host 内置 Watchdog（确定性 finding：stalled/undelivered），watchdogSeconds 定时巡检、checkWatchdog() 暴露给快照/测试；intervene 时对 finding 工单 retry + tick。冒烟：watchdog: ok 0（HOST SMOKE OK）
-- [ ] M5b 渠道：飞书 / GitHub 的对外回帖（接 core 的 ChannelWriter）
+- [x] **M5b 渠道**：MultiChannelWriter（飞书 im/v1、GitHub gh issue comment、本地日志）；Engine 接 Router.queueReplies，报告落地自动排队发帖；飞书实测 message_id om_x100b…549，GitHub 实测评论落在 thinkreed/seed-agent-e2e#3；桌面里 worker 用 DSH_PERMISSION_MODE=danger-full-access 自动放行（截图 docs/dsh-desktop-channels.png）
 - [x] **M6 品牌变种**：侧栏 mark/name 换成 seed-agent（SeedBrand.tsx：种子凹形 logo + seed-agent 字标）；rand.localBuild 各语言 locale 改为 seed-agent，窗口标题变成「seed-agent」；截图 docs/dsh-desktop-seed-agent.png
 - [ ] M7：可复现（一键脚本 + 文档）
 
