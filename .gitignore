@@ -49,7 +49,7 @@ _rec.*
 _*.mjs
 _*.py
 _sample*
-dsh/
+/dsh/
 
 # DSH upstream fork (vendor checkout; sync via scripts/sync-dsh.ps1, patches via contrib/dsh)
-dsh/
+/dsh/
