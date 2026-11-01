@@ -50,7 +50,7 @@ export class Runtime {
       ids,
       assessor: options.assessor,
       executor: options.executor,
-      channels: config.channels,
+      ...(config.channels ? { channels: config.channels } : {}),
       policy: config.policy ?? defaultPolicy(),
       slots: config.slots ?? 4,
     });

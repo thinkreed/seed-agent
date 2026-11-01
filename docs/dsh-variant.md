@@ -53,6 +53,19 @@
 ## 5. 当前进度
 
 - [x] DSH 源码复制到 `seed-agent/dsh`（20,233 文件 / 135MB，pinned `ce7073d5`）
-- [x] `pnpm install` 通过（396 workspace projects；补丁：xlsx 改 registry 0.18.5）
-- [ ] `build:lib:client` / `build:web` 通过（进行中）
-- [ ] super-agent 插件包骨架
+- [x] `pnpm install` 通过（396 workspace projects；补丁：xlsx → `@e965/xlsx@0.20.3` + cpexcel 类型声明）
+- [x] **M0 构建通过**：`pnpm build` 10/10 gates（native addon / host typert / host compiler / host bundle / desktop bundle / client compiler / client bundle / web build / aggregate checks），366 个 client artifact，`apps/web/dist` 产出
+- [x] **M1 内核包**：`packages/super-agent/core` 在 fork 内编译（tsc -b + tsdown）通过，产物 `lib/index.js` 74.9kB；冒烟 `scripts/smoke-super-agent.mjs`：12 events、ticket 创建、assignment 启动、回放哈希稳定 → `CORE SMOKE OK`
+- [ ] M2：host 插件（cordis service）把 core 接到 DSH 生命周期
+- [ ] M3：executor 接 DSH session（真实模型 + 工具）
+- [ ] M4：client 工作台
+- [ ] M5–M7：watchdog/渠道、品牌变种、可复现
+
+### 手动验证
+
+```powershell
+cd seed-agent\dsh
+node <runtime-node> <runtime-pnpm> pnpm build
+cd ..
+node scripts/smoke-super-agent.mjs
+```

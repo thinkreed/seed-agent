@@ -5,7 +5,7 @@
  * 模型按需经 recall 工具逐跳展开（链式召回）。
  */
 
-import type { Policy, State, Ticket, Trigger } from "./domain.ts";
+import type { State } from "./domain.ts";
 import { ticketReport } from "./domain.ts";
 import { stageOf } from "./fsm.ts";
 import type { AssessContext } from "./ports.ts";

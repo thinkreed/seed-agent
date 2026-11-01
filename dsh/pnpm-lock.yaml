@@ -16822,6 +16822,8 @@ importers:
         specifier: workspace:~
         version: link:../../../vendor/cordis
 
+  packages/super-agent/core: {}
+
   packages/telemetry/otel:
     dependencies:
       '@opentelemetry/api':

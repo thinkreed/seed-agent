@@ -50,7 +50,7 @@ export class OpenAIClient implements ModelClient {
   private async once(
     url: string,
     body: string,
-  ): Promise<{ ok: true; content: string } | { ok: false; error: string; retryable: boolean; retryAfterMs?: number }> {
+  ): Promise<{ ok: true; content: string } | { ok: false; error: string; retryable: boolean; retryAfterMs: number | undefined }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 120_000);
     try {
@@ -76,11 +76,11 @@ export class OpenAIClient implements ModelClient {
       const payload = (await response.json()) as ChatCompletionResponse;
       const content = payload.choices?.[0]?.message?.content;
       if (typeof content !== "string") {
-        return { ok: false, error: "response has no message content", retryable: false };
+        return { ok: false, error: "response has no message content", retryable: false, retryAfterMs: undefined };
       }
       return { ok: true, content };
     } catch (error) {
-      return { ok: false, error: String(error), retryable: true };
+      return { ok: false, error: String(error), retryable: true, retryAfterMs: undefined };
     } finally {
       clearTimeout(timer);
     }

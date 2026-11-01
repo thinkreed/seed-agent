@@ -5,7 +5,6 @@ import { ev } from "./builders.ts";
 import type { Assignment, Input, Report, Ticket } from "./domain.ts";
 import { openAssignment } from "./domain.ts";
 import type { Effects } from "./effects.ts";
-import type { Effects } from "./effects.ts";
 import type { AnyEvent } from "./events.ts";
 import type { IdFactory } from "./ids.ts";
 import type { Executor, ChannelWriter } from "./ports.ts";

@@ -3,7 +3,7 @@
 import type { Clock } from "./clock.ts";
 import { Actions } from "./actions.ts";
 import { ev } from "./builders.ts";
-import type { Eval, Input, Policy, Report, State, Ticket, Trigger } from "./domain.ts";
+import type { Eval, Input, Policy, Report, State, Trigger } from "./domain.ts";
 import { subscribedTickets } from "./domain.ts";
 import { Effects } from "./effects.ts";
 import { EvalRunner } from "./eval_runner.ts";
@@ -56,7 +56,7 @@ export class Engine {
       clock: this.clock,
       ids: this.ids,
       executor: this.executor,
-      channels: this.channels,
+      ...(this.channels ? { channels: this.channels } : {}),
     });
     this.effects = new Effects(this.store, this.clock, {
       launch: (item) => this.actions.launch(item.payload.assignmentId as string),

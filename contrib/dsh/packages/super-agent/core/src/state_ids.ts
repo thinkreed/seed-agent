@@ -17,6 +17,5 @@ export function stateIds(state: State): string[] {
   ]) {
     ids.push(...Object.keys(group));
   }
-  for (const subscription of state.subscriptions) ids.push(subscription.id);
   return ids;
 }
