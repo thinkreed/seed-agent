@@ -11,6 +11,7 @@ import type { AnyEvent } from "./events.ts";
 import type { IdFactory } from "./ids.ts";
 import { gate } from "./policy.ts";
 import type { Assessor, ChannelWriter, Executor } from "./ports.ts";
+import { Router } from "./router.ts";
 import type { SqliteStore } from "./store.ts";
 
 export interface EngineOptions {
@@ -35,6 +36,7 @@ export class Engine {
   readonly channels: ChannelWriter | undefined;
   private readonly evalRunner: EvalRunner;
   private readonly actions: Actions;
+  private readonly router: Router;
   private paused = false;
 
   constructor(options: EngineOptions) {
@@ -63,6 +65,7 @@ export class Engine {
       deliver: (item) => this.actions.deliver(item.payload.inputId as string),
       send: (item) => this.actions.send(item.payload.messageId as string),
     });
+    this.router = new Router({ store: this.store, clock: this.clock, effects: this.effects });
     if (options.policy) this.append([ev.policyChanged(options.policy, this.clock.now())]);
   }
 
@@ -165,6 +168,8 @@ export class Engine {
       produced.push(...(await this.evalRunner.run(evaluation)));
     }
     produced.push(...this.actions.dispatch(this.slots, this.effects));
+    // 有渠道时才产出对外回复；没有 ChannelWriter 的纯内核算例保持原行为。
+    if (this.channels) produced.push(...this.router.queueReplies());
     const { produced: effectEvents } = await this.effects.drain();
     produced.push(...this.append(effectEvents));
     return produced;
