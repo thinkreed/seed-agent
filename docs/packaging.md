@@ -1,6 +1,6 @@
 # 桌面打包（P2-3）
 
-> 状态：**已产出安装包（unsigned）**。`seed-agent-0.2.2-alpha.2-win-x64-unsigned.exe`（301.7 MB，SHA256 `27F2D1050635A7EC67D3968C59B46F006987E804E37AAB3AB4F62FC1197E11B9`），位于 `dist/`（构建产物不入库）。
+> 状态：**已产出安装包（unsigned）**。`seed-agent-0.2.2-alpha.2-win-x64-unsigned.exe`（301.7 MB，SHA256 `165D075BE5F21046530A3B2062E1DFF58E576DCE8578271F2770239018BCB1F9`），位于 `dist/`（构建产物不入库）。
 >
 > 构建前提：Visual Studio C++ Build Tools（本机已装）。经 `scripts/package-seed-agent.ps1` 一键复现。
 >
@@ -46,3 +46,18 @@ pwsh -File scripts/package-seed-agent.ps1 -Dir       # 只产出解包目录
 4. `sdk-bailian` provider 配置与 `BAILIAN_API_KEY` 来源
 
 这需要改 `apps/desktop` 的 profile 初始化路径（或把上述插件做成随包安装的 bundle），并重新打包验证。
+
+## 环境限制：Smart App Control（2026-11-01 21:00 起）
+
+本机 Windows Smart App Control 已从评估切到**强制**（`VerifiedAndReputablePolicyState=1`），会拦截新构建的未签名 `seed-agent.exe`：
+
+```
+An Application Control policy has blocked this file
+```
+
+- 安装包本身仍可运行（`/S` 静默安装退出码 0，文件完整写入）
+- 安装后的 `seed-agent.exe` 在本机**无法启动**（被代码完整性策略拦截）
+- 早期（20:20 前后）同一形态的未签名 exe 能启动并截到欢迎页，说明是系统策略在此后切换，不是构建问题
+- 解除：关闭 Smart App Control（系统设置，需重置系统才能再开启），或使用受信任代码签名证书签名
+
+因此本机后续只能验证到“安装成功”，启动验证需在关闭 SAC 的机器或签名后做。
