@@ -8,7 +8,7 @@
  * 否则用 PendingDshExecutor 占位（仅记录派工，用于无 DSH 环境的单测）。
  */
 
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -20,7 +20,10 @@ import {
   SystemClock,
   Watchdog,
   buildPolicy,
+  recall,
   type AssessContext,
+  type RecallKind,
+  type RecallResult,
   type Assessor,
   type Decision,
   type Executor,
@@ -102,6 +105,8 @@ export interface SuperAgentHostConfig {
   sourceJsonlPath: string
   /** 轮询间隔（秒）。 */
   sourceIntervalSeconds: number
+  /** 链式召回索引文件（默认事件库同级 recall-index.json；worker 通过它逐跳读上下文）。 */
+  recallIndexPath: string
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -154,6 +159,7 @@ export class SuperAgentHost extends Service {
     sourceGithubReasons: z.string().default('mention,review_requested,comment,assign,team_mention'),
     sourceJsonlPath: z.string().default(''),
     sourceIntervalSeconds: z.number().step(1).min(1).max(3600).default(15),
+    recallIndexPath: z.string().default(''),
   })
 
   readonly runtime: Runtime
@@ -167,6 +173,7 @@ export class SuperAgentHost extends Service {
   private routerSession: RouterSession | undefined
   private lastRouterBatch: RouterBatch | undefined
   private readonly sourceList: Source[] = []
+  private readonly recallIndexPath: string
   private lastPollAt: number | undefined
   private readonly lastPrompts = new Map<string, string>()
   private lastWatchdog: WatchdogReport | undefined
@@ -177,6 +184,9 @@ export class SuperAgentHost extends Service {
     mkdirSync(dirname(this.dbPath), { recursive: true })
     this.channelsEnabled = config.channelsEnabled
     this.assessorMode = config.assessorMode
+    this.recallIndexPath = config.recallIndexPath
+      ? resolve(config.recallIndexPath)
+      : join(dirname(this.dbPath), 'recall-index.json')
 
     const clock = new SystemClock()
     const feishuAppId = process.env.FEISHU_APP_ID?.trim()
@@ -206,6 +216,7 @@ export class SuperAgentHost extends Service {
         },
         spillChars: config.spillChars,
         spillDir: config.spillDir ? resolve(config.spillDir) : join(dirname(this.dbPath), 'spills'),
+        recallIndexPath: this.recallIndexPath,
         describeTicket: (ticketId) => {
           const state = this.runtime?.engine.state
           const ticket = state?.tickets[ticketId]
@@ -231,6 +242,7 @@ export class SuperAgentHost extends Service {
             ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
             // headless worker：工具调用自动放行（DSH_PERMISSION_MODE 同时决定 sandbox 与 approval）。
             DSH_PERMISSION_MODE: config.dshPermissionMode,
+            SUPER_AGENT_RECALL_INDEX: this.recallIndexPath,
           },
           ...(config.dshPatch ? { patches: [resolve(config.dshPatch)] } : {}),
           ...(config.workspace ? { cwd: resolve(config.workspace) } : {}),
@@ -255,6 +267,7 @@ export class SuperAgentHost extends Service {
       },
     })
     this.runtime = runtime
+    this.writeRecallIndex()
     this.watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds })
     ctx.effect(() => async () => {
       await this.sdk?.close()
@@ -333,7 +346,64 @@ export class SuperAgentHost extends Service {
   async tick(): Promise<boolean> {
     const before = this.runtime.store.lastSeq()
     await this.runtime.tickUntilIdle()
+    this.writeRecallIndex()
     return this.runtime.store.lastSeq() > before
+  }
+
+  /** 链式召回：按 trigger/thread/ticket id 取摘要 + 下一跳 handles（模型/Router 共用）。 */
+  recallContext(kind: RecallKind, id: string): RecallResult {
+    return recall(this.runtime.engine.state, kind, id)
+  }
+
+  /** 写召回索引文件：worker 用读取工具按 id 逐跳展开上下文。 */
+  writeRecallIndex(): string {
+    const state = this.runtime.engine.state
+    const triggers: Record<string, unknown> = {}
+    for (const trigger of Object.values(state.triggers)) {
+      triggers[trigger.id] = {
+        source: trigger.source,
+        actor: trigger.actor,
+        text: trigger.text.slice(0, 2000),
+        threadIds: trigger.threadIds,
+        channelIds: trigger.channelIds,
+        at: trigger.at,
+      }
+    }
+    const threads: Record<string, unknown> = {}
+    for (const thread of Object.values(state.threads)) {
+      threads[thread.id] = {
+        triggerIds: Object.values(state.triggers)
+          .filter((trigger) => trigger.threadIds.includes(thread.id))
+          .map((trigger) => trigger.id),
+        ticketIds: Object.values(state.tickets)
+          .filter((ticket) => ticket.threadIds.includes(thread.id))
+          .map((ticket) => ticket.id),
+      }
+    }
+    const tickets: Record<string, unknown> = {}
+    for (const ticket of Object.values(state.tickets)) {
+      const reports = state.reports[ticket.id] ?? []
+      tickets[ticket.id] = {
+        shortName: ticket.shortName,
+        state: ticket.state,
+        threadIds: ticket.threadIds,
+        channelIds: ticket.channelIds,
+        triggerId: ticket.mandate.triggerId,
+        reports: reports.slice(-5).map((report) => ({
+          status: report.status,
+          summary: report.summary.slice(0, 2000),
+          at: report.at,
+        })),
+      }
+    }
+    mkdirSync(dirname(this.recallIndexPath), { recursive: true })
+    writeFileSync(this.recallIndexPath, JSON.stringify({
+      writeAt: Math.floor(Date.now() / 1000),
+      triggers,
+      threads,
+      tickets,
+    }, null, 1), 'utf8')
+    return this.recallIndexPath
   }
 
   retry(ticketId: string): void {

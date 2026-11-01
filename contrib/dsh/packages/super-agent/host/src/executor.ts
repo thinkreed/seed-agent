@@ -30,6 +30,8 @@ export interface SdkDshExecutorOptions {
   readonly spillChars?: number
   /** 落盘目录（默认 workspace/.seed/spills）。 */
   readonly spillDir?: string
+  /** 召回索引文件：worker 可用读取工具按 id 逐跳展开上下文。 */
+  readonly recallIndexPath?: string
 }
 
 /** 落盘后的指令：inline 是写进 prompt 的摘要，spillPath 供 worker 链式召回。 */
@@ -74,7 +76,7 @@ export class SdkDshExecutor implements Executor {
       dir: this.options.spillDir ?? join(process.cwd(), '.seed', 'spills'),
     })
     // 异步执行：launch 只负责"受理并启动"，回合结束后经 onReport 写回引擎。
-    void this.runTurn(assignment.id, ticket, workerPrompt(ticket, spilled.inline))
+    void this.runTurn(assignment.id, ticket, workerPrompt(ticket, spilled.inline, [], this.options.recallIndexPath))
   }
 
   async deliver(ticket: Ticket, input: Input): Promise<void> {
@@ -115,13 +117,25 @@ function reportOf(ticket: Ticket, assignmentId: string, status: ReportStatus, su
 }
 
 /** worker 提示词：只做一件事，结束时给结论。 */
-export function workerPrompt(ticket: Ticket, instruction = '', inputs: readonly Trigger[] = []): string {
+export function workerPrompt(
+  ticket: Ticket,
+  instruction = '',
+  inputs: readonly Trigger[] = [],
+  recallIndexPath?: string,
+): string {
   const lines = [
     `你是 Super-agent 的 worker，工单 ${ticket.shortName}（${ticket.id}）。`,
     `授权范围：${ticket.mandate.scope}；强度：${ticket.mandate.strength}。`,
     '在当前工作目录内完成任务；不要与人对齐，不要请求确认。',
     '完成后用一段话给出结论（做了什么、产物在哪里、是否成功）。',
   ]
+  if (recallIndexPath) {
+    lines.push(
+      '',
+      `上下文索引（需要追溯细节时用读取工具打开）：${recallIndexPath}`,
+      '索引里有 triggers / threads / tickets；从一条事件出发，沿 threadIds / ticketIds 逐跳读取即可（链式召回）。',
+    )
+  }
   if (instruction.trim()) lines.push('', '任务：', instruction.trim())
   for (const input of inputs) lines.push(`- [${input.id}] ${input.actor}: ${input.text}`)
   return lines.join('\n')
