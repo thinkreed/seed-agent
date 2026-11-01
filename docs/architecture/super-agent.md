@@ -301,3 +301,15 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 | 装配 | 配置驱动 | `src/app.ts`、`node src/cli.ts run <config>` |
 
 测试策略：进程内链路用真实 HTTP（本地 mock server 扮演模型端点）与真实子进程；产品代码不含任何 mock 分支。
+## 18. 真实运行验收（进行中）
+
+| 检查项 | 状态 | 证据 |
+|---|---|---|
+| `node --test` | ✅ | 175 例全绿 |
+| 真实模型 HTTP 客户端 | ✅ 代码就绪 | `src/llm/openai.ts` + 本地 HTTP 端点测试 |
+| 真实 worker 进程 + 工具 | ✅ 代码就绪 | `src/worker/main.ts` + `tests/worker_process.test.ts` |
+| 骨架无 fake | ✅ | 产品源码不含假实现（替身仅在 `tests/`） |
+| `gh` 登录与读取 | ✅ 真机 | `doctor` 与 `GhCliClient` 实测返回（当前 0 条通知） |
+| 真实模型调用 | ⏳ 待 key | 需要 `DEEPSEEK_API_KEY` |
+| GitHub 评论回写 | ⏳ 待事件/测试目标 | 需要真实通知或指定 issue |
+| 飞书消息/回复 | ⏳ 待凭证与 chat_id | 需要 `FEISHU_APP_ID/SECRET` |

@@ -2,6 +2,7 @@
 
 import { App } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { createCheckers, formatChecks, runChecks } from "./health.ts";
 import { render, renderJson } from "./panel.ts";
 import { SqliteStore } from "./store.ts";
 
@@ -28,14 +29,26 @@ export function showPanel(path: string, asJson = false): number {
   return 0;
 }
 
+/** 真实体检：凭证、端点、gh、飞书、文件系统。 */
+export async function doctor(configPath?: string): Promise<number> {
+  const config = loadConfig(configPath);
+  const checks = await runChecks(createCheckers(config, { env: process.env }));
+  console.log(formatChecks(checks));
+  const failed = checks.filter((check) => !check.ok && check.required);
+  if (failed.length > 0) console.error(`\n${failed.length} required check(s) failed`);
+  return failed.length === 0 ? 0 : 1;
+}
+
 const [, , command = "help", arg, flag] = process.argv;
 const exitCode =
   command === "run"
     ? await runApp(arg, flag === "--once")
-    : command === "panel"
-      ? showPanel(arg ?? "seed.db", flag === "--json")
-      : 2;
+    : command === "doctor"
+      ? await doctor(arg)
+      : command === "panel"
+        ? showPanel(arg ?? "seed.db", flag === "--json")
+        : 2;
 if (exitCode === 2) {
-  console.error("usage: node src/cli.ts run <config.json> [--once] | panel <db> [--json]");
+  console.error("usage: node src/cli.ts run <config.json> [--once] | doctor <config.json> | panel <db> [--json]");
 }
 process.exitCode = exitCode;

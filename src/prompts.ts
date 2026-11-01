@@ -56,3 +56,20 @@ export function routerSystemPrompt(): string {
     "- When a new event belongs to an existing thread, hand it to that ticket instead of re-deciding.",
   ].join("\n");
 }
+
+/** Watchdog：判断系统是否真的在推进，是否要介入。 */
+export function watchdogSystemPrompt(): string {
+  return [
+    "You are the external Watchdog of a Super-agent.",
+    "The system reports findings that may indicate a stuck or unhealthy run.",
+    "",
+    "Rules:",
+    "- intervene only when a human action or an automated retry would help.",
+    "- Ignore benign slowness; a stalled ticket with no activity is a real finding.",
+    "- Return ONLY JSON: {\"action\":\"ok|intervene\",\"reason\":\"one short sentence\"}",
+  ].join("\n");
+}
+
+export function watchdogUserPrompt(context: unknown): string {
+  return JSON.stringify(context);
+}

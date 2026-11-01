@@ -27,6 +27,7 @@ import { GitHubChannel, GitHubSource } from "./sources/github.ts";
 import { GhCliClient } from "./sources/github_cli.ts";
 import { JsonlInboxSource } from "./sources/jsonl.ts";
 import { Watchdog } from "./watchdog.ts";
+import { LlmWatchdogJudge } from "./watchdog_llm.ts";
 
 export class AppError extends Error {
   constructor(message: string) {
@@ -72,15 +73,14 @@ export class App {
     if (!apiKey) throw new AppError(`missing env ${config.model.apiKeyEnv} for model access`);
 
     const clock = new SystemClock();
-    const assessor = new LlmAssessor(
-      new OpenAIClient({
-        baseUrl: config.model.baseUrl,
-        apiKey,
-        model: config.model.name,
-        ...(config.model.temperature === undefined ? {} : { temperature: config.model.temperature }),
-        ...(config.model.maxTokens === undefined ? {} : { maxTokens: config.model.maxTokens }),
-      }),
-    );
+    const modelClient = new OpenAIClient({
+      baseUrl: config.model.baseUrl,
+      apiKey,
+      model: config.model.name,
+      ...(config.model.temperature === undefined ? {} : { temperature: config.model.temperature }),
+      ...(config.model.maxTokens === undefined ? {} : { maxTokens: config.model.maxTokens }),
+    });
+    const assessor = new LlmAssessor(modelClient);
 
     const routes: { prefix: string; writer: import("./ports.ts").ChannelWriter }[] = [
       { prefix: "local", writer: new ConsoleChannel("[seed:local]") },
@@ -167,7 +167,7 @@ export class App {
     });
 
     const router = new Router({ store: runtime.store, clock, effects: runtime.engine.effects, composer: new TemplateComposer() });
-    const watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds });
+    const watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds, judge: new LlmWatchdogJudge(modelClient) });
     const controller = new WatchdogController(runtime.engine);
     const runner = new SourceRunner({ sources, engine: runtime.engine, store: runtime.store, clock });
     const daemon = new Daemon({

@@ -21,8 +21,10 @@ node src/cli.ts panel seed.db --json   # 机器可读面板
 
 ```bash
 cp seed.config.example.json seed.config.json   # 改 model / sources
+node src/cli.ts doctor seed.config.json       # 真实体检（凭证/端点/gh/飞书/文件系统）
 node src/cli.ts run seed.config.json --once    # 跑一轮真实链路
 node src/cli.ts run seed.config.json           # 常驻
+node src/cli.ts panel seed.db                  # 只列待人工项
 ```
 
 依赖的真实凭证（都通过环境变量注入，配置只写变量名）：
