@@ -45,3 +45,5 @@ seed.env
 secrets/
 seed.config.json
 inbox.jsonl
+_rec.*
+_*.mjs
