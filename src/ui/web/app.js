@@ -259,6 +259,7 @@ $("theme-toggle").addEventListener("click", () => {
 
 const saved = localStorage.getItem("seed-theme");
 if (saved) document.body.dataset.theme = saved;
+$("send-btn").disabled = true;
 
 api.get("/api/state").then(applyState).catch((error) => console.error(error));
 loadEvents().catch((error) => console.error(error));

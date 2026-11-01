@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/app.css" />
   </head>
-  <body data-theme="dark">
+  <body data-theme="light">
     <div id="app" class="app">
       <aside class="sidebar">
         <div class="brand">
@@ -57,7 +57,7 @@
 
         <form class="composer" id="composer">
           <textarea id="reply-text" rows="2" placeholder="给这个工单回复一句话（会作为新输入投递给 worker）…"></textarea>
-          <button type="submit" id="send-btn" disabled>发送</button>
+          <button type="submit" id="send-btn" title="发送（Ctrl+Enter）" aria-label="发送">↑</button>
         </form>
       </main>
 
