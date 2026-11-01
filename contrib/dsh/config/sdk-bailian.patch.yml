@@ -41,3 +41,6 @@
 - insert:
     - id: super-agent-tool-control
       name: '__SUPER_AGENT_CONTROL_TOOL__'
+- insert:
+    - id: super-agent-tool-remote
+      name: '__SUPER_AGENT_REMOTE_TOOL__'

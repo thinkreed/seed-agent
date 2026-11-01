@@ -32,6 +32,7 @@
 > - 2026-11-01：**P1-4 投机执行完成**——`host.speculate()` 走独立 runtime 在后台尝试（不进工单/Router），worker 输出 `{deliver,summary}` 判定；有价值才发 channel，否则静默丢弃；snapshot 记录 speculations。证据：`SPECULATION SMOKE OK`——可交付案例 `delivered=true` 且 channel 收到「[投机执行]」，闲聊案例 `delivered=false` 静默。
 > - 2026-11-01：**P1-5 面板补全（第一批）完成**——工单列表加 stage 徽标与搜索，详情头显示 stage，底部显示运行配置（router/watchdog/sources/speculation/replay）；host snapshot 暴露 `stage` 与 `config`。证据：桌面探活断言 `stage=idle router=llm spec=True`（verify 通过），截图 `docs/dsh-desktop-panel.png`。
 > - 2026-11-01：**P1-6 多信道交付规范完成**——新增 `format.ts`（IM 去 Markdown 压缩 ≤100 字、GitHub/异步信道结构化标题+结论+落款），出站统一经 `ChannelFormattingWriter`。证据：`CHANNEL FORMAT SMOKE OK`（IM 94 字、GitHub 结构化、写手按地址分派）；`CHANNEL FORMAT LIVE OK`（飞书 `om_x100b6144d87a…` + GitHub 评论 `gh-thinkreed/seed-agent-e2e-3`）；`CHANNELS SMOKE OK`（飞书真实回帖）。
+> - 2026-11-01：**P2-1 存算分离（端侧 daemon）完成**——新增无状态 daemon 包（`/exec`、`/read`、`/write`，root 内路径约束、token 鉴权）与 `tool-remote`（worker 用 `super_agent_remote_exec/write/read` 在 daemon 所在机器执行）；host 只传 daemon URL/token，状态仍在 SQLite。证据：`DAEMON SMOKE OK`——daemon 独立进程执行命令后，产物 `remote-ok` 落在 daemon root 而**不在**工单目录（证明执行环境在外、计算/状态在 host）。
 
 
 ## 2. 逐条差距（文章 §2–§6）

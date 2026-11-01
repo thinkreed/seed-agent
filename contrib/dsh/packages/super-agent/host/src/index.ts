@@ -124,6 +124,9 @@ export interface SuperAgentHostConfig {
   watchdogMode: string
   /** 投机执行开关（文章 §3.4）：后台尝试，有价值才交付。 */
   speculationEnabled: boolean
+  /** 端侧 daemon（存算分离，文章 §5.2）地址与令牌；worker 工具据此在真实环境执行。 */
+  daemonUrl: string
+  daemonToken: string
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -183,6 +186,8 @@ export class SuperAgentHost extends Service {
     recoverOnStart: z.boolean().default(true),
     watchdogMode: z.string().default('llm'),
     speculationEnabled: z.boolean().default(true),
+    daemonUrl: z.string().default(''),
+    daemonToken: z.string().default(''),
   })
 
   readonly runtime: Runtime
@@ -297,6 +302,8 @@ export class SuperAgentHost extends Service {
             SUPER_AGENT_JOB_DIR: join(resolve(config.workspace || process.cwd()), '.seed', 'jobs'),
             SUPER_AGENT_WORKSPACE: resolve(config.workspace || process.cwd()),
             SUPER_AGENT_CONTROL_DIR: this.controlDir,
+            SUPER_AGENT_DAEMON_URL: config.daemonUrl,
+            SUPER_AGENT_DAEMON_TOKEN: config.daemonToken,
           },
           ...(config.dshPatch ? { patches: [resolve(config.dshPatch)] } : {}),
           ...(config.workspace ? { cwd: resolve(config.workspace) } : {}),
