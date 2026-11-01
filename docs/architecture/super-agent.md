@@ -290,7 +290,8 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 - **GitHub 真实事件依赖第三方 actor**：自己操作不会给自己发通知；验收时用 Actions bot 评论触发。
 - **凭据隔离是弱保证**：daemon 继承执行机环境变量；模型上下文不包含凭据，但没有进程级隔离（对应原文 8.4 开放问题）。
 - **Router 为单常驻逻辑会话**：评估与回复共享一个逻辑 Router；水平分片/多层过滤留了接口，未实现。
-- **Web 面板未做**：面板为 CLI 文本/JSON，符合"只列待人工项"的最小形态。
+- **桌面控制台是"Edge 应用模式壳"**：独立窗口 + 无地址栏 + 独立 profile，但不是 Electron/Tauri 打包；要分发安装包需另做 installer。
+- **控制台是单用户本机形态**：只绑 `127.0.0.1`，没有多用户/远程访问与细粒度审计（token 保护是可选弱保护）。
 ## 17. 真实运行（无 fake）依赖
 
 | 能力 | 需要 | 落点 |
@@ -322,3 +323,33 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 | Watchdog 真机 | ✅ | `scripts/live_watchdog.ts`：卡死 worker → 模型判定 intervene → 旧 assignment 结束、新 assignment 启动 |
 | 重启恢复 | ✅ | `scripts/live_recovery.ts`：running assignment → 重启 → `resume` 输入投递 → worker 完成 recovery.txt |
 | 崩溃安全 | ✅ | 非法事件在落库前被 reducer 拒绝；ID 工厂按历史事件预热，重启不撞号 |
+
+## 19. 桌面控制台（参考 DSH）
+
+目标：给"看着它跑、顺手干预"提供一个桌面窗口，而不是只能读 CLI 文本。参考 DeepSeek Harness 的三栏布局（侧栏导航 + 主对话区 + 右侧检查器），但不引入它的 React/pnpm 体系。
+
+架构（零 npm 依赖）：
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 视图模型 | `src/ui/view.ts` | `State` → `UiState` / `UiTicketView`（纯函数，可测） |
+| 服务 | `src/ui/server.ts` | `node:http` 静态资源 + JSON API + SSE；只绑 `127.0.0.1`，可选 token |
+| 界面 | `src/ui/web/` | 手写 HTML/CSS/ESM：三栏、深浅色、SSE 实时刷新、回复/重试/暂停 |
+| 桌面壳 | `src/ui/desktop.ts` | 用系统 Edge/Chrome 的 `--app=` 独立窗口（独立 profile），零依赖 |
+| 装配 | `src/ui/desktop_main.ts` + `cli.ts desktop` | 引擎常驻 + 服务 + 窗口生命周期绑定 |
+
+API：
+
+| 路径 | 说明 |
+|---|---|
+| `GET /api/state` | 暂停状态、槽位、计数、工单列表（待人工优先、最近活动排序） |
+| `GET /api/tickets/:id` | 工单 + 授权 + 时间线（触发/输入/报告/回复） |
+| `GET /api/events?after=&limit=` | 事件流增量（界面默认隐藏 `policy.changed` 噪声） |
+| `GET /api/stream` | SSE：状态变化即推送（比较 lastSeq/paused） |
+| `POST /api/command` | `pause` / `resume` / `retry` / `reply`（reply 走 `engine.personMessage` 并 tick） |
+
+状态仍是单向的：界面只调用引擎已有方法（`pause/resume/retry/personMessage`），不直接改状态；所有变更仍落为事件。
+
+桌面壳为什么不是 Electron：`--app=` 模式给出独立窗口、无地址栏、独立 profile、任务栏图标，且复用系统 WebView2/Chromium；需要用 Electron 打包安装包时再单列一期（文档 §16 已记）。
+
+验收截图：`docs/desktop-console.png`（真机窗口，1440×920）。

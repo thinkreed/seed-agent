@@ -7,6 +7,7 @@ import { read as feishuRead, say as feishuSay } from "./feishu_cli.ts";
 import { createCheckers, formatChecks, runChecks } from "./health.ts";
 import { render, renderJson } from "./panel.ts";
 import { SqliteStore } from "./store.ts";
+import { runDesktop } from "./ui/desktop_main.ts";
 
 /** 真实运行：配置驱动，接真实模型与渠道。 */
 export async function runApp(configPath: string | undefined, once: boolean): Promise<number> {
@@ -44,6 +45,18 @@ export async function doctor(configPath?: string): Promise<number> {
   return failed.length === 0 ? 0 : 1;
 }
 
+/** 桌面控制台：常驻引擎 + 本地界面（默认 4780，独立应用窗口）。 */
+export async function desktopCommand(configPath?: string, argv: string[] = []): Promise<number> {
+  const portIndex = argv.indexOf("--port");
+  const port = portIndex >= 0 ? Number(argv[portIndex + 1]) : undefined;
+  const noBrowser = argv.includes("--no-browser");
+  return runDesktop({
+    ...(configPath ? { configPath } : {}),
+    ...(Number.isFinite(port) && port !== undefined ? { port } : {}),
+    window: !noBrowser,
+  });
+}
+
 const [, , command = "help", arg, flag] = process.argv;
 const exitCode =
   command === "run"
@@ -56,10 +69,12 @@ const exitCode =
           ? await feishuSay(arg ?? "", process.argv.slice(4).join(" "))
           : command === "read"
             ? await feishuRead(arg ?? "")
-            : 2;
+            : command === "desktop" || command === "ui"
+              ? await desktopCommand(arg, process.argv.slice(4))
+              : 2;
 if (exitCode === 2) {
   console.error(
-    "usage: cli.ts run <config.json> [--once] | doctor <config.json> | panel <db> [--json] | say <chat_id> <text> | read <chat_id>",
+    "usage: cli.ts run <config.json> [--once] | desktop <config.json> [--port 4780] [--no-browser] | doctor <config.json> | panel <db> [--json] | say <chat_id> <text> | read <chat_id>",
   );
 }
 process.exitCode = exitCode;

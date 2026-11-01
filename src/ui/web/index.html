@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>seed-agent · Super-agent Console</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body data-theme="dark">
+    <div id="app" class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="logo">◈</span>
+          <span class="brand-name">seed<span class="brand-accent">agent</span></span>
+          <span class="badge">1.0</span>
+        </div>
+
+        <div class="status" id="status">
+          <span class="dot" id="status-dot"></span>
+          <span id="status-text">connecting…</span>
+          <button class="ghost" id="toggle-pause" title="暂停/恢复引擎">暂停</button>
+        </div>
+
+        <div class="metrics" id="metrics"></div>
+
+        <nav class="filters" id="filters">
+          <button class="chip active" data-filter="all">全部</button>
+          <button class="chip" data-filter="waiting">待人工</button>
+          <button class="chip" data-filter="open">进行中</button>
+          <button class="chip" data-filter="ended">已结束</button>
+        </nav>
+
+        <div class="ticket-list" id="tickets"></div>
+
+        <div class="sidebar-foot">
+          <button class="ghost" id="theme-toggle">切换主题</button>
+          <span class="muted" id="seq"></span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="ticket-head" id="ticket-head">
+          <div class="ticket-title">
+            <span class="source-dot" id="head-source"></span>
+            <span id="head-title">选择一个工单</span>
+          </div>
+          <div class="head-actions">
+            <span class="stage" id="head-stage"></span>
+            <button class="ghost" id="retry-btn" disabled>重试</button>
+          </div>
+        </header>
+
+        <section class="timeline" id="timeline">
+          <div class="empty">从左侧选择一个工单，查看它的事件时间线。</div>
+        </section>
+
+        <form class="composer" id="composer">
+          <textarea id="reply-text" rows="2" placeholder="给这个工单回复一句话（会作为新输入投递给 worker）…"></textarea>
+          <button type="submit" id="send-btn" disabled>发送</button>
+        </form>
+      </main>
+
+      <section class="inspector">
+        <div class="inspector-head">
+          <h3>事件流</h3>
+          <span class="muted" id="event-count"></span>
+        </div>
+        <div class="events" id="events"></div>
+
+        <div class="inspector-head">
+          <h3>授权</h3>
+        </div>
+        <dl class="mandate" id="mandate">
+          <dt>来源</dt><dd id="m-source">—</dd>
+          <dt>发起人</dt><dd id="m-actor">—</dd>
+          <dt>范围</dt><dd id="m-scope">—</dd>
+          <dt>强度</dt><dd id="m-strength">—</dd>
+          <dt>策略</dt><dd id="m-policy">—</dd>
+        </dl>
+      </section>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

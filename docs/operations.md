@@ -63,6 +63,16 @@ node src/cli.ts read <chat_id>                 # 飞书消息读取（过滤机�
 
 然后 `run --once`：模型受理 → 建工单 → 拉起 worker 进程 → worker 用文件工具写文件 → 回报 → Router 输出回复。
 
+## 4.1 桌面版
+
+`ash
+node src/cli.ts desktop seed.config.json              # 引擎 + 独立应用窗口
+node src/cli.ts desktop seed.config.json --no-browser # 只起服务
+.\\scripts\\install-desktop.ps1                         # 桌面/开始菜单快捷方式
+`
+
+窗口是系统 Edge 的应用模式（独立 profile：%LOCALAPPDATA%\\seed-agent\\ui-profile），关窗即停引擎。
+
 ## 5. 数据与恢复
 
 - 状态全在 `dbPath`（SQLite）：`events`（append-only）、`outbox`（stored work）、`cursors`（Source 位点）。

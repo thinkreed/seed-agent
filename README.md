@@ -37,6 +37,23 @@ node src/cli.ts panel seed.db                  # 只列待人工项
 | 本地验证 | 一份 `inbox.jsonl` | 每行一个 Trigger，适合本地/CI 验证整条链路 |
 
 真实链路：Source（JSONL/gh/飞书）→ Gate → 模型评估 → 工单 → worker 进程（真实模型 + 文件/Shell 工具）→ 报告 → Router 回复 → 面板。
+
+## 桌面版（参考 DSH 的三栏控制台）
+
+```bash
+node src/cli.ts desktop seed.config.json              # 常驻引擎 + 独立应用窗口（默认 4780）
+node src/cli.ts desktop seed.config.json --no-browser # 只起服务，自己用浏览器打开
+node src/cli.ts ui seed.config.json --port 4781       # 同上（别名）
+.\scripts\install-desktop.ps1                         # 创建桌面/开始菜单快捷方式
+```
+
+![桌面控制台](docs/desktop-console.png)
+
+- 三栏：工单列表（来源/阶段/摘要）· 选中工单的时间线（触发/报告/对外回复）+ 回复输入 · 事件流 + 授权信息。
+- 操作：暂停/恢复引擎、重试工单、给工单回复（作为新输入投递）、深浅色切换；状态经 SSE 实时推送。
+- 窗口用系统自带 Edge 的**应用模式**（WebView2/Chromium 内核）：独立窗口、无地址栏、独立 profile（`%LOCALAPPDATA%\seed-agent\ui-profile`），零 npm 依赖。
+- 服务只绑定 `127.0.0.1`；可选用 `SEED_UI_TOKEN` 风格的 token 保护 API（见 `src/ui/server.ts`）。
+
 ## 结构
 
 | 路径 | 职责 |
@@ -52,6 +69,7 @@ node src/cli.ts panel seed.db                  # 只列待人工项
 | `src/react.ts` + `src/jobs.ts` + `src/worker.ts` | 异步 ReAct、后台任务、可唤醒执行会话 |
 | `src/watchdog.ts` + `src/control.ts` | 外部控制回路与动作接线 |
 | `src/router.ts` + `src/panel.ts` | 面向人的短回复与只读面板 |
+| `src/ui/` | 桌面控制台：HTTP/SSE 服务、视图模型、Edge 应用窗口启动器、静态资源 |
 
 ## 硬约束（由 `tests/architecture.test.ts` 守护）
 
@@ -59,4 +77,4 @@ node src/cli.ts panel seed.db                  # 只列待人工项
 2. **修改收敛单点**：新事件 = `events.ts` + `reducer.ts` + 视图；同类逻辑不许两处。
 3. **可测试**：时间只走 `clock.ts`，随机只走 `ids.ts`，测试零网络、零 sleep 依赖。
 
-已知限制见设计文档 §16（Correlation、真实渠道客户端、凭据隔离、Web 面板）。
+已知限制见设计文档 §16（Correlation、Shell 沙箱、GitHub 通知已读、凭据隔离）。

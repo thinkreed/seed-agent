@@ -9,6 +9,7 @@
 ```
 node --test                                # 全部测试（必须全绿、不联网、不 sleep、<10s）
 node src/cli.ts run seed.config.json --once # 真实一轮（需 seed.env 凭证）
+node src/cli.ts desktop seed.config.json [--no-browser] # 桌面控制台（默认 4780）
 node src/cli.ts doctor seed.config.json     # 真实体检
 node src/cli.ts panel seed.db [--json]      # 只列待人工项
 ```
