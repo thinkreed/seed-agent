@@ -102,3 +102,9 @@ Restart=always
 [Install]
 WantedBy=multi-user.target
 ```
+
+## 8. 验收脚本
+
+`ash
+node scripts/live_watchdog.ts   # 真机：卡死 worker -> 模型判定 -> 重试（需 seed.env 模型 key）
+`

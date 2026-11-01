@@ -71,10 +71,16 @@ export class LocalExecutor implements Executor {
     }
   }
 
-  async deliver(_ticket: Ticket, input: Input): Promise<void> {
-    const child = this.children.get(_ticket.id);
-    if (!child?.stdin) throw new Error(`no live worker for ticket ${_ticket.id}`);
-    child.stdin.write(`${JSON.stringify({ inputId: input.id, kind: input.kind, ref: input.ref })}\n`);
+  async deliver(ticket: Ticket, input: Input): Promise<void> {
+    const child = this.children.get(ticket.id);
+    if (!this.isLive(child)) return; // worker 已退出：下次派工会带上新输入
+    const stdin = child.stdin;
+    stdin.on("error", () => undefined);
+    stdin.write(`${JSON.stringify({ inputId: input.id, kind: input.kind, ref: input.ref })}\n`, () => undefined);
+  }
+
+  private isLive(child: ChildProcess | undefined): child is ChildProcess & { stdin: NonNullable<ChildProcess["stdin"]> } {
+    return child !== undefined && child.exitCode === null && !child.killed && child.stdin !== null && !child.stdin.destroyed;
   }
 
   async stop(assignment: Assignment): Promise<void> {

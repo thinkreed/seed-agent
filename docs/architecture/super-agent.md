@@ -305,12 +305,16 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 
 | 检查项 | 状态 | 证据 |
 |---|---|---|
-| `node --test` | ✅ | 175 例全绿 |
+| `node --test` | ✅ | 178 例全绿 |
 | 骨架无 fake | ✅ | 产品源码不含假实现（替身仅在 `tests/`） |
-| 真实模型调用 | ✅ 真机 | 百炼 token-plan 端点 `deepseek-v4.1-flash`；两次 `run --once` 成功：评估→工单→worker→报告→回复，17 条事件、回放哈希稳定 |
+| 真实模型调用 | ✅ 真机 | 百炼 token-plan 端点 `deepseek-v4.1-flash`；多次 `run --once` 成功：评估→工单→worker→报告→回复，17 条事件、回放哈希稳定 |
 | 真实 worker 进程 + 工具 | ✅ 真机 | worker 子进程用真实模型 + 文件工具写出 `.seed/work/t-000001/hello.txt`（27 字节，内容 "hello from seed super-agent"） |
 | 真实对外回复 | ✅ 真机 | Router 通过 Console 信道输出"已完成…请验收" |
 | `gh` 登录与读取 | ✅ 真机 | `doctor` 与 `GhCliClient` 实测（账号 thinkreed；当前 0 条通知） |
-| GitHub 评论回写 | ⏳ 待目标 | 需要测试 issue/仓库（`thinkreed/seed-agent` 为 public） |
+| GitHub 写能力 | ✅ 真机 | 私有 gist 创建 → 真实评论（id 6451680，count=1）→ 删除（404 校验），无残留 |
+| GitHub issue 评论回写 | ⏳ 待目标 | 用户仓库均为 public 且无 issue；需测试 issue 或指定仓库 |
 | 飞书 token | ✅ 真机 | tenant_access_token 获取成功（code 0，应用「毛毛」） |
-| 飞书群消息/回复 | ⏳ 待拉群 | 机器人「毛毛」当前不在任何群（chat 数 0），需拉群或提供 chat_id |
+| 飞书发送 | ✅ 真机 | `say` 向群 `oc_93f1...` 发出真实消息（message_id `om_x100b615872ceaca4dd2db234d6f7cbf`） |
+| 飞书读取 | ✅ 真机 | `read` 拉到群消息；机器人消息与系统模板消息已过滤 |
+| 飞书群闭环 | ⏳ 待人发言 | daemon 已在轮询该群，等一条真人消息验证 收→做→回 |
+| Watchdog 真机 | ✅ | `scripts/live_watchdog.ts`：卡死 worker → 模型判定 intervene → 旧 assignment 结束、新 assignment 启动 |
