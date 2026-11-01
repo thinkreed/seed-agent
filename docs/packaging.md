@@ -12,12 +12,22 @@
 
 ## 本机失败证据
 
+官方流程：
+
 ```
 desktop package: the build host cannot run this packaging sequence:
   vswhere: spawn C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe ENOENT
 ```
 
-DSH 的打包流程要求本机具备 Visual Studio C++ 工具链（用于原生组件/安装器构建）。当前机器未安装，故无法在此环境产出安装包。这是构建环境限制，不是代码问题。
+绕过官方预检、直接调用 electron-builder（`--win --dir`）同样失败：
+
+```
+⨯ ENOENT: …\.desktop-build\targets\win-x64\dsh\node_modules\@deepseek-ai\libreoffice-kit\package.json
+  at officePackageDirectories (scripts/libreoffice-packages.mjs)
+  at beforePack (electron-builder-config.mjs)
+```
+
+原因：electron-builder 需要官方 prepare 阶段生成的 target 树；该阶段被 VS 工具链预检拦截。结论一致：**本机缺 Visual Studio C++ Build Tools，不能产出安装包或解包目录**。
 
 ## 在具备工具链的机器上打包
 
