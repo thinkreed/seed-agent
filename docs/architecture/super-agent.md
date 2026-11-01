@@ -249,25 +249,43 @@ CREATE TABLE cursors   (source TEXT PRIMARY KEY, position TEXT NOT NULL, updated
 
 ---
 
-## 14. 实现状态（滚动更新）
+## 14. 实现状态（1.0）
 
 | 期 | 状态 | 证据 |
 |---|---|---|
-| **P0 地基** | ✅ 完成 | `src/domain.ts` `events.ts` `reducer.ts` `fsm.ts` `store.ts` `effects.ts` `clock.ts` `ids.ts`；测试：reducer 回放确定性、非法转换、store 持久化/回放哈希、effects 退避与丢弃、FSM 阶段矩阵、架构守护 |
-| **P1 受理** | ✅ 完成（LLM 适配器待接） | `src/policy.ts` Gate 矩阵与 Policy 版本；`src/eval_runner.ts` 批处理 + 幂等 + 扇出直通；测试：Gate 7 例、批处理合并、订阅直通、ignore/stop |
-| **P2 执行** | ✅ 完成 | `src/executor/local.ts`（工单目录 + prepare + worker 子进程 + stdout JSON 报告回收 + stdin 投递）、`src/model.ts` + `src/assessor_llm.ts`（模型端口 → Inline&Spill 视图 → 决策）、`src/router.ts`（人面向的短回复，同报告只通知一次、失败走 outbox 退避）、Assignment/并发槽/唤醒语义 |
-| **P3 路由上下文** | ◐ 核心完成 | `src/context.ts` Inline & Spill 视图、`src/recall.ts` 链式召回（Trigger→Thread→Ticket）、`src/prompts.ts` 评估/执行/路由提示词、`src/assessor.ts` 模型输出解析；测试：截断/Spill/句柄/召回预算/决策解析。Correlation 与 Eval 侧接线待做 |
-| **P4 异步交互** | ◐ 核心完成 | 全链路 async；`src/jobs.ts` 后台任务注册表（协作取消、30 分钟判死、完成通知）；`src/react.ts` 异步 ReAct 循环（`tool`/`start`/`stop`/`report` 四种动作）；测试：任务生命周期、stop 取消、deadline、ReAct 全路径。前台中断式全双工与后台唤醒待接 |
+| **P0 地基** | ✅ | `domain/events/reducer/fsm/store/effects/clock/ids`；回放确定性、非法转换、持久化回放哈希、退避与丢弃、阶段矩阵、架构守护测试 |
+| **P1 受理** | ✅ | `policy`（Gate 矩阵 + 版本哈希）、`eval_runner`（批处理 + 幂等 + 扇出直通）、`assessor`（模型输出解析） |
+| **P2 执行** | ✅ | `executor/local`（工单目录 + prepare + 子进程 + stdout 报告 + stdin 投递）、`assessor_llm` + `model`、`router`（人面向短回复，同报告只通知一次，失败退避）、Assignment/并发槽/唤醒语义 |
+| **P3 路由上下文** | ✅ | `context`（Inline & Spill 视图，预算可配）、`recall`（Trigger→Thread→Ticket 链式召回）、`prompts`（assessment/worker/router） |
+| **P4 异步交互** | ✅ | 全链路 async；`jobs`（立即返回 jobId、协作取消、30 分钟判死、完成通知）；`react`（tool/start/stop/report 四动作）；`worker`（turn 进行中投递的消息下一轮消费） |
+| **P5 真渠道** | ✅ | `sources/github` + `GitHubChannel`（评论回写）、`sources/feishu` + `FeishuChannel`（话题回复）、`sources/local` + `runner`（轮询/位点/逐源容错/异步 poll） |
+| **P6 存算分离** | ✅ | `executor/protocol`（daemon 协议）、`RemoteExecutor`（计算侧）、`DaemonAgent` + `daemon/main`（执行侧独立进程）、`executor/stdio`（行式 JSON 传输）；跨进程报告回流与离线退避有测试 |
+| **P7 Watchdog** | ✅ | `watchdog`（停滞/投递失败判据 + 模型裁定）、`control`（verdict → 引擎 retry）、引擎 `pause/resume/retry/recoverAfterRestart`、`daemon` 每轮巡检接线 |
+| **P8 面板部署** | ✅ | `config`（JSON + 校验 + 默认值）、`panel`（文本 / `--json`）、`daemon` 常驻主循环、CLI `demo` / `remote` / `panel` |
 
-| **P5 真渠道** | ◐ GitHub 完成 | `src/sources/github.ts`（通知 → Trigger/Thread，仓库与 reason 过滤）、`GitHubChannel`（评论回写）、`src/sources/local.ts` + `src/runner.ts`（轮询/位点/逐源容错）；飞书 IM 与真实 `gh` 客户端待接 |
-| **P6 存算分离** | ◐ 核心完成 | `src/executor/protocol.ts`（daemon 协议）、`RemoteExecutor`（计算侧只发指令收报告）、`DaemonAgent`（执行侧无状态，本地跑命令并回推报告）；测试：端到端报告回流、daemon 离线→outbox 退避→恢复。stdio/网络 transport 与凭据隔离待补 |
-| **P7 Watchdog** | ◐ 判据与动作完成 | `src/watchdog.ts` 判据 + 模型裁定；引擎提供 `pause()/resume()/retry()/recoverAfterRestart()`；测试：暂停不派工、重试重新派工、重启收口并留恢复注记。自动接线（verdict → 动作）待做 |
-| **P8 面板部署** | ◐ 配置与观测就绪 | `src/config.ts`（JSON 配置 + 校验 + 默认值）、`src/panel.ts` 文本/JSON 两种输出、`src/daemon.ts` 常驻主循环、CLI 演示；一键部署与运维文档待补 |
+当前全量测试：**142 例全部通过，约 2.5s（含子进程 / daemon / 后台任务用例），零网络、零 sleep 依赖**。
 
-当前全量测试：**128 例全部通过，约 2s（含子进程/daemon 用例），零网络**。
+## 15. 1.0 验收清单
 
-| 验证命令 | 期望 |
-|---|---|
-| `node --test` | 128 pass / 0 fail |
-| `node src/cli.ts` | 打印 17 条事件、1 张工单 ended、回放哈希、1 条对外回复 |
-| `node src/cli.ts panel <db>` | 打印面板（只列待人工项） |
+```bash
+cd seed-agent
+node --test                 # 期望：142 pass / 0 fail
+node src/cli.ts             # 期望：17 events、ticket ended、1 条对外回复、回放哈希
+node src/cli.ts remote      # 期望：独立 daemon 进程执行并回报（daemon pid 可见）
+node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出空表）
+```
+
+验收要点：
+
+1. 单向状态流：所有状态仅由 `node --test` 中 reducer/回放用例保证；`store.append` 是唯一写入口。
+2. 单点收敛：新增事件只需改 `events.ts` + `reducer.ts` + 视图，架构测试会校验一一对应。
+3. 可测试：全部用例零网络；时间走 `clock.ts`，随机走 `ids.ts`，架构测试会扫描越界引用。
+4. 端到端：`demo` 覆盖"受理→工单→派工→报告→对外回复→面板"，`remote` 覆盖"计算与执行分离"。
+
+## 16. 已知限制（1.0 之后）
+
+- **Correlation 未实现**：Thread 之间的关联只用于上下文，当前只做订阅扇出，未建跨 Thread 引用图。
+- **真实渠道客户端未内置**：GitHub / 飞书实现为端口 + fake 客户端；接入 `gh`、`lark-cli` 或 HTTP 客户端即可替换，不影响引擎。
+- **凭据隔离是弱保证**：daemon 继承执行机环境变量；模型上下文不包含凭据，但没有进程级隔离（对应原文 8.4 开放问题）。
+- **Router 为单常驻逻辑会话**：评估与回复共享一个逻辑 Router；水平分片/多层过滤留了接口，未实现。
+- **Web 面板未做**：面板为 CLI 文本/JSON，符合"只列待人工项"的最小形态。

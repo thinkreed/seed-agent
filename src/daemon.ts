@@ -14,6 +14,11 @@ export interface RoundReport {
   readonly failures: number;
 }
 
+export interface WatchdogBridge {
+  check(state: import("./domain.ts").State): Promise<import("./watchdog.ts").WatchdogReport>;
+  apply(report: import("./watchdog.ts").WatchdogReport): unknown;
+}
+
 export interface DaemonOptions {
   readonly runner: SourceRunner;
   readonly engine: Engine;
@@ -21,6 +26,7 @@ export interface DaemonOptions {
   readonly clock: Clock;
   readonly intervalMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
+  readonly watchdog?: WatchdogBridge;
 }
 
 export class Daemon {
@@ -32,11 +38,15 @@ export class Daemon {
     this.options = options;
   }
 
-  /** 跑一轮：收事件 -> 驱动引擎。返回这一轮的统计。 */
+  /** 跑一轮：收事件 -> 驱动引擎 -> 巡检。返回这一轮的统计。 */
   async runRound(): Promise<RoundReport> {
     const poll = await this.options.runner.pollOnce();
     const before = this.options.store.lastSeq();
     await this.options.engine.tick();
+    if (this.options.watchdog) {
+      const report = await this.options.watchdog.check(this.options.store.state());
+      this.options.watchdog.apply(report);
+    }
     const events = this.options.store.lastSeq() - before;
     this.rounds += 1;
     return { ingested: poll.ingested, events, failures: poll.failures.length };

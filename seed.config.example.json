@@ -1,0 +1,16 @@
+{
+  "dbPath": "seed.db",
+  "slots": 4,
+  "intervalMs": 1000,
+  "staleSeconds": 1800,
+  "policy": {
+    "acceptMode": "auto",
+    "allowedSenders": [["local", "*"], ["github", "*"], ["feishu", "*"]],
+    "rules": [
+      { "source": "local", "actor": "*", "allow": true, "strength": "explicit", "note": "local-explicit" },
+      { "source": "github", "actor": "*", "allow": true, "strength": "inferred", "note": "repo-watcher" },
+      { "source": "feishu", "actor": "*", "allow": true, "strength": "inferred", "note": "team-chat" }
+    ]
+  },
+  "worker": { "file": "node", "args": ["-e", "console.log(JSON.stringify({status:'waiting',summary:'worker placeholder'}))"] }
+}

@@ -4,12 +4,18 @@
  *   node src/cli.ts panel f   # 读取 sqlite 库并打印面板
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { FakeClock } from "./clock.ts";
 import { RecordingChannel } from "./channels/recording.ts";
 import type { Decision, Report, Trigger } from "./domain.ts";
+import { RemoteExecutor } from "./executor/remote.ts";
+import { StdioTransport } from "./executor/stdio.ts";
 import { RecordingExecutor, ScriptedAssessor } from "./fakes.ts";
 import { SeqIds } from "./ids.ts";
-import { render } from "./panel.ts";
+import { render, renderJson } from "./panel.ts";
 import { defaultPolicy } from "./policy.ts";
 import { Router } from "./router.ts";
 import { Runtime } from "./runtime.ts";
@@ -77,14 +83,73 @@ export async function demo(): Promise<number> {
   return 0;
 }
 
-export function showPanel(path: string): number {
+export function showPanel(path: string, asJson = false): number {
   const store = new SqliteStore(path);
-  console.log(render(store.state()));
+  console.log(asJson ? renderJson(store.state()) : render(store.state()));
   store.close();
   return 0;
 }
 
-const [, , command = "demo", arg] = process.argv;
+/** 计算与执行分离的演示：daemon 作为独立进程执行，报告跨进程回流。 */
+export async function remoteDemo(): Promise<number> {
+  const clock = new FakeClock();
+  const root = mkdtempSync(join(tmpdir(), "seed-demo-"));
+  const transport = new StdioTransport({
+    command: process.execPath,
+    args: [join(import.meta.dirname, "daemon", "main.ts")],
+    cwd: join(import.meta.dirname, ".."),
+    env: { SEED_DAEMON_ROOT: root },
+  });
+  const executor = new RemoteExecutor({
+    transport,
+    clock,
+    report: (report) => runtime.engine.report(report),
+    worker: {
+      file: process.execPath,
+      args: ["-e", 'console.log(JSON.stringify({ status: "ready", summary: "daemon 执行完成" }));'],
+    },
+  });
+  const runtime = Runtime.build({
+    assessor: new ScriptedAssessor([accept()]),
+    executor,
+    config: { dbPath: ":memory:", slots: 1, policy: defaultPolicy() },
+    clock,
+    ids: new SeqIds(),
+  });
+
+  runtime.engine.ingest({
+    id: "trg-remote-1",
+    source: "local",
+    actor: "alice",
+    text: "在远端执行环境里跑一次任务",
+    threadIds: ["thr-remote-1"],
+    channelIds: ["chan-remote-1"],
+    at: 0,
+  });
+  await runtime.tickUntilIdle();
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (Object.values(runtime.engine.state.tickets)[0]?.state === "ended") break;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  const ticket = Object.values(runtime.engine.state.tickets)[0];
+  console.log(`daemon pid   : ${transport.pid}`);
+  console.log(`ticket       : ${ticket?.shortName} -> ${ticket?.state}`);
+  console.log(`report       : ${ticket ? (runtime.engine.state.reports[ticket.id]?.at(-1)?.summary ?? "") : ""}`);
+  console.log(`events       : ${runtime.store.lastSeq()}`);
+  transport.close();
+  runtime.close();
+  rmSync(root, { recursive: true, force: true });
+  return 0;
+}
+
+const [, , command = "demo", arg, flag] = process.argv;
 const exitCode =
-  command === "demo" ? await demo() : command === "panel" ? showPanel(arg ?? "seed.db") : 2;
+  command === "demo"
+    ? await demo()
+    : command === "remote"
+      ? await remoteDemo()
+      : command === "panel"
+        ? showPanel(arg ?? "seed.db", flag === "--json")
+        : 2;
 process.exitCode = exitCode;

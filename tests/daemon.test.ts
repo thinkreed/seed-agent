@@ -57,3 +57,36 @@ test("stop：外部可以中止常驻循环", async () => {
   assert.ok(rounds >= 1);
   runtime.close();
 });
+
+test("watchdog 每轮巡检并在发现异常时动作", async () => {
+  const { rt, clock } = (() => {
+    const clock = new FakeClock();
+    const runtime = Runtime.build({
+      assessor: new ScriptedAssessor([h.accept()]),
+      executor: new RecordingExecutor(),
+      config: { policy: h.policy(), slots: 1 },
+      clock,
+    });
+    return { rt: runtime, clock };
+  })();
+  rt.engine.ingest(h.trigger());
+  await rt.tickUntilIdle();
+
+  const findings: string[] = [];
+  const bridge = {
+    check: async (state: import("../src/domain.ts").State) => ({
+      findings: [
+        { kind: "stalled" as const, ticketId: Object.keys(state.tickets)[0] as string, detail: "test" },
+      ],
+      verdict: { action: "intervene" as const, reason: "test" },
+    }),
+    apply: (report: { findings: readonly { ticketId: string }[] }) => {
+      findings.push(...report.findings.map((finding) => finding.ticketId));
+    },
+  };
+  const runner = new SourceRunner({ sources: [], engine: rt.engine, store: rt.store, clock });
+  const daemon = new Daemon({ runner, engine: rt.engine, store: rt.store, clock, watchdog: bridge });
+  await daemon.runRound();
+  assert.equal(findings.length, 1);
+  rt.close();
+});
