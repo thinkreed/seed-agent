@@ -291,6 +291,7 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 - **凭据隔离是弱保证**：daemon 继承执行机环境变量；模型上下文不包含凭据，但没有进程级隔离（对应原文 8.4 开放问题）。
 - **Router 为单常驻逻辑会话**：评估与回复共享一个逻辑 Router；水平分片/多层过滤留了接口，未实现。
 - **桌面控制台是"Edge 应用模式壳"**：独立窗口 + 无地址栏 + 独立 profile，但不是 Electron/Tauri 打包；要分发安装包需另做 installer。
+- **界面复用 DSH 设计令牌而非组件**：`src/ui/web/vendor/` 原样复制 DSH 的 design tokens（MIT），布局按其真实比例重排，组件是自绘 HTML/CSS，不是 React 组件级复用。
 - **控制台是单用户本机形态**：只绑 `127.0.0.1`，没有多用户/远程访问与细粒度审计（token 保护是可选弱保护）。
 ## 17. 真实运行（无 fake）依赖
 
@@ -334,7 +335,7 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 |---|---|---|
 | 视图模型 | `src/ui/view.ts` | `State` → `UiState` / `UiTicketView`（纯函数，可测） |
 | 服务 | `src/ui/server.ts` | `node:http` 静态资源 + JSON API + SSE；只绑 `127.0.0.1`，可选 token |
-| 界面 | `src/ui/web/` | 手写 HTML/CSS/ESM：三栏、深浅色、SSE 实时刷新、回复/重试/暂停 |
+| 界面 | `src/ui/web/` | 手写 HTML/CSS/ESM；设计令牌原样复用 DSH（`web/vendor/`，MIT），三栏/气泡/composer 按其真实样式重排 |
 | 桌面壳 | `src/ui/desktop.ts` | 用系统 Edge/Chrome 的 `--app=` 独立窗口（独立 profile），零依赖 |
 | 装配 | `src/ui/desktop_main.ts` + `cli.ts desktop` | 引擎常驻 + 服务 + 窗口生命周期绑定 |
 
