@@ -8,7 +8,7 @@
  * 否则用 PendingDshExecutor 占位（仅记录派工，用于无 DSH 环境的单测）。
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -107,6 +107,8 @@ export interface SuperAgentHostConfig {
   sourceIntervalSeconds: number
   /** 链式召回索引文件（默认事件库同级 recall-index.json；worker 通过它逐跳读上下文）。 */
   recallIndexPath: string
+  /** Worker 控制请求目录（handback/unsubscribe 的文件式入口）。 */
+  controlDir: string
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -160,6 +162,7 @@ export class SuperAgentHost extends Service {
     sourceJsonlPath: z.string().default(''),
     sourceIntervalSeconds: z.number().step(1).min(1).max(3600).default(15),
     recallIndexPath: z.string().default(''),
+    controlDir: z.string().default(''),
   })
 
   readonly runtime: Runtime
@@ -174,6 +177,7 @@ export class SuperAgentHost extends Service {
   private lastRouterBatch: RouterBatch | undefined
   private readonly sourceList: Source[] = []
   private readonly recallIndexPath: string
+  private readonly controlDir: string
   private lastPollAt: number | undefined
   private readonly lastPrompts = new Map<string, string>()
   private lastWatchdog: WatchdogReport | undefined
@@ -187,6 +191,9 @@ export class SuperAgentHost extends Service {
     this.recallIndexPath = config.recallIndexPath
       ? resolve(config.recallIndexPath)
       : join(dirname(this.dbPath), 'recall-index.json')
+    this.controlDir = config.controlDir
+      ? resolve(config.controlDir)
+      : join(dirname(this.dbPath), 'control')
 
     const clock = new SystemClock()
     const feishuAppId = process.env.FEISHU_APP_ID?.trim()
@@ -245,6 +252,7 @@ export class SuperAgentHost extends Service {
             SUPER_AGENT_RECALL_INDEX: this.recallIndexPath,
             SUPER_AGENT_JOB_DIR: join(resolve(config.workspace || process.cwd()), '.seed', 'jobs'),
             SUPER_AGENT_WORKSPACE: resolve(config.workspace || process.cwd()),
+            SUPER_AGENT_CONTROL_DIR: this.controlDir,
           },
           ...(config.dshPatch ? { patches: [resolve(config.dshPatch)] } : {}),
           ...(config.workspace ? { cwd: resolve(config.workspace) } : {}),
@@ -347,9 +355,49 @@ export class SuperAgentHost extends Service {
 
   async tick(): Promise<boolean> {
     const before = this.runtime.store.lastSeq()
+    this.drainControl()
     await this.runtime.tickUntilIdle()
     this.writeRecallIndex()
     return this.runtime.store.lastSeq() > before
+  }
+
+  /** Worker 交回 Router：取消订阅并重新评估该 Thread（Router 可新建工单或忽略）。 */
+  handback(ticketId: string, reason = '', drive = true): void {
+    this.runtime.engine.handback(ticketId, reason)
+    if (drive) void this.tick()
+  }
+
+  /** Worker 取消订阅（不重新评估）。 */
+  unsubscribe(ticketId: string, threadId?: string, drive = true): void {
+    this.runtime.engine.unsubscribe(ticketId, threadId)
+    if (drive) void this.tick()
+  }
+
+  /** 文件式控制入口：worker 工具写入请求，tick 时统一应用并删除。 */
+  private drainControl(): void {
+    let files: string[] = []
+    try {
+      files = readdirSync(this.controlDir).filter((file) => file.endsWith('.json'))
+    } catch {
+      return
+    }
+    for (const file of files) {
+      const path = join(this.controlDir, file)
+      try {
+        const request = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+        const ticketId = typeof request.ticketId === 'string' ? request.ticketId : ''
+        if (!ticketId) continue
+        const reason = typeof request.reason === 'string' ? request.reason : ''
+        if (request.action === 'handback') this.handback(ticketId, reason, false)
+        else if (request.action === 'unsubscribe') {
+          this.unsubscribe(ticketId, typeof request.threadId === 'string' ? request.threadId : undefined, false)
+        }
+      } catch (error) {
+        console.error(`super-agent control ${file} failed`, String(error))
+      } finally {
+        try { unlinkSync(path) } catch { /* already removed */ }
+      }
+    }
   }
 
   /** 链式召回：按 trigger/thread/ticket id 取摘要 + 下一跳 handles（模型/Router 共用）。 */

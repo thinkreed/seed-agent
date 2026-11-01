@@ -80,6 +80,7 @@ if (Test-Path $cfgSrc) {
   $toolUrls = @{
     '__SUPER_AGENT_RECALL_TOOL__' = 'file:///' + ((Join-Path $dsh 'packages\super-agent\tool-recall\lib\index.js') -replace '\\', '/')
     '__SUPER_AGENT_BACKGROUND_TOOL__' = 'file:///' + ((Join-Path $dsh 'packages\super-agent\tool-background\lib\index.js') -replace '\\', '/')
+    '__SUPER_AGENT_CONTROL_TOOL__' = 'file:///' + ((Join-Path $dsh 'packages\super-agent\tool-control\lib\index.js') -replace '\\', '/')
   }
   foreach ($cfgFile in Get-ChildItem $cfgDst -Filter '*.yml') {
     $cfgText = [System.IO.File]::ReadAllText($cfgFile.FullName)

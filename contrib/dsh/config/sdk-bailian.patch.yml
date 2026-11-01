@@ -38,3 +38,6 @@
 - insert:
     - id: super-agent-tool-background
       name: '__SUPER_AGENT_BACKGROUND_TOOL__'
+- insert:
+    - id: super-agent-tool-control
+      name: '__SUPER_AGENT_CONTROL_TOOL__'

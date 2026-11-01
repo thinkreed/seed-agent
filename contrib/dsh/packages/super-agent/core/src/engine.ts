@@ -201,6 +201,51 @@ export class Engine {
     return this.actions.retry(ticketId, this.effects);
   }
 
+  /** Worker 取消订阅：之后同一 Thread 的事件不再直通该工单（回到 Router 评估）。 */
+  unsubscribe(ticketId: string, threadId?: string): AnyEvent[] {
+    const now = this.clock.now();
+    const removed = this.state.subscriptions.filter(
+      (item) => item.ticketId === ticketId && (threadId === undefined || item.threadId === threadId),
+    );
+    return this.append(removed.map((item) => ev.subscriptionRemoved(ticketId, item.threadId, now)));
+  }
+
+  /**
+   * Worker 交回 Router：取消该工单的订阅，并把 Thread 上最新事件重新入评估队列，
+   * 由 Router 决定新建工单、忽略或另作处理（文章 §3.2 的 hand back）。
+   */
+  handback(ticketId: string, _reason = ''): AnyEvent[] {
+    const now = this.clock.now();
+    const state = this.state;
+    const ticket = state.tickets[ticketId];
+    if (!ticket) throw new Error(`unknown ticket ${ticketId}`);
+    const threadIds = state.subscriptions
+      .filter((item) => item.ticketId === ticketId)
+      .map((item) => item.threadId);
+    const produced: AnyEvent[] = threadIds.map((threadId) =>
+      ev.subscriptionRemoved(ticketId, threadId, now));
+    for (const threadId of threadIds) {
+      const latest = Object.values(state.triggers)
+        .filter((trigger) => trigger.threadIds.includes(threadId))
+        .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+        .at(-1);
+      if (!latest) continue;
+      const queued = Object.values(state.evals).find(
+        (item) => item.threadId === threadId && item.state === "queued",
+      );
+      const triggerIds = queued ? [...queued.triggerIds, latest.id] : [latest.id];
+      produced.push(ev.dispositionRecorded(latest.id, "queued", now));
+      produced.push(ev.evalQueued({
+        id: queued?.id ?? this.ids.next("eval"),
+        threadId,
+        triggerIds,
+        state: "queued",
+        at: now,
+      }, now));
+    }
+    return this.append(produced);
+  }
+
   /** 进程重启后：把 running 的 assignment 收口，并给执行器留下恢复注记。 */
   recoverAfterRestart(): AnyEvent[] {
     return this.actions.recoverAfterRestart(this.effects);

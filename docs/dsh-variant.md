@@ -72,6 +72,7 @@
 - [x] **M7 可复现**：scripts/desktop-super-agent.ps1（凭据→补丁→构建→隔离 home→link 包→注入 profile 行→启动）与 scripts/verify-super-agent.ps1（core/host 冒烟 + 桌面启动探活，-Slow/-Network 追加真机项）；实测 VERIFY OK
 - [x] **订阅扇出**：同线程第二条消息 anned_out 到已有工单（	ests/fanout-smoke.mjs：1 ticket、inp-000001→tk-000001）
 - [x] **Inline & Spill + 链式召回**：超预算指令落盘 spills/<ticket>.txt，worker prompt 只留摘要 + 可读取路径（	ests/spill-smoke.mjs，SPILL SMOKE OK）
+- [x] **P1-1 handback / unsubscribe**：`engine.handback()` 移除订阅并重新排队评估；worker `super_agent_handback/super_agent_unsubscribe` 工具写控制请求，host tick drain；`HANDBACK SMOKE OK`。
 - [x] **P0-4 异步 ReAct + 全双工**：回合中消息排队、回合结束立即处理（`FULL DUPLEX SMOKE OK`，turns=2）；`super_agent_start/status/stop` 后台工具（`ASYNC REACT SMOKE OK`）。
 - [x] **P0-3 链式召回（工具）**：super_agent_recall DSH 工具（trigger/thread/ticket 逐跳），worker 真机两次调用 ticket→trigger 取回索引-only marker；RECALL TOOL SMOKE OK。
 - [x] **P0-3 链式召回（基线）**：host 维护 ecall-index.json（triggers/threads/tickets 引用图）并随 tick 更新；ecallContext(kind,id) 返回摘要+下一跳 handles；worker prompt 注入索引路径（trigger→thread→ticket 逐跳）；RECALL SMOKE OK。
