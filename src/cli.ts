@@ -18,7 +18,7 @@ function accept(reason = "asked-directly"): Decision {
   return { kind: "accept", strength: "explicit", reason, rules: [], scope: "ticket" };
 }
 
-export function demo(): number {
+export async function demo(): Promise<number> {
   const clock = new FakeClock();
   const assessor = new ScriptedAssessor([accept()]);
   const executor = new RecordingExecutor();
@@ -41,7 +41,7 @@ export function demo(): number {
   };
 
   runtime.engine.ingest(trigger);
-  runtime.tickUntilIdle();
+  await runtime.tickUntilIdle();
 
   const state = runtime.engine.state;
   const ticket = Object.values(state.tickets)[0];
@@ -57,7 +57,7 @@ export function demo(): number {
     at: clock.now(),
   };
   runtime.engine.report(report);
-  runtime.tickUntilIdle();
+  await runtime.tickUntilIdle();
 
   console.log(`events       : ${runtime.store.lastSeq()}`);
   console.log(`tickets      : ${Object.keys(runtime.engine.state.tickets).length}`);
@@ -78,5 +78,6 @@ export function showPanel(path: string): number {
 }
 
 const [, , command = "demo", arg] = process.argv;
-const exitCode = command === "demo" ? demo() : command === "panel" ? showPanel(arg ?? "seed.db") : 2;
+const exitCode =
+  command === "demo" ? await demo() : command === "panel" ? showPanel(arg ?? "seed.db") : 2;
 process.exitCode = exitCode;

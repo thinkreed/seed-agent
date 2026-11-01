@@ -19,13 +19,14 @@ export interface AssessContext {
 }
 
 export interface Assessor {
-  assess(context: AssessContext): Decision;
+  /** 可以是同步脚本替身，也可以是真实 LLM 的异步调用。 */
+  assess(context: AssessContext): Decision | Promise<Decision>;
 }
 
 export interface Executor {
-  launch(assignment: Assignment, ticket: Ticket): void;
-  deliver(ticket: Ticket, input: Input): void;
-  stop(assignment: Assignment): void;
+  launch(assignment: Assignment, ticket: Ticket): void | Promise<void>;
+  deliver(ticket: Ticket, input: Input): void | Promise<void>;
+  stop(assignment: Assignment): void | Promise<void>;
 }
 
 export interface ChannelWriter {

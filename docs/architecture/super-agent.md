@@ -255,18 +255,18 @@ CREATE TABLE cursors   (source TEXT PRIMARY KEY, position TEXT NOT NULL, updated
 |---|---|---|
 | **P0 地基** | ✅ 完成 | `src/domain.ts` `events.ts` `reducer.ts` `fsm.ts` `store.ts` `effects.ts` `clock.ts` `ids.ts`；测试：reducer 回放确定性、非法转换、store 持久化/回放哈希、effects 退避与丢弃、FSM 阶段矩阵、架构守护 |
 | **P1 受理** | ✅ 完成（LLM 适配器待接） | `src/policy.ts` Gate 矩阵与 Policy 版本；`src/eval_runner.ts` 批处理 + 幂等 + 扇出直通；测试：Gate 7 例、批处理合并、订阅直通、ignore/stop |
-| **P2 执行** | ◐ 部分 | `src/actions.ts` Assignment、并发槽、唤醒语义（未投递输入 / 从未派工）；`Executor` 为端口 + `RecordingExecutor` 替身，真实执行器与 Router Session 待做 |
+| **P2 执行** | ◐ 执行器与模型已接 | `src/executor/local.ts`（工单目录 + prepare + worker 子进程 + stdout JSON 报告）、`src/assessor_llm.ts` + `src/model.ts`（模型端口 → 提示词 → 决策解析）、Assignment/并发槽/唤醒语义；测试：子进程报告回收、stdin 投递、prepare 失败重试、异步评估器全链路。Router 会话运行时仍待做 |
 | **P3 路由上下文** | ◐ 核心完成 | `src/context.ts` Inline & Spill 视图、`src/recall.ts` 链式召回（Trigger→Thread→Ticket）、`src/prompts.ts` 评估/执行/路由提示词、`src/assessor.ts` 模型输出解析；测试：截断/Spill/句柄/召回预算/决策解析。Correlation 与 Eval 侧接线待做 |
-| **P4 异步交互** | ⬜ 未开始 | 异步 ReAct（start/stop）、后台 job、多信道输出规范 |
+| **P4 异步交互** | ◐ 底座完成 | 全链路 async：`Assessor`/`Executor`/`EffectHandler`/`Engine.tick`/`tickUntilIdle`；报告可在后台回收。`start()`/`stop()` 工具与后台 job 队列待做 |
 | **P5 真渠道** | ◐ 接口就绪 | `src/sources/local.ts` + `src/runner.ts`（轮询、位点、逐源容错）；GitHub/飞书 Source 待接 |
 | **P6 存算分离** | ⬜ 未开始 | 端侧 daemon（Rust）、BYOM、执行变量 |
 | **P7 Watchdog** | ⬜ 未开始 | 定时驱动、进展判定、pause/retry/restart |
 | **P8 面板部署** | ◐ CLI 面板 | `src/panel.ts` 只读面板 + `node src/cli.ts` 端到端演示 |
 
-当前全量测试：**74 例全部通过，约 300ms，零网络、零 sleep**。
+当前全量测试：**84 例全部通过，约 600ms（含子进程用例），零网络**。
 
 | 验证命令 | 期望 |
 |---|---|
-| `node --test` | 74 pass / 0 fail |
+| `node --test` | 84 pass / 0 fail |
 | `node src/cli.ts` | 打印 15 条事件、1 张工单 ended、回放哈希 |
 | `node src/cli.ts panel <db>` | 打印面板（只列待人工项） |

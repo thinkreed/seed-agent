@@ -150,15 +150,15 @@ export class Engine {
 
   // ---------- 驱动 ----------
 
-  tick(): AnyEvent[] {
+  async tick(): Promise<AnyEvent[]> {
     const produced: AnyEvent[] = [];
     for (;;) {
       const evaluation = Object.values(this.state.evals).find((item) => item.state === "queued");
       if (!evaluation) break;
-      produced.push(...this.evalRunner.run(evaluation));
+      produced.push(...(await this.evalRunner.run(evaluation)));
     }
     produced.push(...this.actions.dispatch(this.slots, this.effects));
-    const { produced: effectEvents } = this.effects.drain();
+    const { produced: effectEvents } = await this.effects.drain();
     produced.push(...this.append(effectEvents));
     return produced;
   }

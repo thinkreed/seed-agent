@@ -28,7 +28,7 @@ export class EvalRunner {
     this.assessor = options.assessor;
   }
 
-  run(evaluation: Eval): AnyEvent[] {
+  async run(evaluation: Eval): Promise<AnyEvent[]> {
     const now = this.clock.now();
     this.store.append(ev.evalStarted(evaluation.id, now));
     const state = this.store.state();
@@ -42,7 +42,7 @@ export class EvalRunner {
       ),
       policy: state.policy,
     };
-    const decision = this.assessor.assess(context);
+    const decision = await this.assessor.assess(context);
     const produced: AnyEvent[] = [ev.evalDecided(evaluation.id, decision, now)];
     for (const triggerId of evaluation.triggerIds) {
       produced.push(ev.dispositionRecorded(triggerId, "evaluated", now));

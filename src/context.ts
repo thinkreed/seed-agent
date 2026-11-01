@@ -5,9 +5,10 @@
  * 模型按需经 recall 工具逐跳展开（链式召回）。
  */
 
-import type { State } from "./domain.ts";
+import type { Policy, State, Ticket, Trigger } from "./domain.ts";
 import { ticketReport } from "./domain.ts";
 import { stageOf } from "./fsm.ts";
+import type { AssessContext } from "./ports.ts";
 
 export interface ContextBudget {
   /** 单个对象最多内联多少字符（超过即 Spill）。 */
@@ -52,7 +53,7 @@ export interface TicketView {
   readonly id: string;
   readonly shortName: string;
   readonly state: string;
-  readonly stage: string;
+  readonly stage?: string;
   readonly scope: string;
   readonly strength: string;
   readonly report?: { readonly status: string; readonly summary: InlineText };
@@ -73,6 +74,45 @@ export function clip(text: string, limit: number): InlineText {
     return { text: normalized, truncated: false, chars: normalized.length };
   }
   return { text: `${normalized.slice(0, limit)}…`, truncated: true, chars: normalized.length };
+}
+
+/** 由评估上下文（端口）直接构造视图：真实 LLM 评估器用这个入口。 */
+export function buildView(context: AssessContext, budget: ContextBudget = DEFAULT_BUDGET): AssessmentView {
+  const triggers = [...context.triggers].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+  const inlineTriggers = triggers.slice(-budget.maxTriggers);
+  const spilledIds = triggers.slice(0, Math.max(0, triggers.length - budget.maxTriggers));
+  const tickets = [...context.tickets].sort((a, b) => a.id.localeCompare(b.id)).slice(0, budget.maxTickets);
+
+  const triggerViews: TriggerView[] = inlineTriggers.map((trigger) => ({
+    id: trigger.id,
+    source: trigger.source,
+    actor: trigger.actor,
+    at: trigger.at,
+    threadIds: trigger.threadIds,
+    channelIds: trigger.channelIds,
+    text: clip(trigger.text, budget.spillChars),
+  }));
+
+  const ticketViews: TicketView[] = tickets.map((ticket) => ({
+    id: ticket.id,
+    shortName: ticket.shortName,
+    state: ticket.state,
+    scope: ticket.mandate.scope,
+    strength: ticket.mandate.strength,
+  }));
+
+  return {
+    threadId: context.threadId,
+    policyVersion: context.policy?.version ?? null,
+    triggers: triggerViews,
+    tickets: ticketViews,
+    handles: [
+      { kind: "thread", id: context.threadId },
+      ...inlineTriggers.map((trigger) => ({ kind: "trigger" as const, id: trigger.id })),
+      ...tickets.map((ticket) => ({ kind: "ticket" as const, id: ticket.id })),
+    ],
+    spilled: spilledIds.map((trigger) => ({ kind: "trigger" as const, id: trigger.id })),
+  };
 }
 
 /** 把一批 Trigger + 线程上的工单组织成 Assessment 的可读视图。纯函数，确定性输出。 */

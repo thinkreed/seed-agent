@@ -22,10 +22,10 @@ function build(decisions: Parameters<typeof ScriptedAssessor>[0], slots = 4) {
   return { rt, clock, assessor, executor };
 }
 
-test("端到端：Trigger -> Eval -> Ticket -> Assignment -> Report", () => {
+test("端到端：Trigger -> Eval -> Ticket -> Assignment -> Report", async () => {
   const { rt, executor } = build([h.accept()]);
   rt.engine.ingest(h.trigger());
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
 
   const state = rt.engine.state;
   const ticket = Object.values(state.tickets)[0];
@@ -41,7 +41,7 @@ test("端到端：Trigger -> Eval -> Ticket -> Assignment -> Report", () => {
   rt.close();
 });
 
-test("幂等：同一个 Trigger 重复 ingest 只入账一次", () => {
+test("幂等：同一个 Trigger 重复 ingest 只入账一次", async () => {
   const { rt } = build([]);
   rt.engine.ingest(h.trigger());
   const first = rt.store.lastSeq();
@@ -51,7 +51,7 @@ test("幂等：同一个 Trigger 重复 ingest 只入账一次", () => {
   rt.close();
 });
 
-test("批处理：tick 之前到达的多条 Trigger 合并进一次 Eval", () => {
+test("批处理：tick 之前到达的多条 Trigger 合并进一次 Eval", async () => {
   const { rt, assessor } = build([h.ignore()]);
   rt.engine.ingest(h.trigger("trg-1"));
   rt.engine.ingest(h.trigger("trg-2"));
@@ -60,29 +60,29 @@ test("批处理：tick 之前到达的多条 Trigger 合并进一次 Eval", () =
   assert.equal(evals.length, 1);
   assert.deepEqual(evals[0]?.triggerIds, ["trg-1", "trg-2", "trg-3"]);
 
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   assert.equal(assessor.calls.length, 1);
   assert.equal(assessor.calls[0]?.triggers.length, 3);
   rt.close();
 });
 
-test("ignore 决定不产生工单", () => {
+test("ignore 决定不产生工单", async () => {
   const { rt } = build([h.ignore()]);
   rt.engine.ingest(h.trigger());
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   assert.equal(Object.keys(rt.engine.state.tickets).length, 0);
   assert.equal(rt.engine.state.dispositions["trg-1"], "evaluated");
   rt.close();
 });
 
-test("订阅直通：同一线程的后续 Trigger 直接投递，不再走 Eval", () => {
+test("订阅直通：同一线程的后续 Trigger 直接投递，不再走 Eval", async () => {
   const { rt, executor, assessor } = build([h.accept()]);
   rt.engine.ingest(h.trigger("trg-1"));
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   const evalCount = Object.keys(rt.engine.state.evals).length;
 
   rt.engine.ingest(h.trigger("trg-2"));
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
 
   assert.equal(rt.engine.state.dispositions["trg-2"], "fanned_out");
   assert.equal(executor.delivered.length, 1);
@@ -91,25 +91,25 @@ test("订阅直通：同一线程的后续 Trigger 直接投递，不再走 Eval
   rt.close();
 });
 
-test("stop 决定结束线程上的工单", () => {
+test("stop 决定结束线程上的工单", async () => {
   const { rt, clock } = build([h.accept(), h.stop()]);
   rt.engine.ingest(h.trigger("trg-1"));
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   const ticket = Object.values(rt.engine.state.tickets)[0];
   assert.ok(ticket);
 
   rt.store.append(ev.subscriptionRemoved(ticket.id, "thr-1", clock.now()));
   rt.engine.ingest(h.trigger("trg-2"));
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   assert.equal(Object.values(rt.engine.state.tickets)[0]?.state, "ended");
   rt.close();
 });
 
-test("并发槽：slots=1 时同一波只派一个 assignment", () => {
+test("并发槽：slots=1 时同一波只派一个 assignment", async () => {
   const { rt } = build([h.accept(), h.accept()], 1);
   rt.engine.ingest(h.trigger("trg-a", { threadIds: ["thr-a"] }));
   rt.engine.ingest(h.trigger("trg-b", { threadIds: ["thr-b"] }));
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
 
   const assignments = Object.values(rt.engine.state.assignments);
   assert.equal(assignments.length, 1);
@@ -117,15 +117,15 @@ test("并发槽：slots=1 时同一波只派一个 assignment", () => {
   const running = assignments[0];
   assert.ok(running);
   rt.engine.report(h.report("ready", { assignmentId: running.id, ticketId: running.ticketId }));
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   assert.equal(Object.values(rt.engine.state.assignments).length, 2);
   rt.close();
 });
 
-test("人的消息可以 resume 已结束的工单", () => {
+test("人的消息可以 resume 已结束的工单", async () => {
   const { rt } = build([h.accept()]);
   rt.engine.ingest(h.trigger());
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   const ticket = Object.values(rt.engine.state.tickets)[0];
   assert.ok(ticket);
   const assignment = Object.values(rt.engine.state.assignments)[0];
@@ -134,15 +134,15 @@ test("人的消息可以 resume 已结束的工单", () => {
   assert.equal(ticket.state, "open");
 
   rt.engine.personMessage(ticket.id, "还有一处要改");
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   assert.equal(Object.values(rt.engine.state.tickets)[0]?.state, "open");
   rt.close();
 });
 
-test("失败报告不会结束工单", () => {
+test("失败报告不会结束工单", async () => {
   const { rt } = build([h.accept()]);
   rt.engine.ingest(h.trigger());
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   const ticket = Object.values(rt.engine.state.tickets)[0];
   const assignment = Object.values(rt.engine.state.assignments)[0];
   assert.ok(ticket && assignment);

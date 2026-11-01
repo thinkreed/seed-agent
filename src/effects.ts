@@ -14,7 +14,7 @@ export const DEFAULT_BACKOFF: Backoff = {
   maxAttempts: 6,
 };
 
-export type EffectHandler = (item: OutboxItem) => AnyEvent[];
+export type EffectHandler = (item: OutboxItem) => AnyEvent[] | Promise<AnyEvent[]>;
 
 export function backoffDelay(backoff: Backoff, attempts: number): number {
   if (attempts <= 0) return 0;
@@ -50,7 +50,7 @@ export class Effects {
   }
 
   /** 执行所有到期项，返回 (产生的事件, 被丢弃的 id)。 */
-  drain(): { produced: AnyEvent[]; dropped: string[] } {
+  async drain(): Promise<{ produced: AnyEvent[]; dropped: string[] }> {
     const produced: AnyEvent[] = [];
     const dropped: string[] = [];
     for (const item of this.store.outboxDue(this.clock.now())) {
@@ -63,7 +63,7 @@ export class Effects {
       const now = this.clock.now();
       let events: AnyEvent[];
       try {
-        events = handler(item);
+        events = await handler(item);
       } catch (error) {
         const attempts = item.attempts + 1;
         if (attempts >= this.backoff.maxAttempts) {

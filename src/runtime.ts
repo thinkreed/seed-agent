@@ -54,10 +54,10 @@ export class Runtime {
   }
 
   /** 跑到没有新事件为止；返回 tick 次数。 */
-  tickUntilIdle(maxTicks = 100): number {
+  async tickUntilIdle(maxTicks = 100): Promise<number> {
     for (let tick = 1; tick <= maxTicks; tick += 1) {
       const before = this.store.lastSeq();
-      this.engine.tick();
+      await this.engine.tick();
       if (this.store.lastSeq() === before) return tick;
     }
     throw new Error("runtime did not settle");

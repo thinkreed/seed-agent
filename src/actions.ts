@@ -64,24 +64,24 @@ export class Actions {
   }
 
   /** effects: launch —— 真正启动执行器。 */
-  launch(assignmentId: string): AnyEvent[] {
+  async launch(assignmentId: string): Promise<AnyEvent[]> {
     const state = this.store.state();
     const assignment = state.assignments[assignmentId];
     if (!assignment) throw new Error(`unknown assignment ${assignmentId}`);
     const ticket: Ticket | undefined = state.tickets[assignment.ticketId];
     if (!ticket) throw new Error(`unknown ticket ${assignment.ticketId}`);
-    this.executor.launch(assignment, ticket);
+    await this.executor.launch(assignment, ticket);
     return [ev.assignmentStarted(assignment.id, this.clock.now())];
   }
 
   /** effects: deliver —— 把输入投递给执行器。 */
-  deliver(inputId: string): AnyEvent[] {
+  async deliver(inputId: string): Promise<AnyEvent[]> {
     const state = this.store.state();
     const input = state.inputs[inputId];
     if (!input) throw new Error(`unknown input ${inputId}`);
     const ticket: Ticket | undefined = state.tickets[input.ticketId];
     if (!ticket) throw new Error(`unknown ticket ${input.ticketId}`);
-    this.executor.deliver(ticket, input);
+    await this.executor.deliver(ticket, input);
     return [ev.inputDelivered(input.id, this.clock.now())];
   }
 }

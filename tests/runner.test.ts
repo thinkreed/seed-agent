@@ -30,7 +30,7 @@ function triggers(count: number): Trigger[] {
   );
 }
 
-test("LocalSource：按 batchSize 分批吐出，直到耗尽", () => {
+test("LocalSource：按 batchSize 分批吐出，直到耗尽", async () => {
   const source = new LocalSource("local", triggers(5), { batchSize: 2 });
   assert.equal(source.poll().length, 2);
   assert.equal(source.poll().length, 2);
@@ -39,7 +39,7 @@ test("LocalSource：按 batchSize 分批吐出，直到耗尽", () => {
   assert.equal(source.remaining, 0);
 });
 
-test("SourceRunner：轮询 -> ingest -> tick，端到端出门票", () => {
+test("SourceRunner：轮询 -> ingest -> tick，端到端出门票", async () => {
   const { rt, clock } = setup();
   const runner = new SourceRunner({
     sources: [new LocalSource("local", triggers(3))],
@@ -53,12 +53,12 @@ test("SourceRunner：轮询 -> ingest -> tick，端到端出门票", () => {
   assert.deepEqual(report.failures, []);
   assert.equal(rt.store.cursorGet("local"), "trg-003");
 
-  rt.tickUntilIdle();
+  await rt.tickUntilIdle();
   assert.equal(Object.keys(rt.engine.state.tickets).length, 1);
   rt.close();
 });
 
-test("SourceRunner：一个 Source 抛错不影响其它 Source", () => {
+test("SourceRunner：一个 Source 抛错不影响其它 Source", async () => {
   const { rt, clock } = setup();
   const broken = {
     name: "broken",
@@ -79,7 +79,7 @@ test("SourceRunner：一个 Source 抛错不影响其它 Source", () => {
   rt.close();
 });
 
-test("SourceRunner：重复轮询不会重复 ingest", () => {
+test("SourceRunner：重复轮询不会重复 ingest", async () => {
   const { rt, clock } = setup();
   const runner = new SourceRunner({
     sources: [new LocalSource("local", triggers(2))],

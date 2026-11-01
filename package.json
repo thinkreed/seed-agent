@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "demo": "node src/cli.ts",
-    "panel": "node src/cli.ts panel"
+    "demo": "node --no-warnings src/cli.ts",
+    "panel": "node --no-warnings src/cli.ts panel"
   }
 }
