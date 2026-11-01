@@ -34,6 +34,7 @@ import {
 } from '@deepseek-ai/dsh-super-agent-core'
 import { SdkDshExecutor } from './executor.ts'
 export { spillInstruction, workerPrompt } from './executor.ts'
+import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
 import { MultiChannelWriter } from './channels.ts'
 import { mountHttpRoutes, type CommandInput } from './http.ts'
 
@@ -63,6 +64,10 @@ export interface SuperAgentHostConfig {
   dshPermissionMode: string
   /** 评估器：explicit = Gate 放行即接受；llm = 模型按 assessment prompt 判定。 */
   assessorMode: string
+  /** Router 形态：llm = 常驻 Router Session（跨 Thread 批处理 + 记忆 + 对话）；off = 单次评估器。 */
+  routerMode: string
+  /** Router 保留的对话消息数。 */
+  routerHistoryMessages: number
   llmBaseUrl: string
   llmApiKeyEnv: string
   llmModel: string
@@ -108,6 +113,8 @@ export class SuperAgentHost extends Service {
     channelsEnabled: z.boolean().default(true),
     dshPermissionMode: z.string().default('danger-full-access'),
     assessorMode: z.string().default('llm'),
+    routerMode: z.string().default('llm'),
+    routerHistoryMessages: z.number().step(1).min(2).max(200).default(20),
     llmBaseUrl: z.string().default('https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1'),
     llmApiKeyEnv: z.string().default('BAILIAN_API_KEY'),
     llmModel: z.string().default('deepseek-v4.1-flash'),
@@ -124,6 +131,8 @@ export class SuperAgentHost extends Service {
   private readonly channels: MultiChannelWriter
   private readonly channelsEnabled: boolean
   private readonly assessorMode: string
+  private routerSession: RouterSession | undefined
+  private lastRouterBatch: RouterBatch | undefined
   private readonly lastPrompts = new Map<string, string>()
   private lastWatchdog: WatchdogReport | undefined
 
@@ -303,13 +312,31 @@ export class SuperAgentHost extends Service {
     return this.runtime.store.replayHash()
   }
 
-  /** 逐轮评估：explicit（Gate 放行即接受）或 llm（真实模型两级过滤）。 */
+  /** 逐轮评估：explicit（Gate 放行即接受）或 llm（真实模型两级过滤；routerMode=llm 时走常驻 Router Session）。 */
   private buildAssessor(config: SuperAgentHostConfig): Assessor {
     if (config.assessorMode !== 'llm') return explicitAssessor
     const apiKey = process.env[config.llmApiKeyEnv]?.trim()
     if (!apiKey) {
       console.warn(`super-agent: ${config.llmApiKeyEnv} missing, falling back to explicit assessor`)
       return explicitAssessor
+    }
+    if (config.routerMode === 'llm') {
+      const router = new RouterSession({
+        client: createRouterClient({
+          baseUrl: config.llmBaseUrl,
+          apiKey,
+          model: config.llmModel,
+          timeoutMs: config.llmTimeoutMs,
+        }),
+        // runtime 在构造函数后半段才赋值；这里只登记读取方式，首次 assess 时 runtime 已就绪。
+        state: () => this.runtime.engine.state,
+        historyMessages: config.routerHistoryMessages,
+        onBatch: (batch) => {
+          this.lastRouterBatch = batch
+        },
+      })
+      this.routerSession = router
+      return router
     }
     return new LlmAssessor(new OpenAIClient({
       baseUrl: config.llmBaseUrl,
@@ -388,13 +415,17 @@ export class SuperAgentHost extends Service {
         sent: this.channels.history.slice(-5),
       },
       assessorMode: this.assessorMode,
+      router: this.routerSession
+        ? { mode: 'llm', ...this.routerSession.snapshot() }
+        : { mode: this.assessorMode, lastBatch: this.lastRouterBatch ?? null },
       tickets: tickets.sort((a, b) => b.updatedAt - a.updatedAt),
     }
   }
 
-  /** client 发来的命令（人的干预）。 */
-  command(input: CommandInput): unknown {
+  /** client 发来的命令（人的干预 + 与 Router 对话）。 */
+  async command(input: CommandInput): Promise<unknown> {
     const ticketId = input.ticketId ?? ''
+    let reply: string | undefined
     switch (input.action) {
       case 'pause':
         this.pause()
@@ -426,10 +457,17 @@ export class SuperAgentHost extends Service {
         void this.tick()
         break
       }
+      case 'chat': {
+        if (!input.text) throw new Error('text required')
+        if (!this.routerSession) throw new Error('router session not enabled (routerMode=off)')
+        reply = await this.routerSession.chat(input.text)
+        break
+      }
       default:
         throw new Error(`unknown action: ${String(input.action)}`)
     }
-    return this.snapshot()
+    const snapshot = this.snapshot() as Record<string, unknown>
+    return reply === undefined ? snapshot : { ...snapshot, reply }
   }
 }
 

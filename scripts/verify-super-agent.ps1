@@ -76,13 +76,15 @@ try {
   Report 'spill smoke' ($spill -match 'SPILL SMOKE OK') (($spill -split "`n" | Where-Object { $_ -match 'spillPath:' }) -join ' ')
 } catch { Report 'fan-out/spill smoke' $false $_.Exception.Message } finally { Pop-Location }
 
-# 3) 可选：真实 runtime 回合 / 渠道
+# 3) 可选：真实 runtime 回合 / Router / 渠道
 if ($Slow) {
   Push-Location $dsh
   try {
+    $router = & $node 'packages/super-agent/host/tests/router-smoke.mjs' 2>&1 | Out-String
+    Report 'router smoke' ($router -match 'ROUTER SMOKE OK') (($router -split "`n" | Where-Object { $_ -match 'lastBatch:' }) -join ' ')
     $out = & $node 'packages/super-agent/host/tests/sdk-smoke.mjs' 2>&1 | Out-String
     Report 'sdk smoke' ($out -match 'DSH EXECUTOR SMOKE OK') ''
-  } catch { Report 'sdk smoke' $false $_.Exception.Message } finally { Pop-Location }
+  } catch { Report 'router/sdk smoke' $false $_.Exception.Message } finally { Pop-Location }
 }
 if ($Network) {
   Push-Location $dsh

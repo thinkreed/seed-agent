@@ -29,6 +29,12 @@ export interface Snapshot {
   readonly storePath: string
   readonly replayHash: string
   readonly lastSeq: number
+  readonly router?: {
+    readonly mode: string
+    readonly memory?: string
+    readonly history?: number
+    readonly lastBatch?: { readonly threads: number; readonly triggers: number } | null
+  }
   readonly tickets: readonly TicketView[]
 }
 
@@ -68,6 +74,8 @@ export function SuperAgentPage(): React.ReactElement {
   const [selected, setSelected] = useState<string>()
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
+  const [chatInput, setChatInput] = useState('')
+  const [chatLog, setChatLog] = useState<{ role: 'person' | 'router'; text: string }[]>([])
 
   const refresh = useCallback(() => {
     void fetchState().then((value) => {
@@ -93,6 +101,26 @@ export function SuperAgentPage(): React.ReactElement {
     } finally {
       setBusy(false)
     }
+  }
+
+  const sendChat = async (): Promise<void> => {
+    const text = chatInput.trim()
+    if (!text) return
+    setChatInput('')
+    setChatLog((previous) => [...previous, { role: 'person', text }])
+    try {
+      const response = await fetch(COMMAND_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'chat', text }),
+      })
+      const data = (await response.json()) as { snapshot?: { reply?: string } }
+      const answer = data.snapshot?.reply ?? '（Router 没有回复）'
+      setChatLog((previous) => [...previous, { role: 'router', text: answer }])
+    } catch {
+      setChatLog((previous) => [...previous, { role: 'router', text: '（Router 不可用）' }])
+    }
+    refresh()
   }
 
   return createElement(
@@ -178,6 +206,38 @@ export function SuperAgentPage(): React.ReactElement {
             ),
           )
           : createElement('div', { style: { color: '#9ca3af' } }, '选择一个工单查看时间线。'),
+      ),
+      createElement(
+        'div',
+        { style: { borderTop: '1px solid var(--dsw-alias-border-l1, #e5e7eb)', padding: '8px 16px', maxHeight: 220, overflow: 'auto' } },
+        createElement(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+          createElement('strong', { style: { fontSize: 12 } }, 'Router'),
+          createElement('span', { style: { color: '#9ca3af', fontSize: 11 } },
+            snapshot?.router
+              ? `${snapshot.router.mode}${snapshot.router.lastBatch ? ` · 上一批 ${snapshot.router.lastBatch.threads} threads` : ''}`
+              : ''),
+        ),
+        ...chatLog.slice(-6).map((line, index) => createElement(
+          'div',
+          { key: `${line.role}-${index}`, style: { marginBottom: 4, color: line.role === 'router' ? '#111' : '#6b7280' } },
+          `${line.role === 'router' ? 'Router' : '你'}：${line.text}`,
+        )),
+        createElement(
+          'div',
+          { style: { display: 'flex', gap: 8, marginTop: 6 } },
+          createElement('input', {
+            value: chatInput,
+            onChange: (event) => setChatInput(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter') void sendChat()
+            },
+            placeholder: '和 Router 说话（跨工单的连续上下文）',
+            style: { flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2, #d1d5db)', background: 'transparent', color: 'inherit' },
+          }),
+          createElement('button', { onClick: () => void sendChat(), disabled: !chatInput.trim(), style: BUTTON }, 'Send'),
+        ),
       ),
       createElement('div', { style: { padding: '6px 16px', borderTop: '1px solid var(--dsw-alias-border-l1, #e5e7eb)', color: '#9ca3af', fontSize: 11 } },
         snapshot ? `${snapshot.storePath} · replay ${snapshot.replayHash.slice(0, 12)}` : ''),

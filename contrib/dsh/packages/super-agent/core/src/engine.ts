@@ -163,9 +163,11 @@ export class Engine {
     if (this.paused) return [];
     const produced: AnyEvent[] = [];
     for (;;) {
-      const evaluation = Object.values(this.state.evals).find((item) => item.state === "queued");
-      if (!evaluation) break;
-      produced.push(...(await this.evalRunner.run(evaluation)));
+      // 同一轮内所有 Thread 的 queued Eval 并发交给评估器：Router 可把它们合并成一次 LLM 调用（批处理）。
+      const queued = Object.values(this.state.evals).filter((item) => item.state === "queued");
+      if (queued.length === 0) break;
+      const batches = await Promise.all(queued.map((evaluation) => this.evalRunner.run(evaluation)));
+      for (const batch of batches) produced.push(...batch);
     }
     produced.push(...this.actions.dispatch(this.slots, this.effects));
     // 有渠道时才产出对外回复；没有 ChannelWriter 的纯内核算例保持原行为。

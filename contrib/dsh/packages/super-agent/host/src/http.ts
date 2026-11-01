@@ -14,11 +14,11 @@ export interface SuperAgentHttpRoutes {
   readonly statePath: string
   readonly commandPath: string
   readonly snapshot: () => unknown
-  readonly command: (input: CommandInput) => unknown
+  readonly command: (input: CommandInput) => unknown | Promise<unknown>
 }
 
 export interface CommandInput {
-  readonly action: 'pause' | 'resume' | 'retry' | 'reply' | 'ingest'
+  readonly action: 'pause' | 'resume' | 'retry' | 'reply' | 'ingest' | 'chat'
   readonly ticketId?: string
   readonly text?: string
   /** ingest 的回帖地址：`oc_...`（飞书）、`gh:owner/repo#123`（GitHub）或 local。 */
@@ -59,7 +59,7 @@ export function mountHttpRoutes(routes: SuperAgentHttpRoutes): {
         const body = await readJson(req)
         const input = body as CommandInput
         if (typeof input?.action !== 'string') throw new Error('action required')
-        sendJson(res, 200, { ok: true, snapshot: routes.command(input) })
+        sendJson(res, 200, { ok: true, snapshot: await routes.command(input) })
       } catch (error) {
         sendJson(res, 400, { ok: false, error: String(error) })
       }

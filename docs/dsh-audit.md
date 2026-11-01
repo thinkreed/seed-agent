@@ -22,6 +22,9 @@
 
 **覆盖度估计（工程判断，非精确度量）**：§2 双层架构 ≈50%、§3 事件驱动 ≈45%、§4 面向人的交互 ≈25%、§5 存算分离 ≈20%、§6 Watchdog ≈35%、原型语义层（001–006）≈30%。**整体 ≈30–35%**。
 
+> **审计后进展（滚动更新）**
+> - 2026-11-01：**P0-1 Router Session 完成**——常驻 Router（记忆 + 对话历史 + 跨 Thread 批处理 + recall 动作入口）落地并真机验证；§2.1-a/b/c/d 由 ❌/⚠️ 转为 ✅；覆盖度 ≈35–40%。证据：`host/src/router_session.ts`、`tests/router-smoke.mjs`（`threads:2` 一次调用）、桌面面板 Router 对话截图 `docs/dsh-desktop-router.png`。
+
 一个重要的减负事实：**内核 `seed-agent/src` 里已有** `react.ts`（异步 ReAct）、`jobs.ts`（后台任务）、`sources/*`（飞书/GitHub/JSONL/本地入站）、`watchdog_llm.ts`（模型裁定）、`executor/{stdio,remote}`、`daemon.ts`、`recall.ts`（链式召回）。这些**没有搬进 fork**，所以多数缺口是"移植+接线"，不是"从零实现"。
 
 ## 2. 逐条差距（文章 §2–§6）

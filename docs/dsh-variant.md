@@ -72,6 +72,7 @@
 - [x] **M7 可复现**：scripts/desktop-super-agent.ps1（凭据→补丁→构建→隔离 home→link 包→注入 profile 行→启动）与 scripts/verify-super-agent.ps1（core/host 冒烟 + 桌面启动探活，-Slow/-Network 追加真机项）；实测 VERIFY OK
 - [x] **订阅扇出**：同线程第二条消息 anned_out 到已有工单（	ests/fanout-smoke.mjs：1 ticket、inp-000001→tk-000001）
 - [x] **Inline & Spill + 链式召回**：超预算指令落盘 spills/<ticket>.txt，worker prompt 只留摘要 + 可读取路径（	ests/spill-smoke.mjs，SPILL SMOKE OK）
+- [x] **P0-1 Router Session**：常驻 Router（host/src/router_session.ts）——跨 Thread 批处理（同一 tick 2 个 Thread 合并为一次 LLM 调用）、记忆与对话历史、recall 动作入口、面板「和 Router 说话」；ROUTER SMOKE OK，截图 docs/dsh-desktop-router.png
 - [x] **两级过滤（Gate + LLM）**：host `assessorMode: llm`（默认）→ `LlmAssessor` + `OpenAIClient`（BAILIAN 兼容端点）走 core 的 assessment prompt 与 Inline&Spill 视图；实测闲聊线程不建单、明确指令建单（`tests/assessor-smoke.mjs`，ASSESSOR SMOKE OK）；`verify-super-agent.ps1 -Slow` → core/host/sdk/desktop 全 PASS
 
 ### 桌面版运行（M7 一键）
