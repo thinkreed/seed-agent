@@ -73,6 +73,7 @@
 - [x] **订阅扇出**：同线程第二条消息 anned_out 到已有工单（	ests/fanout-smoke.mjs：1 ticket、inp-000001→tk-000001）
 - [x] **Inline & Spill + 链式召回**：超预算指令落盘 spills/<ticket>.txt，worker prompt 只留摘要 + 可读取路径（	ests/spill-smoke.mjs，SPILL SMOKE OK）
 - [x] **P2-3 打包**：unsigned 安装包 `dist/seed-agent-0.2.2-alpha.2-win-x64-unsigned.exe`（301.7 MB）；静默安装+启动已验证；Super-agent profile 待烘进安装包，见 `docs/packaging.md`。
+- [x] **Watchdog 独立 DSH session 模式**：`watchdogMode: "session"`，`WATCHDOG SESSION SMOKE OK`。
 - [x] **P2-2 §7 实验复现（机制级）**：`scripts/bench-super-agent.mjs`（Router 批处理 ≈4×、消融 ≈2×，`--real` 3 threads 合并 1 次调用）；结果 `docs/bench-super-agent.md`。
 - [x] **P2-1 存算分离**：无状态 daemon（exec/read/write）+ `super_agent_remote_*` 工具；`DAEMON SMOKE OK`（产物在 daemon root、不在工单目录）。
 - [x] **P1-6 多信道交付规范**：IM ≤100 字压缩、GitHub 结构化；`ChannelFormattingWriter` 统一出口；`CHANNEL FORMAT SMOKE OK`、live 飞书+GitHub 消息 ID。

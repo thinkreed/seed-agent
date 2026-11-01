@@ -52,7 +52,7 @@
 | 文章要求 | 实现 | 证据 | 状态 |
 |---|---|---|---|
 | 主系统外巡检 | 定时确定性 findings（stalled/undelivered） | `HOST SMOKE OK`（watchdog ok 0） | ✅ |
-| 模型判断是否要介入 | `LlmWatchdogJudge` 注入 | `WATCHDOG LLM SMOKE OK`（确定性 intervene vs 模型判 benign ok） | ✅ |
+| 模型判断是否要介入 | `LlmWatchdogJudge`（内联）+ `DshWatchdogJudge`（独立 DSH session） | `WATCHDOG LLM SMOKE OK`；`WATCHDOG SESSION SMOKE OK`（独立会话判 ok、`.seed/watchdog` 工作目录、interventions=1） | ✅ |
 | 介入与复查 | retry + 15s 复查 + intervention 记录 | 同上（rechecks=1） | ✅ |
 | 被自然语言询问/在线改行为 | 未实现（面板 Router 对话可问状态，但不能改规则） | — | ❌ |
 

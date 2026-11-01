@@ -43,6 +43,7 @@ export { spillInstruction, workerPrompt } from './executor.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
 export { RouterSession, createRouterClient } from './router_session.ts'
 import { LlmWatchdogJudge } from '@deepseek-ai/dsh-super-agent-core'
+import { DshWatchdogJudge } from './watchdog_session.ts'
 import { FeishuHttpClient } from './sources/feishu_http.ts'
 import { FeishuSource } from './sources/feishu.ts'
 import { GhCliClient } from './sources/github_cli.ts'
@@ -121,7 +122,7 @@ export interface SuperAgentHostConfig {
   ticketsDir: string
   /** 启动时恢复上次未收口的 assignment（文章 §5/执行语义）。 */
   recoverOnStart: boolean
-  /** Watchdog 裁定：llm = 独立模型裁定（文章 §6）；deterministic = 只看确定性 findings。 */
+  /** Watchdog 裁定：llm = 内联模型裁定；session = 独立 DSH session 裁定（文章 §6）；deterministic = 只看 findings。 */
   watchdogMode: string
   /** 投机执行开关（文章 §3.4）：后台尝试，有价值才交付。 */
   speculationEnabled: boolean
@@ -646,8 +647,16 @@ export class SuperAgentHost extends Service {
     }))
   }
 
-  /** 独立 Watchdog 模型裁定（文章 §6）：主系统之外判断"是否真的在推进、要不要介入"。 */
-  private buildWatchdogJudge(config: SuperAgentHostConfig): LlmWatchdogJudge | undefined {
+  /**
+   * 独立 Watchdog 裁定（文章 §6）：主系统之外判断"是否真的在推进、要不要介入"。
+   * - llm：host 内联模型调用；
+   * - session：独立 DSH runtime 会话（独立工作目录 .seed/watchdog + 独立回合）。
+   */
+  private buildWatchdogJudge(config: SuperAgentHostConfig): LlmWatchdogJudge | DshWatchdogJudge | undefined {
+    if (config.watchdogMode === 'session') {
+      if (!this.sdk) return undefined
+      return new DshWatchdogJudge(this.sdk, config.workspace || process.cwd())
+    }
     if (config.watchdogMode !== 'llm') return undefined
     const apiKey = process.env[config.llmApiKeyEnv]?.trim()
     if (!apiKey) return undefined

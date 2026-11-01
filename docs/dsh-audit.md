@@ -36,6 +36,7 @@
 > - 2026-11-01：**P2-2 文章 §7 实验复现（机制级）完成**——`scripts/bench-super-agent.mjs` 用确定性假模型测 Router 批处理与消融：N=4 threads 时批量 1 次模型调用 43ms，逐条 4 次 179ms（≈4×）；单 Session 串行 2172ms vs Super-agent（批处理+2 slots）≈1043ms（≈2×）；`--real` 真实模型 3 threads 合并 1 次调用（1995ms）。结果写入 `docs/bench-super-agent.{md,json}`，纳入 verify -Slow（BENCH OK）。
 > - 2026-11-01：**P2-3 打包（部分）**——安装包 `productName`/协议名已改为 `seed-agent`（apply 脚本注入），无签名打包环境模板与 `scripts/package-seed-agent.ps1` 已就绪；**本机因缺少 Visual Studio C++ Build Tools（`vswhere.exe ENOENT`）无法产出安装包**，见 `docs/packaging.md`。桌面仍可用 `scripts/desktop-super-agent.ps1 -Restart` 源码一键启动。最终总验收表见 `docs/acceptance.md`。
 > - 2026-11-01：**P2-3 打包完成（unsigned 安装包已产出）**——安装 VS C++ Build Tools 后，经代理/Electron 镜像加速，`scripts/package-seed-agent.ps1` 产出 `dist/seed-agent-0.2.2-alpha.2-win-x64-unsigned.exe`（301.7 MB，SHA256 `27F2D1…7E11B9`）；静默安装退出码 0，`seed-agent.exe` 可启动并拉起 dsh web，打包运行时冒烟（native/Office/CLI）通过。已知边界：首启是 DSH 基础欢迎页，Super-agent profile 尚未烘进安装包（带 `sa-home` profile 启动时 `/super-agent/state`=200）。
+> - 2026-11-01：**Watchdog 升级为独立 DSH session 裁定**——新增 `host/src/watchdog_session.ts`（`DshWatchdogJudge`）：确定性 findings 交给主系统之外的独立 DSH runtime 会话（独立工作目录 `<workspace>/.seed/watchdog`），由该会话输出 `{action, reason}`；`watchdogMode: "session"` 启用。证据：`WATCHDOG SESSION SMOKE OK`——`stalled:tk-000001` findings 由真实会话判为 ok（理由由模型生成），`.seed/watchdog` 目录创建，snapshot `action=ok`、interventions=1。
 
 
 ## 2. 逐条差距（文章 §2–§6）

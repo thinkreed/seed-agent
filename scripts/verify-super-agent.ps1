@@ -100,6 +100,8 @@ if ($Slow) {
     Report 'async react smoke' ($async -match 'ASYNC REACT SMOKE OK') (($async -split "`n" | Where-Object { $_ -match 'done file:' }) -join ' ')
     $watchdog = & $node 'packages/super-agent/host/tests/watchdog-llm-smoke.mjs' 2>&1 | Out-String
     Report 'watchdog llm smoke' ($watchdog -match 'WATCHDOG LLM SMOKE OK') (($watchdog -split "`n" | Where-Object { $_ -match 'verdict:|deterministic:' }) -join ' ')
+    $watchdogSession = & $node 'packages/super-agent/host/tests/watchdog-session-smoke.mjs' 2>&1 | Out-String
+    Report 'watchdog session smoke' ($watchdogSession -match 'WATCHDOG SESSION SMOKE OK') (($watchdogSession -split "`n" | Where-Object { $_ -match 'verdict:|session dir' }) -join ' ')
     $spec = & $node 'packages/super-agent/host/tests/speculation-smoke.mjs' 2>&1 | Out-String
     Report 'speculation smoke' ($spec -match 'SPECULATION SMOKE OK') (($spec -split "`n" | Where-Object { $_ -match 'case1:|channel sent:' }) -join ' ')
     $daemon = & $node 'packages/super-agent/host/tests/daemon-smoke.mjs' 2>&1 | Out-String
