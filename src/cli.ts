@@ -3,6 +3,7 @@
 import { App } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { loadDefaultEnv, loadEnvFile } from "./env.ts";
+import { read as feishuRead, say as feishuSay } from "./feishu_cli.ts";
 import { createCheckers, formatChecks, runChecks } from "./health.ts";
 import { render, renderJson } from "./panel.ts";
 import { SqliteStore } from "./store.ts";
@@ -51,8 +52,14 @@ const exitCode =
       ? await doctor(arg)
       : command === "panel"
         ? showPanel(arg ?? "seed.db", flag === "--json")
-        : 2;
+        : command === "say"
+          ? await feishuSay(arg ?? "", process.argv.slice(4).join(" "))
+          : command === "read"
+            ? await feishuRead(arg ?? "")
+            : 2;
 if (exitCode === 2) {
-  console.error("usage: node src/cli.ts run <config.json> [--once] | doctor <config.json> | panel <db> [--json]");
+  console.error(
+    "usage: cli.ts run <config.json> [--once] | doctor <config.json> | panel <db> [--json] | say <chat_id> <text> | read <chat_id>",
+  );
 }
 process.exitCode = exitCode;
