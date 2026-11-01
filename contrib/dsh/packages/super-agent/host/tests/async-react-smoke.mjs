@@ -66,8 +66,8 @@ while (Date.now() < deadline) {
   current = host.ticket(ticket.id)
   if (current?.state === 'ended') break
 }
-const donePath = join(workspace, 'async-done.txt')
-const foregroundPath = join(workspace, 'async-foreground.txt')
+const donePath = join(workspace, 'tickets', ticket.id, 'async-done.txt')
+const foregroundPath = join(workspace, 'tickets', ticket.id, 'async-foreground.txt')
 console.log('ticket state:', current?.state)
 console.log('done file:', existsSync(donePath), 'foreground file:', existsSync(foregroundPath))
 const ok = Boolean(current?.state === 'ended' && existsSync(donePath) && existsSync(foregroundPath))

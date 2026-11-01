@@ -109,6 +109,10 @@ export interface SuperAgentHostConfig {
   recallIndexPath: string
   /** Worker 控制请求目录（handback/unsubscribe 的文件式入口）。 */
   controlDir: string
+  /** 每工单独立工作目录的根（默认 <workspace>/tickets）。 */
+  ticketsDir: string
+  /** 启动时恢复上次未收口的 assignment（文章 §5/执行语义）。 */
+  recoverOnStart: boolean
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -163,6 +167,8 @@ export class SuperAgentHost extends Service {
     sourceIntervalSeconds: z.number().step(1).min(1).max(3600).default(15),
     recallIndexPath: z.string().default(''),
     controlDir: z.string().default(''),
+    ticketsDir: z.string().default(''),
+    recoverOnStart: z.boolean().default(true),
   })
 
   readonly runtime: Runtime
@@ -178,6 +184,8 @@ export class SuperAgentHost extends Service {
   private readonly sourceList: Source[] = []
   private readonly recallIndexPath: string
   private readonly controlDir: string
+  private readonly ticketsRoot: string
+  private lastRecovery = 0
   private lastPollAt: number | undefined
   private readonly lastPrompts = new Map<string, string>()
   private lastWatchdog: WatchdogReport | undefined
@@ -194,6 +202,9 @@ export class SuperAgentHost extends Service {
     this.controlDir = config.controlDir
       ? resolve(config.controlDir)
       : join(dirname(this.dbPath), 'control')
+    this.ticketsRoot = config.ticketsDir
+      ? resolve(config.ticketsDir)
+      : join(resolve(config.workspace || process.cwd()), 'tickets')
 
     const clock = new SystemClock()
     const feishuAppId = process.env.FEISHU_APP_ID?.trim()
@@ -224,6 +235,7 @@ export class SuperAgentHost extends Service {
         spillChars: config.spillChars,
         spillDir: config.spillDir ? resolve(config.spillDir) : join(dirname(this.dbPath), 'spills'),
         recallIndexPath: this.recallIndexPath,
+        ticketDir: (ticket) => join(this.ticketsRoot, ticket.id),
         describeTicket: (ticketId) => {
           const state = this.runtime?.engine.state
           const ticket = state?.tickets[ticketId]
@@ -278,6 +290,16 @@ export class SuperAgentHost extends Service {
     })
     this.runtime = runtime
     this.writeRecallIndex()
+    // 重启恢复：上次进程留下的 running assignment 收口，并给工单投递 resume 输入。
+    if (config.recoverOnStart) {
+      try {
+        const recovered = this.runtime.engine.recoverAfterRestart()
+        this.lastRecovery = recovered.length
+        if (recovered.length > 0) void this.tick()
+      } catch (error) {
+        console.error('super-agent: recoverAfterRestart failed', String(error))
+      }
+    }
     this.watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds })
     ctx.effect(() => async () => {
       await this.sdk?.close()
@@ -660,6 +682,7 @@ export class SuperAgentHost extends Service {
         names: this.sourceList.map((source) => source.name),
         lastPollAt: this.lastPollAt ?? null,
       },
+      recovery: { events: this.lastRecovery, ticketsDir: this.ticketsRoot },
       tickets: tickets.sort((a, b) => b.updatedAt - a.updatedAt),
     }
   }

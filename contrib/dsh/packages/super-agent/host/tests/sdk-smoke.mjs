@@ -67,7 +67,7 @@ const state = host.state()
 const reports = ticket ? state.reports[ticket.id] ?? [] : []
 console.log('ticket:', ticket ? `${ticket.shortName}:${ticket.state}` : 'none')
 console.log('reports:', reports.map((r) => `${r.status}:${r.summary.slice(0, 120)}`).join(' | '))
-const output = join(workspace, 'sdk-hello.txt')
+const output = join(workspace, 'tickets', ticket.id, 'sdk-hello.txt')
 console.log('artifact exists:', existsSync(output), existsSync(output) ? readFileSync(output, 'utf8') : '')
 console.log('replay hash:', host.replayHash().slice(0, 16))
 

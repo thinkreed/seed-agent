@@ -82,7 +82,7 @@ while (Date.now() < deadline) {
   if (host.ticket(ticket.id)?.state === 'ended') break
 }
 
-const filePath = join(workspace, 'recall-tool.txt')
+const filePath = join(host.snapshot().recovery.ticketsDir, ticket.id, 'recall-tool.txt')
 const written = existsSync(filePath) ? readFileSync(filePath, 'utf8') : ''
 console.log('worker output:', JSON.stringify(written.slice(0, 160)))
 const ok = written.includes(marker)

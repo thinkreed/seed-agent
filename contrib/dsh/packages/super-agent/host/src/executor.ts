@@ -32,6 +32,8 @@ export interface SdkDshExecutorOptions {
   readonly spillDir?: string
   /** 召回索引文件：worker 可用读取工具按 id 逐跳展开上下文。 */
   readonly recallIndexPath?: string
+  /** 每工单独立工作目录（文章 §3.3/执行语义：工单产物隔离）。 */
+  readonly ticketDir?: (ticket: Ticket) => string
 }
 
 /** 落盘后的指令：inline 是写进 prompt 的摘要，spillPath 供 worker 链式召回。 */
@@ -59,7 +61,7 @@ export function spillInstruction(
 }
 
 export class SdkDshExecutor implements Executor {
-  private harness: DeepSeekHarness | undefined
+  private readonly harnessByTicket = new Map<string, DeepSeekHarness>()
   private readonly options: SdkDshExecutorOptions
   private readonly sessionByTicket = new Map<string, string>()
   private readonly assignmentByTicket = new Map<string, string>()
@@ -80,7 +82,7 @@ export class SdkDshExecutor implements Executor {
       dir: this.options.spillDir ?? join(process.cwd(), '.seed', 'spills'),
     })
     // 异步执行：launch 只负责"受理并启动"，回合结束后经 onReport 写回引擎。
-    void this.runTurn(assignment.id, ticket, workerPrompt(ticket, spilled.inline, [], this.options.recallIndexPath))
+    void this.runTurn(assignment.id, ticket, workerPrompt(ticket, spilled.inline, [], this.options.recallIndexPath, this.ticketDirectory(ticket)))
   }
 
   async deliver(ticket: Ticket, input: Input): Promise<void> {
@@ -122,15 +124,30 @@ export class SdkDshExecutor implements Executor {
     // M3.1：SDK 目前没有按回合取消的公开 API；依赖 turn 自己结束或 ctx 关闭时关进程。
   }
 
-  /** 关闭 DSH runtime 子进程。 */
+  /** 关闭所有 DSH runtime 子进程。 */
   async close(): Promise<void> {
-    await this.harness?.close()
-    this.harness = undefined
+    await Promise.all([...this.harnessByTicket.values()].map((harness) => harness.close()))
+    this.harnessByTicket.clear()
   }
 
-  private client(): DeepSeekHarness {
-    this.harness ??= new DeepSeekHarness(this.options.harness)
-    return this.harness
+  /** 每个工单一个 runtime（cwd = 工单目录），实现工单级工作目录与上下文隔离。 */
+  private client(ticket: Ticket): DeepSeekHarness {
+    const existing = this.harnessByTicket.get(ticket.id)
+    if (existing) return existing
+    const dir = this.options.ticketDir?.(ticket)
+    if (dir) mkdirSync(dir, { recursive: true })
+    const harness = new DeepSeekHarness({
+      ...this.options.harness,
+      ...(dir ? { cwd: dir } : {}),
+    })
+    this.harnessByTicket.set(ticket.id, harness)
+    return harness
+  }
+
+  private ticketDirectory(ticket: Ticket): string | undefined {
+    const dir = this.options.ticketDir?.(ticket)
+    if (dir) mkdirSync(dir, { recursive: true })
+    return dir
   }
 
   private async runTurn(assignmentId: string, ticket: Ticket, prompt: string): Promise<void> {
@@ -139,7 +156,7 @@ export class SdkDshExecutor implements Executor {
     this.turnCounts.set(ticket.id, (this.turnCounts.get(ticket.id) ?? 0) + 1)
     const sessionId = this.sessionByTicket.get(ticket.id)
     try {
-      const result = await this.client().run(prompt, sessionId ? { sessionId } : {})
+      const result = await this.client(ticket).run(prompt, sessionId ? { sessionId } : {})
       this.sessionByTicket.set(ticket.id, result.sessionId)
       this.options.onReport(reportOf(ticket, assignmentId, 'ready', summarize(result), this.options.clock.now()))
     } catch (error) {
@@ -166,6 +183,7 @@ export function workerPrompt(
   instruction = '',
   inputs: readonly Trigger[] = [],
   recallIndexPath?: string,
+  ticketDir?: string,
 ): string {
   const lines = [
     `你是 Super-agent 的 worker，工单 ${ticket.shortName}（${ticket.id}）。`,
@@ -173,6 +191,7 @@ export function workerPrompt(
     '在当前工作目录内完成任务；不要与人对齐，不要请求确认。',
     '完成后用一段话给出结论（做了什么、产物在哪里、是否成功）。',
   ]
+  if (ticketDir) lines.splice(2, 0, `工作目录（产物写在这里）：${ticketDir}`)
   if (recallIndexPath) {
     lines.push(
       '',

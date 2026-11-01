@@ -65,8 +65,8 @@ while (Date.now() < deadline) {
   current = host.ticket(ticket.id)
   if (current?.state === 'ended') break
 }
-const donePath = join(workspace, 'full-duplex-done.txt')
-const secondPath = join(workspace, 'full-duplex-second.txt')
+const donePath = join(workspace, 'tickets', ticket.id, 'full-duplex-done.txt')
+const secondPath = join(workspace, 'tickets', ticket.id, 'full-duplex-second.txt')
 const detail = host.snapshot().tickets[0]
 console.log('ticket state:', current?.state)
 console.log('first file:', existsSync(donePath), 'second file:', existsSync(secondPath))

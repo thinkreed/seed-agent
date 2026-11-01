@@ -80,6 +80,8 @@ try {
   Report 'recall smoke' ($recall -match 'RECALL SMOKE OK') (($recall -split "`n" | Where-Object { $_ -match 'thread handles:' }) -join ' ')
   $handback = & $node 'packages/super-agent/host/tests/handback-smoke.mjs' 2>&1 | Out-String
   Report 'handback smoke' ($handback -match 'HANDBACK SMOKE OK') (($handback -split "`n" | Where-Object { $_ -match 'control tools:' }) -join ' ')
+  $restart = & $node 'packages/super-agent/host/tests/restart-smoke.mjs' 2>&1 | Out-String
+  Report 'restart smoke' ($restart -match 'RESTART SMOKE OK') (($restart -split "`n" | Where-Object { $_ -match 'recovery events|live assignment' }) -join ' ')
 } catch { Report 'fan-out/spill/sources smoke' $false $_.Exception.Message } finally { Pop-Location }
 
 # 3) 可选：真实 runtime 回合 / Router / 渠道
