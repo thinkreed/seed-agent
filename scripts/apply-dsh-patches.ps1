@@ -71,3 +71,17 @@ if (Test-Path $patchDir) {
 }
 
 Write-Host "done."
+# 5) 配置模板：contrib/dsh/config -> dsh/config；并把召回工具 URL 占位替换成实际构建产物路径
+$cfgSrc = Join-Path $Repo 'contrib\dsh\config'
+$cfgDst = Join-Path $dsh 'config'
+if (Test-Path $cfgSrc) {
+  New-Item -ItemType Directory -Force -Path $cfgDst | Out-Null
+  Copy-Item (Join-Path $cfgSrc '*') $cfgDst -Force
+  $toolUrl = 'file:///' + ((Join-Path $dsh 'packages\super-agent\tool-recall\lib\index.js') -replace '\\', '/')
+  foreach ($cfgFile in Get-ChildItem $cfgDst -Filter '*.yml') {
+    $cfgText = [System.IO.File]::ReadAllText($cfgFile.FullName)
+    if ($cfgText.Contains('__SUPER_AGENT_RECALL_TOOL__')) {
+      [System.IO.File]::WriteAllText($cfgFile.FullName, $cfgText.Replace('__SUPER_AGENT_RECALL_TOOL__', $toolUrl), (New-Object System.Text.UTF8Encoding($false)))
+    }
+  }
+}

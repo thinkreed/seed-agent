@@ -32,3 +32,6 @@
   config:
     provider: bailian
     model: deepseek-v4.1-flash
+- insert:
+    - id: super-agent-tool-recall
+      name: '__SUPER_AGENT_RECALL_TOOL__'

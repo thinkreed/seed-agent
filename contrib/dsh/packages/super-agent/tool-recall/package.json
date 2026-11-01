@@ -1,0 +1,34 @@
+{
+  "name": "@deepseek-ai/dsh-super-agent-tool-recall",
+  "description": "Model-facing super_agent_recall tool: walk the Super-agent reference graph (trigger/thread/ticket) through the recall index",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -b tsconfig.json && tsdown"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-tools": "workspace:*"
+  },
+  "dsh": {
+    "plugin": {
+      "platform": "node"
+    }
+  }
+}
