@@ -83,7 +83,7 @@
 | 桌面应用（Electron） | ✅ | 窗口标题/侧栏品牌 `seed-agent`，Super-agent 面板 |
 | 品牌：productName/协议名 | ✅ | apply 脚本把安装包 `productName`/协议名替换为 `seed-agent` |
 | 品牌：hero/托盘/安装包图标 | ⚠️ | hero 文案与托盘图标仍是 DSH 原样 |
-| 安装包 | ✅（首启为基础形态） | `dist/seed-agent-0.2.2-alpha.2-win-x64-unsigned.exe`（301.7 MB，SHA256 `27F2D1…7E11B9`）：静默安装退出码 0、`seed-agent.exe` 可启动并拉起 dsh web；Super-agent 面板需准备 profile（尚未烘进安装包，见 `docs/packaging.md`） |
+| 安装包 | ✅（首启挂载 Super-agent，待重打） | bundle 已进 runtime 闭包；首次创建 profile 自动挂载 host+UI（dev 等价验证：dump-config 出现两行、`/super-agent/state`=200）。打包产物的物理 runtime 复制与安装包重打待完成（`docs/packaging.md`）；本机 Smart App Control 拦截未签名新 exe |
 
 ## 9. 已知边界（诚实清单）
 

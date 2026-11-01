@@ -8,8 +8,10 @@
  * 否则用 PendingDshExecutor 占位（仅记录派工，用于无 DSH 环境的单测）。
  */
 
-import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -60,6 +62,35 @@ export { formatForChannel, compactForIm, structureForAsync, ChannelFormattingWri
 import { ChannelFormattingWriter } from './format.ts'
 import { mountHttpRoutes, type CommandInput } from './http.ts'
 
+/** 若路径被 Electron asar 打包，优先返回解包后的真实文件（普通 node 子进程读不了 asar）。 */
+function unpackedPath(candidate: string): string {
+  if (existsSync(candidate)) return candidate
+  const unpacked = candidate.replace(`${sep}app.asar${sep}`, `${sep}app.asar.unpacked${sep}`)
+  return unpacked !== candidate && existsSync(unpacked) ? unpacked : candidate
+}
+
+/** host 包根（lib 的上一级）。 */
+function hostPackageRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '..')
+}
+
+/** 从 host 包位置推断 dsh 根（lib -> host -> super-agent -> packages -> dsh）。 */
+function inferredDshRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
+}
+
+/** 捆绑模式下的运行路径推断；仅在字段为空时填充。 */
+function resolveBundleDefaults(config: SuperAgentHostConfig): Partial<SuperAgentHostConfig> {
+  const dshHome = config.dshHome || process.env.DSH_HOME?.trim() || join(homedir(), '.dsh')
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+  const resources = resourcesPath ? join(resourcesPath, 'dsh') : ''
+  const externalBin = resources ? join(resources, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js') : ''
+  const dshBin = config.dshBin || (externalBin && existsSync(externalBin) ? externalBin : unpackedPath(join(inferredDshRoot(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')))
+  const dshPatch = config.dshPatch || unpackedPath(join(hostPackageRoot(), 'config', 'sdk-super-agent.patch.yml'))
+  const workspace = config.workspace || join(dshHome, 'super-agent-workspace')
+  return { dshHome, dshBin, dshPatch, workspace }
+}
+
 export interface SuperAgentHostConfig {
   /** 事件库路径；相对进程工作目录。 */
   dbPath: string
@@ -74,6 +105,8 @@ export interface SuperAgentHostConfig {
   dshModel: string
   /** 额外的 profile patch 文件（如 provider 配置）。 */
   dshPatch: string
+  /** 捆绑模式：未显式配置时，从 host 包位置推断 dshBin/dshHome/dshPatch/workspace（桌面安装包用）。 */
+  bundleDefaults: boolean
   /** worker 工作目录（默认进程 cwd）。 */
   workspace: string
   /** 看门狗巡检间隔（秒）；0 关闭。 */
@@ -160,6 +193,7 @@ export class SuperAgentHost extends Service {
     dshProvider: z.string().default('deepseek-official'),
     dshModel: z.string().default('deepseek-v4-flash'),
     dshPatch: z.string().default(''),
+    bundleDefaults: z.boolean().default(false),
     workspace: z.string().default(''),
     watchdogSeconds: z.number().step(1).min(0).max(3600).default(60),
     staleSeconds: z.number().step(1).min(1).max(86400).default(1800),
@@ -226,6 +260,8 @@ export class SuperAgentHost extends Service {
 
   constructor(ctx: Context, config: SuperAgentHostConfig) {
     super(ctx, 'superAgent')
+    // 桌面安装包（bundle 挂载）没有显式路径配置：从包位置推断。
+    if (config.bundleDefaults) config = { ...config, ...resolveBundleDefaults(config) }
     this.dbPath = resolve(config.dbPath)
     mkdirSync(dirname(this.dbPath), { recursive: true })
     this.channelsEnabled = config.channelsEnabled

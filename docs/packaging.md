@@ -61,3 +61,18 @@ An Application Control policy has blocked this file
 - 解除：关闭 Smart App Control（系统设置，需重置系统才能再开启），或使用受信任代码签名证书签名
 
 因此本机后续只能验证到“安装成功”，启动验证需在关闭 SAC 的机器或签名后做。
+
+## 首启挂载 Super-agent（本轮进展）
+
+- 新增 bundle 包 `@deepseek-ai/dsh-super-agent-bundle`（`contrib/dsh/packages/super-agent/bundle`）：`cordis.patch.yml` 插入 `super-agent-host`（`bundleDefaults: true`、bailian、v4.1-flash）与 `super-agent-ui` 两行
+- bundle 进入 `@deepseek-ai/dsh` 依赖闭包；`createPluginProfile` 首次创建 profile 时把 bundle 追加进 `dsh.profile.bundles`
+- host 新增 `bundleDefaults`：未配置时从包位置推断 `dshBin` / `dshHome` / `dshPatch` / `workspace`，并优先用 `resources/dsh` 物理 runtime
+- worker patch `config/sdk-super-agent.patch.yml`（provider + 四个工具，按包名挂载）随 host 包发布
+
+已验证（dev 等价路径，绕过 Electron 首启）：
+
+1. `createPluginProfile` 生成的 profile bundles = `[...web-app, '@deepseek-ai/dsh-super-agent-bundle']`
+2. `dsh --profile sa-test --dump-config` 中出现 `super-agent-host` / `super-agent-ui` 两行及配置
+3. 用该 profile 启动 `dsh web`：`/super-agent/state` 返回 **200**（无 token 也可读）
+
+未完成：打包产物里 `resources/dsh` 只复制到根文件，`node_modules` 未被 electron-builder extraResources 带入（worker 子进程需要物理 runtime）。下一步改用「先 --dir 打包 → 脚本复制 runtime → `electron-builder --prepackaged`」或 override 复制。

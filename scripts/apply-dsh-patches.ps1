@@ -124,6 +124,12 @@ if (Test-Path $smoke) {
 $cliPkg = Join-Path $dsh 'apps\cli\package.json'
 if (Test-Path $cliPkg) {
   $cliText = [System.IO.File]::ReadAllText($cliPkg)
+  $changed = $false
+  if (-not $cliText.Contains('@deepseek-ai/dsh-super-agent-bundle')) {
+    $bundleRow = '"@deepseek-ai/dsh-super-agent-bundle": "workspace:*",'
+    $cliText = $cliText.Replace('"@deepseek-ai/dsh-client-ui-super-agent": "workspace:*",', '"@deepseek-ai/dsh-client-ui-super-agent": "workspace:*",' + "`r`n    " + $bundleRow)
+    $changed = $true
+  }
   if (-not $cliText.Contains('@deepseek-ai/dsh-super-agent-host')) {
     $names = @(
       '@deepseek-ai/dsh-super-agent-core',
@@ -137,8 +143,9 @@ if (Test-Path $cliPkg) {
     )
     $rows = ($names | ForEach-Object { '    "{0}": "workspace:*",' -f $_ }) -join "`r`n"
     $cliText = [regex]::Replace($cliText, '("dependencies"\s*:\s*\{)', "`$1`r`n$rows", 1)
-    [System.IO.File]::WriteAllText($cliPkg, $cliText, (New-Object System.Text.UTF8Encoding($false)))
+    $changed = $true
   }
+  if ($changed) { [System.IO.File]::WriteAllText($cliPkg, $cliText, (New-Object System.Text.UTF8Encoding($false))) }
 }
 # 9) 打包冒烟可跳过（本机 Smart App Control 会拦截未签名新构建的 exe，spawn 失败）
 $smokePkg = Join-Path $dsh 'apps\desktop\scripts\smoke-packaged-runtime.ts'
@@ -148,5 +155,45 @@ if (Test-Path $smokePkg) {
     $guard = "if (process.env.DSH_DESKTOP_SKIP_PACKAGED_SMOKE === '1') { console.log('desktop runtime: packaged smoke skipped (DSH_DESKTOP_SKIP_PACKAGED_SMOKE)'); process.exit(0) }`r`n"
     $smokePkgText = $smokePkgText.Replace('const paths = resolveDesktopTargetBuildPaths()', $guard + 'const paths = resolveDesktopTargetBuildPaths()')
     [System.IO.File]::WriteAllText($smokePkg, $smokePkgText, (New-Object System.Text.UTF8Encoding($false)))
+  }
+}
+# 10) 桌面变种：Super-agent bundle 进闭包 + 默认挂载到 desktop profile + asar 解包 + worker patch
+# 10a) worker provider/tool patch 随 host 包发布（宿主 bundleDefaults 默认指向它）
+$sdkPatch = Join-Path $Repo 'contrib\dsh\config\sdk-super-agent.patch.yml'
+$hostConfigDir = Join-Path $dsh 'packages\super-agent\host\config'
+if ((Test-Path $sdkPatch) -and (Test-Path (Split-Path $hostConfigDir -Parent))) {
+  New-Item -ItemType Directory -Path $hostConfigDir -Force | Out-Null
+  Copy-Item $sdkPatch (Join-Path $hostConfigDir 'sdk-super-agent.patch.yml') -Force
+}
+# 10c) desktop profile 首次创建时挂载 Super-agent bundle
+$pm = Join-Path $dsh 'apps\desktop\src\project-manager.ts'
+if (Test-Path $pm) {
+  $pmText = [System.IO.File]::ReadAllText($pm)
+  if ($pmText.Contains('initProfile(projectDir, WEB_PROFILE.bundles)')) {
+    $pmText = $pmText.Replace('initProfile(projectDir, WEB_PROFILE.bundles)', "initProfile(projectDir, [...WEB_PROFILE.bundles, '@deepseek-ai/dsh-super-agent-bundle'])")
+    [System.IO.File]::WriteAllText($pm, $pmText, (New-Object System.Text.UTF8Encoding($false)))
+  }
+}
+# 10d) 整个 dsh runtime 解开 asar（worker 子进程是普通 node，读不了 app.asar）
+$ebPath = Join-Path $dsh 'apps\desktop\scripts\electron-builder-config.mjs'
+if (Test-Path $ebPath) {
+  $ebText = [System.IO.File]::ReadAllText($ebPath)
+  $needle = "context.packager.config.asarUnpack = [...(typeof existing === 'string' ? [existing] : existing), ...patterns]"
+  if ($ebText.Contains($needle) -and -not $ebText.Contains("...patterns, 'dsh/**'")) {
+    $ebText = $ebText.Replace($needle, "context.packager.config.asarUnpack = [...(typeof existing === 'string' ? [existing] : existing), ...patterns, 'dsh/**']")
+    [System.IO.File]::WriteAllText($ebPath, $ebText, (New-Object System.Text.UTF8Encoding($false)))
+  }
+}
+
+# 10e) 让 worker 能读到物理 dsh：把 prepared runtime 复制一份到 resources/dsh（app.asar 之外）
+$ebExtra = Join-Path $dsh 'apps\desktop\scripts\electron-builder-config.mjs'
+if (Test-Path $ebExtra) {
+  $ebExtraText = [System.IO.File]::ReadAllText($ebExtra)
+  $runtimeLine = "      { from: buildPaths.runtime, to: 'runtime' },"
+  if (-not $ebExtraText.Contains("resources/dsh") -and $ebExtraText.Contains($runtimeLine)) {
+    $extra = $runtimeLine + "`r`n      // worker 子进程是普通 node，读不了 app.asar：把 runtime 再放一份到 resources/dsh。`r`n      { from: buildPaths.dsh, to: 'dsh' },
+      { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },"
+    $ebExtraText = $ebExtraText.Replace($runtimeLine, $extra)
+    [System.IO.File]::WriteAllText($ebExtra, $ebExtraText, (New-Object System.Text.UTF8Encoding($false)))
   }
 }

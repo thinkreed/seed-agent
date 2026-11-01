@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T13:09:06.549Z",
+  "generatedAt": "2026-11-01T13:35:27.694Z",
   "env": {
     "threads": 4,
     "modelDelayMs": 40,
@@ -10,25 +10,25 @@
     "threads": 4,
     "batched": {
       "modelCalls": 1,
-      "wallMs": 43,
+      "wallMs": 42,
       "batchSizes": [
         4
       ]
     },
     "serial": {
       "modelCalls": 4,
-      "wallMs": 167
+      "wallMs": 172
     },
-    "speedup": 3.88
+    "speedup": 4.1
   },
   "ablation": {
     "baselineSingleSession": {
-      "wallMs": 2172,
+      "wallMs": 2168,
       "modelCalls": 4,
       "contextIsolation": false
     },
     "superAgent": {
-      "wallMs": 1043,
+      "wallMs": 1042,
       "routerCalls": 1,
       "workerParallelism": 2,
       "contextIsolation": true

@@ -51,6 +51,7 @@ try {
   $filters = @(
     '@deepseek-ai/dsh-super-agent-core',
     '@deepseek-ai/dsh-super-agent-host',
+    '@deepseek-ai/dsh-super-agent-bundle',
     '@deepseek-ai/dsh-super-agent-tool-recall',
     '@deepseek-ai/dsh-super-agent-tool-background',
     '@deepseek-ai/dsh-super-agent-tool-control',
