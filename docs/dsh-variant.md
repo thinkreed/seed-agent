@@ -104,3 +104,25 @@ node <runtime-node> <runtime-pnpm> pnpm build
 cd ..
 node scripts/smoke-super-agent.mjs
 ```
+
+## 6. 能力 → 落点 → 证据（最终验收）
+
+| 文章能力 | 在 fork 里的落点 | 证据 |
+|---|---|---|
+| Router / Worker 双层 | `SuperAgentHost`（Router 侧：评估/派工/回复）+ `SdkDshExecutor`（Worker：独立 DSH session） | `tests/sdk-smoke.mjs` 真实回合 |
+| Trigger / Thread / Ticket | `packages/super-agent/core`（事件表 + reducer + SQLite） | `scripts/smoke-super-agent.mjs`（12 events、ticket、assignment、回放哈希） |
+| Gate + LLM 两级过滤 | `defaultPolicy` Gate → `LlmAssessor` + `OpenAIClient`（assessment prompt + Inline&Spill 视图） | `tests/assessor-smoke.mjs`：闲聊不建单、明确指令建单 |
+| 订阅扇出 | `Engine.ingest` → `subscribedTickets` → `fanOut`（input + deliver 效果） | `tests/fanout-smoke.mjs`：1 ticket、`trg-second → fanned_out` |
+| Inline & Spill + 链式召回 | `buildView`（评估上下文）+ `spillInstruction`（worker 指令落盘，prompt 给路径） | `tests/spill-smoke.mjs`：长指令落盘、prompt 含可读取路径 |
+| 异步 ReAct | Worker 在 DSH agent loop 里多轮工具调用；`launch` 受理即返回，回合结束异步 `onReport` | `tests/sdk-smoke.mjs` + 桌面面板 `running → ended` |
+| 存算分离 | 状态在 SQLite 事件库；执行在嵌套 DSH runtime（隔离 home/workspace） | 桌面工单底部常驻事件库路径与 replay hash；产物由 worker 写 |
+| Watchdog | host 定时 `Watchdog.check`（stalled/undelivered）→ intervene → retry + tick | `tests/smoke.mjs`：`watchdog: ok 0` + snapshot |
+| Web / 桌面 UI 复用 | DSH `ui-*` 槽位：`sidebar.panellist` + `main` + 品牌位；Electron 桌面壳 | `docs/dsh-desktop-*.png` 截图 |
+| 可复现 | `scripts/desktop-super-agent.ps1` + `verify-super-agent.ps1` + `contrib/dsh` 补丁层 | `VERIFY OK`（core/host/fanout/spill/sdk/desktop 六项） |
+
+### 已知边界
+
+- **链式召回是一跳**：超预算上下文落盘成单个 digest 文件，prompt 给路径；尚未实现按事件 id 的多级 recall 索引。
+- **嵌套 runtime 较重**：每个 worker 回合会拉起一个 DSH runtime 子进程（隔离 home），延迟主要花在启动 + 模型；后续可换成 in-process session 或常驻 worker 池。
+- **桌面版是源码运行**：还没有打包安装包（Electron builder 流程未接），`desktop-super-agent.ps1` 以开发模式启动。
+- **品牌只覆盖侧栏与标题**：会话 hero（“探索未至之境”）、托盘图标、安装包元信息仍是 DSH 原样。
