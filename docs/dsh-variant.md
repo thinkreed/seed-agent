@@ -68,15 +68,16 @@
   - 窗口底部显示事件库路径与 replay hash
 - [x] **M5a Watchdog**：host 内置 Watchdog（确定性 finding：stalled/undelivered），watchdogSeconds 定时巡检、checkWatchdog() 暴露给快照/测试；intervene 时对 finding 工单 retry + tick。冒烟：watchdog: ok 0（HOST SMOKE OK）
 - [x] **M5b 渠道**：MultiChannelWriter（飞书 im/v1、GitHub gh issue comment、本地日志）；Engine 接 Router.queueReplies，报告落地自动排队发帖；飞书实测 message_id om_x100b…549，GitHub 实测评论落在 thinkreed/seed-agent-e2e#3；桌面里 worker 用 DSH_PERMISSION_MODE=danger-full-access 自动放行（截图 docs/dsh-desktop-channels.png）
-- [x] **M6 品牌变种**：侧栏 mark/name 换成 seed-agent（SeedBrand.tsx：种子凹形 logo + seed-agent 字标）；rand.localBuild 各语言 locale 改为 seed-agent，窗口标题变成「seed-agent」；截图 docs/dsh-desktop-seed-agent.png
+- [x] **M6 品牌变种**：侧栏 mark/name 换成 seed-agent（SeedBrand.tsx：种子凹形 logo + seed-agent 字标）；brand.localBuild 各语言 locale 改为 seed-agent，窗口标题变成「seed-agent」；截图 docs/dsh-desktop-seed-agent.png
 - [x] **M7 可复现**：scripts/desktop-super-agent.ps1（凭据→补丁→构建→隔离 home→link 包→注入 profile 行→启动）与 scripts/verify-super-agent.ps1（core/host 冒烟 + 桌面启动探活，-Slow/-Network 追加真机项）；实测 VERIFY OK
+- [x] **两级过滤（Gate + LLM）**：host `assessorMode: llm`（默认）→ `LlmAssessor` + `OpenAIClient`（BAILIAN 兼容端点）走 core 的 assessment prompt 与 Inline&Spill 视图；实测闲聊线程不建单、明确指令建单（`tests/assessor-smoke.mjs`，ASSESSOR SMOKE OK）；`verify-super-agent.ps1 -Slow` → core/host/sdk/desktop 全 PASS
 
 ### 桌面版运行（M7 一键）
 
-`powershell
+```powershell
 pwsh -File scripts/desktop-super-agent.ps1 -Restart     # 准备 + 启动桌面
 pwsh -File scripts/verify-super-agent.ps1              # 验收（可加 -Slow -Network）
-`
+```
 
 > 脚本是 UTF-8 **BOM**（Windows PowerShell 5.1 读无 BOM 的中文 PS1 会把换行吃掉）；变量名不要用 $home/$Home（只读自动变量）。
 
