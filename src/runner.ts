@@ -37,12 +37,12 @@ export class SourceRunner {
   }
 
   /** 轮询所有 Source：各自独立容错。 */
-  pollOnce(): PollReport {
+  async pollOnce(): Promise<PollReport> {
     let ingested = 0;
     const failures: SourceFailure[] = [];
     for (const source of this.sources) {
       try {
-        const batch = source.poll();
+        const batch = await source.poll();
         for (const trigger of batch) {
           this.engine.ingest(trigger);
           ingested += 1;
@@ -56,11 +56,11 @@ export class SourceRunner {
   }
 
   /** 轮询直到所有 Source 都没有新事件。失败按来源去重（保留最后一次错误）。 */
-  drain(maxRounds = 100): PollReport {
+  async drain(maxRounds = 100): Promise<PollReport> {
     let ingested = 0;
     const failures = new Map<string, SourceFailure>();
     for (let round = 0; round < maxRounds; round += 1) {
-      const report = this.pollOnce();
+      const report = await this.pollOnce();
       ingested += report.ingested;
       for (const failure of report.failures) failures.set(failure.source, failure);
       if (report.ingested === 0) return { ingested, failures: [...failures.values()] };

@@ -2,12 +2,13 @@
 
 import type { Clock } from "./clock.ts";
 import { ev } from "./builders.ts";
-import type { Assignment, Ticket } from "./domain.ts";
+import type { Assignment, Input, Report, Ticket } from "./domain.ts";
 import { openAssignment } from "./domain.ts";
+import type { Effects } from "./effects.ts";
 import type { Effects } from "./effects.ts";
 import type { AnyEvent } from "./events.ts";
 import type { IdFactory } from "./ids.ts";
-import type { Executor } from "./ports.ts";
+import type { Executor, ChannelWriter } from "./ports.ts";
 import type { SqliteStore } from "./store.ts";
 
 export interface ActionsOptions {
@@ -15,6 +16,7 @@ export interface ActionsOptions {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly executor: Executor;
+  readonly channels?: ChannelWriter;
 }
 
 export class Actions {
@@ -22,12 +24,14 @@ export class Actions {
   private readonly clock: Clock;
   private readonly ids: IdFactory;
   private readonly executor: Executor;
+  private readonly channels: ChannelWriter | undefined;
 
   constructor(options: ActionsOptions) {
     this.store = options.store;
     this.clock = options.clock;
     this.ids = options.ids;
     this.executor = options.executor;
+    this.channels = options.channels;
   }
 
   /** 给空闲工单派活：受并发槽限制。只有"从未派过工"或"有新输入未投递"的工单才启动新 Assignment。
@@ -83,5 +87,54 @@ export class Actions {
     if (!ticket) throw new Error(`unknown ticket ${input.ticketId}`);
     await this.executor.deliver(ticket, input);
     return [ev.inputDelivered(input.id, this.clock.now())];
+  }
+
+  /** effects: send —— 通过信道把消息发出去。 */
+  async send(messageId: string): Promise<AnyEvent[]> {
+    const message = this.store.state().messages[messageId];
+    if (!message) throw new Error(`unknown message ${messageId}`);
+    if (!this.channels) throw new Error("no channel writer configured");
+    await this.channels.send(
+      { id: message.channelId, threadId: "", address: message.address },
+      message.text,
+    );
+    return [ev.messageSent(message.id, this.clock.now())];
+  }
+
+  /** 人的消息进入工单：结束的工单会被 resume（被 stop 的除外）。 */
+  personMessage(ticketId: string, text: string, effects: Effects): AnyEvent[] {
+    const now = this.clock.now();
+    const ticket = this.store.state().tickets[ticketId];
+    if (!ticket) throw new Error(`unknown ticket ${ticketId}`);
+    const input: Input = {
+      id: this.ids.next("inp"),
+      ticketId,
+      kind: "text",
+      ref: text.slice(0, 500),
+      at: now,
+    };
+    const produced: AnyEvent[] = [ev.inputFannedOut(input, now)];
+    if (ticket.state === "ended" && !ticket.stopped) produced.push(ev.ticketResumed(ticketId, now));
+    effects.enqueue(this.ids.next("eff"), "deliver", { inputId: input.id }, now);
+    return this.store.appendAll(produced);
+  }
+
+  /** 执行器报告：结束 assignment；ready/dropped 直接结束工单。 */
+  report(report: Report): AnyEvent[] {
+    const now = this.clock.now();
+    this.store.append(ev.reportRecorded(report, now));
+    const state = this.store.state();
+    const produced: AnyEvent[] = [];
+    const assignment = state.assignments[report.assignmentId];
+    if (assignment && assignment.state !== "ended") {
+      produced.push(ev.assignmentEnded(assignment.id, report.status, now));
+    }
+    if (report.status === "ready" || report.status === "dropped") {
+      const ticket = state.tickets[report.ticketId];
+      if (ticket && ticket.state === "open") {
+        produced.push(ev.ticketEnded(ticket.id, report.status, report.summary, now));
+      }
+    }
+    return produced.length > 0 ? this.store.appendAll(produced) : [];
   }
 }

@@ -66,6 +66,12 @@ test("每个事件都有 reducer 分支（未知事件才抛 UnknownEventError�
     "input.undelivered": ev.inputUndelivered("inp-1", "down", 0),
     "report.recorded": ev.reportRecorded(h.report("progress"), 0),
     "attention.opened": ev.attentionOpened(h.attention(), 0),
+    "message.queued": ev.messageQueued(
+      { id: "msg-1", ticketId: "tk-1", channelId: "chan-1", address: "chan-1", text: "hi", at: 0 },
+      0,
+    ),
+    "message.sent": ev.messageSent("msg-1", 0),
+    "message.failed": ev.messageFailed("msg-1", "down", 0),
     "policy.changed": ev.policyChanged(h.policy(), 0),
   };
   assert.deepEqual(Object.keys(samples).sort(), [...EVENT_TYPES].sort());

@@ -30,10 +30,11 @@ export interface Executor {
 }
 
 export interface ChannelWriter {
-  send(channel: Channel, text: string): void;
+  send(channel: Channel, text: string): void | Promise<void>;
 }
 
 export interface Source {
   readonly name: string;
-  poll(): Trigger[];
+  /** 允许同步（本地剧本）或异步（网络 API）。 */
+  poll(): Trigger[] | Promise<Trigger[]>;
 }

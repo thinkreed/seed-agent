@@ -10,7 +10,7 @@ import { EvalRunner } from "./eval_runner.ts";
 import type { AnyEvent } from "./events.ts";
 import type { IdFactory } from "./ids.ts";
 import { gate } from "./policy.ts";
-import type { Assessor, Executor } from "./ports.ts";
+import type { Assessor, ChannelWriter, Executor } from "./ports.ts";
 import type { SqliteStore } from "./store.ts";
 
 export interface EngineOptions {
@@ -19,6 +19,7 @@ export interface EngineOptions {
   ids: IdFactory;
   assessor: Assessor;
   executor: Executor;
+  channels?: ChannelWriter;
   policy?: Policy | null;
   slots?: number;
 }
@@ -31,6 +32,7 @@ export class Engine {
   readonly executor: Executor;
   readonly slots: number;
   readonly effects: Effects;
+  readonly channels: ChannelWriter | undefined;
   private readonly evalRunner: EvalRunner;
   private readonly actions: Actions;
 
@@ -41,6 +43,7 @@ export class Engine {
     this.assessor = options.assessor;
     this.executor = options.executor;
     this.slots = options.slots ?? 4;
+    this.channels = options.channels;
     this.evalRunner = new EvalRunner({
       store: this.store,
       clock: this.clock,
@@ -52,10 +55,12 @@ export class Engine {
       clock: this.clock,
       ids: this.ids,
       executor: this.executor,
+      channels: this.channels,
     });
     this.effects = new Effects(this.store, this.clock, {
       launch: (item) => this.actions.launch(item.payload.assignmentId as string),
       deliver: (item) => this.actions.deliver(item.payload.inputId as string),
+      send: (item) => this.actions.send(item.payload.messageId as string),
     });
     if (options.policy) this.append([ev.policyChanged(options.policy, this.clock.now())]);
   }
@@ -166,38 +171,11 @@ export class Engine {
   // ---------- 输入 ----------
 
   personMessage(ticketId: string, text: string): AnyEvent[] {
-    const now = this.clock.now();
-    const ticket = this.state.tickets[ticketId];
-    if (!ticket) throw new Error(`unknown ticket ${ticketId}`);
-    const input: Input = {
-      id: this.ids.next("inp"),
-      ticketId,
-      kind: "text",
-      ref: text.slice(0, 500),
-      at: now,
-    };
-    const produced: AnyEvent[] = [ev.inputFannedOut(input, now)];
-    if (ticket.state === "ended" && !ticket.stopped) produced.push(ev.ticketResumed(ticketId, now));
-    this.effects.enqueue(this.ids.next("eff"), "deliver", { inputId: input.id }, now);
-    return this.append(produced);
+    return this.actions.personMessage(ticketId, text, this.effects);
   }
 
   report(report: Report): AnyEvent[] {
-    const now = this.clock.now();
-    this.append([ev.reportRecorded(report, now)]);
-    const state = this.state;
-    const produced: AnyEvent[] = [];
-    const assignment = state.assignments[report.assignmentId];
-    if (assignment && assignment.state !== "ended") {
-      produced.push(ev.assignmentEnded(assignment.id, report.status, now));
-    }
-    if (report.status === "ready" || report.status === "dropped") {
-      const ticket: Ticket | undefined = state.tickets[report.ticketId];
-      if (ticket && ticket.state === "open") {
-        produced.push(ev.ticketEnded(ticket.id, report.status, report.summary, now));
-      }
-    }
-    return this.append(produced);
+    return this.actions.report(report);
   }
 
   private append(events: readonly AnyEvent[]): AnyEvent[] {

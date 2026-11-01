@@ -255,19 +255,19 @@ CREATE TABLE cursors   (source TEXT PRIMARY KEY, position TEXT NOT NULL, updated
 |---|---|---|
 | **P0 地基** | ✅ 完成 | `src/domain.ts` `events.ts` `reducer.ts` `fsm.ts` `store.ts` `effects.ts` `clock.ts` `ids.ts`；测试：reducer 回放确定性、非法转换、store 持久化/回放哈希、effects 退避与丢弃、FSM 阶段矩阵、架构守护 |
 | **P1 受理** | ✅ 完成（LLM 适配器待接） | `src/policy.ts` Gate 矩阵与 Policy 版本；`src/eval_runner.ts` 批处理 + 幂等 + 扇出直通；测试：Gate 7 例、批处理合并、订阅直通、ignore/stop |
-| **P2 执行** | ◐ 执行器与模型已接 | `src/executor/local.ts`（工单目录 + prepare + worker 子进程 + stdout JSON 报告）、`src/assessor_llm.ts` + `src/model.ts`（模型端口 → 提示词 → 决策解析）、Assignment/并发槽/唤醒语义；测试：子进程报告回收、stdin 投递、prepare 失败重试、异步评估器全链路。Router 会话运行时仍待做 |
+| **P2 执行** | ✅ 完成 | `src/executor/local.ts`（工单目录 + prepare + worker 子进程 + stdout JSON 报告回收 + stdin 投递）、`src/model.ts` + `src/assessor_llm.ts`（模型端口 → Inline&Spill 视图 → 决策）、`src/router.ts`（人面向的短回复，同报告只通知一次、失败走 outbox 退避）、Assignment/并发槽/唤醒语义 |
 | **P3 路由上下文** | ◐ 核心完成 | `src/context.ts` Inline & Spill 视图、`src/recall.ts` 链式召回（Trigger→Thread→Ticket）、`src/prompts.ts` 评估/执行/路由提示词、`src/assessor.ts` 模型输出解析；测试：截断/Spill/句柄/召回预算/决策解析。Correlation 与 Eval 侧接线待做 |
 | **P4 异步交互** | ◐ 核心完成 | 全链路 async；`src/jobs.ts` 后台任务注册表（协作取消、30 分钟判死、完成通知）；`src/react.ts` 异步 ReAct 循环（`tool`/`start`/`stop`/`report` 四种动作）；测试：任务生命周期、stop 取消、deadline、ReAct 全路径。前台中断式全双工与后台唤醒待接 |
 
-| **P5 真渠道** | ◐ 接口就绪 | `src/sources/local.ts` + `src/runner.ts`（轮询、位点、逐源容错）；GitHub/飞书 Source 待接 |
+| **P5 真渠道** | ◐ GitHub 完成 | `src/sources/github.ts`（通知 → Trigger/Thread，仓库与 reason 过滤）、`GitHubChannel`（评论回写）、`src/sources/local.ts` + `src/runner.ts`（轮询/位点/逐源容错）；飞书 IM 与真实 `gh` 客户端待接 |
 | **P6 存算分离** | ⬜ 未开始 | 端侧 daemon（Rust）、BYOM、执行变量 |
-| **P7 Watchdog** | ⬜ 未开始 | 定时驱动、进展判定、pause/retry/restart |
+| **P7 Watchdog** | ◐ 判据完成 | `src/watchdog.ts`：确定性判据（停滞 / 投递失败）+ 模型裁定端口；pause/retry/restart 动作与定时驱动接线待做 |
 | **P8 面板部署** | ◐ 面板与主循环 | `src/panel.ts` 只读面板、`src/daemon.ts` 常驻主循环（每轮 poll + tick）、`node src/cli.ts` 端到端演示；配置/观测/一键部署待补 |
 
-当前全量测试：**99 例全部通过，约 1.5s（含子进程与后台任务用例），零网络**。
+当前全量测试：**115 例全部通过，约 1.6s（含子进程与后台任务用例），零网络**。
 
 | 验证命令 | 期望 |
 |---|---|
-| `node --test` | 99 pass / 0 fail |
-| `node src/cli.ts` | 打印 15 条事件、1 张工单 ended、回放哈希 |
+| `node --test` | 115 pass / 0 fail |
+| `node src/cli.ts` | 打印 17 条事件、1 张工单 ended、回放哈希、1 条对外回复 |
 | `node src/cli.ts panel <db>` | 打印面板（只列待人工项） |

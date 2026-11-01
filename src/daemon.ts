@@ -34,7 +34,7 @@ export class Daemon {
 
   /** 跑一轮：收事件 -> 驱动引擎。返回这一轮的统计。 */
   async runRound(): Promise<RoundReport> {
-    const poll = this.options.runner.pollOnce();
+    const poll = await this.options.runner.pollOnce();
     const before = this.options.store.lastSeq();
     await this.options.engine.tick();
     const events = this.options.store.lastSeq() - before;

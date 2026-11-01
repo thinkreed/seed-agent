@@ -10,6 +10,7 @@ import type {
   Disposition,
   Eval,
   Input,
+  OutboundMessage,
   Policy,
   Report,
   Subscription,
@@ -39,6 +40,9 @@ export interface EventData {
   "input.undelivered": { inputId: string; reason: string };
   "report.recorded": { report: Report };
   "attention.opened": { attention: Attention };
+  "message.queued": { message: OutboundMessage };
+  "message.sent": { messageId: string };
+  "message.failed": { messageId: string; reason: string };
   "policy.changed": { policy: Policy };
 }
 
@@ -70,6 +74,9 @@ export const EVENT_TYPES = Object.keys({
   "input.undelivered": 1,
   "report.recorded": 1,
   "attention.opened": 1,
+  "message.queued": 1,
+  "message.sent": 1,
+  "message.failed": 1,
   "policy.changed": 1,
 }) as readonly EventType[];
 
@@ -95,6 +102,9 @@ export const REQUIRED_KEYS: Readonly<Record<EventType, readonly string[]>> = {
   "input.undelivered": ["inputId", "reason"],
   "report.recorded": ["report"],
   "attention.opened": ["attention"],
+  "message.queued": ["message"],
+  "message.sent": ["messageId"],
+  "message.failed": ["messageId", "reason"],
   "policy.changed": ["policy"],
 };
 

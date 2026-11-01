@@ -163,6 +163,21 @@ export function apply(state: State, event: AnyEvent): State {
       const attention = event.data.attention;
       return patch(state, { attentions: { ...state.attentions, [attention.ticketId]: attention } });
     }
+    case "message.queued": {
+      const message = event.data.message;
+      if (state.messages[message.id]) return state;
+      return patch(state, { messages: { ...state.messages, [message.id]: message } });
+    }
+    case "message.sent": {
+      const sentMessages = new Set(state.sentMessages);
+      sentMessages.add(event.data.messageId);
+      return patch(state, { sentMessages });
+    }
+    case "message.failed": {
+      return patch(state, {
+        messageErrors: { ...state.messageErrors, [event.data.messageId]: event.data.reason },
+      });
+    }
     case "policy.changed": {
       return patch(state, { policy: event.data.policy });
     }

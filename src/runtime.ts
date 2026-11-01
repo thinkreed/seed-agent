@@ -7,13 +7,14 @@ import { Engine } from "./engine.ts";
 import type { IdFactory } from "./ids.ts";
 import { SeqIds } from "./ids.ts";
 import { defaultPolicy } from "./policy.ts";
-import type { Assessor, Executor } from "./ports.ts";
+import type { Assessor, ChannelWriter, Executor } from "./ports.ts";
 import { SqliteStore } from "./store.ts";
 
 export interface RuntimeConfig {
   readonly dbPath?: string;
   readonly slots?: number;
   readonly policy?: Policy;
+  readonly channels?: ChannelWriter;
 }
 
 export interface RuntimeOptions {
@@ -47,6 +48,7 @@ export class Runtime {
       ids: options.ids ?? new SeqIds(),
       assessor: options.assessor,
       executor: options.executor,
+      channels: config.channels,
       policy: config.policy ?? defaultPolicy(),
       slots: config.slots ?? 4,
     });

@@ -7,6 +7,7 @@ import type {
   Disposition,
   Eval,
   Input,
+  OutboundMessage,
   Policy,
   Report,
   Subscription,
@@ -58,6 +59,12 @@ export const ev = {
     makeEvent("report.recorded", { report }, at),
   attentionOpened: (attention: Attention, at: number): AnyEvent =>
     makeEvent("attention.opened", { attention }, at),
+  messageQueued: (message: OutboundMessage, at: number): AnyEvent =>
+    makeEvent("message.queued", { message }, at),
+  messageSent: (messageId: string, at: number): AnyEvent =>
+    makeEvent("message.sent", { messageId }, at),
+  messageFailed: (messageId: string, reason: string, at: number): AnyEvent =>
+    makeEvent("message.failed", { messageId, reason }, at),
   policyChanged: (policy: Policy, at: number): AnyEvent =>
     makeEvent("policy.changed", { policy }, at),
 };

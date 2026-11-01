@@ -5,11 +5,13 @@
  */
 
 import { FakeClock } from "./clock.ts";
+import { RecordingChannel } from "./channels/recording.ts";
 import type { Decision, Report, Trigger } from "./domain.ts";
 import { RecordingExecutor, ScriptedAssessor } from "./fakes.ts";
 import { SeqIds } from "./ids.ts";
 import { render } from "./panel.ts";
 import { defaultPolicy } from "./policy.ts";
+import { Router } from "./router.ts";
 import { Runtime } from "./runtime.ts";
 import { SqliteStore } from "./store.ts";
 import { openAssignment } from "./domain.ts";
@@ -22,13 +24,15 @@ export async function demo(): Promise<number> {
   const clock = new FakeClock();
   const assessor = new ScriptedAssessor([accept()]);
   const executor = new RecordingExecutor();
+  const channel = new RecordingChannel();
   const runtime = Runtime.build({
     assessor,
     executor,
-    config: { dbPath: ":memory:", slots: 2, policy: defaultPolicy() },
+    config: { dbPath: ":memory:", slots: 2, policy: defaultPolicy(), channels: channel },
     clock,
     ids: new SeqIds(),
   });
+  const router = new Router({ store: runtime.store, clock, effects: runtime.engine.effects });
 
   const trigger: Trigger = {
     id: "trg-000001",
@@ -58,12 +62,15 @@ export async function demo(): Promise<number> {
   };
   runtime.engine.report(report);
   await runtime.tickUntilIdle();
+  router.queueReplies();
+  await runtime.tickUntilIdle();
 
   console.log(`events       : ${runtime.store.lastSeq()}`);
   console.log(`tickets      : ${Object.keys(runtime.engine.state.tickets).length}`);
   console.log(`ticket state : ${Object.values(runtime.engine.state.tickets)[0]?.state}`);
   console.log(`replay hash  : ${runtime.store.replayHash().slice(0, 16)}`);
   console.log(`launched     : ${executor.launched.map((item) => item.assignment.id).join(", ")}`);
+  console.log(`replies      : ${channel.sent.map((item) => item.text).join(" | ") || "(none)"}`);
   console.log("--- panel ---");
   console.log(render(runtime.engine.state));
   runtime.close();

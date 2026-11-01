@@ -130,6 +130,16 @@ export interface Attention {
   readonly at: number;
 }
 
+/** 对外消息（回复/通知）：先入账，再由 effects 真正发送。 */
+export interface OutboundMessage {
+  readonly id: string;
+  readonly ticketId: string;
+  readonly channelId: string;
+  readonly address: string;
+  readonly text: string;
+  readonly at: number;
+}
+
 export interface Eval {
   readonly id: string;
   readonly threadId: string;
@@ -149,6 +159,9 @@ export interface State {
   reports: Readonly<Record<string, readonly Report[]>>;
   inputs: Readonly<Record<string, Input>>;
   attentions: Readonly<Record<string, Attention>>;
+  messages: Readonly<Record<string, OutboundMessage>>;
+  sentMessages: ReadonlySet<string>;
+  messageErrors: Readonly<Record<string, string>>;
   dispositions: Readonly<Record<string, Disposition>>;
   undelivered: ReadonlySet<string>;
   delivered: ReadonlySet<string>;
@@ -166,6 +179,9 @@ export function emptyState(): State {
     reports: {},
     inputs: {},
     attentions: {},
+    messages: {},
+    sentMessages: new Set<string>(),
+    messageErrors: {},
     dispositions: {},
     undelivered: new Set<string>(),
     delivered: new Set<string>(),

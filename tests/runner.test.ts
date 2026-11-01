@@ -48,7 +48,7 @@ test("SourceRunner：轮询 -> ingest -> tick，端到端出门票", async () =>
     clock,
   });
 
-  const report = runner.drain();
+  const report = await runner.drain();
   assert.equal(report.ingested, 3);
   assert.deepEqual(report.failures, []);
   assert.equal(rt.store.cursorGet("local"), "trg-003");
@@ -72,7 +72,7 @@ test("SourceRunner：一个 Source 抛错不影响其它 Source", async () => {
     store: rt.store,
     clock,
   });
-  const report = runner.drain();
+  const report = await runner.drain();
   assert.equal(report.ingested, 1);
   assert.equal(report.failures.length, 1);
   assert.equal(report.failures[0]?.source, "broken");
@@ -87,9 +87,9 @@ test("SourceRunner：重复轮询不会重复 ingest", async () => {
     store: rt.store,
     clock,
   });
-  runner.drain();
+  await runner.drain();
   const seq = rt.store.lastSeq();
-  runner.drain();
+  await runner.drain();
   assert.equal(rt.store.lastSeq(), seq);
   rt.close();
 });
