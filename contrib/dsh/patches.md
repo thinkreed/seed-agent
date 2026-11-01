@@ -10,6 +10,8 @@
 | `overlay/ui-sidebar-documentpreview/cpexcel.full.d.ts` → `packages/client/ui-sidebar-documentpreview/src/client/excel/` | 新增模块声明 | `@e965/xlsx` 没带 `xlsx/dist/cpexcel.full.mjs` 子路径的 `.d.ts`，`tsc -b` 报 TS7016 |
 | `packages/super-agent/core/**` | 新增包 `@deepseek-ai/dsh-super-agent-core` | Super-agent 内核（seed-agent 移植）：领域/事件/reducer/store/engine/Router/Worker/Watchdog |
 
+| config/sdk-bailian.patch.yml → dsh/config/ | 新增 profile patch | 让 --profile sdk 使用本机 BAILIAN 端点（openai-completions）与 deepseek-v4.1-flash，SDK 执行器真机验证用 |
+
 ## 用法
 
 ```powershell
