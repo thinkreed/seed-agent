@@ -25,7 +25,7 @@
 > **审计后进展（滚动更新）**
 > - 2026-11-01：**P0-1 Router Session 完成**——常驻 Router（记忆 + 对话历史 + 跨 Thread 批处理 + recall 动作入口）落地并真机验证；§2.1-a/b/c/d 由 ❌/⚠️ 转为 ✅；覆盖度 ≈35–40%。证据：`host/src/router_session.ts`、`tests/router-smoke.mjs`（`threads:2` 一次调用）、桌面面板 Router 对话截图 `docs/dsh-desktop-router.png`。
 
-一个重要的减负事实：**内核 `seed-agent/src` 里已有** `react.ts`（异步 ReAct）、`jobs.ts`（后台任务）、`sources/*`（飞书/GitHub/JSONL/本地入站）、`watchdog_llm.ts`（模型裁定）、`executor/{stdio,remote}`、`daemon.ts`、`recall.ts`（链式召回）。这些**没有搬进 fork**，所以多数缺口是"移植+接线"，不是"从零实现"。
+一个重要的减负事实：**内核 `seed-agent/src` 里已有** `react.ts`（异步 ReAct）、`jobs.ts`（后台任务）、`sources/*`（飞书/GitHub/JSONL/本地入站）、`watchdog_llm.ts`（模型裁定）、`executor/{stdio,remote}`、`daemon.ts`、`recall.ts`（链式召回）。这些**没有搬进 fork**，所以多数缺口是"移植+接线"，不是"从零实现"。> - 2026-11-01：**P0-2 入站 Source 完成**——移植飞书/GitHub/JSONL 适配器到 host（src/sources/*），宿主按间隔轮询、策略放行新来源、engine 按 trigger id 幂等去重。证据：	ests/sources-smoke.mjs（JSONL 真实文件轮询：2 条事件 → 2 个工单，重复轮询不再触发）；	ests/inbound-live-smoke.mjs（飞书 24h 拉取 3 条消息、产出 1 条 human trigger；GitHub 通知 API 连通）；桌面探活 sources=feishu+github。§3-a 由 ❌ 转 ✅（admission 表/bot 白名单细节仍 P1）。
 
 ## 2. 逐条差距（文章 §2–§6）
 

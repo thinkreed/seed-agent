@@ -19,14 +19,16 @@ import {
   Runtime,
   SystemClock,
   Watchdog,
-  defaultPolicy,
+  buildPolicy,
   type AssessContext,
   type Assessor,
   type Decision,
   type Executor,
   type Assignment,
   type Input,
+  type Policy,
   type Report,
+  type Source,
   type State,
   type Ticket,
   type Trigger,
@@ -35,6 +37,16 @@ import {
 import { SdkDshExecutor } from './executor.ts'
 export { spillInstruction, workerPrompt } from './executor.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
+import { FeishuHttpClient } from './sources/feishu_http.ts'
+import { FeishuSource } from './sources/feishu.ts'
+import { GhCliClient } from './sources/github_cli.ts'
+import { GitHubSource } from './sources/github.ts'
+import { JsonlInboxSource } from './sources/jsonl.ts'
+export { FeishuHttpClient } from './sources/feishu_http.ts'
+export { FeishuSource, feishuThreadAddress } from './sources/feishu.ts'
+export { GhCliClient } from './sources/github_cli.ts'
+export { GitHubSource, threadAddress } from './sources/github.ts'
+export { JsonlInboxSource } from './sources/jsonl.ts'
 import { MultiChannelWriter } from './channels.ts'
 import { mountHttpRoutes, type CommandInput } from './http.ts'
 
@@ -76,6 +88,20 @@ export interface SuperAgentHostConfig {
   spillChars: number
   /** 落盘目录（默认事件库同级的 spills/）。 */
   spillDir: string
+  /** 入站 Source 总开关。 */
+  sourcesEnabled: boolean
+  /** 飞书群 chat_id 列表（逗号分隔；空 = 不启用飞书入站）。 */
+  sourceFeishuChatIds: string
+  /** 飞书只处理最近 N 秒的消息。 */
+  sourceFeishuSinceSeconds: number
+  /** GitHub 仓库列表（owner/name，逗号分隔；空 = 不启用 GitHub 入站）。 */
+  sourceGithubRepos: string
+  /** 只关心这些 reason（逗号分隔）。 */
+  sourceGithubReasons: string
+  /** JSONL 收件箱路径（本地联调）。 */
+  sourceJsonlPath: string
+  /** 轮询间隔（秒）。 */
+  sourceIntervalSeconds: number
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -121,6 +147,13 @@ export class SuperAgentHost extends Service {
     llmTimeoutMs: z.number().step(1).min(1000).max(600000).default(60000),
     spillChars: z.number().step(1).min(200).max(1_000_000).default(4000),
     spillDir: z.string().default(''),
+    sourcesEnabled: z.boolean().default(true),
+    sourceFeishuChatIds: z.string().default(''),
+    sourceFeishuSinceSeconds: z.number().step(1).min(30).max(86400).default(1800),
+    sourceGithubRepos: z.string().default(''),
+    sourceGithubReasons: z.string().default('mention,review_requested,comment,assign,team_mention'),
+    sourceJsonlPath: z.string().default(''),
+    sourceIntervalSeconds: z.number().step(1).min(1).max(3600).default(15),
   })
 
   readonly runtime: Runtime
@@ -133,6 +166,8 @@ export class SuperAgentHost extends Service {
   private readonly assessorMode: string
   private routerSession: RouterSession | undefined
   private lastRouterBatch: RouterBatch | undefined
+  private readonly sourceList: Source[] = []
+  private lastPollAt: number | undefined
   private readonly lastPrompts = new Map<string, string>()
   private lastWatchdog: WatchdogReport | undefined
 
@@ -215,7 +250,7 @@ export class SuperAgentHost extends Service {
       config: {
         dbPath: this.dbPath,
         slots: config.slots,
-        policy: defaultPolicy(),
+        policy: this.buildPolicy(config),
         ...(config.channelsEnabled ? { channels: this.channels } : {}),
       },
     })
@@ -225,6 +260,19 @@ export class SuperAgentHost extends Service {
       await this.sdk?.close()
       this.runtime.close()
     })
+
+    // 入站 Source：轮询群消息/通知/JSONL，产生 Trigger（主动性的入口）。
+    if (config.sourcesEnabled) {
+      this.sourceList.push(...this.createSources(config))
+      if (this.sourceList.length > 0) {
+        const timer = setInterval(() => {
+          void this.pollSources()
+        }, config.sourceIntervalSeconds * 1000)
+        timer.unref()
+        ctx.effect(() => () => clearInterval(timer))
+        void this.pollSources()
+      }
+    }
 
     // 外部看门狗：独立巡检（停滞/未投递），不依赖被测系统自证。
     if (config.watchdogSeconds > 0) {
@@ -310,6 +358,68 @@ export class SuperAgentHost extends Service {
 
   replayHash(): string {
     return this.runtime.store.replayHash()
+  }
+
+  /** 按配置创建入站 Source（JSONL / 飞书 / GitHub）。 */
+  private createSources(config: SuperAgentHostConfig): Source[] {
+    const sources: Source[] = []
+    if (config.sourceJsonlPath) sources.push(new JsonlInboxSource(resolve(config.sourceJsonlPath)))
+
+    const feishuChats = config.sourceFeishuChatIds.split(',').map((value) => value.trim()).filter(Boolean)
+    const feishuAppId = process.env.FEISHU_APP_ID?.trim()
+    const feishuAppSecret = process.env.FEISHU_APP_SECRET?.trim()
+    if (feishuChats.length > 0 && feishuAppId && feishuAppSecret) {
+      sources.push(new FeishuSource(
+        new FeishuHttpClient({ appId: feishuAppId, appSecret: feishuAppSecret, chatIds: feishuChats }),
+        { sinceSeconds: config.sourceFeishuSinceSeconds },
+      ))
+    }
+
+    const repos = config.sourceGithubRepos.split(',').map((value) => value.trim()).filter(Boolean)
+    if (repos.length > 0) {
+      const reasons = config.sourceGithubReasons.split(',').map((value) => value.trim()).filter(Boolean)
+      sources.push(new GitHubSource({
+        client: new GhCliClient({
+          excludeSelf: true,
+          ...(config.workspace ? { cwd: resolve(config.workspace) } : {}),
+        }),
+        clock: new SystemClock(),
+        repos,
+        reasons,
+      }))
+    }
+    return sources
+  }
+
+  /** 准入策略：本地恒允许；配置了入站的 source 也允许（更细的来源/群组规则在下一轮补）。 */
+  private buildPolicy(config: SuperAgentHostConfig): Policy {
+    const rules = [{ source: 'local', actor: '*', allow: true, strength: 'explicit' as const, note: 'local-explicit' }]
+    const senders: [string, string][] = [['local', '*']]
+    if (config.sourceFeishuChatIds.trim()) {
+      rules.push({ source: 'feishu', actor: '*', allow: true, strength: 'explicit' as const, note: 'feishu-inbound' })
+      senders.push(['feishu', '*'])
+    }
+    if (config.sourceGithubRepos.trim()) {
+      rules.push({ source: 'github', actor: '*', allow: true, strength: 'explicit' as const, note: 'github-inbound' })
+      senders.push(['github', '*'])
+    }
+    return buildPolicy(rules, 'auto', senders)
+  }
+
+  /** 轮询所有入站 Source：新 Trigger 进引擎并驱动一轮（幂等由 engine 的 trigger id 保证）。 */
+  async pollSources(): Promise<void> {
+    if (this.runtime.engine.isPaused) return
+    for (const source of this.sourceList) {
+      try {
+        const triggers = await source.poll()
+        let ingested = 0
+        for (const trigger of triggers) ingested += this.ingest(trigger)
+        if (ingested > 0) await this.tick()
+      } catch (error) {
+        console.error(`super-agent source ${source.name} poll failed`, String(error))
+      }
+    }
+    this.lastPollAt = Math.floor(Date.now() / 1000)
   }
 
   /** 逐轮评估：explicit（Gate 放行即接受）或 llm（真实模型两级过滤；routerMode=llm 时走常驻 Router Session）。 */
@@ -418,6 +528,11 @@ export class SuperAgentHost extends Service {
       router: this.routerSession
         ? { mode: 'llm', ...this.routerSession.snapshot() }
         : { mode: this.assessorMode, lastBatch: this.lastRouterBatch ?? null },
+      sources: {
+        enabled: this.sourceList.length > 0,
+        names: this.sourceList.map((source) => source.name),
+        lastPollAt: this.lastPollAt ?? null,
+      },
       tickets: tickets.sort((a, b) => b.updatedAt - a.updatedAt),
     }
   }

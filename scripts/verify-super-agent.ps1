@@ -67,14 +67,16 @@ try {
   Report 'host smoke' ($out -match 'HOST SMOKE OK') (($out -split "`n" | Where-Object { $_ -match 'watchdog:' }) -join ' ')
 } catch { Report 'host smoke' $false $_.Exception.Message } finally { Pop-Location }
 
-# 2b) 订阅扇出 / Inline&Spill
+# 2b) 订阅扇出 / Inline&Spill / 入站 Source
 Push-Location $dsh
 try {
   $fanout = & $node 'packages/super-agent/host/tests/fanout-smoke.mjs' 2>&1 | Out-String
   Report 'fan-out smoke' ($fanout -match 'FANOUT SMOKE OK') (($fanout -split "`n" | Where-Object { $_ -match 'inputs:' }) -join ' ')
   $spill = & $node 'packages/super-agent/host/tests/spill-smoke.mjs' 2>&1 | Out-String
   Report 'spill smoke' ($spill -match 'SPILL SMOKE OK') (($spill -split "`n" | Where-Object { $_ -match 'spillPath:' }) -join ' ')
-} catch { Report 'fan-out/spill smoke' $false $_.Exception.Message } finally { Pop-Location }
+  $sources = & $node 'packages/super-agent/host/tests/sources-smoke.mjs' 2>&1 | Out-String
+  Report 'sources smoke' ($sources -match 'SOURCES SMOKE OK') (($sources -split "`n" | Where-Object { $_ -match 'sources:' }) -join ' ')
+} catch { Report 'fan-out/spill/sources smoke' $false $_.Exception.Message } finally { Pop-Location }
 
 # 3) 可选：真实 runtime 回合 / Router / 渠道
 if ($Slow) {
@@ -91,7 +93,9 @@ if ($Network) {
   try {
     $out = & $node 'packages/super-agent/host/tests/channels-smoke.mjs' 2>&1 | Out-String
     Report 'channels smoke' ($out -match 'CHANNELS SMOKE OK') ''
-  } catch { Report 'channels smoke' $false $_.Exception.Message } finally { Pop-Location }
+    $live = & $node 'packages/super-agent/host/tests/inbound-live-smoke.mjs' 2>&1 | Out-String
+    Report 'inbound live' ($live -match 'INBOUND LIVE OK') (($live -split "`n" | Where-Object { $_ -match 'feishu messages|github notifications' }) -join ' ')
+  } catch { Report 'channels/inbound smoke' $false $_.Exception.Message } finally { Pop-Location }
 }
 
 # 4) 桌面启动 + 探活
@@ -117,7 +121,7 @@ if (-not $url) {
   $token = ([regex]::Match($url, 'token=(\S+)')).Groups[1].Value
   $port = [regex]::Match($url, '127\.0\.0\.1:(\d+)').Groups[1].Value
   $state = (Invoke-WebRequest -Uri "http://127.0.0.1:$port/super-agent/state?token=$token" -UseBasicParsing -TimeoutSec 10).Content | ConvertFrom-Json
-  Report 'desktop launch' ($state.ok -eq $true) "port=$port channel=$($state.channels.enabled) tickets=$($state.tickets.Count)"
+  Report 'desktop launch' ($state.ok -eq $true) "port=$port channel=$($state.channels.enabled) sources=$($state.sources.names -join '+') tickets=$($state.tickets.Count)"
 }
 
 Write-Host ''

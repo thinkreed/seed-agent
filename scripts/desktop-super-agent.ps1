@@ -131,6 +131,10 @@ $block = @"
         dshPatch: $repoPosix/config/sdk-bailian.patch.yml
         workspace: $($Repo -replace '\\','/')
         dshPermissionMode: danger-full-access
+        sourcesEnabled: true
+        sourceFeishuChatIds: oc_93f1a464c8258f572ff133db799a2546
+        sourceGithubRepos: thinkreed/seed-agent-e2e
+        sourceIntervalSeconds: 20
     - id: super-agent-ui
       name: '@deepseek-ai/dsh-client-ui-super-agent'
 "@
