@@ -60,7 +60,7 @@
 - [x] **M3 真机**：SdkDshExecutor（官方 SDK）→ 隔离 DSH_HOME + sdk profile + bailian provider patch → 工单 t-000001 → DSH runtime 回合（真实模型+工具）→ 写 sdk-hello.txt（内容 hello from dsh runtime）→ report ready → ticket ended（	ests/sdk-smoke.mjs，DSH EXECUTOR SMOKE OK）
 
 > 注意：scripts/apply-dsh-patches.ps1 会重写 dsh/packages/super-agent/* 源码目录（清掉 lib），应用补丁后需要重新 pnpm --filter ... run build。
-- [ ] M4：client 工作台
+- [ ] M4：client 工作台（host 侧 HTTP 面已完成：/super-agent/state + /super-agent/command，走 webServer exact 路由；client 插件与 bundle 行待做）
 - [ ] M5–M7：watchdog/渠道、品牌变种、可复现
 
 ### 手动验证
