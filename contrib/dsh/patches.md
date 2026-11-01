@@ -12,6 +12,8 @@
 
 | config/sdk-bailian.patch.yml → dsh/config/ | 新增 profile patch | 让 --profile sdk 使用本机 BAILIAN 端点（openai-completions）与 deepseek-v4.1-flash，SDK 执行器真机验证用 |
 
+| config/desktop-super-agent.patch.yml | 新增 profile 行模板 | 桌面版（Electron）挂载 host + client 工作台的 cordis.patch.yml insert 块 |
+
 ## 用法
 
 ```powershell
