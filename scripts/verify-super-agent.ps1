@@ -36,6 +36,15 @@ function Resolve-Node {
 }
 
 $node = Resolve-Node
+# 供 LLM 评估器/真机回合使用（缺失时 host 会回退 explicit 并告警）
+$seedEnv = Join-Path $Repo 'seed.env'
+if (Test-Path $seedEnv) {
+  foreach ($line in Get-Content $seedEnv) {
+    if ($line -match '^(BAILIAN_API_KEY|FEISHU_APP_ID|FEISHU_APP_SECRET)=(.+)$') {
+      Set-Item -Path "Env:$($Matches[1])" -Value $Matches[2].Trim()
+    }
+  }
+}
 $failures = 0
 function Report([string]$Name, [bool]$Ok, [string]$Detail) {
   if ($Ok) { Write-Host "[PASS] $Name $Detail" } else { Write-Host "[FAIL] $Name $Detail"; $script:failures++ }
@@ -57,6 +66,15 @@ try {
   $out = & $node 'packages/super-agent/host/tests/smoke.mjs' 2>&1 | Out-String
   Report 'host smoke' ($out -match 'HOST SMOKE OK') (($out -split "`n" | Where-Object { $_ -match 'watchdog:' }) -join ' ')
 } catch { Report 'host smoke' $false $_.Exception.Message } finally { Pop-Location }
+
+# 2b) 订阅扇出 / Inline&Spill
+Push-Location $dsh
+try {
+  $fanout = & $node 'packages/super-agent/host/tests/fanout-smoke.mjs' 2>&1 | Out-String
+  Report 'fan-out smoke' ($fanout -match 'FANOUT SMOKE OK') (($fanout -split "`n" | Where-Object { $_ -match 'inputs:' }) -join ' ')
+  $spill = & $node 'packages/super-agent/host/tests/spill-smoke.mjs' 2>&1 | Out-String
+  Report 'spill smoke' ($spill -match 'SPILL SMOKE OK') (($spill -split "`n" | Where-Object { $_ -match 'spillPath:' }) -join ' ')
+} catch { Report 'fan-out/spill smoke' $false $_.Exception.Message } finally { Pop-Location }
 
 # 3) 可选：真实 runtime 回合 / 渠道
 if ($Slow) {

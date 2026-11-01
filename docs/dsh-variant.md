@@ -70,6 +70,8 @@
 - [x] **M5b 渠道**：MultiChannelWriter（飞书 im/v1、GitHub gh issue comment、本地日志）；Engine 接 Router.queueReplies，报告落地自动排队发帖；飞书实测 message_id om_x100b…549，GitHub 实测评论落在 thinkreed/seed-agent-e2e#3；桌面里 worker 用 DSH_PERMISSION_MODE=danger-full-access 自动放行（截图 docs/dsh-desktop-channels.png）
 - [x] **M6 品牌变种**：侧栏 mark/name 换成 seed-agent（SeedBrand.tsx：种子凹形 logo + seed-agent 字标）；brand.localBuild 各语言 locale 改为 seed-agent，窗口标题变成「seed-agent」；截图 docs/dsh-desktop-seed-agent.png
 - [x] **M7 可复现**：scripts/desktop-super-agent.ps1（凭据→补丁→构建→隔离 home→link 包→注入 profile 行→启动）与 scripts/verify-super-agent.ps1（core/host 冒烟 + 桌面启动探活，-Slow/-Network 追加真机项）；实测 VERIFY OK
+- [x] **订阅扇出**：同线程第二条消息 anned_out 到已有工单（	ests/fanout-smoke.mjs：1 ticket、inp-000001→tk-000001）
+- [x] **Inline & Spill + 链式召回**：超预算指令落盘 spills/<ticket>.txt，worker prompt 只留摘要 + 可读取路径（	ests/spill-smoke.mjs，SPILL SMOKE OK）
 - [x] **两级过滤（Gate + LLM）**：host `assessorMode: llm`（默认）→ `LlmAssessor` + `OpenAIClient`（BAILIAN 兼容端点）走 core 的 assessment prompt 与 Inline&Spill 视图；实测闲聊线程不建单、明确指令建单（`tests/assessor-smoke.mjs`，ASSESSOR SMOKE OK）；`verify-super-agent.ps1 -Slow` → core/host/sdk/desktop 全 PASS
 
 ### 桌面版运行（M7 一键）

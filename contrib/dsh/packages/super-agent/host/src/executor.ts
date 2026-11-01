@@ -8,6 +8,8 @@
  * 这是「存算分离」的计算侧：状态仍在 Super-agent 事件库，执行在 DSH runtime。
  */
 
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { DeepSeekHarnessOptions, RunResult } from '@deepseek-ai/dsh-sdk-client'
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 import type { Assignment, Clock, Executor, Input, Report, ReportStatus, Ticket, Trigger } from '@deepseek-ai/dsh-super-agent-core'
@@ -24,6 +26,34 @@ export interface SdkDshExecutorOptions {
   readonly describeTicket?: (ticketId: string) => string
   /** 观察每次真正发给 DSH worker 的提示词（验收/调试）。 */
   readonly onPrompt?: (ticketId: string, prompt: string) => void
+  /** Inline & Spill：指令超过该字符数就落盘，prompt 里只留摘要 + 文件路径。 */
+  readonly spillChars?: number
+  /** 落盘目录（默认 workspace/.seed/spills）。 */
+  readonly spillDir?: string
+}
+
+/** 落盘后的指令：inline 是写进 prompt 的摘要，spillPath 供 worker 链式召回。 */
+export interface SpilledInstruction {
+  readonly inline: string
+  readonly spillPath?: string
+}
+
+/** 超过预算的上下文落盘，worker 需要细节时按路径读取（链式召回的第一跳）。 */
+export function spillInstruction(
+  ticket: Ticket,
+  instruction: string,
+  options: { threshold: number; dir: string },
+): SpilledInstruction {
+  const text = instruction.trim()
+  if (text.length <= options.threshold) return { inline: text }
+  mkdirSync(options.dir, { recursive: true })
+  const spillPath = join(options.dir, `${ticket.shortName}.txt`)
+  writeFileSync(spillPath, text, 'utf8')
+  const head = text.slice(0, Math.min(600, options.threshold))
+  return {
+    inline: `${head}\n\n…（原始上下文共 ${text.length} 字符，已落盘：${spillPath}；需要细节时用读取工具打开它。）`,
+    spillPath,
+  }
 }
 
 export class SdkDshExecutor implements Executor {
@@ -38,8 +68,13 @@ export class SdkDshExecutor implements Executor {
 
   async launch(assignment: Assignment, ticket: Ticket): Promise<void> {
     this.assignmentByTicket.set(ticket.id, assignment.id)
+    const raw = this.options.describeTicket?.(ticket.id) ?? ''
+    const spilled = spillInstruction(ticket, raw, {
+      threshold: this.options.spillChars ?? 4000,
+      dir: this.options.spillDir ?? join(process.cwd(), '.seed', 'spills'),
+    })
     // 异步执行：launch 只负责"受理并启动"，回合结束后经 onReport 写回引擎。
-    void this.runTurn(assignment.id, ticket, workerPrompt(ticket, this.options.describeTicket?.(ticket.id) ?? ''))
+    void this.runTurn(assignment.id, ticket, workerPrompt(ticket, spilled.inline))
   }
 
   async deliver(ticket: Ticket, input: Input): Promise<void> {

@@ -9,7 +9,7 @@
  */
 
 import { mkdirSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -33,6 +33,7 @@ import {
   type WatchdogReport,
 } from '@deepseek-ai/dsh-super-agent-core'
 import { SdkDshExecutor } from './executor.ts'
+export { spillInstruction, workerPrompt } from './executor.ts'
 import { MultiChannelWriter } from './channels.ts'
 import { mountHttpRoutes, type CommandInput } from './http.ts'
 
@@ -66,6 +67,10 @@ export interface SuperAgentHostConfig {
   llmApiKeyEnv: string
   llmModel: string
   llmTimeoutMs: number
+  /** Inline & Spill：指令超过该字符数就落盘，prompt 只留摘要 + 路径。 */
+  spillChars: number
+  /** 落盘目录（默认事件库同级的 spills/）。 */
+  spillDir: string
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -107,6 +112,8 @@ export class SuperAgentHost extends Service {
     llmApiKeyEnv: z.string().default('BAILIAN_API_KEY'),
     llmModel: z.string().default('deepseek-v4.1-flash'),
     llmTimeoutMs: z.number().step(1).min(1000).max(600000).default(60000),
+    spillChars: z.number().step(1).min(200).max(1_000_000).default(4000),
+    spillDir: z.string().default(''),
   })
 
   readonly runtime: Runtime
@@ -153,6 +160,8 @@ export class SuperAgentHost extends Service {
             if (oldest) this.lastPrompts.delete(oldest)
           }
         },
+        spillChars: config.spillChars,
+        spillDir: config.spillDir ? resolve(config.spillDir) : join(dirname(this.dbPath), 'spills'),
         describeTicket: (ticketId) => {
           const state = this.runtime?.engine.state
           const ticket = state?.tickets[ticketId]
