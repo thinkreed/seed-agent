@@ -47,3 +47,5 @@ seed.config.json
 inbox.jsonl
 _rec.*
 _*.mjs
+_*.py
+_sample*
