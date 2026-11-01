@@ -40,6 +40,7 @@ if (Test-Path $src) {
   Get-ChildItem $src -Recurse -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'package.json') } | ForEach-Object {
     $relative = $_.FullName.Substring($src.Length + 1)
     $target = Join-Path $dsh "packages\$relative"
+    if (Test-Path $target) { Remove-Item $target -Recurse -Force }
     New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
     Copy-Item $_.FullName $target -Recurse -Force
     Write-Host "copied package: $relative"
