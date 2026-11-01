@@ -38,6 +38,18 @@ test("端到端：Trigger -> Eval -> Ticket -> Assignment -> Report", async () =
   assert.ok(assignment);
   rt.engine.report(h.report("ready", { assignmentId: assignment.id, ticketId: ticket.id, summary: "done" }));
   assert.equal(Object.values(rt.engine.state.tickets)[0]?.state, "ended");
+  assert.equal(executor.stopped.length, 1, "报告结束后应停掉执行器进程");
+  rt.close();
+});
+
+test("重试：结束 assignment 时同时停掉旧 worker", async () => {
+  const { rt, executor } = build([h.accept()]);
+  rt.engine.ingest(h.trigger());
+  await rt.tickUntilIdle();
+  const ticket = Object.values(rt.engine.state.tickets)[0];
+  assert.ok(ticket);
+  rt.engine.retry(ticket.id);
+  assert.equal(executor.stopped.length, 1);
   rt.close();
 });
 

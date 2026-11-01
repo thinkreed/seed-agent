@@ -128,6 +128,7 @@ export class Actions {
     const assignment = state.assignments[report.assignmentId];
     if (assignment && assignment.state !== "ended") {
       produced.push(ev.assignmentEnded(assignment.id, report.status, now));
+      void this.executor.stop(assignment);
     }
     if (report.status === "ready" || report.status === "dropped") {
       const ticket = state.tickets[report.ticketId];
@@ -147,6 +148,7 @@ export class Actions {
     for (const assignment of Object.values(state.assignments)) {
       if (assignment.ticketId === ticketId && assignment.state !== "ended") {
         produced.push(ev.assignmentEnded(assignment.id, "retry", now));
+        void this.executor.stop(assignment);
       }
     }
     produced.push(this.makeInput(ticketId, "retry", "operator retry", effects, now));

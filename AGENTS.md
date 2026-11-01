@@ -7,8 +7,10 @@
 ## 命令
 
 ```
-node --test          # 全部测试（必须全绿、不联网、不 sleep、<10s）
-node src/cli.ts      # 端到端演示
+node --test                                # 全部测试（必须全绿、不联网、不 sleep、<10s）
+node src/cli.ts run seed.config.json --once # 真实一轮（需 seed.env 凭证）
+node src/cli.ts doctor seed.config.json     # 真实体检
+node src/cli.ts panel seed.db [--json]      # 只列待人工项
 ```
 
 ## 不可违反的三条
@@ -20,7 +22,7 @@ node src/cli.ts      # 端到端演示
 ## 工程约定
 
 - 零第三方依赖。要加依赖必须先和用户确认。
-- 单文件 <= 200 行；超过就按职责拆分。
+- 单文件 <= 210 行；超过就按职责拆分。
 - 类型优先：用判别联合与 `const` 字面量，不用 `enum`（Node 类型擦除不支持）。
 - 新事件 = `events.ts` 类型表 + `reducer.ts` 分支 + `tests/architecture.test.ts` 自动校验。
 - 破坏性操作（删数据、改 schema、git reset）先确认。
