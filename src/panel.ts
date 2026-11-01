@@ -39,3 +39,18 @@ export function render(state: State): string {
   if (lines.length === 1) lines.push("(nothing waits for a person)");
   return lines.join("\n");
 }
+
+/** 机器可读输出：CI/脚本用。 */
+export function renderJson(state: State): string {
+  return JSON.stringify(
+    rows(state).map((row) => ({
+      ticketId: row.ticketId,
+      shortName: row.shortName,
+      stage: row.stage,
+      waitingPerson: row.waitingPerson,
+      summary: row.summary,
+    })),
+    null,
+    2,
+  );
+}

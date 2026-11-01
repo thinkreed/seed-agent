@@ -260,14 +260,14 @@ CREATE TABLE cursors   (source TEXT PRIMARY KEY, position TEXT NOT NULL, updated
 | **P4 异步交互** | ◐ 核心完成 | 全链路 async；`src/jobs.ts` 后台任务注册表（协作取消、30 分钟判死、完成通知）；`src/react.ts` 异步 ReAct 循环（`tool`/`start`/`stop`/`report` 四种动作）；测试：任务生命周期、stop 取消、deadline、ReAct 全路径。前台中断式全双工与后台唤醒待接 |
 
 | **P5 真渠道** | ◐ GitHub 完成 | `src/sources/github.ts`（通知 → Trigger/Thread，仓库与 reason 过滤）、`GitHubChannel`（评论回写）、`src/sources/local.ts` + `src/runner.ts`（轮询/位点/逐源容错）；飞书 IM 与真实 `gh` 客户端待接 |
-| **P6 存算分离** | ⬜ 未开始 | 端侧 daemon（Rust）、BYOM、执行变量 |
-| **P7 Watchdog** | ◐ 判据完成 | `src/watchdog.ts`：确定性判据（停滞 / 投递失败）+ 模型裁定端口；pause/retry/restart 动作与定时驱动接线待做 |
-| **P8 面板部署** | ◐ 面板与主循环 | `src/panel.ts` 只读面板、`src/daemon.ts` 常驻主循环（每轮 poll + tick）、`node src/cli.ts` 端到端演示；配置/观测/一键部署待补 |
+| **P6 存算分离** | ◐ 核心完成 | `src/executor/protocol.ts`（daemon 协议）、`RemoteExecutor`（计算侧只发指令收报告）、`DaemonAgent`（执行侧无状态，本地跑命令并回推报告）；测试：端到端报告回流、daemon 离线→outbox 退避→恢复。stdio/网络 transport 与凭据隔离待补 |
+| **P7 Watchdog** | ◐ 判据与动作完成 | `src/watchdog.ts` 判据 + 模型裁定；引擎提供 `pause()/resume()/retry()/recoverAfterRestart()`；测试：暂停不派工、重试重新派工、重启收口并留恢复注记。自动接线（verdict → 动作）待做 |
+| **P8 面板部署** | ◐ 配置与观测就绪 | `src/config.ts`（JSON 配置 + 校验 + 默认值）、`src/panel.ts` 文本/JSON 两种输出、`src/daemon.ts` 常驻主循环、CLI 演示；一键部署与运维文档待补 |
 
-当前全量测试：**115 例全部通过，约 1.6s（含子进程与后台任务用例），零网络**。
+当前全量测试：**128 例全部通过，约 2s（含子进程/daemon 用例），零网络**。
 
 | 验证命令 | 期望 |
 |---|---|
-| `node --test` | 115 pass / 0 fail |
+| `node --test` | 128 pass / 0 fail |
 | `node src/cli.ts` | 打印 17 条事件、1 张工单 ended、回放哈希、1 条对外回复 |
 | `node src/cli.ts panel <db>` | 打印面板（只列待人工项） |

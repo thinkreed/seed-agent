@@ -35,6 +35,7 @@ export class Engine {
   readonly channels: ChannelWriter | undefined;
   private readonly evalRunner: EvalRunner;
   private readonly actions: Actions;
+  private paused = false;
 
   constructor(options: EngineOptions) {
     this.store = options.store;
@@ -156,6 +157,7 @@ export class Engine {
   // ---------- 驱动 ----------
 
   async tick(): Promise<AnyEvent[]> {
+    if (this.paused) return [];
     const produced: AnyEvent[] = [];
     for (;;) {
       const evaluation = Object.values(this.state.evals).find((item) => item.state === "queued");
@@ -172,6 +174,29 @@ export class Engine {
 
   personMessage(ticketId: string, text: string): AnyEvent[] {
     return this.actions.personMessage(ticketId, text, this.effects);
+  }
+
+  /** Watchdog/运维：暂停处理（Source 仍可继续记录事件）。 */
+  pause(): void {
+    this.paused = true;
+  }
+
+  resume(): void {
+    this.paused = false;
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /** 重试：结束当前 assignment 并投递一条 retry 输入，让工单重新排到执行器。 */
+  retry(ticketId: string): AnyEvent[] {
+    return this.actions.retry(ticketId, this.effects);
+  }
+
+  /** 进程重启后：把 running 的 assignment 收口，并给执行器留下恢复注记。 */
+  recoverAfterRestart(): AnyEvent[] {
+    return this.actions.recoverAfterRestart(this.effects);
   }
 
   report(report: Report): AnyEvent[] {

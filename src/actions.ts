@@ -137,4 +137,61 @@ export class Actions {
     }
     return produced.length > 0 ? this.store.appendAll(produced) : [];
   }
+
+  /** 运维重试：结束当前 assignment，并投递一条 retry 输入让工单重新排到执行器。 */
+  retry(ticketId: string, effects: Effects): AnyEvent[] {
+    const now = this.clock.now();
+    const state = this.store.state();
+    if (!state.tickets[ticketId]) throw new Error(`unknown ticket ${ticketId}`);
+    const produced: AnyEvent[] = [];
+    for (const assignment of Object.values(state.assignments)) {
+      if (assignment.ticketId === ticketId && assignment.state !== "ended") {
+        produced.push(ev.assignmentEnded(assignment.id, "retry", now));
+      }
+    }
+    produced.push(this.makeInput(ticketId, "retry", "operator retry", effects, now));
+    return this.store.appendAll(produced);
+  }
+
+  /** 进程重启恢复：收口所有 running assignment，并留下恢复注记。 */
+  recoverAfterRestart(effects: Effects): AnyEvent[] {
+    const now = this.clock.now();
+    const state = this.store.state();
+    const produced: AnyEvent[] = [];
+    const resumed = new Set<string>();
+    for (const assignment of Object.values(state.assignments)) {
+      if (assignment.state !== "running") continue;
+      produced.push(ev.assignmentEnded(assignment.id, "host-restarted", now));
+      if (resumed.has(assignment.ticketId)) continue;
+      resumed.add(assignment.ticketId);
+      produced.push(
+        this.makeInput(
+          assignment.ticketId,
+          "resume",
+          "host restarted; check directory, git and remote before repeating outside actions",
+          effects,
+          now,
+        ),
+      );
+    }
+    return produced.length > 0 ? this.store.appendAll(produced) : [];
+  }
+
+  private makeInput(
+    ticketId: string,
+    kind: string,
+    ref: string,
+    effects: Effects,
+    now: number,
+  ): AnyEvent {
+    const input: Input = {
+      id: this.ids.next("inp"),
+      ticketId,
+      kind,
+      ref,
+      at: now,
+    };
+    effects.enqueue(this.ids.next("eff"), "deliver", { inputId: input.id }, now);
+    return ev.inputFannedOut(input, now);
+  }
 }
