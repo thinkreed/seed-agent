@@ -312,7 +312,8 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 | 真实对外回复 | ✅ 真机 | Router 通过 Console 信道输出"已完成…请验收" |
 | `gh` 登录与读取 | ✅ 真机 | `doctor` 与 `GhCliClient` 实测（账号 thinkreed；当前 0 条通知） |
 | GitHub 写能力 | ✅ 真机 | 私有 gist 创建 → 真实评论（id 6451680，count=1）→ 删除（404 校验），无残留 |
-| GitHub issue 评论回写 | ⏳ 待目标 | 用户仓库均为 public 且无 issue；需测试 issue 或指定仓库 |
+| GitHub issue 评论回写 | ✅ 真机 | 产品代码 `GitHubChannel` 写入私有 scratch 仓库 issue #1：comment id 6553629857，`gh` 读回文本一致；issue 已关闭 |
+| GitHub 通知事件 | ⏳ 需第三方 actor | 当前 0 条通知；自评自建不产生通知，Actions bot 需要 `workflow` scope（当前 token 无） |
 | 飞书 token | ✅ 真机 | tenant_access_token 获取成功（code 0，应用「毛毛」） |
 | 飞书发送 | ✅ 真机 | `say` 向群 `oc_93f1...` 发出真实消息（message_id `om_x100b615872ceaca4dd2db234d6f7cbf`） |
 | 飞书读取 | ✅ 真机 | `read` 拉到群消息；机器人消息与系统模板消息已过滤 |
