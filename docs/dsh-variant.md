@@ -67,7 +67,7 @@
   - 真机链路：面板/HTTP ingest → Ticket → `SdkDshExecutor` 嵌套启动 `dsh --profile sdk` → 真实模型写 `desktop-hello.txt` → 报告 ready → ticket ended
   - 窗口底部显示事件库路径与 replay hash
 - [ ] M5：Watchdog / 渠道（飞书、GitHub）
-- [ ] M6：品牌变种（logo → seed-agent）
+- [x] **M6 品牌变种**：侧栏 mark/name 换成 seed-agent（SeedBrand.tsx：种子凹形 logo + seed-agent 字标）；rand.localBuild 各语言 locale 改为 seed-agent，窗口标题变成「seed-agent」；截图 docs/dsh-desktop-seed-agent.png
 - [ ] M7：可复现（一键脚本 + 文档）
 
 ### 桌面版运行步骤（M4 实测）

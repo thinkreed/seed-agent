@@ -34,7 +34,20 @@ if (Test-Path $overlay) {
   }
 }
 
-# 3) 新增包：contrib/dsh/packages/** 镜像到 dsh/packages/**
+# 3) 品牌：把 locale 里的 "DSH 本地构建 / DSH Local Build" 改成 seed-agent
+$localeDir = Join-Path $dsh 'packages\client\locale\src\locales'
+if (Test-Path $localeDir) {
+  Get-ChildItem $localeDir -Filter '*.ts' | ForEach-Object {
+    $text = [System.IO.File]::ReadAllText($_.FullName, [System.Text.Encoding]::UTF8)
+    $branded = [regex]::Replace($text, "'brand\.localBuild': '[^']*'", "'brand.localBuild': 'seed-agent'")
+    if ($branded -ne $text) {
+      [System.IO.File]::WriteAllText($_.FullName, $branded, (New-Object System.Text.UTF8Encoding($false)))
+      Write-Host "brand -> $($_.Name)"
+    }
+  }
+}
+
+# 4) 新增包：contrib/dsh/packages/** 镜像到 dsh/packages/**
 $src = Join-Path $Repo 'contrib\dsh\packages'
 if (Test-Path $src) {
   Get-ChildItem $src -Recurse -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'package.json') } | ForEach-Object {
