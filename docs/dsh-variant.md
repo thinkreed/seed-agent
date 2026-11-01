@@ -72,6 +72,7 @@
 - [x] **M7 可复现**：scripts/desktop-super-agent.ps1（凭据→补丁→构建→隔离 home→link 包→注入 profile 行→启动）与 scripts/verify-super-agent.ps1（core/host 冒烟 + 桌面启动探活，-Slow/-Network 追加真机项）；实测 VERIFY OK
 - [x] **订阅扇出**：同线程第二条消息 anned_out 到已有工单（	ests/fanout-smoke.mjs：1 ticket、inp-000001→tk-000001）
 - [x] **Inline & Spill + 链式召回**：超预算指令落盘 spills/<ticket>.txt，worker prompt 只留摘要 + 可读取路径（	ests/spill-smoke.mjs，SPILL SMOKE OK）
+- [x] **P1-4 投机执行**：`speculate()` 后台尝试，`{deliver}` 判定，值得才发 channel；`SPECULATION SMOKE OK`。
 - [x] **P1-3 Watchdog 模型裁定**：`LlmWatchdogJudge` 接入 host，intervention/复查记录进 snapshot；确定性 vs 模型对照见 `WATCHDOG LLM SMOKE OK`。
 - [x] **P1-2 执行语义**：每工单独立 runtime + 工作目录 `<workspace>/tickets/<id>`；启动恢复 `recoverAfterRestart`（`RESTART SMOKE OK`）。
 - [x] **P1-1 handback / unsubscribe**：`engine.handback()` 移除订阅并重新排队评估；worker `super_agent_handback/super_agent_unsubscribe` 工具写控制请求，host tick drain；`HANDBACK SMOKE OK`。

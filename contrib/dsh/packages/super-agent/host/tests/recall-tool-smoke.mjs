@@ -1,6 +1,6 @@
 /**
- * 真机：worker 通过 DSH 工具 super_agent_recall 召回（fixture 只存在于召回索引里）。
- * marker 不出现在 worker 提示词中，只能从索引/工具拿到，用来证明召回链路生效。
+ * 真机：worker 通过 DSH 工具 super_agent_recall 召回（fixture 只存在于额外索引里）。
+ * marker 不出现在 worker 提示词中，只能从召回索引/工具拿到，用来证明召回链路生效。
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -26,10 +26,31 @@ const home = join(root, 'home')
 mkdirSync(workspace, { recursive: true })
 mkdirSync(home, { recursive: true })
 
+const marker = `recall-tool-marker-${Date.now()}`
+// fixture 索引：只读，不会被 host 每 tick 重写覆盖。
+const extraIndexPath = join(root, 'extra-index.json')
+writeFileSync(extraIndexPath, JSON.stringify({
+  triggers: {
+    'trg-fixture': {
+      source: 'local', actor: 'fixture', text: `这是只能通过链式召回拿到的上下文：${marker}`,
+      threadIds: ['local:fixture'], channelIds: ['local:fixture'], at: Math.floor(Date.now() / 1000),
+    },
+  },
+  threads: { 'local:fixture': { triggerIds: ['trg-fixture'], ticketIds: ['tk-fixture'] } },
+  tickets: {
+    'tk-fixture': {
+      shortName: 't-fixture', state: 'open', threadIds: ['local:fixture'],
+      channelIds: ['local:fixture'], triggerId: 'trg-fixture', reports: [],
+    },
+  },
+}), 'utf8')
+
 const ctx = new Context()
 await ctx.plugin(SuperAgentHost, {
   dbPath: join(root, 'events.db'),
   slots: 1,
+  assessorMode: 'explicit',
+  routerMode: 'off',
   dshBin: resolve('apps/cli/lib/bin.js'),
   dshHome: home,
   dshProfile: 'sdk',
@@ -37,24 +58,11 @@ await ctx.plugin(SuperAgentHost, {
   dshModel: 'deepseek-v4.1-flash',
   dshPatch: resolve('config/sdk-bailian.patch.yml'),
   workspace,
+  recallExtraPath: extraIndexPath,
 })
 const host = ctx.superAgent
 const indexPath = host.writeRecallIndex()
-const marker = `recall-tool-marker-${Date.now()}`
-
-// fixture：只在索引里放一条 trigger+ticket，worker 的提示词没有 marker。
-const index = JSON.parse(readFileSync(indexPath, 'utf8'))
-index.triggers['trg-fixture'] = {
-  source: 'local', actor: 'fixture', text: `这是只能通过链式召回拿到的上下文：${marker}`,
-  threadIds: ['local:fixture'], channelIds: ['local:fixture'], at: Math.floor(Date.now() / 1000),
-}
-index.threads['local:fixture'] = { triggerIds: ['trg-fixture'], ticketIds: ['tk-fixture'] }
-index.tickets['tk-fixture'] = {
-  shortName: 't-fixture', state: 'open', threadIds: ['local:fixture'], channelIds: ['local:fixture'],
-  triggerId: 'trg-fixture', reports: [],
-}
-writeFileSync(indexPath, JSON.stringify(index), 'utf8')
-console.log('indexPath:', indexPath)
+console.log('indexPath:', indexPath, 'extra:', extraIndexPath)
 
 host.ingest({
   id: `trg-recall-tool-${Date.now()}`,
@@ -69,12 +77,6 @@ await host.tick()
 const ticket = host.tickets()[0]
 if (!ticket) throw new Error('ticket not created')
 console.log('ticket:', ticket.id, 'state:', ticket.state)
-// tick 会重写索引；在这里把 fixture 合并进去，worker 的首个工具调用在此之前不会发生。
-const latest = JSON.parse(readFileSync(indexPath, 'utf8'))
-latest.triggers['trg-fixture'] = index.triggers['trg-fixture']
-latest.threads['local:fixture'] = index.threads['local:fixture']
-latest.tickets['tk-fixture'] = index.tickets['tk-fixture']
-writeFileSync(indexPath, JSON.stringify(latest), 'utf8')
 
 const deadline = Date.now() + 240_000
 while (Date.now() < deadline) {

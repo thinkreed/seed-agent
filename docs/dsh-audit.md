@@ -29,6 +29,7 @@
 > - 2026-11-01：**P1-1 handback / unsubscribe 完成**——core 新增 `engine.unsubscribe()/handback()`（移除订阅 + 把 Thread 最新事件重新入评估队列）；host 提供 API 与文件式控制入口（tick 时 drain），worker 用 `super_agent_handback`/`super_agent_unsubscribe` 工具写请求。证据：`HANDBACK SMOKE OK`（API 交回→新工单、控制文件→再新建、Thread 只剩最新工单订阅、worker 工具列表含两个工具）。
 > - 2026-11-01：**P1-2 执行语义（每工单目录 + 重启恢复）完成**——executor 改为每工单一个 DSH runtime（cwd=`<workspace>/tickets/<ticketId>`），worker prompt 注入工作目录；host 启动时调用 `recoverAfterRestart()`（收口 running assignment + 投递 resume 输入并重新派发），snapshot 暴露 `recovery`。证据：`RESTART SMOKE OK`（recovery events=2、live assignment=true）、`DSH EXECUTOR SMOKE OK`（产物落在工单目录）、全双工/异步召回 smokes 在工单目录下通过。
 > - 2026-11-01：**P1-3 Watchdog 模型裁定完成**——host 构造 `LlmWatchdogJudge`（core 已有实现）交给 `Watchdog`；每次巡检记录 intervention/复查（intervene 后 15s 复查），snapshot 暴露 verdict reason/interventions/rechecks。证据：`WATCHDOG LLM SMOKE OK`——同一停滞状态，确定性模式判 intervene，模型判 "benign slowness, ok"（避免误报）；确定性路径 rechecks=1。
+> - 2026-11-01：**P1-4 投机执行完成**——`host.speculate()` 走独立 runtime 在后台尝试（不进工单/Router），worker 输出 `{deliver,summary}` 判定；有价值才发 channel，否则静默丢弃；snapshot 记录 speculations。证据：`SPECULATION SMOKE OK`——可交付案例 `delivered=true` 且 channel 收到「[投机执行]」，闲聊案例 `delivered=false` 静默。
 
 
 ## 2. 逐条差距（文章 §2–§6）

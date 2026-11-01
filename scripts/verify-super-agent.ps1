@@ -98,6 +98,8 @@ if ($Slow) {
     Report 'async react smoke' ($async -match 'ASYNC REACT SMOKE OK') (($async -split "`n" | Where-Object { $_ -match 'done file:' }) -join ' ')
     $watchdog = & $node 'packages/super-agent/host/tests/watchdog-llm-smoke.mjs' 2>&1 | Out-String
     Report 'watchdog llm smoke' ($watchdog -match 'WATCHDOG LLM SMOKE OK') (($watchdog -split "`n" | Where-Object { $_ -match 'verdict:|deterministic:' }) -join ' ')
+    $spec = & $node 'packages/super-agent/host/tests/speculation-smoke.mjs' 2>&1 | Out-String
+    Report 'speculation smoke' ($spec -match 'SPECULATION SMOKE OK') (($spec -split "`n" | Where-Object { $_ -match 'case1:|channel sent:' }) -join ' ')
     $out = & $node 'packages/super-agent/host/tests/sdk-smoke.mjs' 2>&1 | Out-String
     Report 'sdk smoke' ($out -match 'DSH EXECUTOR SMOKE OK') ''
   } catch { Report 'router/sdk smoke' $false $_.Exception.Message } finally { Pop-Location }

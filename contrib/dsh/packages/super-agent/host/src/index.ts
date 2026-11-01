@@ -110,12 +110,16 @@ export interface SuperAgentHostConfig {
   recallIndexPath: string
   /** Worker 控制请求目录（handback/unsubscribe 的文件式入口）。 */
   controlDir: string
+  /** 额外召回索引（只读，供 fixture/归档与主索引合并查询）。 */
+  recallExtraPath: string
   /** 每工单独立工作目录的根（默认 <workspace>/tickets）。 */
   ticketsDir: string
   /** 启动时恢复上次未收口的 assignment（文章 §5/执行语义）。 */
   recoverOnStart: boolean
   /** Watchdog 裁定：llm = 独立模型裁定（文章 §6）；deterministic = 只看确定性 findings。 */
   watchdogMode: string
+  /** 投机执行开关（文章 §3.4）：后台尝试，有价值才交付。 */
+  speculationEnabled: boolean
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -170,9 +174,11 @@ export class SuperAgentHost extends Service {
     sourceIntervalSeconds: z.number().step(1).min(1).max(3600).default(15),
     recallIndexPath: z.string().default(''),
     controlDir: z.string().default(''),
+    recallExtraPath: z.string().default(''),
     ticketsDir: z.string().default(''),
     recoverOnStart: z.boolean().default(true),
     watchdogMode: z.string().default('llm'),
+    speculationEnabled: z.boolean().default(true),
   })
 
   readonly runtime: Runtime
@@ -182,16 +188,25 @@ export class SuperAgentHost extends Service {
   private readonly watchdog: Watchdog
   private readonly channels: MultiChannelWriter
   private readonly channelsEnabled: boolean
+  private readonly speculationEnabled: boolean
   private readonly assessorMode: string
   private routerSession: RouterSession | undefined
   private lastRouterBatch: RouterBatch | undefined
   private readonly sourceList: Source[] = []
   private readonly recallIndexPath: string
   private readonly controlDir: string
+  private readonly recallExtraPath: string
   private readonly ticketsRoot: string
   private lastRecovery = 0
   private readonly interventions: { at: number; action: string; reason: string; findings: number }[] = []
   private rechecks = 0
+  private readonly speculations: {
+    id: string
+    at: number
+    delivered: boolean
+    summary: string
+    channelIds: readonly string[]
+  }[] = []
   private lastPollAt: number | undefined
   private readonly lastPrompts = new Map<string, string>()
   private lastWatchdog: WatchdogReport | undefined
@@ -201,6 +216,7 @@ export class SuperAgentHost extends Service {
     this.dbPath = resolve(config.dbPath)
     mkdirSync(dirname(this.dbPath), { recursive: true })
     this.channelsEnabled = config.channelsEnabled
+    this.speculationEnabled = config.speculationEnabled
     this.assessorMode = config.assessorMode
     this.recallIndexPath = config.recallIndexPath
       ? resolve(config.recallIndexPath)
@@ -208,6 +224,7 @@ export class SuperAgentHost extends Service {
     this.controlDir = config.controlDir
       ? resolve(config.controlDir)
       : join(dirname(this.dbPath), 'control')
+    this.recallExtraPath = config.recallExtraPath ? resolve(config.recallExtraPath) : ''
     this.ticketsRoot = config.ticketsDir
       ? resolve(config.ticketsDir)
       : join(resolve(config.workspace || process.cwd()), 'tickets')
@@ -268,6 +285,7 @@ export class SuperAgentHost extends Service {
             // headless worker：工具调用自动放行（DSH_PERMISSION_MODE 同时决定 sandbox 与 approval）。
             DSH_PERMISSION_MODE: config.dshPermissionMode,
             SUPER_AGENT_RECALL_INDEX: this.recallIndexPath,
+            SUPER_AGENT_RECALL_EXTRA: this.recallExtraPath,
             SUPER_AGENT_JOB_DIR: join(resolve(config.workspace || process.cwd()), '.seed', 'jobs'),
             SUPER_AGENT_WORKSPACE: resolve(config.workspace || process.cwd()),
             SUPER_AGENT_CONTROL_DIR: this.controlDir,
@@ -625,6 +643,37 @@ export class SuperAgentHost extends Service {
     }))
   }
 
+  /** 投机执行：后台尝试，只有确认有价值才交付（发到 channel）；否则静默丢弃。 */
+  async speculate(text: string, channelIds: readonly string[] = []): Promise<{ id: string; delivered: boolean; summary: string }> {
+    if (!this.sdk) throw new Error('speculation requires the DSH runtime executor')
+    if (!this.speculationEnabled) throw new Error('speculation disabled')
+    const id = `spec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    const at = Math.floor(Date.now() / 1000)
+    const prompt = [
+      '你是 Super-agent 的投机执行 worker：在后台尝试复现并修复，结果有价值才交付，否则保持安静。',
+      `工作目录：${join(this.ticketsRoot, id)}`,
+      '任务来源事件：',
+      text,
+      '要求：先在当前目录复现/验证；如果确实确认问题且找到简单修复，deliver=true 并给出可交付结论；',
+      '否则 deliver=false，summary 写为何不值得交付。',
+      '最后必须只输出一行 JSON：{"deliver":true|false,"summary":"..."}',
+    ].join('\n')
+    const raw = await this.sdk.runStandalone(prompt, join(this.ticketsRoot, id))
+    const verdict = parseSpeculationVerdict(raw)
+    this.speculations.push({ id, at, delivered: verdict.deliver, summary: verdict.summary, channelIds })
+    if (this.speculations.length > 50) this.speculations.shift()
+    if (verdict.deliver && channelIds.length > 0) {
+      for (const address of channelIds) {
+          try {
+            await this.channels.send({ id: `spec-channel-${id}`, threadId: `spec:${id}`, address }, `[投机执行] ${verdict.summary}`)
+          } catch (error) {
+            console.error('super-agent speculation: channel send failed', address, String(error))
+          }
+        }
+    }
+    return { id, delivered: verdict.deliver, summary: verdict.summary }
+  }
+
   /** 跑一次看门狗巡检；intervene 时对每个 finder 触达的工单 retry 并驱动一轮。 */
   async checkWatchdog(): Promise<WatchdogReport> {
     const report = await this.watchdog.check(this.runtime.engine.state)
@@ -723,6 +772,7 @@ export class SuperAgentHost extends Service {
         lastPollAt: this.lastPollAt ?? null,
       },
       recovery: { events: this.lastRecovery, ticketsDir: this.ticketsRoot },
+      speculations: this.speculations.slice(-10),
       tickets: tickets.sort((a, b) => b.updatedAt - a.updatedAt),
     }
   }
@@ -777,3 +827,21 @@ export class SuperAgentHost extends Service {
 }
 
 export default SuperAgentHost
+
+/** 解析投机执行 worker 的交付判定（最后一行 JSON）。 */
+function parseSpeculationVerdict(raw: string): { deliver: boolean; summary: string } {
+  const matches = raw.match(/\{[^{}]*"deliver"[^{}]*\}/g)
+  const last = matches?.at(-1)
+  if (last) {
+    try {
+      const parsed = JSON.parse(last) as { deliver?: unknown; summary?: unknown }
+      return {
+        deliver: parsed.deliver === true,
+        summary: typeof parsed.summary === 'string' ? parsed.summary.slice(0, 500) : '',
+      }
+    } catch {
+      // 落到默认：不交付
+    }
+  }
+  return { deliver: false, summary: raw.slice(0, 300) }
+}

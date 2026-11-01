@@ -115,6 +115,25 @@ function missing(kind: RecallKind, id: string): RecallResult {
   return { kind, id, found: false, summary: `${kind} not found`, text: '', handles: [] }
 }
 
+/** 工具返回值：把只读 handles 复制成可变数组（输出 schema 推断要求）。 */
+function toOutput(result: RecallResult): {
+  kind: RecallKind
+  id: string
+  found: boolean
+  summary: string
+  text: string
+  handles: { kind: RecallKind; id: string }[]
+} {
+  return {
+    kind: result.kind,
+    id: result.id,
+    found: result.found,
+    summary: result.summary,
+    text: result.text,
+    handles: result.handles.map((handle) => ({ kind: handle.kind, id: handle.id })),
+  }
+}
+
 const RECALL_DESCRIPTION = [
   'Recall Super-agent context by id, following the reference graph hop by hop.',
   'kind=trigger returns the message text and its thread handles;',
@@ -154,19 +173,18 @@ export function apply(ctx: Context): void {
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 1) }] as ContentBlock[],
     },
     execute: async (args) => {
-      const index = readRecallIndex()
-      if (!index) {
-        return { kind: args.kind, id: args.id, found: false, summary: 'recall index not available', text: '', handles: [] }
+      const primary = readRecallIndex()
+      if (primary) {
+        const found = recallFromIndex(primary, args.kind, args.id)
+        if (found.found) return toOutput(found)
       }
-      const result = recallFromIndex(index, args.kind, args.id)
-      return {
-        kind: result.kind,
-        id: result.id,
-        found: result.found,
-        summary: result.summary,
-        text: result.text,
-        handles: result.handles.map((handle) => ({ kind: handle.kind, id: handle.id })),
+      // 兼容：主索引由 host 每 tick 重写；额外索引（fixture/归档）只读，不参与重写。
+      const extra = readRecallIndex(process.env.SUPER_AGENT_RECALL_EXTRA ?? '')
+      if (extra) {
+        const found = recallFromIndex(extra, args.kind, args.id)
+        if (found.found) return toOutput(found)
       }
+      return { kind: args.kind, id: args.id, found: false, summary: 'recall index not available', text: '', handles: [] }
     },
   }))
 }

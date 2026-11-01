@@ -113,6 +113,21 @@ export class SdkDshExecutor implements Executor {
     return this.turnCounts.get(ticketId) ?? 0
   }
 
+  /**
+   * 投机执行（文章 §3.4）：不进工单、不经过 Router，直接用独立 runtime 在后台尝试；
+   * 结果交给调用方决定交付还是丢弃。
+   */
+  async runStandalone(prompt: string, dir: string): Promise<string> {
+    mkdirSync(dir, { recursive: true })
+    const harness = new DeepSeekHarness({ ...this.options.harness, cwd: dir })
+    try {
+      const result = await harness.run(prompt)
+      return result.finalResponse.trim()
+    } finally {
+      await harness.close()
+    }
+  }
+
   /** 回合进行中直接把新输入排进 executor 队列，等当前回合结束立即处理。 */
   enqueueInput(ticketId: string, text: string): void {
     const pending = this.queuedInputs.get(ticketId) ?? []
