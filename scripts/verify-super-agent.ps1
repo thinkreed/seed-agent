@@ -13,7 +13,7 @@ param(
   [switch]$Network
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 if (-not $Repo) {
   $here = $PSScriptRoot
   if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
@@ -96,6 +96,8 @@ if ($Slow) {
     Report 'full duplex smoke' ($duplex -match 'FULL DUPLEX SMOKE OK') (($duplex -split "`n" | Where-Object { $_ -match 'first file:' }) -join ' ')
     $async = & $node 'packages/super-agent/host/tests/async-react-smoke.mjs' 2>&1 | Out-String
     Report 'async react smoke' ($async -match 'ASYNC REACT SMOKE OK') (($async -split "`n" | Where-Object { $_ -match 'done file:' }) -join ' ')
+    $watchdog = & $node 'packages/super-agent/host/tests/watchdog-llm-smoke.mjs' 2>&1 | Out-String
+    Report 'watchdog llm smoke' ($watchdog -match 'WATCHDOG LLM SMOKE OK') (($watchdog -split "`n" | Where-Object { $_ -match 'verdict:|deterministic:' }) -join ' ')
     $out = & $node 'packages/super-agent/host/tests/sdk-smoke.mjs' 2>&1 | Out-String
     Report 'sdk smoke' ($out -match 'DSH EXECUTOR SMOKE OK') ''
   } catch { Report 'router/sdk smoke' $false $_.Exception.Message } finally { Pop-Location }

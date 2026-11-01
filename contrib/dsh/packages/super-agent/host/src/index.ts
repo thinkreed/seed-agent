@@ -40,6 +40,7 @@ import {
 import { SdkDshExecutor } from './executor.ts'
 export { spillInstruction, workerPrompt } from './executor.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
+import { LlmWatchdogJudge } from '@deepseek-ai/dsh-super-agent-core'
 import { FeishuHttpClient } from './sources/feishu_http.ts'
 import { FeishuSource } from './sources/feishu.ts'
 import { GhCliClient } from './sources/github_cli.ts'
@@ -113,6 +114,8 @@ export interface SuperAgentHostConfig {
   ticketsDir: string
   /** 启动时恢复上次未收口的 assignment（文章 §5/执行语义）。 */
   recoverOnStart: boolean
+  /** Watchdog 裁定：llm = 独立模型裁定（文章 §6）；deterministic = 只看确定性 findings。 */
+  watchdogMode: string
 }
 
 /** 显式准入：Gate 已放行则接受。M3 后续接 DSH LLM 评估。 */
@@ -169,6 +172,7 @@ export class SuperAgentHost extends Service {
     controlDir: z.string().default(''),
     ticketsDir: z.string().default(''),
     recoverOnStart: z.boolean().default(true),
+    watchdogMode: z.string().default('llm'),
   })
 
   readonly runtime: Runtime
@@ -186,6 +190,8 @@ export class SuperAgentHost extends Service {
   private readonly controlDir: string
   private readonly ticketsRoot: string
   private lastRecovery = 0
+  private readonly interventions: { at: number; action: string; reason: string; findings: number }[] = []
+  private rechecks = 0
   private lastPollAt: number | undefined
   private readonly lastPrompts = new Map<string, string>()
   private lastWatchdog: WatchdogReport | undefined
@@ -300,7 +306,8 @@ export class SuperAgentHost extends Service {
         console.error('super-agent: recoverAfterRestart failed', String(error))
       }
     }
-    this.watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds })
+    const judge = this.buildWatchdogJudge(config)
+    this.watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds, ...(judge ? { judge } : {}) })
     ctx.effect(() => async () => {
       await this.sdk?.close()
       this.runtime.close()
@@ -605,11 +612,32 @@ export class SuperAgentHost extends Service {
     }))
   }
 
+  /** 独立 Watchdog 模型裁定（文章 §6）：主系统之外判断"是否真的在推进、要不要介入"。 */
+  private buildWatchdogJudge(config: SuperAgentHostConfig): LlmWatchdogJudge | undefined {
+    if (config.watchdogMode !== 'llm') return undefined
+    const apiKey = process.env[config.llmApiKeyEnv]?.trim()
+    if (!apiKey) return undefined
+    return new LlmWatchdogJudge(createRouterClient({
+      baseUrl: config.llmBaseUrl,
+      apiKey,
+      model: config.llmModel,
+      timeoutMs: config.llmTimeoutMs,
+    }))
+  }
+
   /** 跑一次看门狗巡检；intervene 时对每个 finder 触达的工单 retry 并驱动一轮。 */
   async checkWatchdog(): Promise<WatchdogReport> {
     const report = await this.watchdog.check(this.runtime.engine.state)
     this.lastWatchdog = report
+    this.interventions.push({
+      at: Math.floor(Date.now() / 1000),
+      action: report.verdict.action,
+      reason: report.verdict.reason,
+      findings: report.findings.length,
+    })
+    if (this.interventions.length > 20) this.interventions.shift()
     if (report.verdict.action === 'intervene') {
+      console.warn(`super-agent watchdog: intervene (${report.verdict.reason}) findings=${report.findings.length}`)
       for (const finding of report.findings) {
         try {
           this.runtime.engine.retry(finding.ticketId)
@@ -619,6 +647,12 @@ export class SuperAgentHost extends Service {
         }
       }
       void this.tick()
+      // 介入后持续复查：下一次巡检在 15s 后。
+      this.rechecks += 1
+      const timer = setTimeout(() => {
+        void this.agitate()
+      }, 15_000)
+      timer.unref()
     }
     return report
   }
@@ -666,7 +700,13 @@ export class SuperAgentHost extends Service {
       replayHash: this.replayHash(),
       lastSeq: this.runtime.store.lastSeq(),
       watchdog: this.lastWatchdog
-        ? { findings: this.lastWatchdog.findings.length, action: this.lastWatchdog.verdict.action }
+        ? {
+          findings: this.lastWatchdog.findings.length,
+          action: this.lastWatchdog.verdict.action,
+          reason: this.lastWatchdog.verdict.reason,
+          interventions: this.interventions.slice(-3),
+          rechecks: this.rechecks,
+        }
         : null,
       channels: {
         enabled: this.channelsEnabled,
