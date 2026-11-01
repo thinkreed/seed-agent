@@ -63,11 +63,32 @@ try {
     & $node $pnpm --filter $filter run build
     if ($LASTEXITCODE -ne 0) { throw "build failed: $filter" }
   }
-  # 3) 官方 unsigned 打包
-  if ($Dir) {
-    & $node $pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/package-target.ts win-x64 --dir --unsigned
-  } else {
-    & $node $pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned
+  # 3) 先解包打包（脚本补物理 runtime 后再出安装包）
+  & $node $pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/package-target.ts win-x64 --dir --unsigned
+  if ($LASTEXITCODE -ne 0) { throw 'desktop package --dir failed' }
+
+  # 4) 把 prepared runtime 复制到 resources/dsh：worker 子进程是普通 node，读不了 app.asar
+  $winUnpacked = Join-Path $dsh 'apps\desktop\.desktop-build\targets\win-x64\unsigned-artifacts\win-unpacked'
+  $dshTarget = Join-Path $dsh 'apps\desktop\.desktop-build\targets\win-x64\dsh'
+  $resourcesDsh = Join-Path $winUnpacked 'resources\dsh'
+  & $node (Join-Path $Repo 'scripts\copy-dsh-runtime.mjs') $dshTarget $resourcesDsh
+  if ($LASTEXITCODE -ne 0) { throw 'copy dsh runtime failed' }
+
+  # 4b) prepackaged 构建需要打包环境变量（与官方 package-target 相同的 .env.windows）
+  $envFile = Join-Path $dsh 'apps\desktop\.env.windows'
+  if (Test-Path $envFile) {
+    foreach ($line in [System.IO.File]::ReadAllLines($envFile)) {
+      $trim = $line.Trim()
+      if ($trim -eq '' -or $trim.StartsWith('#')) { continue }
+      $eq = $trim.IndexOf('=')
+      if ($eq -gt 0) { [Environment]::SetEnvironmentVariable($trim.Substring(0, $eq).Trim(), $trim.Substring($eq + 1).Trim(), 'Process') }
+    }
+  }
+
+  # 5) 安装包：从 prepackaged 目录出 NSIS（不再二次打包 app）
+  if (-not $Dir) {
+    & $node $pnpm --filter @deepseek-ai/dsh-desktop exec electron-builder --win nsis --prepackaged $winUnpacked --config electron-builder.config.mjs --publish never
+    if ($LASTEXITCODE -ne 0) { throw 'installer build failed' }
   }
   $code = $LASTEXITCODE
 } finally { Pop-Location }
