@@ -120,3 +120,33 @@ if (Test-Path $smoke) {
     [System.IO.File]::WriteAllText($smoke, $smokeText, (New-Object System.Text.UTF8Encoding($false)))
   }
 }
+# 8) 把 Super-agent 包加入 @deepseek-ai/dsh 的依赖闭包：桌面打包时随 runtime 一起安装
+$cliPkg = Join-Path $dsh 'apps\cli\package.json'
+if (Test-Path $cliPkg) {
+  $cliText = [System.IO.File]::ReadAllText($cliPkg)
+  if (-not $cliText.Contains('@deepseek-ai/dsh-super-agent-host')) {
+    $names = @(
+      '@deepseek-ai/dsh-super-agent-core',
+      '@deepseek-ai/dsh-super-agent-host',
+      '@deepseek-ai/dsh-super-agent-tool-recall',
+      '@deepseek-ai/dsh-super-agent-tool-background',
+      '@deepseek-ai/dsh-super-agent-tool-control',
+      '@deepseek-ai/dsh-super-agent-tool-remote',
+      '@deepseek-ai/dsh-super-agent-daemon',
+      '@deepseek-ai/dsh-client-ui-super-agent'
+    )
+    $rows = ($names | ForEach-Object { '    "{0}": "workspace:*",' -f $_ }) -join "`r`n"
+    $cliText = [regex]::Replace($cliText, '("dependencies"\s*:\s*\{)', "`$1`r`n$rows", 1)
+    [System.IO.File]::WriteAllText($cliPkg, $cliText, (New-Object System.Text.UTF8Encoding($false)))
+  }
+}
+# 9) 打包冒烟可跳过（本机 Smart App Control 会拦截未签名新构建的 exe，spawn 失败）
+$smokePkg = Join-Path $dsh 'apps\desktop\scripts\smoke-packaged-runtime.ts'
+if (Test-Path $smokePkg) {
+  $smokePkgText = [System.IO.File]::ReadAllText($smokePkg)
+  if (-not $smokePkgText.Contains('DSH_DESKTOP_SKIP_PACKAGED_SMOKE')) {
+    $guard = "if (process.env.DSH_DESKTOP_SKIP_PACKAGED_SMOKE === '1') { console.log('desktop runtime: packaged smoke skipped (DSH_DESKTOP_SKIP_PACKAGED_SMOKE)'); process.exit(0) }`r`n"
+    $smokePkgText = $smokePkgText.Replace('const paths = resolveDesktopTargetBuildPaths()', $guard + 'const paths = resolveDesktopTargetBuildPaths()')
+    [System.IO.File]::WriteAllText($smokePkg, $smokePkgText, (New-Object System.Text.UTF8Encoding($false)))
+  }
+}

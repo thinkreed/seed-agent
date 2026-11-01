@@ -34,6 +34,7 @@ $pnpm = $runtime.Pnpm
 # 1) 同步 DSH 变种源码与配置
 & (Join-Path $Repo 'scripts\apply-dsh-patches.ps1') -Repo $Repo
 $env:DSH_DESKTOP_UNSIGNED = '1'
+$env:DSH_DESKTOP_SKIP_PACKAGED_SMOKE = '1'
 
 # 下载加速：可选代理（SEED_AGENT_PROXY=http://127.0.0.1:10809）与 Electron 国内镜像
 if ($env:SEED_AGENT_PROXY) {
