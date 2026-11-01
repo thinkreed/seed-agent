@@ -82,6 +82,8 @@ try {
   Report 'handback smoke' ($handback -match 'HANDBACK SMOKE OK') (($handback -split "`n" | Where-Object { $_ -match 'control tools:' }) -join ' ')
   $restart = & $node 'packages/super-agent/host/tests/restart-smoke.mjs' 2>&1 | Out-String
   Report 'restart smoke' ($restart -match 'RESTART SMOKE OK') (($restart -split "`n" | Where-Object { $_ -match 'recovery events|live assignment' }) -join ' ')
+  $format = & $node 'packages/super-agent/host/tests/channel-format-smoke.mjs' 2>&1 | Out-String
+  Report 'channel format smoke' ($format -match 'CHANNEL FORMAT SMOKE OK') (($format -split "`n" | Where-Object { $_ -match 'im length:|sent:' }) -join ' ')
 } catch { Report 'fan-out/spill/sources smoke' $false $_.Exception.Message } finally { Pop-Location }
 
 # 3) 可选：真实 runtime 回合 / Router / 渠道
@@ -111,6 +113,8 @@ if ($Network) {
     Report 'channels smoke' ($out -match 'CHANNELS SMOKE OK') ''
     $live = & $node 'packages/super-agent/host/tests/inbound-live-smoke.mjs' 2>&1 | Out-String
     Report 'inbound live' ($live -match 'INBOUND LIVE OK') (($live -split "`n" | Where-Object { $_ -match 'feishu messages|github notifications' }) -join ' ')
+    $fmtLive = & $node 'packages/super-agent/host/tests/channel-format-live-smoke.mjs' 2>&1 | Out-String
+    Report 'channel format live' ($fmtLive -match 'CHANNEL FORMAT LIVE OK') (($fmtLive -split "`n" | Where-Object { $_ -match 'sent:' }) -join ' ')
   } catch { Report 'channels/inbound smoke' $false $_.Exception.Message } finally { Pop-Location }
 }
 

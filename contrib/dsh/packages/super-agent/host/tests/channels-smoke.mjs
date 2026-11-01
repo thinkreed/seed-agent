@@ -12,7 +12,7 @@ import { Context } from '@deepseek-ai/cordis'
 import SuperAgentHost from '../lib/index.js'
 
 const ADDRESS = process.argv[2] ?? 'oc_93f1a464c8258f572ff133db799a2546'
-const TEXT = process.argv[3] ?? 'seed-agent 桌面版：渠道联调消息（自动测试，可忽略）'
+const TEXT = process.argv[3] ?? '请在群里回复一句：渠道联调成功（这是一次自动测试）。'
 
 for (const candidate of ['../seed.env', '../../seed.env', 'seed.env', '../../../seed.env']) {
   const path = resolve(candidate)
@@ -38,6 +38,8 @@ const ctx = new Context()
 await ctx.plugin(SuperAgentHost, {
   dbPath: join(root, 'events.db'),
   slots: 1,
+  assessorMode: 'explicit',
+  routerMode: 'off',
   dshBin: resolve('apps/cli/lib/bin.js'),
   dshHome: home,
   dshProfile: 'sdk',
@@ -61,14 +63,14 @@ host.ingest({
 })
 await host.tick()
 
-const deadline = Date.now() + 180_000
+const deadline = Date.now() + 300_000
 let snapshot
 while (Date.now() < deadline) {
   await new Promise((r) => setTimeout(r, 2000))
   snapshot = host.snapshot()
   const sent = snapshot.channels.sent.length
   const ticket = snapshot.tickets[0]
-  console.log(`poll: ticket=${ticket ? ticket.state : 'none'} sent=${sent}`)
+  console.log(`poll: ticket=${ticket ? ticket.state : 'none'} reports=${ticket ? ticket.reports.length : 0} sent=${sent}`)
   if (sent > 0) break
   if (ticket && ticket.reports.length > 0 && ticket.reports.at(-1).status === 'failed') break
 }

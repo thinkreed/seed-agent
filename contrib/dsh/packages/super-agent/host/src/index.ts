@@ -53,6 +53,9 @@ export { GhCliClient } from './sources/github_cli.ts'
 export { GitHubSource, threadAddress } from './sources/github.ts'
 export { JsonlInboxSource } from './sources/jsonl.ts'
 import { MultiChannelWriter } from './channels.ts'
+export { MultiChannelWriter } from './channels.ts'
+export { formatForChannel, compactForIm, structureForAsync, ChannelFormattingWriter } from './format.ts'
+import { ChannelFormattingWriter } from './format.ts'
 import { mountHttpRoutes, type CommandInput } from './http.ts'
 
 export interface SuperAgentHostConfig {
@@ -188,6 +191,7 @@ export class SuperAgentHost extends Service {
   private readonly dbPath: string
   private readonly watchdog: Watchdog
   private readonly channels: MultiChannelWriter
+  private readonly channelWriter: ChannelFormattingWriter
   private readonly channelsEnabled: boolean
   private readonly speculationEnabled: boolean
   private readonly watchdogMode: string
@@ -239,6 +243,7 @@ export class SuperAgentHost extends Service {
       ...(feishuAppId && feishuAppSecret ? { feishu: { appId: feishuAppId, appSecret: feishuAppSecret } } : {}),
       log: (line) => console.log(line),
     })
+    this.channelWriter = new ChannelFormattingWriter(this.channels)
     let runtime: Runtime | undefined
     const onReport = (report: Report): void => {
       runtime?.engine.report(report)
@@ -312,7 +317,7 @@ export class SuperAgentHost extends Service {
         dbPath: this.dbPath,
         slots: config.slots,
         policy: this.buildPolicy(config),
-        ...(config.channelsEnabled ? { channels: this.channels } : {}),
+        ...(config.channelsEnabled ? { channels: this.channelWriter } : {}),
       },
     })
     this.runtime = runtime
@@ -668,7 +673,7 @@ export class SuperAgentHost extends Service {
     if (verdict.deliver && channelIds.length > 0) {
       for (const address of channelIds) {
           try {
-            await this.channels.send({ id: `spec-channel-${id}`, threadId: `spec:${id}`, address }, `[投机执行] ${verdict.summary}`)
+            await this.channelWriter.send({ id: `spec-channel-${id}`, threadId: `spec:${id}`, address }, `[投机执行] ${verdict.summary}`)
           } catch (error) {
             console.error('super-agent speculation: channel send failed', address, String(error))
           }
