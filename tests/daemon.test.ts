@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { FakeClock } from "../src/clock.ts";
 import { Daemon } from "../src/daemon.ts";
-import { RecordingExecutor, ScriptedAssessor } from "../src/fakes.ts";
+import { RecordingExecutor, ScriptedAssessor } from "./fakes.ts";
 import { Runtime } from "../src/runtime.ts";
 import { SourceRunner } from "../src/runner.ts";
 import { LocalSource } from "../src/sources/local.ts";

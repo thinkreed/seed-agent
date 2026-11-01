@@ -8,7 +8,7 @@ import { FakeClock } from "../src/clock.ts";
 import { DaemonAgent } from "../src/daemon/agent.ts";
 import type { DaemonEvent, DaemonRequest, DaemonResponse, Transport } from "../src/executor/protocol.ts";
 import { RemoteExecutor } from "../src/executor/remote.ts";
-import { RecordingExecutor, ScriptedAssessor } from "../src/fakes.ts";
+import { RecordingExecutor, ScriptedAssessor } from "./fakes.ts";
 import { Runtime } from "../src/runtime.ts";
 import * as h from "./helpers.ts";
 

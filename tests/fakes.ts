@@ -6,8 +6,8 @@ import type {
   Input,
   Ticket,
   Trigger,
-} from "./domain.ts";
-import type { AssessContext } from "./ports.ts";
+} from "../src/domain.ts";
+import type { AssessContext } from "../src/ports.ts";
 
 export class ScriptedAssessor {
   private readonly decisions: Decision[];

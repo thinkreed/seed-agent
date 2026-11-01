@@ -12,6 +12,7 @@ import { ConsoleChannel } from "./channels/console.ts";
 import { CompositeChannel } from "./channels/composite.ts";
 import { SystemClock } from "./clock.ts";
 import type { SeedConfig } from "./config.ts";
+import { loadEnvFile } from "./env.ts";
 import { WatchdogController } from "./control.ts";
 import { Daemon } from "./daemon.ts";
 import { LocalExecutor } from "./executor/local.ts";
@@ -40,6 +41,14 @@ export interface AppOptions {
   readonly once?: boolean;
   /** 覆盖 worker 命令（默认用内置 worker 进程）。 */
   readonly workerCommand?: { file: string; args: readonly string[] };
+  /** 额外 env 文件（默认读 .env）。 */
+  readonly envFile?: string;
+}
+
+function resolveEnv(overrides: AppOptions["env"], envFile: string): Record<string, string | undefined> {
+  const merged: Record<string, string | undefined> = { ...process.env };
+  loadEnvFile(envFile, merged);
+  return { ...merged, ...(overrides ?? {}) };
 }
 
 export class App {
@@ -56,7 +65,7 @@ export class App {
   }
 
   static create(options: AppOptions): App {
-    const env = options.env ?? process.env;
+    const env = resolveEnv(options.env, options.envFile ?? process.env.SEED_ENV_FILE ?? ".env");
     const config = options.config;
     if (!config.model) throw new AppError("config.model is required for real runs");
     const apiKey = env[config.model.apiKeyEnv];

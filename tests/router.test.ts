@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { FakeClock } from "../src/clock.ts";
 import { RecordingChannel } from "../src/channels/recording.ts";
-import { RecordingExecutor, ScriptedAssessor } from "../src/fakes.ts";
+import { RecordingExecutor, ScriptedAssessor } from "./fakes.ts";
 import { Router, TemplateComposer } from "../src/router.ts";
 import { Runtime } from "../src/runtime.ts";
 import * as h from "./helpers.ts";

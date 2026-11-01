@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { FakeClock } from "../src/clock.ts";
 import { ev } from "../src/builders.ts";
 import { WatchdogController } from "../src/control.ts";
-import { RecordingExecutor, ScriptedAssessor } from "../src/fakes.ts";
+import { RecordingExecutor, ScriptedAssessor } from "./fakes.ts";
 import { Runtime } from "../src/runtime.ts";
 import type { WatchdogFinding } from "../src/watchdog.ts";
 import * as h from "./helpers.ts";

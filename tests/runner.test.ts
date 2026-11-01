@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { FakeClock } from "../src/clock.ts";
-import { RecordingExecutor, ScriptedAssessor } from "../src/fakes.ts";
+import { RecordingExecutor, ScriptedAssessor } from "./fakes.ts";
 import { SeqIds } from "../src/ids.ts";
 import type { Trigger } from "../src/domain.ts";
 import { Runtime } from "../src/runtime.ts";

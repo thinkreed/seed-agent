@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { FakeClock } from "../src/clock.ts";
 import { StdioTransport } from "../src/executor/stdio.ts";
 import { RemoteExecutor } from "../src/executor/remote.ts";
-import { ScriptedAssessor } from "../src/fakes.ts";
+import { ScriptedAssessor } from "./fakes.ts";
 import { Runtime } from "../src/runtime.ts";
 import * as h from "./helpers.ts";
 
