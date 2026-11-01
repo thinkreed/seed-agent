@@ -8,6 +8,7 @@ import type { IdFactory } from "./ids.ts";
 import { SeqIds } from "./ids.ts";
 import { defaultPolicy } from "./policy.ts";
 import type { Assessor, ChannelWriter, Executor } from "./ports.ts";
+import { stateIds } from "./state_ids.ts";
 import { SqliteStore } from "./store.ts";
 
 export interface RuntimeConfig {
@@ -42,10 +43,11 @@ export class Runtime {
     const config = options.config ?? {};
     const clock = options.clock ?? new SystemClock();
     const store = new SqliteStore(config.dbPath ?? ":memory:");
+    const ids = options.ids ?? new SeqIds([...stateIds(store.state()), ...store.outboxIds()]);
     const engine = new Engine({
       store,
       clock,
-      ids: options.ids ?? new SeqIds(),
+      ids,
       assessor: options.assessor,
       executor: options.executor,
       channels: config.channels,
@@ -63,6 +65,14 @@ export class Runtime {
       if (this.store.lastSeq() === before) return tick;
     }
     throw new Error("runtime did not settle");
+  }
+
+  /** 没有在跑的 assignment、没有排队 Eval、没有待执行副作用。 */
+  isSettled(): boolean {
+    const state = this.engine.state;
+    const running = Object.values(state.assignments).some((item) => item.state !== "ended");
+    const queued = Object.values(state.evals).some((item) => item.state === "queued");
+    return !running && !queued && !this.store.outboxHasPending();
   }
 
   close(): void {

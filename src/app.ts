@@ -97,7 +97,12 @@ export class App {
         throw new AppError(`missing env ${feishu.appIdEnv} / ${feishu.appSecretEnv} for feishu`);
       }
       const client = new FeishuHttpClient({ appId, appSecret, chatIds: feishu.chatIds });
-      sources.push(new FeishuSource(client, { now: () => clock.now() }));
+      sources.push(
+        new FeishuSource(client, {
+          now: () => clock.now(),
+          ...(feishu.sinceSeconds === undefined ? {} : { sinceSeconds: feishu.sinceSeconds }),
+        }),
+      );
       routes.push({ prefix: "fs:", writer: new FeishuChannel(client) });
     }
     if (sources.length === 0) throw new AppError("config.sources is empty: configure local/github/feishu");
@@ -182,18 +187,10 @@ export class App {
     while (this.runtime.clock.now() < deadline) {
       await this.daemon.runRound();
       await this.runtime.tickUntilIdle();
-      if (this.isSettled()) return;
+      if (this.runtime.isSettled()) return;
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     throw new AppError(`runOnce timed out after ${timeoutMs}ms`);
-  }
-
-  /** 没有在跑的 assignment、没有排队 Eval、没有待执行副作用。 */
-  isSettled(): boolean {
-    const state = this.runtime.engine.state;
-    const running = Object.values(state.assignments).some((item) => item.state !== "ended");
-    const queued = Object.values(state.evals).some((item) => item.state === "queued");
-    return !running && !queued && !this.runtime.store.outboxHasPending();
   }
 
   /** 常驻运行。 */

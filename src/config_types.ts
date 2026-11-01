@@ -20,6 +20,8 @@ export interface FeishuSourceConfig {
   readonly appIdEnv: string;
   readonly appSecretEnv: string;
   readonly chatIds: readonly string[];
+  /** 只处理最近 N 秒的消息（默认 600）。 */
+  readonly sinceSeconds?: number;
 }
 
 export interface LocalSourceConfig {

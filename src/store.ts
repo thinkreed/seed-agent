@@ -7,6 +7,7 @@ import type { State } from "./domain.ts";
 import type { AnyEvent } from "./events.ts";
 import { validateEvent } from "./events.ts";
 import { rebuild } from "./reducer.ts";
+import { apply } from "./reducer.ts";
 import { canonicalState } from "./store_hash.ts";
 
 const SCHEMA = `
@@ -73,15 +74,33 @@ export class SqliteStore {
   }
 
   append(event: AnyEvent): AnyEvent {
-    validateEvent(event);
-    const statement = this.db.prepare("INSERT INTO events (type, at, data) VALUES (?, ?, ?)");
-    const info = statement.run(event.type, event.at, JSON.stringify(event.data));
-    const seq = Number(info.lastInsertRowid);
-    return { ...event, seq } as AnyEvent;
+    return this.appendAll([event])[0] as AnyEvent;
   }
 
+  /** 批量追加：先用当前状态逐个试跑，非法事件在落库前就抛错，避免污染历史。 */
   appendAll(events: readonly AnyEvent[]): AnyEvent[] {
-    return events.map((event) => this.append(event));
+    if (events.length === 0) return [];
+    let next = this.state();
+    for (const event of events) {
+      validateEvent(event);
+      next = apply(next, event);
+    }
+    const statement = this.db.prepare("INSERT INTO events (type, at, data) VALUES (?, ?, ?)");
+    const written: AnyEvent[] = [];
+    this.db.exec("BEGIN");
+    try {
+      for (const event of events) {
+        const info = statement.run(event.type, event.at, JSON.stringify(event.data));
+        written.push({ ...event, seq: Number(info.lastInsertRowid) } as AnyEvent);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    this.cache = next;
+    this.cacheSeq = this.lastSeq();
+    return written;
   }
 
   events(after = 0): AnyEvent[] {
@@ -146,6 +165,11 @@ export class SqliteStore {
   outboxHasPending(): boolean {
     const row = this.db.prepare("SELECT 1 AS found FROM outbox WHERE state = 'pending' LIMIT 1").get();
     return row !== undefined;
+  }
+
+  /** 已有 outbox ID（重启后给 ID 工厂预热，避免撞号）。 */
+  outboxIds(): string[] {
+    return (this.db.prepare("SELECT id FROM outbox").all() as { id: string }[]).map((row) => row.id);
   }
 
   cursorGet(source: string): string | null {

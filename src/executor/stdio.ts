@@ -31,7 +31,7 @@ export class StdioTransport implements Transport {
     if (this.child.stdout) {
       createInterface({ input: this.child.stdout }).on("line", (line) => this.onLine(line));
     }
-    this.child.on("exit", (code) => this.onExit(code));
+    this.child.on("exit", (code, signal) => this.onExit(code, signal));
   }
 
   onEvent(handler: (event: DaemonEvent) => void): void {
@@ -77,8 +77,8 @@ export class StdioTransport implements Transport {
     pending.resolve(response);
   }
 
-  private onExit(code: number | null): void {
-    const error = new Error(`daemon exited (code ${String(code)})`);
+  private onExit(code: number | null, signal?: NodeJS.Signals | null): void {
+    const error = new Error(`daemon exited (code ${String(code)}, signal ${String(signal ?? "none")})`);
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
   }

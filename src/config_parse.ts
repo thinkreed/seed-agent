@@ -87,6 +87,9 @@ function parseFeishu(raw: unknown): FeishuSourceConfig {
     appIdEnv: requiredString(source.appIdEnv, "sources.feishu.appIdEnv"),
     appSecretEnv: requiredString(source.appSecretEnv, "sources.feishu.appSecretEnv"),
     chatIds,
+    ...(source.sinceSeconds === undefined
+      ? {}
+      : { sinceSeconds: positiveInt(source.sinceSeconds, 600, "sources.feishu.sinceSeconds") }),
   };
 }
 

@@ -285,7 +285,9 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 ## 16. 已知限制（1.0 之后）
 
 - **Correlation 未实现**：Thread 之间的关联只用于上下文，当前只做订阅扇出，未建跨 Thread 引用图。
-- **真实渠道客户端未内置**：GitHub / 飞书实现为端口 + fake 客户端；接入 `gh`、`lark-cli` 或 HTTP 客户端即可替换，不影响引擎。
+- **Shell 工具没有强沙箱**：命令在工单目录作为 cwd 启动，但绝对路径、`gh` 等本机命令仍可调用；生产部署应叠加容器/受限用户。
+- **GitHub 通知不标记已读**：靠"最新评论作者是自己则跳过"防回环；更严格的做法是处理完 `PATCH /notifications/threads/:id`。
+- **GitHub 真实事件依赖第三方 actor**：自己操作不会给自己发通知；验收时用 Actions bot 评论触发。
 - **凭据隔离是弱保证**：daemon 继承执行机环境变量；模型上下文不包含凭据，但没有进程级隔离（对应原文 8.4 开放问题）。
 - **Router 为单常驻逻辑会话**：评估与回复共享一个逻辑 Router；水平分片/多层过滤留了接口，未实现。
 - **Web 面板未做**：面板为 CLI 文本/JSON，符合"只列待人工项"的最小形态。
@@ -301,21 +303,22 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 | 装配 | 配置驱动 | `src/app.ts`、`node src/cli.ts run <config>` |
 
 测试策略：进程内链路用真实 HTTP（本地 mock server 扮演模型端点）与真实子进程；产品代码不含任何 mock 分支。
-## 18. 真实运行验收（进行中）
+## 18. 真实运行验收（1.0 已通过）
 
 | 检查项 | 状态 | 证据 |
 |---|---|---|
-| `node --test` | ✅ | 178 例全绿 |
+| `node --test` | ✅ | 179 例全绿 |
 | 骨架无 fake | ✅ | 产品源码不含假实现（替身仅在 `tests/`） |
-| 真实模型调用 | ✅ 真机 | 百炼 token-plan 端点 `deepseek-v4.1-flash`；多次 `run --once` 成功：评估→工单→worker→报告→回复，17 条事件、回放哈希稳定 |
-| 真实 worker 进程 + 工具 | ✅ 真机 | worker 子进程用真实模型 + 文件工具写出 `.seed/work/t-000001/hello.txt`（27 字节，内容 "hello from seed super-agent"） |
-| 真实对外回复 | ✅ 真机 | Router 通过 Console 信道输出"已完成…请验收" |
-| `gh` 登录与读取 | ✅ 真机 | `doctor` 与 `GhCliClient` 实测（账号 thinkreed；当前 0 条通知） |
-| GitHub 写能力 | ✅ 真机 | 私有 gist 创建 → 真实评论（id 6451680，count=1）→ 删除（404 校验），无残留 |
-| GitHub issue 评论回写 | ✅ 真机 | 产品代码 `GitHubChannel` 写入私有 scratch 仓库 issue #1：comment id 6553629857，`gh` 读回文本一致；issue 已关闭 |
-| GitHub 通知事件 | ⏳ 需第三方 actor | 当前 0 条通知；自评自建不产生通知，Actions bot 需要 `workflow` scope（当前 token 无） |
-| 飞书 token | ✅ 真机 | tenant_access_token 获取成功（code 0，应用「毛毛」） |
-| 飞书发送 | ✅ 真机 | `say` 向群 `oc_93f1...` 发出真实消息（message_id `om_x100b615872ceaca4dd2db234d6f7cbf`） |
-| 飞书读取 | ✅ 真机 | `read` 拉到群消息；机器人消息与系统模板消息已过滤 |
-| 飞书群闭环 | ⏳ 待人发言 | daemon 已在轮询该群，等一条真人消息验证 收→做→回 |
+| 真实模型调用 | ✅ 真机 | 百炼 token-plan 端点 `deepseek-v4.1-flash`；评估→工单→worker→报告→回复多次成功 |
+| 真实 worker 进程 + 工具 | ✅ 真机 | worker 子进程用真实模型 + 文件工具写出 `hello.txt` / `feishu.txt` |
+| 真实对外回复 | ✅ 真机 | 本地 Console 与飞书群消息双通道均收到"已完成"回复 |
+| `gh` 登录与读取 | ✅ 真机 | `doctor` 与 `GhCliClient`（账号 thinkreed） |
+| GitHub 写能力 | ✅ 真机 | 私有 gist 创建 → 真实评论（id 6451680）→ 删除（404 校验），无残留 |
+| GitHub issue 评论回写 | ✅ 真机 | 产品代码 `GitHubChannel` 写入 scratch 仓库 issue：comment id 6553629857、6553794098 等，`gh` 读回一致 |
+| GitHub 通知事件 | ✅ 真机 | `github-actions[bot]` 评论 → 真实通知（id 26822886716）→ `GitHubSource` 入队 → 工单 → agent 回评（issue #2 实测） |
+| 飞书 token | ✅ 真机 | tenant_access_token 获取成功（应用「毛毛」） |
+| 飞书发送 / 读取 | ✅ 真机 | `say` 真实消息 id `om_x100b6158...`；`read` 可读并过滤机器人/系统消息 |
+| 飞书群闭环 | ✅ 真机 | 群内真人消息「帮我在工单目录创建 feishu.txt」→ 工单 t-000002 → 写出 12 字节文件 → 群里回复"已完成…" |
 | Watchdog 真机 | ✅ | `scripts/live_watchdog.ts`：卡死 worker → 模型判定 intervene → 旧 assignment 结束、新 assignment 启动 |
+| 重启恢复 | ✅ | `scripts/live_recovery.ts`：running assignment → 重启 → `resume` 输入投递 → worker 完成 recovery.txt |
+| 崩溃安全 | ✅ | 非法事件在落库前被 reducer 拒绝；ID 工厂按历史事件预热，重启不撞号 |

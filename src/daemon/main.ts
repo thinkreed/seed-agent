@@ -29,6 +29,13 @@ function parseEnv(raw: string | undefined): Record<string, string> {
   return {};
 }
 
+process.on("uncaughtException", (error) => {
+  process.stderr.write(`daemon uncaught: ${String(error?.stack ?? error)}\n`);
+});
+process.on("unhandledRejection", (reason) => {
+  process.stderr.write(`daemon unhandled rejection: ${String(reason)}\n`);
+});
+
 const agent = new DaemonAgent({
   clock: new SystemClock(),
   root: process.env.SEED_DAEMON_ROOT ?? ".",

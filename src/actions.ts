@@ -128,7 +128,7 @@ export class Actions {
     const assignment = state.assignments[report.assignmentId];
     if (assignment && assignment.state !== "ended") {
       produced.push(ev.assignmentEnded(assignment.id, report.status, now));
-      void this.executor.stop(assignment);
+      this.stopQuietly(assignment);
     }
     if (report.status === "ready" || report.status === "dropped") {
       const ticket = state.tickets[report.ticketId];
@@ -148,7 +148,7 @@ export class Actions {
     for (const assignment of Object.values(state.assignments)) {
       if (assignment.ticketId === ticketId && assignment.state !== "ended") {
         produced.push(ev.assignmentEnded(assignment.id, "retry", now));
-        void this.executor.stop(assignment);
+        this.stopQuietly(assignment);
       }
     }
     produced.push(this.makeInput(ticketId, "retry", "operator retry", effects, now));
@@ -177,6 +177,17 @@ export class Actions {
       );
     }
     return produced.length > 0 ? this.store.appendAll(produced) : [];
+  }
+
+  private stopQuietly(assignment: Assignment): void {
+    try {
+      const result: unknown = this.executor.stop(assignment);
+      if (result && typeof (result as Promise<void>).catch === "function") {
+        void (result as Promise<void>).catch(() => undefined);
+      }
+    } catch {
+      // 执行器已退出：忽略
+    }
   }
 
   private makeInput(

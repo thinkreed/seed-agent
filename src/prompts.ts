@@ -43,6 +43,7 @@ export function workerSystemPrompt(
     "",
     "Rules:",
     "- Use tools to inspect and change files; never claim work you did not do.",
+    "- If the input is only a notification and no concrete task, do not use tools: report ready with a one-sentence conclusion.",
     "- Long commands: use start(), then continue; job updates arrive as observations.",
     "- Stay inside the working directory and the authorized scope.",
     "- Do not talk to people. Finish with a report action.",

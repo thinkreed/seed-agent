@@ -44,7 +44,8 @@ export class SourceRunner {
       try {
         const batch = await source.poll();
         for (const trigger of batch) {
-          this.engine.ingest(trigger);
+          const produced = this.engine.ingest(trigger);
+          if (produced.length === 0) continue; // 已入账过的 Trigger 不算新事件
           ingested += 1;
           this.store.cursorSet(source.name, trigger.id, this.clock.now());
         }

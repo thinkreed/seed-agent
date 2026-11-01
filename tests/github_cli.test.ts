@@ -22,8 +22,16 @@ if (args.includes("/notifications")) {
       repository: { full_name: "o/r" } },
     { id: "2", reason: "mention", updated_at: "2026-11-01T11:00:00Z",
       subject: { title: "一个 issue", type: "Issue", url: "https://api.github.com/repos/o/r/issues/7" },
+      repository: { full_name: "o/r" } },
+    { id: "3", reason: "subscribed", updated_at: "2026-11-01T12:00:00Z",
+      subject: { title: "自己的评论", type: "Issue", url: "https://api.github.com/repos/o/r/issues/8",
+                 latest_comment_url: "https://api.github.com/repos/o/r/issues/comments/99" },
       repository: { full_name: "o/r" } }
   ]));
+} else if (args.includes("/user")) {
+  process.stdout.write("tester\\n");
+} else if (args.some((arg) => arg.includes("issues/comments/99"))) {
+  process.stdout.write("tester\\n");
 } else {
   process.stdout.write(JSON.stringify({ id: 99 }));
 }
@@ -54,6 +62,14 @@ test("GhCliClient：解析通知并映射为 Trigger 可用的结构", async () 
   });
   assert.equal(notifications[1]?.kind, "Issue");
   assert.equal(notifications[1]?.number, 7);
+  fx.cleanup();
+});
+
+test("GhCliClient：自己刚发的评论产生的通知会被跳过（防回环）", async () => {
+  const fx = fixture();
+  const client = new GhCliClient({ command: fx.command, argsPrefix: fx.prefix });
+  const notifications = await client.listNotifications();
+  assert.ok(notifications.every((item) => item.number !== 8), "self comment should be filtered");
   fx.cleanup();
 });
 

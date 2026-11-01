@@ -13,13 +13,20 @@ export interface GhCliOptions {
   readonly argsPrefix?: readonly string[];
   readonly timeoutMs?: number;
   readonly cwd?: string;
+  /** 跳过"最新评论作者是自己"的通知，避免 agent 自己的回复形成回环（默认开）。 */
+  readonly excludeSelf?: boolean;
 }
 
 interface NotificationPayload {
   readonly id?: string;
   readonly reason?: string;
   readonly updated_at?: string;
-  readonly subject?: { readonly title?: string; readonly type?: string; readonly url?: string };
+  readonly subject?: {
+    readonly title?: string;
+    readonly type?: string;
+    readonly url?: string;
+    readonly latest_comment_url?: string | null;
+  };
   readonly repository?: { readonly full_name?: string };
 }
 
@@ -28,12 +35,15 @@ export class GhCliClient implements GithubClient {
   private readonly argsPrefix: string[];
   private readonly timeoutMs: number;
   private readonly cwd: string | undefined;
+  private readonly excludeSelf: boolean;
+  private login: string | undefined;
 
   constructor(options: GhCliOptions = {}) {
     this.command = options.command ?? "gh";
     this.argsPrefix = [...(options.argsPrefix ?? [])];
     this.timeoutMs = options.timeoutMs ?? 60_000;
     this.cwd = options.cwd;
+    this.excludeSelf = options.excludeSelf ?? true;
   }
 
   async listNotifications(): Promise<GithubNotification[]> {
@@ -46,9 +56,36 @@ export class GhCliClient implements GithubClient {
     ]);
     const payload = JSON.parse(stdout) as NotificationPayload[] | NotificationPayload[][];
     const items = Array.isArray(payload[0]) ? (payload as NotificationPayload[][]).flat() : (payload as NotificationPayload[]);
-    return items
-      .map((item) => this.toNotification(item))
-      .filter((item): item is GithubNotification => item !== null);
+    const self = this.excludeSelf ? await this.selfLogin() : "";
+    const result: GithubNotification[] = [];
+    for (const item of items) {
+      const mapped = this.toNotification(item);
+      if (!mapped) continue;
+      if (self) {
+        const commentUrl = item.subject?.latest_comment_url;
+        if (commentUrl) {
+          const author = await this.commentAuthor(commentUrl).catch(() => "");
+          if (author === self) continue; // 自己刚发的评论，不再触发新任务
+        }
+      }
+      result.push(mapped);
+    }
+    return result;
+  }
+
+  private async selfLogin(): Promise<string> {
+    if (this.login !== undefined) return this.login;
+    try {
+      this.login = (await this.gh(["api", "/user", "--jq", ".login"])).trim();
+    } catch {
+      this.login = "";
+    }
+    return this.login;
+  }
+
+  private async commentAuthor(url: string): Promise<string> {
+    const path = url.replace(/^https?:\/\/api\.github\.com\//, "");
+    return (await this.gh(["api", path, "--jq", ".user.login"])).trim();
   }
 
   async createComment(repo: string, number: number, body: string): Promise<{ id: string }> {
