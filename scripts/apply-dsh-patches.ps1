@@ -15,7 +15,20 @@ if (Test-Path $pkg) {
   }
 }
 
-# 2) 复制我们新增的包（保持 contrib/dsh/packages 下的相对路径）
+# 2) 覆盖文件（overlay）
+$overlay = Join-Path $Repo 'contrib\dsh\overlay'
+if (Test-Path $overlay) {
+  Get-ChildItem $overlay -Directory | ForEach-Object {
+    $package = $_.Name
+    $targetDir = Join-Path $dsh "packages\client\$package\src\client\excel"
+    if (-not (Test-Path $targetDir)) { $targetDir = Join-Path $dsh "packages\client\$package\src" }
+    New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+    Copy-Item (Join-Path $_.FullName '*') $targetDir -Force
+    Write-Host "overlay -> $targetDir"
+  }
+}
+
+# 3) 复制我们新增的包（保持 contrib/dsh/packages 下的相对路径）
 $src = Join-Path $Repo 'contrib\dsh\packages'
 if (Test-Path $src) {
   Get-ChildItem $src -Directory | ForEach-Object {

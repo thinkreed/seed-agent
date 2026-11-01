@@ -86,7 +86,7 @@
     "pdfjs-dist": "6.3.289",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "xlsx": "0.18.5",
+    "xlsx": "npm:@e965/xlsx@0.20.3",
     "yaml": "^2.9.0",
     "@deepseek-ai/dsh-client-ui-file-drag": "workspace:*",
     "@deepseek-ai/dsh-client-ui-context-menu": "workspace:*"
