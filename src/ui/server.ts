@@ -54,16 +54,18 @@ export async function createUiServer(options: UiServerOptions): Promise<UiServer
       respondJson(response, 401, { error: "unauthorized" });
       return;
     }
-    if (request.method === "GET" && STATIC[url.pathname]) {
-      const entry = STATIC[url.pathname] as { file: string; type: string };
-      try {
-        const body = readFileSync(join(webDir, entry.file));
-        response.writeHead(200, { "content-type": entry.type, "cache-control": "no-store" });
-        response.end(body);
-      } catch {
-        respondJson(response, 404, { error: "asset missing" });
+    if (request.method === "GET") {
+      const entry = staticEntry(url.pathname);
+      if (entry) {
+        try {
+          const body = readFileSync(join(webDir, entry.file));
+          response.writeHead(200, { "content-type": entry.type, "cache-control": "no-store" });
+          response.end(body);
+        } catch {
+          respondJson(response, 404, { error: "asset missing" });
+        }
+        return;
       }
-      return;
     }
     if (url.pathname === "/api/state") {
       respondJson(response, 200, currentState());
@@ -178,6 +180,15 @@ export async function createUiServer(options: UiServerOptions): Promise<UiServer
 function authorized(request: IncomingMessage, url: URL, token: string): boolean {
   const header = request.headers["x-seed-token"];
   return header === token || url.searchParams.get("token") === token;
+}
+
+/** 静态资源白名单：内置页面 + vendor/ 下的设计令牌 CSS。 */
+function staticEntry(pathname: string): { file: string; type: string } | null {
+  const direct = STATIC[pathname];
+  if (direct) return direct;
+  const vendor = /^\/vendor\/([A-Za-z0-9._-]+\.css)$/.exec(pathname);
+  if (vendor) return { file: `vendor/${vendor[1] as string}`, type: "text/css; charset=utf-8" };
+  return null;
 }
 
 function respondJson(response: ServerResponse, status: number, body: unknown): void {

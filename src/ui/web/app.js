@@ -32,12 +32,20 @@ const api = {
 
 function fmtTime(at) {
   if (!at) return "";
-  const date = new Date(at * 1000);
-  return date.toLocaleTimeString("zh-CN", { hour12: false });
+  return new Date(at * 1000).toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit" });
 }
 
 function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+}
+
+function relativeTime(at) {
+  if (!at) return "";
+  const diff = Math.max(0, Math.round(Date.now() / 1000 - at));
+  if (diff < 60) return "刚刚";
+  if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+  return `${Math.floor(diff / 86400)} 天前`;
 }
 
 /* ---------- state ---------- */
@@ -48,26 +56,19 @@ function applyState(ui) {
   $("status-text").textContent = ui.paused ? "已暂停" : "运行中";
   $("toggle-pause").textContent = ui.paused ? "恢复" : "暂停";
   $("seq").textContent = `seq ${ui.lastSeq}`;
+  $("metrics").textContent = `${ui.counts.open} 进行中 · ${ui.counts.waitingPerson} 待人工`;
 
-  $("metrics").innerHTML = [
-    metric("工单", ui.counts.total),
-    metric("进行中", ui.counts.open),
-    metric("待人工", ui.counts.waitingPerson),
-  ].join("");
+  $("count-all").textContent = String(ui.counts.total);
+  $("count-waiting").textContent = String(ui.counts.waitingPerson);
+  $("count-open").textContent = String(ui.counts.open);
+  $("count-ended").textContent = String(ui.counts.ended);
 
   renderTickets();
   if (!state.selected && !state.autoSelected && ui.tickets.length > 0) {
     state.autoSelected = true;
     selectTicket(ui.tickets[0].id).catch((error) => console.error(error));
   }
-  if (state.selected) {
-    const ownsSelection = ui.tickets.some((ticket) => ticket.id === state.selected);
-    if (!ownsSelection) clearSelection();
-  }
-}
-
-function metric(label, value) {
-  return `<div class="metric"><b>${value}</b><span>${label}</span></div>`;
+  if (state.selected && !ui.tickets.some((ticket) => ticket.id === state.selected)) clearSelection();
 }
 
 function filteredTickets() {
@@ -82,7 +83,7 @@ function renderTickets() {
   const list = $("tickets");
   const tickets = filteredTickets();
   if (tickets.length === 0) {
-    list.innerHTML = `<div class="empty" style="margin-top:24px">没有匹配的工单</div>`;
+    list.innerHTML = `<div class="empty" style="margin-top:18px;font-size:12px">没有匹配的工单</div>`;
     return;
   }
   list.innerHTML = tickets
@@ -93,7 +94,8 @@ function renderTickets() {
         <span>
           <span class="ticket-title-row">
             <span class="ticket-name">${escapeHtml(ticket.shortName)}</span>
-            <span class="muted">${escapeHtml(ticket.source)}·${escapeHtml(ticket.actor.slice(0, 12))}</span>
+            <span class="ticket-actor">${escapeHtml(ticket.source)}</span>
+            <span class="ticket-time">${relativeTime(ticket.updatedAt)}</span>
           </span>
           <span class="ticket-text">${escapeHtml(ticket.title)}</span>
           <span class="ticket-sub">${escapeHtml(ticket.summary || ticket.stage)}</span>
@@ -120,10 +122,11 @@ function clearSelection() {
   renderTickets();
   $("head-title").textContent = "选择一个工单";
   $("head-stage").textContent = "";
+  $("head-stage").className = "chip";
   $("head-source").className = "source-dot";
   $("retry-btn").disabled = true;
   $("send-btn").disabled = true;
-  $("timeline").innerHTML = `<div class="empty">从左侧选择一个工单，查看它的事件时间线。</div>`;
+  $("timeline").innerHTML = `<div class="empty">从左侧选择一个工单，查看它的执行过程。</div>`;
 }
 
 function renderView(view) {
@@ -131,8 +134,8 @@ function renderView(view) {
   $("head-title").textContent = ticket.title || ticket.shortName;
   $("head-source").className = `source-dot ${ticket.source}`;
   const stage = $("head-stage");
-  stage.textContent = `${ticket.stage}${ticket.state === "ended" ? " · ended" : ""}`;
-  stage.className = `stage ${ticket.waitingPerson ? "person" : ""} ${ticket.state === "ended" ? "ended" : ""}`;
+  stage.textContent = ticket.state === "ended" ? "已结束" : ticket.stage;
+  stage.className = `chip ${ticket.waitingPerson ? "person" : ""} ${ticket.state === "ended" ? "ended" : ""}`;
   $("retry-btn").disabled = false;
   $("send-btn").disabled = false;
 
@@ -142,29 +145,29 @@ function renderView(view) {
   $("m-strength").textContent = mandate.strength;
   $("m-policy").textContent = mandate.policyVersion || "—";
 
-  const timelineNode = $("timeline");
+  const thread = $("timeline");
   if (timeline.length === 0) {
-    timelineNode.innerHTML = `<div class="empty">这个工单还没有事件。</div>`;
+    thread.innerHTML = `<div class="empty">这个工单还没有事件。</div>`;
     return;
   }
-  timelineNode.innerHTML = timeline
-    .map((item) => {
-      const avatar = { trigger: "▣", input: "⇢", report: "✓", message: "✉" }[item.kind] ?? "·";
-      return `
-      <div class="item ${item.kind}">
-        <div class="item-avatar">${avatar}</div>
-        <div class="item-body">
-          <div class="item-meta">
-            <span>${escapeHtml(item.who)}</span>
-            <span>${fmtTime(item.at)}</span>
-            ${item.status ? `<span>· ${escapeHtml(item.status)}</span>` : ""}
-          </div>
-          <div class="item-text">${escapeHtml(item.text)}</div>
-        </div>
-      </div>`;
-    })
-    .join("");
-  timelineNode.scrollTop = timelineNode.scrollHeight;
+  const rows = timeline.map(renderItem).join("");
+  thread.innerHTML = `<div class="thread-inner">${rows}</div>`;
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function renderItem(item) {
+  const time = `<span>${fmtTime(item.at)}</span>`;
+  const who = `<span>${escapeHtml(item.who)}</span>`;
+  if (item.kind === "trigger") {
+    return `<div class="msg user"><div class="msg-body"><div class="msg-meta">${who}${time}</div><div class="msg-text">${escapeHtml(item.text)}</div></div></div>`;
+  }
+  if (item.kind === "message") {
+    return `<div class="msg assistant"><div class="msg-avatar">✉</div><div class="msg-body"><div class="msg-meta">${who}${time}<span>· 已发送</span></div><div class="msg-text">${escapeHtml(item.text)}</div></div></div>`;
+  }
+  const failed = item.status === "failed" || item.status === "blocked";
+  const cls = failed ? "msg error" : "msg tool";
+  const icon = item.kind === "input" ? "⇢" : "✓";
+  return `<div class="${cls}"><div class="msg-avatar">${icon}</div><div class="msg-body"><div class="msg-meta">${who}${time}<span>· ${escapeHtml(item.status ?? "")}</span></div><div class="msg-text">${escapeHtml(item.text)}</div></div></div>`;
 }
 
 /* ---------- events ---------- */
@@ -175,7 +178,7 @@ async function loadEvents() {
   try {
     const batch = await api.get(`/api/events?after=${state.lastEventSeq}&limit=200`);
     for (const event of batch) {
-      if (event.type === "policy.changed") continue; // 每次启动都会记录，噪声项不展示
+      if (event.type === "policy.changed") continue;
       if (state.seenEvents.has(event.seq)) continue;
       state.seenEvents.add(event.seq);
       state.events.push(event);
@@ -185,8 +188,7 @@ async function loadEvents() {
     state.loadingEvents = false;
   }
   if (state.events.length > 300) state.events = state.events.slice(-300);
-  const node = $("events");
-  node.innerHTML = state.events
+  $("events").innerHTML = state.events
     .slice(-200)
     .reverse()
     .map(
@@ -197,7 +199,7 @@ async function loadEvents() {
       </div>`,
     )
     .join("");
-  $("event-count").textContent = `${state.events.length} 条`;
+  $("event-count").textContent = `${state.events.length}`;
 }
 
 /* ---------- live ---------- */
@@ -225,23 +227,23 @@ function connect() {
 
 /* ---------- interactions ---------- */
 
-$("filters").addEventListener("click", (event) => {
-  const button = event.target.closest(".chip");
+document.querySelector(".nav").addEventListener("click", (event) => {
+  const button = event.target.closest(".nav-item");
   if (!button) return;
   state.filter = button.dataset.filter;
-  for (const chip of document.querySelectorAll(".chip")) chip.classList.toggle("active", chip === button);
+  for (const item of document.querySelectorAll(".nav-item")) item.classList.toggle("active", item === button);
   renderTickets();
 });
 
 $("toggle-pause").addEventListener("click", async () => {
-  const type = state.ui?.paused ? "resume" : "pause";
-  await api.post({ type });
+  await api.post({ type: state.ui?.paused ? "resume" : "pause" });
 });
 
 $("retry-btn").addEventListener("click", async () => {
-  if (!state.selected) return;
-  await api.post({ type: "retry", ticketId: state.selected });
+  if (state.selected) await api.post({ type: "retry", ticketId: state.selected });
 });
+
+$("focus-reply").addEventListener("click", () => $("reply-text").focus());
 
 $("composer").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -252,13 +254,14 @@ $("composer").addEventListener("submit", async (event) => {
 });
 
 $("theme-toggle").addEventListener("click", () => {
-  const next = document.body.dataset.theme === "dark" ? "light" : "dark";
-  document.body.dataset.theme = next;
-  localStorage.setItem("seed-theme", next);
+  const dark = !document.body.hasAttribute("data-ds-dark-theme");
+  document.body.toggleAttribute("data-ds-dark-theme", dark);
+  localStorage.setItem("seed-theme", dark ? "dark" : "light");
 });
 
-const saved = localStorage.getItem("seed-theme");
-if (saved) document.body.dataset.theme = saved;
+if (localStorage.getItem("seed-theme") === "dark") {
+  document.body.setAttribute("data-ds-dark-theme", "");
+}
 $("send-btn").disabled = true;
 
 api.get("/api/state").then(applyState).catch((error) => console.error(error));
