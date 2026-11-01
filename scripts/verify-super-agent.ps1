@@ -137,7 +137,9 @@ if (-not $url) {
   $token = ([regex]::Match($url, 'token=(\S+)')).Groups[1].Value
   $port = [regex]::Match($url, '127\.0\.0\.1:(\d+)').Groups[1].Value
   $state = (Invoke-WebRequest -Uri "http://127.0.0.1:$port/super-agent/state?token=$token" -UseBasicParsing -TimeoutSec 10).Content | ConvertFrom-Json
-  Report 'desktop launch' ($state.ok -eq $true) "port=$port channel=$($state.channels.enabled) sources=$($state.sources.names -join '+') tickets=$($state.tickets.Count)"
+  $stage = if ($state.tickets.Count -gt 0) { $state.tickets[0].stage } else { '' }
+  $routerMode = $state.config.routerMode
+  Report 'desktop launch' ($state.ok -eq $true -and $stage -and $routerMode) "port=$port sources=$($state.sources.names -join '+') stage=$stage router=$routerMode spec=$($state.config.speculationEnabled)"
 }
 
 Write-Host ''

@@ -21,6 +21,7 @@ import {
   Watchdog,
   buildPolicy,
   recall,
+  stageOf,
   type AssessContext,
   type RecallKind,
   type RecallResult,
@@ -189,6 +190,7 @@ export class SuperAgentHost extends Service {
   private readonly channels: MultiChannelWriter
   private readonly channelsEnabled: boolean
   private readonly speculationEnabled: boolean
+  private readonly watchdogMode: string
   private readonly assessorMode: string
   private routerSession: RouterSession | undefined
   private lastRouterBatch: RouterBatch | undefined
@@ -217,6 +219,7 @@ export class SuperAgentHost extends Service {
     mkdirSync(dirname(this.dbPath), { recursive: true })
     this.channelsEnabled = config.channelsEnabled
     this.speculationEnabled = config.speculationEnabled
+    this.watchdogMode = config.watchdogMode
     this.assessorMode = config.assessorMode
     this.recallIndexPath = config.recallIndexPath
       ? resolve(config.recallIndexPath)
@@ -733,6 +736,7 @@ export class SuperAgentHost extends Service {
         lastPrompt: (this.lastPrompts.get(ticket.id) ?? '').slice(0, 400),
         queuedInputs: this.sdk?.pendingInputs(ticket.id) ?? 0,
         turns: this.sdk?.turnCount(ticket.id) ?? 0,
+        stage: stageOf(state, ticket),
         reports: reports.slice(-3).map((report) => ({
           status: report.status,
           summary: report.summary,
@@ -773,6 +777,13 @@ export class SuperAgentHost extends Service {
       },
       recovery: { events: this.lastRecovery, ticketsDir: this.ticketsRoot },
       speculations: this.speculations.slice(-10),
+      config: {
+        assessorMode: this.assessorMode,
+        routerMode: this.routerSession ? 'llm' : 'off',
+        watchdogMode: this.watchdogMode,
+        sources: this.sourceList.map((source) => source.name),
+        speculationEnabled: this.speculationEnabled,
+      },
       tickets: tickets.sort((a, b) => b.updatedAt - a.updatedAt),
     }
   }

@@ -14,12 +14,15 @@ export interface TicketView {
   readonly id: string
   readonly shortName: string
   readonly state: string
+  readonly stage?: string
   readonly title: string
   readonly source: string
   readonly actor: string
   readonly assignment: { readonly id: string; readonly state: string } | null
   readonly reports: readonly ReportView[]
   readonly updatedAt: number
+  readonly queuedInputs?: number
+  readonly turns?: number
 }
 
 export interface Snapshot {
@@ -36,6 +39,13 @@ export interface Snapshot {
     readonly lastBatch?: { readonly threads: number; readonly triggers: number } | null
   }
   readonly tickets: readonly TicketView[]
+  readonly config?: {
+    readonly assessorMode?: string
+    readonly routerMode?: string
+    readonly watchdogMode?: string
+    readonly sources?: readonly string[]
+    readonly speculationEnabled?: boolean
+  }
 }
 
 async function fetchState(): Promise<Snapshot | undefined> {
@@ -76,6 +86,7 @@ export function SuperAgentPage(): React.ReactElement {
   const [busy, setBusy] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatLog, setChatLog] = useState<{ role: 'person' | 'router'; text: string }[]>([])
+  const [search, setSearch] = useState('')
 
   const refresh = useCallback(() => {
     void fetchState().then((value) => {
@@ -90,6 +101,12 @@ export function SuperAgentPage(): React.ReactElement {
   }, [refresh])
 
   const tickets = snapshot?.tickets ?? []
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    if (!needle) return tickets
+    return tickets.filter((ticket) =>
+      `${ticket.shortName} ${ticket.title} ${ticket.source} ${ticket.stage ?? ''}`.toLowerCase().includes(needle))
+  }, [tickets, search])
   const current = useMemo(() => tickets.find((ticket) => ticket.id === selected) ?? tickets[0], [tickets, selected])
 
   const act = async (action: string): Promise<void> => {
@@ -138,10 +155,22 @@ export function SuperAgentPage(): React.ReactElement {
       ),
       createElement(
         'div',
+        { style: { padding: '8px 14px', borderBottom: '1px solid var(--dsw-alias-border-l1, #e5e7eb)' } },
+        createElement('input', {
+          value: search,
+          onChange: (event) => setSearch(event.target.value),
+          placeholder: '搜索工单（标题 / stage / 来源）',
+          style: { width: '100%', padding: '6px 9px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2, #d1d5db)', background: 'transparent', color: 'inherit', boxSizing: 'border-box' },
+        }),
+      ),
+      createElement(
+        'div',
         { style: { overflow: 'auto', flex: 1 } },
         tickets.length === 0
           ? createElement('div', { style: { padding: 16, color: '#9ca3af' } }, '还没有工单：等一个 Trigger，或从对话里产生。')
-          : tickets.map((ticket) => createElement(
+          : filtered.length === 0
+            ? createElement('div', { style: { padding: 16, color: '#9ca3af' } }, '没有匹配的工单。')
+            : filtered.map((ticket) => createElement(
             'button',
             {
               key: ticket.id,
@@ -157,6 +186,7 @@ export function SuperAgentPage(): React.ReactElement {
               createElement('span', { style: { width: 6, height: 6, borderRadius: 3, background: STATE_COLOR[ticket.state] ?? '#9ca3af' } }),
               createElement('span', { style: { fontWeight: 600 } }, ticket.shortName),
               createElement('span', { style: { color: '#9ca3af', fontSize: 11 } }, ticket.state),
+              ticket.stage ? createElement('span', { style: { color: '#6b7280', fontSize: 10, background: '#f1f5f9', borderRadius: 6, padding: '0 4px' } }, ticket.stage) : null,
               createElement('span', { style: { marginLeft: 'auto', color: '#9ca3af', fontSize: 11 } }, ticket.source),
             ),
             createElement('div', { style: { color: '#4b5563', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, ticket.title || '（无标题）'),
@@ -169,7 +199,7 @@ export function SuperAgentPage(): React.ReactElement {
       createElement(
         'div',
         { style: { padding: '10px 16px', borderBottom: '1px solid var(--dsw-alias-border-l1, #e5e7eb)', display: 'flex', gap: 8, alignItems: 'center' } },
-        createElement('strong', null, current ? `${current.shortName} · ${current.state}` : 'Super-agent'),
+        createElement('strong', null, current ? `${current.shortName} · ${current.state}${current.stage ? ` · ${current.stage}` : ''}` : 'Super-agent'),
         createElement('span', { style: { color: '#9ca3af', fontSize: 11 } }, current?.assignment ? `assignment ${current.assignment.state}` : ''),
         createElement('span', { style: { marginLeft: 'auto', color: '#9ca3af', fontSize: 11 } },
           snapshot ? `seq ${snapshot.lastSeq} · ${snapshot.usesDshRuntime ? 'dsh runtime' : 'pending'}` : ''),
@@ -240,7 +270,15 @@ export function SuperAgentPage(): React.ReactElement {
         ),
       ),
       createElement('div', { style: { padding: '6px 16px', borderTop: '1px solid var(--dsw-alias-border-l1, #e5e7eb)', color: '#9ca3af', fontSize: 11 } },
-        snapshot ? `${snapshot.storePath} · replay ${snapshot.replayHash.slice(0, 12)}` : ''),
+        snapshot
+          ? [
+            `router ${snapshot.config?.routerMode ?? 'off'}`,
+            `watchdog ${snapshot.config?.watchdogMode ?? '?'}`,
+            `sources ${(snapshot.config?.sources ?? []).join('+') || 'none'}`,
+            `speculation ${snapshot.config?.speculationEnabled ? 'on' : 'off'}`,
+            `replay ${snapshot.replayHash.slice(0, 12)}`,
+          ].join(' · ')
+          : ''),
     ),
   )
 }
