@@ -120,6 +120,8 @@ node scripts/smoke-super-agent.mjs
 | Web / 桌面 UI 复用 | DSH `ui-*` 槽位：`sidebar.panellist` + `main` + 品牌位；Electron 桌面壳 | `docs/dsh-desktop-*.png` 截图 |
 | 可复现 | `scripts/desktop-super-agent.ps1` + `verify-super-agent.ps1` + `contrib/dsh` 补丁层 | `VERIFY OK`（core/host/fanout/spill/sdk/desktop 六项） |
 
+> 完整差距审计（对照文章 §2–§6 与原型 001–008）见 docs/dsh-audit.md：整体覆盖约 30–35%，P0 缺口是 Router Session、入站 Source、链式召回工具、异步 ReAct/全双工。
+
 ### 已知边界
 
 - **链式召回是一跳**：超预算上下文落盘成单个 digest 文件，prompt 给路径；尚未实现按事件 id 的多级 recall 索引。
