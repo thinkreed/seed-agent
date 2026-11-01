@@ -55,3 +55,9 @@ _sample*
 /dsh/
 
 /dist/
+
+# 本地打包测试产物（Electron 解包/安装包，含 >100MB 单文件，GitHub 会拒绝）
+dist-test*/
+dist-*/
+*.asar
+*.asar.unpacked/
