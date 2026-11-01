@@ -39,7 +39,7 @@ test("parseConfig：非法类型给出明确错误", () => {
   assert.throws(() => parseConfig({ slots: "x" }), /slots must be a positive integer/);
   assert.throws(() => parseConfig({ policy: { acceptMode: "nope" } }), /acceptMode/);
   assert.throws(() => parseConfig({ policy: { rules: [{}] } }), /policy\.rules\[0\]\.source/);
-  assert.throws(() => parseConfig({ worker: {} }), /worker\.file is required/);
+  assert.throws(() => parseConfig({ worker: {} }), /worker\.file must be a non-empty string/);
   assert.throws(() => parseConfig({ worker: { file: "n", args: [1] } }), /worker\.args must be string\[\]/);
 });
 

@@ -37,6 +37,8 @@ export interface LocalExecutorOptions {
   readonly report: (report: Report) => void;
   readonly clock: Clock;
   readonly env?: Readonly<Record<string, string>>;
+  /** 按工单动态追加环境变量（模型配置、执行变量等）。 */
+  readonly envFor?: (assignment: Assignment, ticket: Ticket, dir: string) => Record<string, string>;
 }
 
 export class LocalExecutor implements Executor {
@@ -79,6 +81,12 @@ export class LocalExecutor implements Executor {
     this.children.get(assignment.ticketId)?.kill();
   }
 
+  /** 关闭所有 worker（进程退出/测试清理用）。 */
+  closeAll(): void {
+    for (const child of this.children.values()) child.kill();
+    this.children.clear();
+  }
+
   private onLine(line: string, assignment: Assignment, ticket: Ticket): void {
     const raw = line.trim();
     if (!raw) return;
@@ -107,6 +115,7 @@ export class LocalExecutor implements Executor {
     return {
       ...process.env,
       ...this.options.env,
+      ...(this.options.envFor ? this.options.envFor(assignment, ticket, dir) : {}),
       DSH_SUPERAGENT_DIR: dir,
       DSH_SUPERAGENT_NAME: ticket.shortName,
       DSH_SUPERAGENT_TICKET: ticket.id,

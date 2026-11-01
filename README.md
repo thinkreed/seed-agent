@@ -17,6 +17,24 @@ node src/cli.ts panel seed.db --json   # 机器可读面板
 
 配置文件见 `seed.config.example.json`（slots / policy / worker / prepare / 轮询间隔）。
 
+## 真实运行（无 fake）
+
+```bash
+cp seed.config.example.json seed.config.json   # 改 model / sources
+node src/cli.ts run seed.config.json --once    # 跑一轮真实链路
+node src/cli.ts run seed.config.json           # 常驻
+```
+
+依赖的真实凭证（都通过环境变量注入，配置只写变量名）：
+
+| 能力 | 需要 | 说明 |
+|---|---|---|
+| 模型 | `DEEPSEEK_API_KEY`（或自定义 `apiKeyEnv`） | OpenAI 兼容 `/chat/completions`，`model.baseUrl` 可指向任意兼容端点 |
+| GitHub | `gh auth login` 已完成 | `gh api /notifications` 拉事件、`gh api .../comments` 回写 |
+| 飞书 | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` + 群 `chat_id` | 企业自建应用，开通 `im:message` 权限 |
+| 本地验证 | 一份 `inbox.jsonl` | 每行一个 Trigger，适合本地/CI 验证整条链路 |
+
+真实链路：Source（JSONL/gh/飞书）→ Gate → 模型评估 → 工单 → worker 进程（真实模型 + 文件/Shell 工具）→ 报告 → Router 回复 → 面板。
 ## 结构
 
 | 路径 | 职责 |

@@ -289,3 +289,15 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 - **凭据隔离是弱保证**：daemon 继承执行机环境变量；模型上下文不包含凭据，但没有进程级隔离（对应原文 8.4 开放问题）。
 - **Router 为单常驻逻辑会话**：评估与回复共享一个逻辑 Router；水平分片/多层过滤留了接口，未实现。
 - **Web 面板未做**：面板为 CLI 文本/JSON，符合"只列待人工项"的最小形态。
+## 17. 真实运行（无 fake）依赖
+
+| 能力 | 需要 | 落点 |
+|---|---|---|
+| 模型 | `DEEPSEEK_API_KEY`（或配置 `model.apiKeyEnv`） | `src/llm/openai.ts`（OpenAI 兼容，含超时/429/5xx 重试） |
+| 工单执行 | worker 进程 + 文件/Shell 工具 | `src/worker/main.ts`、`src/tools/files.ts`、`src/tools/shell.ts` |
+| GitHub | `gh auth login` | `src/sources/github_cli.ts`、`GitHubChannel` |
+| 飞书 | `FEISHU_APP_ID/SECRET` + `chat_id` | `src/sources/feishu_http.ts`、`FeishuChannel` |
+| 本地验证 | `inbox.jsonl` | `src/sources/jsonl.ts` |
+| 装配 | 配置驱动 | `src/app.ts`、`node src/cli.ts run <config>` |
+
+测试策略：进程内链路用真实 HTTP（本地 mock server 扮演模型端点）与真实子进程；产品代码不含任何 mock 分支。

@@ -27,6 +27,7 @@ export interface DaemonOptions {
   readonly intervalMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly watchdog?: WatchdogBridge;
+  readonly afterRound?: () => void | Promise<void>;
 }
 
 export class Daemon {
@@ -47,6 +48,7 @@ export class Daemon {
       const report = await this.options.watchdog.check(this.options.store.state());
       this.options.watchdog.apply(report);
     }
+    if (this.options.afterRound) await this.options.afterRound();
     const events = this.options.store.lastSeq() - before;
     this.rounds += 1;
     return { ingested: poll.ingested, events, failures: poll.failures.length };

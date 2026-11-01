@@ -8,6 +8,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { App } from "./app.ts";
+import { loadConfig } from "./config.ts";
 import { FakeClock } from "./clock.ts";
 import { RecordingChannel } from "./channels/recording.ts";
 import type { Decision, Report, Trigger } from "./domain.ts";
@@ -143,13 +145,30 @@ export async function remoteDemo(): Promise<number> {
   return 0;
 }
 
+/** 真实运行：配置驱动，接真实模型与渠道。 */
+export async function runApp(configPath: string | undefined, once: boolean): Promise<number> {
+  const config = loadConfig(configPath);
+  const app = App.create({ config });
+  if (once) {
+    await app.runOnce();
+    console.log(render(app.runtime.engine.state));
+    app.stop();
+    return 0;
+  }
+  process.on("SIGINT", () => app.stop());
+  await app.run();
+  return 0;
+}
+
 const [, , command = "demo", arg, flag] = process.argv;
 const exitCode =
   command === "demo"
     ? await demo()
     : command === "remote"
       ? await remoteDemo()
-      : command === "panel"
-        ? showPanel(arg ?? "seed.db", flag === "--json")
-        : 2;
+      : command === "run"
+        ? await runApp(arg, flag === "--once")
+        : command === "panel"
+          ? showPanel(arg ?? "seed.db", flag === "--json")
+          : 2;
 process.exitCode = exitCode;
