@@ -83,7 +83,7 @@
 | 桌面应用（Electron） | ✅ | 窗口标题/侧栏品牌 `seed-agent`，Super-agent 面板 |
 | 品牌：productName/协议名 | ✅ | apply 脚本把安装包 `productName`/协议名替换为 `seed-agent` |
 | 品牌：hero/托盘/安装包图标 | ⚠️ | hero 文案与托盘图标仍是 DSH 原样 |
-| 安装包 | ⚠️ | `docs/packaging.md`：productName/协议名已改、打包脚本就绪；本机缺 VS Build Tools（`vswhere.exe ENOENT`），未产出安装包 |
+| 安装包 | ✅（首启为基础形态） | `dist/seed-agent-0.2.2-alpha.2-win-x64-unsigned.exe`（301.7 MB，SHA256 `27F2D1…7E11B9`）：静默安装退出码 0、`seed-agent.exe` 可启动并拉起 dsh web；Super-agent 面板需准备 profile（尚未烘进安装包，见 `docs/packaging.md`） |
 
 ## 9. 已知边界（诚实清单）
 

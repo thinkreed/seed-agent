@@ -99,6 +99,7 @@ $eb = Join-Path $dsh 'apps\desktop\scripts\electron-builder-config.mjs'
 if (Test-Path $eb) {
   $ebText = [System.IO.File]::ReadAllText($eb)
   $ebText = $ebText.Replace("productName: 'DeepSeek Harness'", "productName: 'seed-agent'")
+  $ebText = $ebText.Replace("const policy = packagesMacOS && unsigned ? undefined : resolveDesktopPolicyEnvironment(env)", "const policy = unsigned ? undefined : resolveDesktopPolicyEnvironment(env)")
   $ebText = $ebText.Replace("protocols: [{ name: 'DeepSeek Harness', schemes: ['dsh'] }]", "protocols: [{ name: 'seed-agent', schemes: ['dsh'] }]")
   [System.IO.File]::WriteAllText($eb, $ebText, (New-Object System.Text.UTF8Encoding($false)))
 }
@@ -107,4 +108,15 @@ $desktopEnv = Join-Path $Repo 'contrib\dsh\config\desktop.env.windows'
 $desktopEnvDst = Join-Path $dsh 'apps\desktop\.env.windows'
 if ((Test-Path $desktopEnv) -and -not (Test-Path $desktopEnvDst)) {
   Copy-Item $desktopEnv $desktopEnvDst -Force
+}
+# 6b) 打包冒烟脚本的可执行名跟随品牌（vendor 上游硬编码 DeepSeek Harness）
+$smoke = Join-Path $dsh 'apps\desktop\scripts\smoke-packaged-runtime.ts'
+if (Test-Path $smoke) {
+  $smokeText = [System.IO.File]::ReadAllText($smoke)
+  if ($smokeText.Contains('DeepSeek Harness')) {
+    $smokeText = $smokeText.Replace("'DeepSeek Harness.exe'", "'seed-agent.exe'")
+    $smokeText = $smokeText.Replace("'DeepSeek Harness.app', 'Contents'", "'seed-agent.app', 'Contents'")
+    $smokeText = $smokeText.Replace("'MacOS', 'DeepSeek Harness'", "'MacOS', 'seed-agent'")
+    [System.IO.File]::WriteAllText($smoke, $smokeText, (New-Object System.Text.UTF8Encoding($false)))
+  }
 }
