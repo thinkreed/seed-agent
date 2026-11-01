@@ -15,14 +15,18 @@ if (Test-Path $pkg) {
   }
 }
 
-# 2) 复制我们新增的插件包
+# 2) 复制我们新增的包（保持 contrib/dsh/packages 下的相对路径）
 $src = Join-Path $Repo 'contrib\dsh\packages'
 if (Test-Path $src) {
   Get-ChildItem $src -Directory | ForEach-Object {
-    $target = Join-Path $dsh "packages\plugin\$($_.Name)"
-    New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
-    Copy-Item $_.FullName $target -Recurse -Force
-    Write-Host "copied plugin: $($_.Name)"
+    Copy-Item $_.FullName (Join-Path $dsh 'packages') -Recurse -Force
+    Write-Host "copied package: $($_.Name)"
+  }
+  Get-ChildItem $src -Directory -Recurse -Depth 1 | Where-Object { Test-Path (Join-Path $_.FullName 'package.json') } | ForEach-Object {
+    $relative = $_.FullName.Substring($src.Length + 1)
+    New-Item -ItemType Directory -Force -Path (Split-Path (Join-Path $dsh "packages\$relative")) | Out-Null
+    Copy-Item $_.FullName (Split-Path (Join-Path $dsh "packages\$relative")) -Recurse -Force
+    Write-Host "copied nested package: $relative"
   }
 }
 
