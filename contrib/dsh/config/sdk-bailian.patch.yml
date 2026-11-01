@@ -35,3 +35,6 @@
 - insert:
     - id: super-agent-tool-recall
       name: '__SUPER_AGENT_RECALL_TOOL__'
+- insert:
+    - id: super-agent-tool-background
+      name: '__SUPER_AGENT_BACKGROUND_TOOL__'

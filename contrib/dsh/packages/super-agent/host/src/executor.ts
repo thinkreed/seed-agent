@@ -63,6 +63,10 @@ export class SdkDshExecutor implements Executor {
   private readonly options: SdkDshExecutorOptions
   private readonly sessionByTicket = new Map<string, string>()
   private readonly assignmentByTicket = new Map<string, string>()
+  /** 全双工：正在跑的工单，以及回合期间到达、等回合结束再处理的输入。 */
+  private readonly running = new Set<string>()
+  private readonly queuedInputs = new Map<string, string[]>()
+  private readonly turnCounts = new Map<string, number>()
 
   constructor(options: SdkDshExecutorOptions) {
     this.options = options
@@ -81,7 +85,37 @@ export class SdkDshExecutor implements Executor {
 
   async deliver(ticket: Ticket, input: Input): Promise<void> {
     const assignmentId = this.assignmentByTicket.get(ticket.id) ?? ''
+    // 全双工：回合进行中到达的新输入先排队，等当前回合结束立刻作为下一轮输入处理；
+    // 绝不并发调用同一个 session（否则 DSH runtime 会排队/报错）。
+    if (this.running.has(ticket.id)) {
+      const pending = this.queuedInputs.get(ticket.id) ?? []
+      pending.push(input.ref)
+      this.queuedInputs.set(ticket.id, pending)
+      return
+    }
     void this.runTurn(assignmentId, ticket, input.ref)
+  }
+
+  /** 该工单还有多少条输入在排队（面板/验收可读）。 */
+  pendingInputs(ticketId: string): number {
+    return this.queuedInputs.get(ticketId)?.length ?? 0
+  }
+
+  /** 回合是否仍在进行（host 用它判断新消息该直投还是排队）。 */
+  isRunning(ticketId: string): boolean {
+    return this.running.has(ticketId)
+  }
+
+  /** 该工单已经跑过多少轮（全双工验收：第二轮确实被处理）。 */
+  turnCount(ticketId: string): number {
+    return this.turnCounts.get(ticketId) ?? 0
+  }
+
+  /** 回合进行中直接把新输入排进 executor 队列，等当前回合结束立即处理。 */
+  enqueueInput(ticketId: string, text: string): void {
+    const pending = this.queuedInputs.get(ticketId) ?? []
+    pending.push(text)
+    this.queuedInputs.set(ticketId, pending)
   }
 
   async stop(_assignment: Assignment): Promise<void> {
@@ -101,6 +135,8 @@ export class SdkDshExecutor implements Executor {
 
   private async runTurn(assignmentId: string, ticket: Ticket, prompt: string): Promise<void> {
     this.options.onPrompt?.(ticket.id, prompt)
+    this.running.add(ticket.id)
+    this.turnCounts.set(ticket.id, (this.turnCounts.get(ticket.id) ?? 0) + 1)
     const sessionId = this.sessionByTicket.get(ticket.id)
     try {
       const result = await this.client().run(prompt, sessionId ? { sessionId } : {})
@@ -108,6 +144,14 @@ export class SdkDshExecutor implements Executor {
       this.options.onReport(reportOf(ticket, assignmentId, 'ready', summarize(result), this.options.clock.now()))
     } catch (error) {
       this.options.onReport(reportOf(ticket, assignmentId, 'failed', String(error).slice(0, 400), this.options.clock.now()))
+    } finally {
+      this.running.delete(ticket.id)
+      const pending = this.queuedInputs.get(ticket.id)
+      if (pending && pending.length > 0) {
+        this.queuedInputs.delete(ticket.id)
+        // 回合结束立即处理积压输入：前台在后台工作期间始终可接受新指令。
+        void this.runTurn(assignmentId, ticket, pending.join('\n\n'))
+      }
     }
   }
 }

@@ -243,6 +243,8 @@ export class SuperAgentHost extends Service {
             // headless worker：工具调用自动放行（DSH_PERMISSION_MODE 同时决定 sandbox 与 approval）。
             DSH_PERMISSION_MODE: config.dshPermissionMode,
             SUPER_AGENT_RECALL_INDEX: this.recallIndexPath,
+            SUPER_AGENT_JOB_DIR: join(resolve(config.workspace || process.cwd()), '.seed', 'jobs'),
+            SUPER_AGENT_WORKSPACE: resolve(config.workspace || process.cwd()),
           },
           ...(config.dshPatch ? { patches: [resolve(config.dshPatch)] } : {}),
           ...(config.workspace ? { cwd: resolve(config.workspace) } : {}),
@@ -411,6 +413,11 @@ export class SuperAgentHost extends Service {
   }
 
   reply(ticketId: string, text: string): void {
+    // 全双工：回合进行中的回复不打断 worker，排队等本轮结束后立即处理。
+    if (this.sdk?.isRunning(ticketId)) {
+      this.sdk.enqueueInput(ticketId, text)
+      return
+    }
     this.runtime.engine.personMessage(ticketId, text)
   }
 
@@ -571,6 +578,8 @@ export class SuperAgentHost extends Service {
         assignment: assignment ? { id: assignment.id, state: assignment.state } : null,
         channelIds: ticket.channelIds,
         lastPrompt: (this.lastPrompts.get(ticket.id) ?? '').slice(0, 400),
+        queuedInputs: this.sdk?.pendingInputs(ticket.id) ?? 0,
+        turns: this.sdk?.turnCount(ticket.id) ?? 0,
         reports: reports.slice(-3).map((report) => ({
           status: report.status,
           summary: report.summary,

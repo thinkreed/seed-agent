@@ -88,6 +88,10 @@ if ($Slow) {
     Report 'router smoke' ($router -match 'ROUTER SMOKE OK') (($router -split "`n" | Where-Object { $_ -match 'lastBatch:' }) -join ' ')
     $recallTool = & $node 'packages/super-agent/host/tests/recall-tool-smoke.mjs' 2>&1 | Out-String
     Report 'recall tool smoke' ($recallTool -match 'RECALL TOOL SMOKE OK') (($recallTool -split "`n" | Where-Object { $_ -match 'worker output:' }) -join ' ')
+    $duplex = & $node 'packages/super-agent/host/tests/full-duplex-smoke.mjs' 2>&1 | Out-String
+    Report 'full duplex smoke' ($duplex -match 'FULL DUPLEX SMOKE OK') (($duplex -split "`n" | Where-Object { $_ -match 'first file:' }) -join ' ')
+    $async = & $node 'packages/super-agent/host/tests/async-react-smoke.mjs' 2>&1 | Out-String
+    Report 'async react smoke' ($async -match 'ASYNC REACT SMOKE OK') (($async -split "`n" | Where-Object { $_ -match 'done file:' }) -join ' ')
     $out = & $node 'packages/super-agent/host/tests/sdk-smoke.mjs' 2>&1 | Out-String
     Report 'sdk smoke' ($out -match 'DSH EXECUTOR SMOKE OK') ''
   } catch { Report 'router/sdk smoke' $false $_.Exception.Message } finally { Pop-Location }

@@ -80,7 +80,7 @@ if (-not $SkipBuild) {
   Push-Location $dsh
   try {
     Invoke-Pnpm @('install', '--no-frozen-lockfile', '--reporter=append-only')
-    foreach ($filter in @('@deepseek-ai/dsh-super-agent-core', '@deepseek-ai/dsh-super-agent-host', '@deepseek-ai/dsh-client-ui-super-agent')) {
+    foreach ($filter in @('@deepseek-ai/dsh-super-agent-core', '@deepseek-ai/dsh-super-agent-host', '@deepseek-ai/dsh-super-agent-tool-recall', '@deepseek-ai/dsh-super-agent-tool-background', '@deepseek-ai/dsh-client-ui-super-agent')) {
       Invoke-Pnpm @('--filter', $filter, 'run', 'build')
     }
   } finally { Pop-Location }
