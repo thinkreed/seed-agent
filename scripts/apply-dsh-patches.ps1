@@ -1,0 +1,39 @@
+# 把 contrib/dsh 的改动应用到 vendor checkout（dsh/）。
+param([string]$Repo = (Split-Path $PSScriptRoot -Parent))
+
+$dsh = Join-Path $Repo 'dsh'
+if (-not (Test-Path $dsh)) { throw "dsh/ missing: run scripts/sync-dsh.ps1 first" }
+
+# 1) xlsx：用 registry 版本替换不可达的 CDN 依赖
+$pkg = Join-Path $dsh 'packages\client\ui-sidebar-documentpreview\package.json'
+if (Test-Path $pkg) {
+  $text = [System.IO.File]::ReadAllText($pkg, [System.Text.Encoding]::UTF8)
+  $patched = $text.Replace('https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz', '0.18.5')
+  if ($patched -ne $text) {
+    [System.IO.File]::WriteAllText($pkg, $patched, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "patched xlsx: $pkg"
+  }
+}
+
+# 2) 复制我们新增的插件包
+$src = Join-Path $Repo 'contrib\dsh\packages'
+if (Test-Path $src) {
+  Get-ChildItem $src -Directory | ForEach-Object {
+    $target = Join-Path $dsh "packages\plugin\$($_.Name)"
+    New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+    Copy-Item $_.FullName $target -Recurse -Force
+    Write-Host "copied plugin: $($_.Name)"
+  }
+}
+
+# 3) 应用 *.patch（可选）
+$patchDir = Join-Path $Repo 'contrib\dsh\patches'
+if (Test-Path $patchDir) {
+  Get-ChildItem $patchDir -Filter '*.patch' | ForEach-Object {
+    git -C $dsh apply --whitespace=nowarn $_.FullName
+    if ($LASTEXITCODE -ne 0) { throw "failed to apply $($_.Name)" }
+    Write-Host "applied patch: $($_.Name)"
+  }
+}
+
+Write-Host "done."
