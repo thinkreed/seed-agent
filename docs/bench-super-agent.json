@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T10:09:36.266Z",
+  "generatedAt": "2026-11-01T10:15:56.832Z",
   "env": {
     "threads": 4,
     "modelDelayMs": 40,
@@ -17,9 +17,9 @@
     },
     "serial": {
       "modelCalls": 4,
-      "wallMs": 167
+      "wallMs": 168
     },
-    "speedup": 3.98
+    "speedup": 4
   },
   "ablation": {
     "baselineSingleSession": {

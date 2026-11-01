@@ -94,3 +94,17 @@ if (Test-Path $cfgSrc) {
     }
   }
 }
+# 6) 桌面品牌：安装包 productName / 协议名改成 seed-agent（vendor 内替换，脚本可重放；seed-agent productName）
+$eb = Join-Path $dsh 'apps\desktop\scripts\electron-builder-config.mjs'
+if (Test-Path $eb) {
+  $ebText = [System.IO.File]::ReadAllText($eb)
+  $ebText = $ebText.Replace("productName: 'DeepSeek Harness'", "productName: 'seed-agent'")
+  $ebText = $ebText.Replace("protocols: [{ name: 'DeepSeek Harness', schemes: ['dsh'] }]", "protocols: [{ name: 'seed-agent', schemes: ['dsh'] }]")
+  [System.IO.File]::WriteAllText($eb, $ebText, (New-Object System.Text.UTF8Encoding($false)))
+}
+# 7) 桌面打包环境（无签名本地构建）：contrib/dsh/config/desktop.env.windows -> dsh/apps/desktop/.env.windows
+$desktopEnv = Join-Path $Repo 'contrib\dsh\config\desktop.env.windows'
+$desktopEnvDst = Join-Path $dsh 'apps\desktop\.env.windows'
+if ((Test-Path $desktopEnv) -and -not (Test-Path $desktopEnvDst)) {
+  Copy-Item $desktopEnv $desktopEnvDst -Force
+}
