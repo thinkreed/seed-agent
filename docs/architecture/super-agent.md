@@ -306,10 +306,11 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 | 检查项 | 状态 | 证据 |
 |---|---|---|
 | `node --test` | ✅ | 175 例全绿 |
-| 真实模型 HTTP 客户端 | ✅ 代码就绪 | `src/llm/openai.ts` + 本地 HTTP 端点测试 |
-| 真实 worker 进程 + 工具 | ✅ 代码就绪 | `src/worker/main.ts` + `tests/worker_process.test.ts` |
 | 骨架无 fake | ✅ | 产品源码不含假实现（替身仅在 `tests/`） |
-| `gh` 登录与读取 | ✅ 真机 | `doctor` 与 `GhCliClient` 实测返回（当前 0 条通知） |
-| 真实模型调用 | ⏳ 待 key | 需要 `DEEPSEEK_API_KEY` |
-| GitHub 评论回写 | ⏳ 待事件/测试目标 | 需要真实通知或指定 issue |
-| 飞书消息/回复 | ⏳ 待凭证与 chat_id | 需要 `FEISHU_APP_ID/SECRET` |
+| 真实模型调用 | ✅ 真机 | 百炼 token-plan 端点 `deepseek-v4.1-flash`；两次 `run --once` 成功：评估→工单→worker→报告→回复，17 条事件、回放哈希稳定 |
+| 真实 worker 进程 + 工具 | ✅ 真机 | worker 子进程用真实模型 + 文件工具写出 `.seed/work/t-000001/hello.txt`（27 字节，内容 "hello from seed super-agent"） |
+| 真实对外回复 | ✅ 真机 | Router 通过 Console 信道输出"已完成…请验收" |
+| `gh` 登录与读取 | ✅ 真机 | `doctor` 与 `GhCliClient` 实测（账号 thinkreed；当前 0 条通知） |
+| GitHub 评论回写 | ⏳ 待目标 | 需要测试 issue/仓库（`thinkreed/seed-agent` 为 public） |
+| 飞书 token | ✅ 真机 | tenant_access_token 获取成功（code 0，应用「毛毛」） |
+| 飞书群消息/回复 | ⏳ 待拉群 | 机器人「毛毛」当前不在任何群（chat 数 0），需拉群或提供 chat_id |
