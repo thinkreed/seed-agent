@@ -1,4 +1,4 @@
-# 创建 seed-agent 桌面快捷方式（桌面 + 开始菜单）。
+﻿# 创建 seed-agent 桌面快捷方式（桌面 + 开始菜单）。
 param(
   [string]$Repo = (Split-Path $PSScriptRoot -Parent)
 )

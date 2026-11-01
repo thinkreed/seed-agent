@@ -1,4 +1,4 @@
-# 把 contrib/dsh 的改动应用到 vendor checkout（dsh/）。
+﻿# 把 contrib/dsh 的改动应用到 vendor checkout（dsh/）。
 param([string]$Repo)
 
 $here = $PSScriptRoot

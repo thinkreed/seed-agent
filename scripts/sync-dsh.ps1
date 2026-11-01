@@ -1,4 +1,4 @@
-# 拉取/刷新 DSH 上游源码到 seed-agent\dsh（不入库的 vendor checkout）。
+﻿# 拉取/刷新 DSH 上游源码到 seed-agent\dsh（不入库的 vendor checkout）。
 param(
   [string]$Repo = (Split-Path $PSScriptRoot -Parent),
   [string]$Ref = "ce7073d5",
