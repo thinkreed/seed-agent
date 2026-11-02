@@ -991,10 +991,10 @@ export class SuperAgentHost extends Service {
         const address = input.channel?.trim() || 'local:super-agent'
         this.ingest({
           id: `trg-local-${now}-${Math.random().toString(36).slice(2, 8)}`,
-          source: 'local',
-          actor: 'human',
+          source: input.source?.trim() || 'local',
+          actor: input.actor?.trim() || 'human',
           text: input.text,
-          threadIds: [address],
+          threadIds: [input.threadId?.trim() || address],
           channelIds: [address],
           at: now,
         })

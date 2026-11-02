@@ -35,6 +35,10 @@ export interface CommandInput {
   readonly text?: string
   /** ingest 的回帖地址：`oc_...`（飞书）、`gh:owner/repo#123`（GitHub）或 local。 */
   readonly channel?: string
+  /** ingest 的模拟来源（默认 local/human）；用于回放/验收飞书等入站。 */
+  readonly source?: string
+  readonly actor?: string
+  readonly threadId?: string
   /** policy：在线替换准入策略。 */
   readonly policy?: PolicyInput
 }
