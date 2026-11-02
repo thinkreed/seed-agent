@@ -30,6 +30,7 @@ baseURL    https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1
 model      deepseek-v4.1-flash
 apiKeyEnv  BAILIAN_API_KEY
 maxTokens  8192
+contextWindow 1000000
 ```
 
 启动带 Super-agent 的 Web Harness：
