@@ -62,3 +62,5 @@ dist-test*/
 dist-*/
 *.asar
 *.asar.unpacked/
+
+tickets/
