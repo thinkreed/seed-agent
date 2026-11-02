@@ -43,6 +43,7 @@ seed.env
 *.jks
 *.keystore
 secrets/
+runtime/
 seed.config.json
 inbox.jsonl
 _rec.*

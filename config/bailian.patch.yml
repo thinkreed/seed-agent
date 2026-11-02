@@ -1,0 +1,33 @@
+# 百炼（OpenAI 兼容）provider，不含 super-agent 工具占位符。
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      bailian:
+        displayName: Bailian
+        apiKeyEnv: BAILIAN_API_KEY
+        api: openai-completions
+        baseURL: https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1
+        defaultContextWindow: 100000
+        defaultMaxTokens: 8192
+        defaultInput:
+          - text
+        compat:
+          supportsDeveloperRole: false
+          supportsStore: false
+          supportsStrictMode: true
+        models:
+          - id: deepseek-v4.1-flash
+            name: deepseek-v4.1-flash
+            contextWindow: 100000
+            maxTokens: 8192
+            input:
+              - text
+            compat:
+              supportsReasoningEffort: false
+
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: bailian
+    model: deepseek-v4.1-flash

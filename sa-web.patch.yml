@@ -1,0 +1,21 @@
+# Web harness overlay: mount the Super-agent host + UI into the shipped web profile.
+- insert:
+    - id: super-agent-host
+      name: 'file:///E:/project/reed-dev/seed-agent-superagent/dsh/packages/super-agent/host/lib/index.js'
+      config:
+        dbPath: E:/project/reed-dev/seed-agent-superagent/runtime/web-agent.db
+        slots: 2
+        dshBin: E:/project/reed-dev/seed-agent-superagent/dsh/apps/cli/lib/bin.js
+        dshHome: E:/project/reed-dev/seed-agent-superagent/dsh/apps/desktop/.desktop-build/sa-runtime-home
+        dshProfile: sdk
+        dshProvider: bailian
+        dshModel: deepseek-v4.1-flash
+        dshPatch: E:/project/reed-dev/seed-agent-superagent/config/bailian.patch.yml
+        workspace: E:/project/reed-dev/seed-agent-superagent
+        dshPermissionMode: danger-full-access
+        sourcesEnabled: true
+        sourceFeishuChatIds: oc_93f1a464c8258f572ff133db799a2546
+        sourceGithubRepos: thinkreed/seed-agent-e2e
+        sourceIntervalSeconds: 30
+    - id: super-agent-ui
+      name: 'file:///E:/project/reed-dev/seed-agent-superagent/dsh/packages/client/ui-super-agent/lib/index.js'

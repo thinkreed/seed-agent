@@ -16,11 +16,19 @@
 在工作目录创建 `seed.env`（已在 `.gitignore`，不会入库）：
 
 ```dotenv
-DEEPSEEK_API_KEY=sk-...
-# 模型可指向任意 OpenAI 兼容端点
+BAILIAN_API_KEY=sk-...
+BAILIAN_BASE_URL=https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1
 # 飞书（需要 IM 时）
 FEISHU_APP_ID=cli_...
 FEISHU_APP_SECRET=...
+```
+
+百炼配置已内置为 [config/bailian.patch.yml](config/bailian.patch.yml)（provider `bailian`、模型 `deepseek-v4.1-flash`、`apiKeyEnv=BAILIAN_API_KEY`）。启动带 Super-agent 的 Web Harness：
+
+```powershell
+powershell -File scripts/run-web-super-agent.ps1 -Port 4780
+# 或只起内核：
+node src/cli.ts run seed.config.json
 ```
 
 `App` 启动时会依次读取当前目录 `seed.env`、`.env`，也可用 `SEED_ENV_FILE` 指定其它路径。**已存在的系统环境变量优先，不会被覆盖。**
