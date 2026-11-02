@@ -44,7 +44,7 @@ import { SdkDshExecutor } from './executor.ts'
 export { spillInstruction, workerPrompt } from './executor.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
 export { RouterSession, createRouterClient } from './router_session.ts'
-import { LlmWatchdogAdvisor, LlmWatchdogJudge, Speculator } from '@deepseek-ai/dsh-super-agent-core'
+import { LlmWatchdogAdvisor, LlmWatchdogJudge, Speculator, workerBaseEnv } from '@deepseek-ai/dsh-super-agent-core'
 import { DshWatchdogAdvisor, DshWatchdogJudge } from './watchdog_session.ts'
 import { recordSourceFailure, recordSourceRecovery } from '@deepseek-ai/dsh-super-agent-core'
 import { FeishuHttpClient } from './sources/feishu_http.ts'
@@ -349,7 +349,10 @@ export class SuperAgentHost extends Service {
           // 在 Electron 宿主里 process.execPath 是 electron.exe：必须让子进程以 node 模式跑，
           // 否则 spawn 出来的是一个新 Electron 应用，SDK 握手永远不完成。
           env: {
-            ...process.env,
+            ...workerBaseEnv(process.env),
+            ...(config.llmApiKeyEnv && process.env[config.llmApiKeyEnv]
+              ? { [config.llmApiKeyEnv]: process.env[config.llmApiKeyEnv] as string }
+              : {}),
             ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
             // headless worker：工具调用自动放行（DSH_PERMISSION_MODE 同时决定 sandbox 与 approval）。
             DSH_PERMISSION_MODE: config.dshPermissionMode,

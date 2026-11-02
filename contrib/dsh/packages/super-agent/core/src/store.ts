@@ -70,7 +70,7 @@ export class SqliteStore {
 
   constructor(path = ":memory:") {
     this.db = new DatabaseSync(path);
-    this.db.exec(SCHEMA);
+    this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;" + SCHEMA);
   }
 
   append(event: AnyEvent): AnyEvent {
@@ -187,6 +187,8 @@ export class SqliteStore {
       )
       .run(source, position, updatedAt);
   }
+
+  backupDatabase(target: string): void { this.db.prepare("VACUUM INTO ?").run(target); }
 
   close(): void {
     this.db.close();
