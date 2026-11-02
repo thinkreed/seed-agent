@@ -3,7 +3,9 @@
  * 只执行命令/读写文件并回报；不保存会话状态，重启后由计算侧 recover() 重拉。
  */
 
+import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 
 import type { Clock } from "../clock.ts";
 import type { DaemonEvent } from "../executor/protocol.ts";
@@ -18,10 +20,12 @@ export interface HttpDaemonOptions {
   readonly port?: number;
   /** 事件缓冲上限（默认 1000）。 */
   readonly maxEvents?: number;
+  /** 直接启用 TLS；生产也可由反向代理终止 TLS。 */
+  readonly tls?: { readonly cert: string; readonly key: string };
 }
 
 export interface RunningDaemon {
-  readonly server: Server;
+  readonly server: Server | HttpsServer;
   readonly port: number;
   close(): Promise<void>;
 }
@@ -30,6 +34,7 @@ export async function startHttpDaemon(options: HttpDaemonOptions): Promise<Runni
   const events: { seq: number; event: DaemonEvent }[] = [];
   let seq = 0;
   const maxEvents = options.maxEvents ?? 1000;
+  const metrics = { requests: 0, errors: 0, startedAt: options.clock.now() };
   const agent = new DaemonAgent({
     clock: options.clock,
     root: options.root,
@@ -45,9 +50,16 @@ export async function startHttpDaemon(options: HttpDaemonOptions): Promise<Runni
   if (!isLoopback(host) && !token) {
     throw new Error(`daemon requires SA_DAEMON_TOKEN when listening on ${host}`);
   }
-  const server = createServer((request, response) => {
-    void handle(request, response, agent, events, token);
-  });
+  const server = options.tls
+    ? createHttpsServer(
+        { cert: readFileSync(options.tls.cert), key: readFileSync(options.tls.key) },
+        (request, response) => {
+          void handle(request, response, agent, events, token, metrics, options.clock);
+        },
+      )
+    : createServer((request, response) => {
+        void handle(request, response, agent, events, token, metrics, options.clock);
+      });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(options.port ?? 0, host, () => resolve());
@@ -75,11 +87,34 @@ async function handle(
   agent: DaemonAgent,
   events: { seq: number; event: DaemonEvent }[],
   token: string | undefined,
+  metrics: { requests: number; errors: number; startedAt: number },
+  clock: Clock,
 ): Promise<void> {
   const url = new URL(request.url ?? "/", "http://daemon");
+  metrics.requests += 1;
   if (url.pathname === "/health") return json(response, 200, { ok: true });
   if (token && request.headers.authorization !== `Bearer ${token}`) {
+    metrics.errors += 1;
     return json(response, 401, { ok: false, error: "unauthorized" });
+  }
+  if (url.pathname === "/metrics") {
+    const uptime = Math.max(0, clock.now() - metrics.startedAt);
+    return text(
+      response,
+      200,
+      [
+        "# HELP seed_daemon_requests_total HTTP requests received",
+        "# TYPE seed_daemon_requests_total counter",
+        `seed_daemon_requests_total ${metrics.requests}`,
+        "# TYPE seed_daemon_errors_total counter",
+        `seed_daemon_errors_total ${metrics.errors}`,
+        "# TYPE seed_daemon_events_buffered gauge",
+        `seed_daemon_events_buffered ${events.length}`,
+        "# TYPE seed_daemon_uptime_seconds gauge",
+        `seed_daemon_uptime_seconds ${uptime}`,
+        "",
+      ].join("\n"),
+    );
   }
   try {
     if (url.pathname === "/request" && request.method === "POST") {
@@ -90,8 +125,10 @@ async function handle(
       const after = Number(url.searchParams.get("after") ?? 0);
       return json(response, 200, { events: events.filter((item) => item.seq > after) });
     }
+    metrics.errors += 1;
     return json(response, 404, { ok: false, error: "unknown endpoint" });
   } catch (error) {
+    metrics.errors += 1;
     return json(response, 500, { ok: false, error: String(error).slice(0, 400) });
   }
 }
@@ -121,6 +158,14 @@ function json(response: ServerResponse, status: number, payload: unknown): void 
   const body = JSON.stringify(payload);
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(body),
+  });
+  response.end(body);
+}
+
+function text(response: ServerResponse, status: number, body: string): void {
+  response.writeHead(status, {
+    "content-type": "text/plain; version=0.0.4; charset=utf-8",
     "content-length": Buffer.byteLength(body),
   });
   response.end(body);

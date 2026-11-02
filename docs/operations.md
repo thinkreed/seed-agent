@@ -141,21 +141,34 @@ soak：
 ```bash
 node --no-warnings scripts/soak-super-agent.mjs 5000
 # 参考：events≈20012, delivered=5000, replayOk=true, ≈1600 events/s
+
+# 长跑：持续追加 + 重复投递 + 每 100 批重启 + 重放校验；可断点续跑
+node --no-warnings scripts/soak-long-super-agent.mjs --minutes 4320 --db /var/lib/seed-agent/soak.db
 ```
+
+## 9b. 指标与探活
+
+- `GET /health`：进程存活。
+- `GET /metrics`：Prometheus 文本（`seed_daemon_requests_total`、`seed_daemon_errors_total`、`seed_daemon_events_buffered`、`seed_daemon_uptime_seconds`）。设置 token 后需 `Authorization: Bearer ...`。
+- 建议告警：5 分钟错误增量、事件缓冲接近上限、进程重启次数。
 
 ## 10. 生产安全边界
 
 - **Worker 环境最小化**：worker 只拿 `PATH/TEMP/HOME` 等基础变量和模型 key；飞书/GitHub 凭据不会进入 worker。
-- **daemon 鉴权**：监听非 loopback 时必须设置 `SA_DAEMON_TOKEN`，否则拒绝启动；生产建议只监听 `127.0.0.1`，通过 SSH 隧道/反向代理加 TLS。
-- **模型凭据**：只放宿主 `seed.env`/systemd `EnvironmentFile`，权限 600。
+- **daemon 鉴权**：监听非 loopback 时必须设置 `SA_DAEMON_TOKEN`，否则拒绝启动。
+- **daemon TLS**：可直接配置 `tls: { cert, key }` 启动 HTTPS；也可只监听 `127.0.0.1` 由反向代理终止 TLS。
+- **模型凭据**：只放宿主 `seed.env`/systemd `EnvironmentFile`，权限 600；错误信息里的 `sk-`/Bearer 会被脱敏。
 - **shell 工具**：worker 在宿主执行命令，隔离到工单目录但不是容器；高风险租户需容器/受限用户。
+- **部署资产**：`deploy/Dockerfile`、`deploy/seed-agent.service`、`deploy/README.md`。
 
 ## 11. 上线检查单
 
-- [ ] `node --test "tests/*.test.ts"` 全绿
+- [ ] `node --test "tests/*.test.ts"` 全绿（240 例）
 - [ ] `node scripts/soak-super-agent.mjs 5000` → `SOAK OK`
+- [ ] `node scripts/soak-long-super-agent.mjs --minutes 60` → `LONG SOAK OK`
 - [ ] 备份脚本跑通且回放哈希一致
 - [ ] Feishu/GitHub 出站真机各一条
-- [ ] daemon 非 loopback 强制 token，前置 TLS
+- [ ] daemon 非 loopback 强制 token，TLS 或反代就绪
+- [ ] `/health`、`/metrics` 接入监控
 - [ ] 日志中无 `sk-`、app secret、daemon token
-- [ ] 守护进程 `Restart=always` / 计划任务
+- [ ] systemd/Docker 按 `deploy/` 加固运行

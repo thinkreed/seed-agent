@@ -1,0 +1,31 @@
+[Unit]
+Description=seed-agent Super-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=seed
+Group=seed
+WorkingDirectory=/opt/seed-agent
+EnvironmentFile=/etc/seed-agent/seed.env
+ExecStart=/usr/bin/node --no-warnings src/cli.ts run /etc/seed-agent/seed.config.json
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+# 只允许写状态/工作目录；代码、配置、密钥只读。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/seed-agent /var/log/seed-agent
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

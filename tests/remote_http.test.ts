@@ -43,6 +43,42 @@ test("HTTP daemon：跨进程/跨网络执行并异步回流报告", async () =>
   }
 });
 
+test("HTTP daemon：/metrics 暴露请求/错误/事件指标", async () => {
+  const root = mkdtempSync(join(tmpdir(), "seed-http-metrics-"));
+  const clock = new FakeClock();
+  const daemon = await startHttpDaemon({ root, clock });
+  try {
+    const first = await fetch(`http://127.0.0.1:${daemon.port}/metrics`);
+    const text = await first.text();
+    assert.match(text, /seed_daemon_requests_total \d+/);
+    assert.match(text, /seed_daemon_events_buffered \d+/);
+
+    await fetch(`http://127.0.0.1:${daemon.port}/missing`);
+    const second = await (await fetch(`http://127.0.0.1:${daemon.port}/metrics`)).text();
+    const errors = Number(/seed_daemon_errors_total (\d+)/.exec(second)?.[1] ?? 0);
+    assert.ok(errors >= 1);
+  } finally {
+    await daemon.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("HTTP daemon：TLS 证书缺失时启动失败", async () => {
+  const root = mkdtempSync(join(tmpdir(), "seed-http-tls-"));
+  try {
+    await assert.rejects(
+      startHttpDaemon({
+        root,
+        clock: new FakeClock(),
+        tls: { cert: join(root, "missing.crt"), key: join(root, "missing.key") },
+      }),
+      /ENOENT/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("HTTP daemon：非本机监听必须带 token", async () => {
   const root = mkdtempSync(join(tmpdir(), "seed-http-token-"));
   try {

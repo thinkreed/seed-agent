@@ -50,7 +50,7 @@ export class OpenAIClient implements ModelClient {
   private async once(
     url: string,
     body: string,
-  ): Promise<{ ok: true; content: string } | { ok: false; error: string; retryable: boolean; retryAfterMs: number | undefined }> {
+  ): Promise<{ ok: true; content: string } | { ok: false; error: string; retryable: boolean; retryAfterMs?: number }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.options.timeoutMs ?? 120_000);
     try {
@@ -68,7 +68,7 @@ export class OpenAIClient implements ModelClient {
         const retryable = response.status === 429 || response.status >= 500;
         return {
           ok: false,
-          error: `HTTP ${response.status}: ${text.slice(0, 300)}`,
+          error: `HTTP ${response.status}: ${redact(text).slice(0, 300)}`,
           retryable,
           retryAfterMs: retryAfter(response.headers.get("retry-after")),
         };
@@ -76,15 +76,22 @@ export class OpenAIClient implements ModelClient {
       const payload = (await response.json()) as ChatCompletionResponse;
       const content = payload.choices?.[0]?.message?.content;
       if (typeof content !== "string") {
-        return { ok: false, error: "response has no message content", retryable: false, retryAfterMs: undefined };
+        return { ok: false, error: "response has no message content", retryable: false };
       }
       return { ok: true, content };
     } catch (error) {
-      return { ok: false, error: String(error), retryable: true, retryAfterMs: undefined };
+      return { ok: false, error: redact(String(error)), retryable: true };
     } finally {
       clearTimeout(timer);
     }
   }
+}
+
+/** 错误信息里常见的 key/token 不能进入日志。 */
+function redact(value: string): string {
+  return value
+    .replace(/\bsk-[A-Za-z0-9._-]{4,}\b/g, "sk-***")
+    .replace(/\bBearer\s+[A-Za-z0-9._-]{4,}\b/gi, "Bearer ***");
 }
 
 function retryAfter(header: string | null): number | undefined {

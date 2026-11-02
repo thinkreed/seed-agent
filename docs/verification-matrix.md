@@ -2,7 +2,7 @@
 
 > 文章：《Super-agent 设计探索：迈向更自主的 Agent 系统》（DeepSeek Harness 团队，2026-10-31）
 > 仓库基线：`seed-agent`（TypeScript，零第三方依赖；`src/` 内核 + `contrib/dsh/**` DSH 变种）
-> 验证命令：`node --test "tests/*.test.ts"`（235 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
+> 验证命令：`node --test "tests/*.test.ts"`（240 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
 > 状态：✅ 已实现且可验证　⚠️ 已实现但有明确边界　❌ 未实现
 
 ## 1. 四个基础特征（文章 §1）
@@ -119,5 +119,9 @@
 | daemon 非本机鉴权 | 非 loopback 监听必须 `SA_DAEMON_TOKEN`，否则拒绝启动 | `tests/remote_http.test.ts` | ✅ |
 | SQLite 备份/恢复 | `VACUUM INTO` 一致快照 + 回放哈希校验 | `tests/backup.test.ts`、`scripts/backup-super-agent.mjs` | ✅ |
 | 吞吐/soak | WAL + `synchronous=NORMAL`；5000 事件/20012 events/≈1600 events/s | `tests/soak.test.ts`、`scripts/soak-super-agent.mjs` | ✅ |
-| daemon TLS | 未内置，要求反向代理/SSH 隧道 | 文档 | ⚠️ |
-| worker 容器隔离 | 仍为宿主 shell + 工单目录 | 文档 | ⚠️ |
+| 长跑 soak | 持续追加 + 重复投递 + 周期性重启 + 重放校验，可断点续跑 | `scripts/soak-long-super-agent.mjs`（`LONG SOAK OK`） | ✅ |
+| 模型重试/超时/脱敏 | 5xx/429 按 Retry-After 退避、超时中断、错误里 `sk-`/Bearer 脱敏 | `tests/model_retry.test.ts` | ✅ |
+| daemon 指标 | `/metrics` Prometheus 文本（请求/错误/事件缓冲/uptime） | `tests/remote_http.test.ts` | ✅ |
+| daemon TLS | 内置 `tls:{cert,key}` HTTPS；也支持反向代理终止 TLS | `tests/remote_http.test.ts`（证书缺失拒绝启动） | ✅ |
+| 部署资产 | Dockerfile、systemd 加固单元、生产部署手册 | `deploy/` | ✅ |
+| worker 容器隔离 | 仍为宿主 shell + 工单目录 | `deploy/README.md` | ⚠️ |
