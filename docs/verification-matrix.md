@@ -2,7 +2,7 @@
 
 > 文章：《Super-agent 设计探索：迈向更自主的 Agent 系统》（DeepSeek Harness 团队，2026-10-31）
 > 仓库基线：`seed-agent`（TypeScript，零第三方依赖；`src/` 内核 + `contrib/dsh/**` DSH 变种）
-> 验证命令：`node --test "tests/*.test.ts"`（243 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
+> 验证命令：`node --test "tests/*.test.ts"`（244 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
 > 状态：✅ 已实现且可验证　⚠️ 已实现但有明确边界　❌ 未实现
 
 ## 1. 四个基础特征（文章 §1）
@@ -27,6 +27,7 @@
 | 2.1.5 | 可用更轻量模型 | 内核 `routerModel` 配置；host `llmModel` 与 `dshModel` 分离 | `tests/config.test.ts`、host 配置 | ✅ |
 | 2.1.6 | 规模扩大后多层过滤/分片 | 保留 `RouterSession` 接口，未实现分片 | — | ⚠️（文章 §8.1 开放问题） |
 | 2.1.7 | 直接回答人的问题（不建工单） | `Decision.kind="reply"`；EvalRunner 产出 `message.queued` 并走 outbox 发送；Router 提示词支持 reply | `tests/reply.test.ts`、`tests/router_session.test.ts`、飞书真机自动回复 | ✅ |
+| 2.1.8 | 对话升级为工单 | `chat` 返回可选 `work`；host 用 local Trigger 走正常 Gate/评估/派工；UI 立即可见工单 | `tests/router_dispatch.test.ts`、真机 chat→`tk-000001` | ✅ |
 
 ### 2.2 Worker 层
 

@@ -1004,7 +1004,21 @@ export class SuperAgentHost extends Service {
       case 'chat': {
         if (!input.text) throw new Error('text required')
         if (!this.routerSession) throw new Error('router session not enabled (routerMode=off)')
-        reply = await this.routerSession.chat(input.text)
+        const result = await this.routerSession.chatResult(input.text)
+        reply = result.reply
+        if (result.work) {
+          // Router 决定把对话升级为工单：用 local source 走正常 Gate/评估/派工。
+          this.ingest({
+            id: `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            source: 'local',
+            actor: 'panel',
+            text: result.work,
+            threadIds: ['panel:chat'],
+            channelIds: [],
+            at: Math.floor(Date.now() / 1000),
+          })
+          await this.tick()
+        }
         break
       }
       case 'watchdog': {

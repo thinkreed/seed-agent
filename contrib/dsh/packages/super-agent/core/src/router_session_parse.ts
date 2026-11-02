@@ -72,10 +72,14 @@ export function decisionOf(record: Record<string, unknown>): Decision {
   return { kind, strength, reason, scope, rules, ...(reply ? { reply } : {}) };
 }
 
-export function parseChatReply(raw: string): string {
+export function parseChatResult(raw: string): { reply: string; work?: string } {
   const payload = parsePayload(raw);
-  if (payload && typeof payload.reply === "string" && payload.reply.trim()) {
-    return payload.reply.trim();
-  }
-  return raw.trim();
+  const reply =
+    payload && typeof payload.reply === "string" && payload.reply.trim() ? payload.reply.trim() : raw.trim();
+  const work = payload && typeof payload.work === "string" && payload.work.trim() ? payload.work.trim() : undefined;
+  return { reply, ...(work ? { work } : {}) };
+}
+
+export function parseChatReply(raw: string): string {
+  return parseChatResult(raw).reply;
 }

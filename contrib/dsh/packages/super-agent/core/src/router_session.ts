@@ -19,24 +19,21 @@ import { recall, type RecallKind } from "./recall.ts";
 import {
   decisionOf,
   ignored,
-  parseChatReply,
+  parseChatResult,
   parsePayload,
   readDecisions,
   readRecalls,
 } from "./router_session_parse.ts";
 import { ROUTER_ACCEPT_RULES, ROUTER_CHAT_RULES, channelChatRules, type RouterBatch, type RouterSessionOptions } from "./router_session_rules.ts";
 import { loadChatHistory, saveChatHistory } from "./router_session_history.ts";
-
 export { createRouterClient, type RouterBatch, type RouterSessionOptions } from "./router_session_rules.ts";
 
 interface Pending {
   readonly context: AssessContext;
   readonly resolve: (decision: Decision) => void;
 }
-
 const ACCEPT_RULES = ROUTER_ACCEPT_RULES;
 const CHAT_RULES = ROUTER_CHAT_RULES;
-
 export class RouterSession implements Assessor {
   private readonly client: ModelClient;
   private readonly state: () => State;
@@ -79,9 +76,12 @@ export class RouterSession implements Assessor {
     const where = trigger.threadIds[0] ?? "-";
     this.remember(`event ${trigger.source}/${where} from ${trigger.actor}: ${trigger.text.slice(0, 200)}`);
   }
-
   /** 人类消息进入 Router（面板/IM 对话）；channel 决定交互规范。 */
   async chat(text: string, channel: "im" | "async" = "im"): Promise<string> {
+    return (await this.chatResult(text, channel)).reply;
+  }
+  /** 对话结果；work 非空时调用方应创建工单。 */
+  async chatResult(text: string, channel: "im" | "async" = "im"): Promise<{ reply: string; work?: string }> {
     const state = this.state();
     const tickets = Object.values(state.tickets)
       .sort((a, b) => a.id.localeCompare(b.id))
@@ -102,13 +102,13 @@ export class RouterSession implements Assessor {
       { role: "user", content: JSON.stringify({ chat: text, tickets }) },
     ];
     const raw = await this.client.complete(messages);
-    const reply = parseChatReply(raw);
-    this.remember(`person: ${text}\nrouter: ${reply}`);
+    const result = parseChatResult(raw);
+    this.remember(`person: ${text}\nrouter: ${result.reply}`);
     this.history.push({ role: "user", content: JSON.stringify({ chat: text }) });
-    this.history.push({ role: "assistant", content: JSON.stringify({ reply }) });
+    this.history.push({ role: "assistant", content: JSON.stringify({ reply: result.reply }) });
     this.trimHistory();
     saveChatHistory(this.historyPath, this.history);
-    return reply;
+    return result;
   }
 
   snapshot(): { memory: string; history: number; lastBatch: RouterBatch | undefined } {

@@ -192,6 +192,8 @@ Router 的对话历史默认落盘到数据库同目录：
 - 该文件与业务库一起备份；删除它等价于清空 Router 对话记忆。
 - 内核 `seed.config.json` 与 DSH host 都使用同一路径规则。
 
+Router 在对话中判断“这是实际工作”时会返回 `work` 文本，host 立即用 local Trigger 走正常 Gate/评估/派工，工单会出现在面板左侧；纯问答不会建单。模型被明确要求：**没有 work 字段不得声称已建单**。
+
 ## 12. 上线检查单
 
 - [ ] `node --test "tests/*.test.ts"` 全绿（240 例）

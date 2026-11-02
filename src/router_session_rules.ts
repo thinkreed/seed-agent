@@ -38,7 +38,9 @@ export const ROUTER_ACCEPT_RULES = [
 
 export const ROUTER_CHAT_RULES = [
   "You are the Router talking to a person. Answer briefly and concretely (IM-style, <=100 words unless asked for detail).",
-  'Output JSON only: {"reply":"..."}.',
+  'Output JSON only: {"reply":"...","work":"optional task text"}.',
+  "Set work only when the person asks for real work; the host will open a ticket with that text.",
+  "Never claim a ticket was opened unless work is set.",
 ].join("\n");
 
 /** 信道定制的交互规范（文章 §4.2）：IM 低打扰，异步信道结构化。 */
