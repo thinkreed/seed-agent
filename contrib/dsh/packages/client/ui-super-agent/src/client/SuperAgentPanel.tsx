@@ -1,5 +1,5 @@
 /** Super-agent 主面板：工单列表 + 时间线 + 人的干预。 */
-import { createElement, useCallback, useEffect, useMemo, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const STATE_URL = '/super-agent/state'
 const COMMAND_URL = '/super-agent/command'
@@ -72,6 +72,17 @@ async function sendCommand(action: string, ticketId?: string, text?: string): Pr
 }
 
 const CHAT_STORAGE = 'super-agent.chat.v1'
+const CHAT_TICKETS = 'super-agent.chat.tickets.v1'
+const CHAT_REPORTS = 'super-agent.chat.reports.v1'
+
+function loadStrings(key: string): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) ?? '[]') as unknown
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
 
 function loadChatLog(): { role: 'person' | 'router'; text: string }[] {
   try {
@@ -108,6 +119,8 @@ export function SuperAgentPage(): React.ReactElement {
   const [busy, setBusy] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatLog, setChatLog] = useState<{ role: 'person' | 'router'; text: string }[]>(loadChatLog)
+  const [chatTickets, setChatTickets] = useState<string[]>(() => loadStrings(CHAT_TICKETS))
+  const seenReports = useRef<Set<string>>(new Set(loadStrings(CHAT_REPORTS)))
   const [search, setSearch] = useState('')
   const [watchdogInput, setWatchdogInput] = useState('')
   const [watchdogLog, setWatchdogLog] = useState<{ role: 'person' | 'watchdog'; text: string }[]>([])
@@ -129,10 +142,42 @@ export function SuperAgentPage(): React.ReactElement {
   useEffect(() => {
     try {
       localStorage.setItem(CHAT_STORAGE, JSON.stringify(chatLog.slice(-100)))
+      localStorage.setItem(CHAT_TICKETS, JSON.stringify(chatTickets.slice(-20)))
+      localStorage.setItem(CHAT_REPORTS, JSON.stringify([...seenReports.current].slice(-200)))
     } catch {
       // 私有模式/配额满：只保留当前页面内的对话。
     }
-  }, [chatLog])
+  }, [chatLog, chatTickets])
+
+  // 对话升级出的工单完成后，把最终报告追加回 Router 对话。
+  useEffect(() => {
+    if (!snapshot) return
+    // 面板创建的工单都纳入跟踪（包含页面刷新前已存在的）。
+    const panelIds = snapshot.tickets
+      .filter((ticket) => ticket.source === 'local' && ticket.actor === 'panel')
+      .map((ticket) => ticket.id)
+    const missing = panelIds.filter((id) => !chatTickets.includes(id))
+    if (missing.length > 0) {
+      setChatTickets((previous) => [...new Set([...previous, ...missing])])
+      return
+    }
+    const additions: { role: 'router'; text: string }[] = []
+    for (const id of chatTickets) {
+      const ticket = snapshot.tickets.find((item) => item.id === id)
+      if (!ticket) continue
+      for (const report of ticket.reports) {
+        if (!['ready', 'blocked', 'failed', 'dropped'].includes(report.status)) continue
+        const key = `${ticket.id}:${report.at}`
+        if (seenReports.current.has(key)) continue
+        seenReports.current.add(key)
+        additions.push({
+          role: 'router',
+          text: `工单 ${ticket.shortName} ${report.status}：${report.summary.slice(0, 1200)}`,
+        })
+      }
+    }
+    if (additions.length > 0) setChatLog((previous) => [...previous, ...additions])
+  }, [snapshot, chatTickets])
 
   const tickets = snapshot?.tickets ?? []
   const filtered = useMemo(() => {
@@ -165,8 +210,11 @@ export function SuperAgentPage(): React.ReactElement {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'chat', text }),
       })
-      const data = (await response.json()) as { snapshot?: { reply?: string } }
+      const data = (await response.json()) as { snapshot?: Snapshot & { reply?: string } }
       const answer = data.snapshot?.reply ?? '（Router 没有回复）'
+      const known = new Set((snapshot?.tickets ?? []).map((ticket) => ticket.id))
+      const created = (data.snapshot?.tickets ?? []).find((ticket) => !known.has(ticket.id))
+      if (created) setChatTickets((previous) => [...new Set([...previous, created.id])])
       setChatLog((previous) => [...previous, { role: 'router', text: answer }])
     } catch {
       setChatLog((previous) => [...previous, { role: 'router', text: '（Router 不可用）' }])
