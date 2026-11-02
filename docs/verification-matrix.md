@@ -2,7 +2,7 @@
 
 > 文章：《Super-agent 设计探索：迈向更自主的 Agent 系统》（DeepSeek Harness 团队，2026-10-31）
 > 仓库基线：`seed-agent`（TypeScript，零第三方依赖；`src/` 内核 + `contrib/dsh/**` DSH 变种）
-> 验证命令：`node --test "tests/*.test.ts"`（247 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
+> 验证命令：`node --test "tests/*.test.ts"`（248 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
 > 状态：✅ 已实现且可验证　⚠️ 已实现但有明确边界　❌ 未实现
 
 ## 1. 四个基础特征（文章 §1）
@@ -138,5 +138,14 @@
 | 3 | `danger-full-access` | host 默认与示例配置改为 `workspace-write`；worker 实机写文件通过 | 真机 `tk-000009` 产物 `risk-check-2.txt=ok` |
 | 4 | sessionId 仅内存 Map | 持久化到 `<dbPath>.dsh-sessions.json`；用 `resumeSession()` 恢复，失效则回退新 session | `executor-contract.mjs` 跨实例复用；实机文件已生成 |
 | 5 | SdkDshExecutor 无离线契约 | fake harness 注入 `harnessFactory`，覆盖报告/复用/stop | `tests/sdk_executor_contract.mjs`、`dsh/.../host/tests/executor-contract.mjs` |
-| 6 | 裸 `node --test` 扫 dsh vitest | AGENTS/文档统一为 `node --test "tests/*.test.ts"`；package 脚本已限定 | `npm test` 247 通过 |
+| 6 | 裸 `node --test` 扫 dsh vitest | AGENTS/文档统一为 `node --test "tests/*.test.ts"`；package 脚本已限定 | `npm test` 248 通过 |
 | 7 | retry 与运行回合竞态 | `Actions.report` 只接受 running assignment；executor 取消后不再回报 | `tests/late_report.test.ts`、`executor-contract.mjs` |
+
+## 12. 缓存与可读性（2026-11-03）
+
+| 项 | 实现 | 验证 |
+|---|---|---|
+| Router 走 DSH Session | `DshRouterClient` 复用 DSH `resumeSession`；首轮发协议上下文，后续只发增量；`<dbPath>.router-dsh-session.json` 持久化 | `tests/router_dsh_contract.mjs`、真机两轮问答记住姓名 |
+| Router 前缀缓存友好 | system prompt 固定，动态 Memory/tickets 放 user 尾部；历史 append-only | `cacheStats()` 真实统计；稳定 system 第二轮 94.6% |
+| 飞书回复完整 | host 本地 `format.ts` 对 `fs:`/`feishu:` 不做 100 字压缩 | Feishu API 读回 258 字节完整内容（text 247） |
+| 工单语义标题 | `Decision.title` → `Ticket.title`；Router prompt 要求 accept 给 4-12 词标题 | `tests/title.test.ts`；真机 `tk-000010` 标题 `Create title-check.txt with ok` |

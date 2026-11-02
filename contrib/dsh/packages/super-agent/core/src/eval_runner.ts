@@ -125,6 +125,7 @@ export class EvalRunner {
     const ticket: Ticket = {
       id: this.ids.next("tk"),
       shortName: this.ids.next("t"),
+      ...({ title: decision.title?.trim().slice(0, 80) || first?.text.trim().slice(0, 60) || "" } as const),
       mandate,
       threadIds,
       channelIds: [...new Set(triggers.flatMap((item) => item.channelIds))],

@@ -21,7 +21,6 @@ export type Stage =
   | "working/queued"
   | "idle"
   | "working";
-
 export interface Trigger {
   readonly id: string;
   readonly source: string;
@@ -31,7 +30,6 @@ export interface Trigger {
   readonly channelIds: readonly string[];
   readonly at: number;
 }
-
 export interface Thread {
   readonly id: string;
   readonly source: string;
@@ -79,6 +77,8 @@ export interface Decision {
   readonly reason: string;
   readonly rules: readonly string[];
   readonly scope: string;
+  /** kind=accept 时给工单的简短语义标题。 */
+  readonly title?: string;
   /** kind=reply 时由 Router 直接对人说的话（不建工单）。 */
   readonly reply?: string;
   readonly mandate?: Mandate;
@@ -86,6 +86,8 @@ export interface Decision {
 export interface Ticket {
   readonly id: string;
   readonly shortName: string;
+  /** 人可读的工单标题（Router 生成；旧事件可缺省）。 */
+  readonly title?: string;
   readonly mandate: Mandate;
   readonly threadIds: readonly string[];
   readonly channelIds: readonly string[];
@@ -140,7 +142,6 @@ export interface OutboundMessage {
   readonly text: string;
   readonly at: number;
 }
-
 export interface Eval {
   readonly id: string;
   readonly threadId: string;

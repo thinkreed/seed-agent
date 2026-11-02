@@ -36,9 +36,10 @@ export function structureForAsync(text: string): string {
   ].join('\n')
 }
 
-/** 按地址选择交付格式（gh/docs/mail 走结构化，其余按 IM 压缩）。 */
+/** 按地址选择交付格式（gh/docs/mail 走结构化，飞书完整交付，其余按 IM 压缩）。 */
 export function formatForChannel(address: string, text: string): string {
   if (/^(gh:|docs:|mailto:|email:)/.test(address)) return structureForAsync(text)
+  if (/^(fs:|feishu:)/.test(address)) return text.trim()
   return compactForIm(text)
 }
 

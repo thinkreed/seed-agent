@@ -41,10 +41,12 @@ import {
   type WatchdogReport,
 } from '@deepseek-ai/dsh-super-agent-core'
 import { SdkDshExecutor } from './executor.ts'
+import { DshRouterClient } from './router_dsh.ts'
 export { SdkDshExecutor, spillInstruction, workerPrompt } from './executor.ts'
+export { DshRouterClient } from './router_dsh.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
 export { RouterSession, createRouterClient } from './router_session.ts'
-import { LlmWatchdogAdvisor, LlmWatchdogJudge, Speculator, workerBaseEnv } from '@deepseek-ai/dsh-super-agent-core'
+import { LlmWatchdogAdvisor, LlmWatchdogJudge, Speculator, workerBaseEnv, type ModelClient } from '@deepseek-ai/dsh-super-agent-core'
 import { DshWatchdogAdvisor, DshWatchdogJudge } from './watchdog_session.ts'
 import { recordSourceFailure, recordSourceRecovery } from '@deepseek-ai/dsh-super-agent-core'
 import { FeishuHttpClient } from './sources/feishu_http.ts'
@@ -339,36 +341,7 @@ export class SuperAgentHost extends Service {
             .sort((a, b) => b.at - a.at)
           return related[0]?.text ?? ''
         },
-        harness: {
-          dshBin: config.dshBin,
-          dshHome: config.dshHome,
-          profile: config.dshProfile,
-          provider: config.dshProvider,
-          model: config.dshModel,
-          // 冷启动/首次 profile 握手偶尔会超过 SDK 默认 10s（尤其是并行投机）。
-          initializeTimeoutMs: 30_000,
-          // 在 Electron 宿主里 process.execPath 是 electron.exe：必须让子进程以 node 模式跑，
-          // 否则 spawn 出来的是一个新 Electron 应用，SDK 握手永远不完成。
-          env: {
-            ...workerBaseEnv(process.env),
-            ...(config.llmApiKeyEnv && process.env[config.llmApiKeyEnv]
-              ? { [config.llmApiKeyEnv]: process.env[config.llmApiKeyEnv] as string }
-              : {}),
-            ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
-            // headless worker：工具调用自动放行（DSH_PERMISSION_MODE 同时决定 sandbox 与 approval）。
-            DSH_PERMISSION_MODE: config.dshPermissionMode,
-            SUPER_AGENT_RECALL_INDEX: this.recallIndexPath,
-            SUPER_AGENT_RECALL_EXTRA: this.recallExtraPath,
-            SUPER_AGENT_JOB_DIR: join(resolve(config.workspace || process.cwd()), '.seed', 'jobs'),
-            SUPER_AGENT_WORKSPACE: resolve(config.workspace || process.cwd()),
-            SUPER_AGENT_CONTROL_DIR: this.controlDir,
-            SUPER_AGENT_DAEMON_URL: config.daemonUrl,
-            SUPER_AGENT_DAEMON_TOKEN: config.daemonToken,
-            ...(config.daemonEndpointsJson ? { SUPER_AGENT_DAEMONS: config.daemonEndpointsJson } : {}),
-          },
-          ...(config.dshPatch ? { patches: [resolve(config.dshPatch)] } : {}),
-          ...(config.workspace ? { cwd: resolve(config.workspace) } : {}),
-        },
+        harness: this.harnessOptions(config),
         onReport,
       })
       this.pending = undefined
@@ -713,6 +686,57 @@ export class SuperAgentHost extends Service {
   }
 
   /** 逐轮评估：explicit（Gate 放行即接受）或 llm（真实模型两级过滤；routerMode=llm 时走常驻 Router Session）。 */
+  private buildRouterClient(config: SuperAgentHostConfig): ModelClient {
+    if (config.dshBin && config.dshHome) {
+      const routerDir = join(dirname(this.dbPath), 'router')
+      mkdirSync(routerDir, { recursive: true })
+      return new DshRouterClient({
+        harness: {
+          ...this.harnessOptions(config),
+          cwd: routerDir,
+          maxTokens: 4096,
+        },
+        sessionStorePath: `${this.dbPath}.router-dsh-session.json`,
+      })
+    }
+    const apiKey = process.env[config.llmApiKeyEnv]?.trim() ?? ''
+    return createRouterClient({
+      baseUrl: config.llmBaseUrl,
+      apiKey,
+      model: config.llmModel,
+      timeoutMs: config.llmTimeoutMs,
+    })
+  }
+
+  private harnessOptions(config: SuperAgentHostConfig) {
+    return {
+      dshBin: config.dshBin,
+      dshHome: config.dshHome,
+      profile: config.dshProfile,
+      provider: config.dshProvider,
+      model: config.dshModel,
+      initializeTimeoutMs: 30_000,
+      env: {
+        ...workerBaseEnv(process.env),
+        ...(config.llmApiKeyEnv && process.env[config.llmApiKeyEnv]
+          ? { [config.llmApiKeyEnv]: process.env[config.llmApiKeyEnv] as string }
+          : {}),
+        ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
+        DSH_PERMISSION_MODE: config.dshPermissionMode,
+        SUPER_AGENT_RECALL_INDEX: this.recallIndexPath,
+        SUPER_AGENT_RECALL_EXTRA: this.recallExtraPath,
+        SUPER_AGENT_JOB_DIR: join(resolve(config.workspace || process.cwd()), '.seed', 'jobs'),
+        SUPER_AGENT_WORKSPACE: resolve(config.workspace || process.cwd()),
+        SUPER_AGENT_CONTROL_DIR: this.controlDir,
+        SUPER_AGENT_DAEMON_URL: config.daemonUrl,
+        SUPER_AGENT_DAEMON_TOKEN: config.daemonToken,
+        ...(config.daemonEndpointsJson ? { SUPER_AGENT_DAEMONS: config.daemonEndpointsJson } : {}),
+      },
+      ...(config.dshPatch ? { patches: [resolve(config.dshPatch)] } : {}),
+      ...(config.workspace ? { cwd: resolve(config.workspace) } : {}),
+    }
+  }
+
   private buildAssessor(config: SuperAgentHostConfig): Assessor {
     if (config.assessorMode !== 'llm') return explicitAssessor
     const apiKey = process.env[config.llmApiKeyEnv]?.trim()
@@ -722,12 +746,7 @@ export class SuperAgentHost extends Service {
     }
     if (config.routerMode === 'llm') {
       const router = new RouterSession({
-        client: createRouterClient({
-          baseUrl: config.llmBaseUrl,
-          apiKey,
-          model: config.llmModel,
-          timeoutMs: config.llmTimeoutMs,
-        }),
+        client: this.buildRouterClient(config),
         // runtime 在构造函数后半段才赋值；这里只登记读取方式，首次 assess 时 runtime 已就绪。
         state: () => this.runtime.engine.state,
         historyPath: `${this.dbPath}.router-chat.json`,
@@ -900,7 +919,7 @@ export class SuperAgentHost extends Service {
         id: ticket.id,
         shortName: ticket.shortName,
         state: ticket.state,
-        title: origin?.text?.slice(0, 160) ?? '',
+        title: ticket.title ?? origin?.text?.slice(0, 160) ?? '',
         source: origin?.source ?? '',
         actor: origin?.actor ?? '',
         assignment: assignment ? { id: assignment.id, state: assignment.state } : null,

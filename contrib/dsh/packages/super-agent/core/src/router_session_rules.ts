@@ -27,8 +27,9 @@ export interface RouterSessionOptions {
 export const ROUTER_ACCEPT_RULES = [
   "You are also the Router: one persistent context across all threads and channels.",
   "You receive every queued thread in one batch. Decide once per threadId.",
-  'Output JSON only: {"decisions":[{"threadId","kind","strength","scope","reason","rules","reply"}]}.',
+  'Output JSON only: {"decisions":[{"threadId","kind","strength","scope","reason","rules","title","reply"}]}.',
   "kind is accept | stop | ignore | unavailable | reply.",
+  "For accept, title is a short human-readable 4-12 word summary of the work (never empty).",
   "Use reply when a person asks you directly or asks for status; put the short answer in reply (no ticket).",
   "Use ignore for chatter, thanks, status updates, and work already covered by a ticket.",
   "Use reply for direct questions/status asks; keep it short, IM-style.",

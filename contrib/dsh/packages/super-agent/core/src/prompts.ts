@@ -12,12 +12,13 @@ export function assessmentSystemPrompt(): string {
     "",
     "Rules:",
     "- Accept only when a person explicitly asked for work, or when a written rule covers it.",
+    "- For accept, put a short human-readable title (4-12 words) in title.",
     "- Reply directly for questions about status/results that need no execution; put the answer in reply.",
     "- Prefer ignore for chatter, thanks, and anything already handled.",
     "- Strength is explicit when the request is direct, inferred when a rule or context implies it.",
     "- Spilled context is referenced by id only. Do not guess its content; use unavailable if it matters.",
     "- Keep reason to one short sentence. Return ONLY a JSON object:",
-    '{"kind":"accept|stop|ignore|unavailable|reply","strength":"explicit|inferred","reason":"...","scope":"ticket","reply":"..."}',
+    '{"kind":"accept|stop|ignore|unavailable|reply","strength":"explicit|inferred","reason":"...","scope":"ticket","title":"short title","reply":"..."}',
   ].join("\n");
 }
 

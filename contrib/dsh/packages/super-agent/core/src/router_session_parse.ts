@@ -69,7 +69,8 @@ export function decisionOf(record: Record<string, unknown>): Decision {
     ? record.rules.filter((entry): entry is string => typeof entry === "string").slice(0, 10)
     : [];
   const reply = typeof record.reply === "string" ? record.reply.slice(0, 2000) : undefined;
-  return { kind, strength, reason, scope, rules, ...(reply ? { reply } : {}) };
+  const title = typeof record.title === "string" && record.title.trim() ? record.title.trim().slice(0, 80) : undefined;
+  return { kind, strength, reason, scope, rules, ...(reply ? { reply } : {}), ...(title ? { title } : {}) };
 }
 
 export function parseChatResult(raw: string): { reply: string; work?: string } {
