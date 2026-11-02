@@ -67,7 +67,7 @@
 | 4.1.4 | 全双工：步级处理新输入 | `ReactLoop.nextInputs` 每步注入；WorkerSession 自动排空 | `tests/react_inputs.test.ts` | ✅ |
 | 4.2.1 | IM 低打扰 ≤100 字 | `format.compactForIm`；`chat(channel="im")` 规范 | `tests/channels_outbox.test.ts`、`router_session.test.ts` | ✅ |
 | 4.2.2 | GitHub/邮件/文档结构化 | `structureForAsync` + `ChannelFormattingWriter`；`.md`/`.eml` 草稿 | `tests/channels_outbox.test.ts`、`CHANNEL FORMAT LIVE OK`（飞书 + GitHub 真发） | ✅ |
-| 4.2.3 | IM 真机送达 | 飞书 `im/v1/messages`；`fs:` / `feishu:` 地址均路由到飞书；`CHANNELS SMOKE OK` | 群消息 id `om_x100b61bcf475f0acdf704d1264b1e7c`、`om_x100b61bef1ae3ca0c0e01a05dfb38b3` | ✅ |
+| 4.2.3 | IM 真机送达 | 飞书 `im/v1/messages`；`fs:` / `feishu:` 地址均路由到飞书；飞书保留完整结论，不做 100 字截断 | 群消息 id `om_x100b61bcf475f0acdf704d1264b1e7c`、`om_x100b61bef1ae3ca0c0e01a05dfb38b3`；队列文本 610 字 | ✅ |
 
 ## 5. 计算、状态与环境分离（文章 §5）
 

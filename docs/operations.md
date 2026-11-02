@@ -175,6 +175,7 @@ node --no-warnings scripts/soak-long-super-agent.mjs --minutes 4320 --db /var/li
 - **Worker 环境最小化**：worker 只拿 `PATH/TEMP/HOME` 等基础变量和模型 key；飞书/GitHub 凭据不会进入 worker。
 - **daemon 鉴权**：监听非 loopback 时必须设置 `SA_DAEMON_TOKEN`，否则拒绝启动。
 - **daemon TLS**：可直接配置 `tls: { cert, key }` 启动 HTTPS；也可只监听 `127.0.0.1` 由反向代理终止 TLS。
+- **飞书**：保留完整结论，不做 100 字截断；本地 CLI/面板仍使用短格式。
 - **模型凭据**：只放宿主 `seed.env`/systemd `EnvironmentFile`，权限 600；错误信息里的 `sk-`/Bearer 会被脱敏。
 - **shell 工具**：worker 在宿主执行命令，隔离到工单目录但不是容器；高风险租户需容器/受限用户。
 - **部署资产**：`deploy/Dockerfile`、`deploy/seed-agent.service`、`deploy/README.md`。

@@ -41,5 +41,7 @@ export function structureForAsync(text: string): string {
 /** 按地址选择交付格式。 */
 export function formatForChannel(address: string, text: string): string {
   if (ASYNC_PREFIXES.some((prefix) => address.startsWith(prefix))) return structureForAsync(text);
+  // 飞书支持长文本：完整交付结论，不做 100 字截断（截断会被当成系统故障）。
+  if (address.startsWith("fs:") || address.startsWith("feishu:")) return text.trim();
   return compactForIm(text);
 }

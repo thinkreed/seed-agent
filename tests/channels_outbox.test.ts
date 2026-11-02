@@ -30,6 +30,9 @@ test("异步信道使用结构化交付", () => {
     assert.match(formatted, /### 结论/);
   }
   assert.equal(formatForChannel("local:cli", "好的"), "好的");
+  const long = `## 结论\n\n${"完整报告内容。".repeat(50)}`;
+  assert.equal(formatForChannel("fs:oc_123", long), long.trim());
+  assert.equal(formatForChannel("feishu:oc_123", long), long.trim());
 });
 
 test("DocsChannel：同一地址追加到同一文档", async () => {
