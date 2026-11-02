@@ -729,6 +729,7 @@ export class SuperAgentHost extends Service {
         }),
         // runtime 在构造函数后半段才赋值；这里只登记读取方式，首次 assess 时 runtime 已就绪。
         state: () => this.runtime.engine.state,
+        historyPath: `${this.dbPath}.router-chat.json`,
         historyMessages: config.routerHistoryMessages,
         onBatch: (batch) => {
           this.lastRouterBatch = batch

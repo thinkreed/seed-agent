@@ -25,6 +25,7 @@ import {
   readRecalls,
 } from "./router_session_parse.ts";
 import { ROUTER_ACCEPT_RULES, ROUTER_CHAT_RULES, channelChatRules, type RouterBatch, type RouterSessionOptions } from "./router_session_rules.ts";
+import { loadChatHistory, saveChatHistory } from "./router_session_history.ts";
 
 export { createRouterClient, type RouterBatch, type RouterSessionOptions } from "./router_session_rules.ts";
 
@@ -45,6 +46,7 @@ export class RouterSession implements Assessor {
   private readonly memoryChars: number;
   private readonly clock: Clock;
   private readonly onBatch: ((batch: RouterBatch) => void) | undefined;
+  private readonly historyPath: string | undefined;
   private readonly pending: Pending[] = [];
   private readonly history: ModelMessage[] = [];
   private memory = "";
@@ -60,6 +62,8 @@ export class RouterSession implements Assessor {
     this.memoryChars = options.memoryChars ?? 2000;
     this.clock = options.clock ?? new SystemClock();
     this.onBatch = options.onBatch;
+    this.historyPath = options.historyPath;
+    this.history.push(...loadChatHistory(this.historyPath));
   }
 
   /** 同一轮 tick 内的多个 Thread 请求在这里聚合。 */
@@ -103,6 +107,7 @@ export class RouterSession implements Assessor {
     this.history.push({ role: "user", content: JSON.stringify({ chat: text }) });
     this.history.push({ role: "assistant", content: JSON.stringify({ reply }) });
     this.trimHistory();
+    saveChatHistory(this.historyPath, this.history);
     return reply;
   }
 

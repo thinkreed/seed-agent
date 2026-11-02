@@ -19,6 +19,10 @@ export function buildAssessor(
   state: () => State,
 ): AssessorBundle {
   if (config.routerMode === "off") return { assessor: new LlmAssessor(modelClient) };
-  const router = new RouterSession({ client: modelClient, state });
+  const router = new RouterSession({
+    client: modelClient,
+    state,
+    historyPath: `${config.dbPath}.router-chat.json`,
+  });
   return { assessor: router, router };
 }

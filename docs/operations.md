@@ -179,7 +179,20 @@ node --no-warnings scripts/soak-long-super-agent.mjs --minutes 4320 --db /var/li
 - **shell 工具**：worker 在宿主执行命令，隔离到工单目录但不是容器；高风险租户需容器/受限用户。
 - **部署资产**：`deploy/Dockerfile`、`deploy/seed-agent.service`、`deploy/README.md`。
 
-## 11. 上线检查单
+## 11. Router 对话历史
+
+Router 的对话历史默认落盘到数据库同目录：
+
+```text
+<dbPath>.router-chat.json
+```
+
+- 只保存人类与 Router 的最近对话（最多 200 条），不含工单/事件状态。
+- 进程重启后自动加载，因此“刚才聊过的内容”不会因重启丢失。
+- 该文件与业务库一起备份；删除它等价于清空 Router 对话记忆。
+- 内核 `seed.config.json` 与 DSH host 都使用同一路径规则。
+
+## 12. 上线检查单
 
 - [ ] `node --test "tests/*.test.ts"` 全绿（240 例）
 - [ ] `node scripts/soak-super-agent.mjs 5000` → `SOAK OK`

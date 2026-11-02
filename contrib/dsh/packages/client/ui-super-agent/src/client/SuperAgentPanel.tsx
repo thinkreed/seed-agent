@@ -71,6 +71,23 @@ async function sendCommand(action: string, ticketId?: string, text?: string): Pr
   })
 }
 
+const CHAT_STORAGE = 'super-agent.chat.v1'
+
+function loadChatLog(): { role: 'person' | 'router'; text: string }[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CHAT_STORAGE) ?? '[]') as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (item): item is { role: 'person' | 'router'; text: string } =>
+        typeof item === 'object' && item !== null &&
+        ((item as { role?: string }).role === 'person' || (item as { role?: string }).role === 'router') &&
+        typeof (item as { text?: unknown }).text === 'string',
+    ).slice(-100)
+  } catch {
+    return []
+  }
+}
+
 const STATE_COLOR: Record<string, string> = {
   open: '#4176e6',
   running: '#d97706',
@@ -90,7 +107,7 @@ export function SuperAgentPage(): React.ReactElement {
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
   const [chatInput, setChatInput] = useState('')
-  const [chatLog, setChatLog] = useState<{ role: 'person' | 'router'; text: string }[]>([])
+  const [chatLog, setChatLog] = useState<{ role: 'person' | 'router'; text: string }[]>(loadChatLog)
   const [search, setSearch] = useState('')
   const [watchdogInput, setWatchdogInput] = useState('')
   const [watchdogLog, setWatchdogLog] = useState<{ role: 'person' | 'watchdog'; text: string }[]>([])
@@ -108,6 +125,14 @@ export function SuperAgentPage(): React.ReactElement {
     const timer = setInterval(refresh, 2000)
     return () => clearInterval(timer)
   }, [refresh])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_STORAGE, JSON.stringify(chatLog.slice(-100)))
+    } catch {
+      // 私有模式/配额满：只保留当前页面内的对话。
+    }
+  }, [chatLog])
 
   const tickets = snapshot?.tickets ?? []
   const filtered = useMemo(() => {

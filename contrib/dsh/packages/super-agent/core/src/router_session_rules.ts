@@ -20,6 +20,8 @@ export interface RouterSessionOptions {
   readonly memoryChars?: number;
   readonly clock?: import("./clock.ts").Clock;
   readonly onBatch?: (batch: RouterBatch) => void;
+  /** Router 对话历史的落盘路径；缺省只保存在内存。 */
+  readonly historyPath?: string;
 }
 
 export const ROUTER_ACCEPT_RULES = [

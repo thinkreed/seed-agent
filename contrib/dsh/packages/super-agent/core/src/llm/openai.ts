@@ -66,11 +66,12 @@ export class OpenAIClient implements ModelClient {
       if (!response.ok) {
         const text = await response.text().catch(() => "");
         const retryable = response.status === 429 || response.status >= 500;
+        const retryAfterMs = retryAfter(response.headers.get("retry-after"));
         return {
           ok: false,
           error: `HTTP ${response.status}: ${redact(text).slice(0, 300)}`,
           retryable,
-          retryAfterMs: retryAfter(response.headers.get("retry-after")),
+          ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
         };
       }
       const payload = (await response.json()) as ChatCompletionResponse;
