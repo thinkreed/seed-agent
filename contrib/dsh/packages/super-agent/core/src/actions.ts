@@ -121,14 +121,14 @@ export class Actions {
   /** 执行器报告：结束 assignment；ready/dropped 直接结束工单。 */
   report(report: Report): AnyEvent[] {
     const now = this.clock.now();
-    this.store.append(ev.reportRecorded(report, now));
     const state = this.store.state();
-    const produced: AnyEvent[] = [];
     const assignment = state.assignments[report.assignmentId];
-    if (assignment && assignment.state !== "ended") {
-      produced.push(ev.assignmentEnded(assignment.id, report.status, now));
-      this.stopQuietly(assignment);
-    }
+    // retry/stop 之后迟到的报告不能落库，否则会把已结束 assignment 重新算成完成。
+    if (!assignment || assignment.state !== "running") return [];
+    this.store.append(ev.reportRecorded(report, now));
+    const produced: AnyEvent[] = [];
+    produced.push(ev.assignmentEnded(assignment.id, report.status, now));
+    this.stopQuietly(assignment);
     if (report.status === "ready" || report.status === "dropped") {
       const ticket = state.tickets[report.ticketId];
       if (ticket && ticket.state === "open") {

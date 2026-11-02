@@ -8,15 +8,31 @@
  * 这是「存算分离」的计算侧：状态仍在 Super-agent 事件库，执行在 DSH runtime。
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { DeepSeekHarnessOptions, RunResult } from '@deepseek-ai/dsh-sdk-client'
 import { DeepSeekHarness } from '@deepseek-ai/dsh-sdk-client'
 import type { Assignment, Clock, Executor, Input, Report, ReportStatus, Ticket, Trigger } from '@deepseek-ai/dsh-super-agent-core'
 
+export interface DshSessionLike {
+  run(prompt: string): Promise<RunResult>
+}
+
+export interface DshHarnessLike {
+  session(sessionId?: string): DshSessionLike
+  resumeSession(sessionId: string): Promise<DshSessionLike>
+  close(): Promise<void>
+}
+
 export interface SdkDshExecutorOptions {
   /** 传给 SDK 的启动配置（dshBin / dshHome / profile / provider / model…）。 */
   readonly harness: DeepSeekHarnessOptions
+  /** 离线契约测试注入；生产缺省使用真实 DeepSeekHarness。 */
+  readonly harnessFactory?: (options: DeepSeekHarnessOptions) => DshHarnessLike
+  /** sessionId 持久化路径；host 重启后复用 DSH session。 */
+  readonly sessionStorePath?: string
+  /** 报告正文上限（默认 20000；不再按 600 截断）。 */
+  readonly maxSummaryChars?: number
   /** worker 的工作目录。 */
   readonly workspace?: string
   readonly clock: Clock
@@ -61,7 +77,7 @@ export function spillInstruction(
 }
 
 export class SdkDshExecutor implements Executor {
-  private readonly harnessByTicket = new Map<string, DeepSeekHarness>()
+  private readonly harnessByTicket = new Map<string, DshHarnessLike>()
   private readonly options: SdkDshExecutorOptions
   private readonly sessionByTicket = new Map<string, string>()
   private readonly assignmentByTicket = new Map<string, string>()
@@ -69,9 +85,12 @@ export class SdkDshExecutor implements Executor {
   private readonly running = new Set<string>()
   private readonly queuedInputs = new Map<string, string[]>()
   private readonly turnCounts = new Map<string, number>()
+  /** stop/retry 后的迟到回合：不再写报告，避免落到已结束 assignment。 */
+  private readonly cancelledAssignments = new Set<string>()
 
   constructor(options: SdkDshExecutorOptions) {
     this.options = options
+    this.loadSessions()
   }
 
   async launch(assignment: Assignment, ticket: Ticket): Promise<void> {
@@ -135,8 +154,15 @@ export class SdkDshExecutor implements Executor {
     this.queuedInputs.set(ticketId, pending)
   }
 
-  async stop(_assignment: Assignment): Promise<void> {
-    // M3.1：SDK 目前没有按回合取消的公开 API；依赖 turn 自己结束或 ctx 关闭时关进程。
+  async stop(assignment: Assignment): Promise<void> {
+    this.cancelledAssignments.add(assignment.id)
+    this.queuedInputs.delete(assignment.ticketId)
+    this.running.delete(assignment.ticketId)
+    const harness = this.harnessByTicket.get(assignment.ticketId)
+    if (harness) {
+      this.harnessByTicket.delete(assignment.ticketId)
+      await harness.close().catch(() => undefined)
+    }
   }
 
   /** 关闭所有 DSH runtime 子进程。 */
@@ -146,15 +172,18 @@ export class SdkDshExecutor implements Executor {
   }
 
   /** 每个工单一个 runtime（cwd = 工单目录），实现工单级工作目录与上下文隔离。 */
-  private client(ticket: Ticket): DeepSeekHarness {
+  private client(ticket: Ticket): DshHarnessLike {
     const existing = this.harnessByTicket.get(ticket.id)
     if (existing) return existing
     const dir = this.options.ticketDir?.(ticket)
     if (dir) mkdirSync(dir, { recursive: true })
-    const harness = new DeepSeekHarness({
+    const config: DeepSeekHarnessOptions = {
       ...this.options.harness,
       ...(dir ? { cwd: dir } : {}),
-    })
+    }
+    const harness = this.options.harnessFactory
+      ? this.options.harnessFactory(config)
+      : new DeepSeekHarness(config)
     this.harnessByTicket.set(ticket.id, harness)
     return harness
   }
@@ -166,17 +195,40 @@ export class SdkDshExecutor implements Executor {
   }
 
   private async runTurn(assignmentId: string, ticket: Ticket, prompt: string): Promise<void> {
+    if (this.cancelledAssignments.has(assignmentId)) return
     this.options.onPrompt?.(ticket.id, prompt)
     this.running.add(ticket.id)
     this.turnCounts.set(ticket.id, (this.turnCounts.get(ticket.id) ?? 0) + 1)
     const sessionId = this.sessionByTicket.get(ticket.id)
+    const harness = this.client(ticket)
     try {
-      const result = await this.client(ticket).run(prompt, sessionId ? { sessionId } : {})
+      let session: DshSessionLike
+      if (sessionId) {
+        try {
+          session = await harness.resumeSession(sessionId)
+        } catch {
+          // 持久化的 session 在 runtime home 里已不存在：回退到新 session。
+          this.sessionByTicket.delete(ticket.id)
+          this.persistSessions()
+          session = harness.session()
+        }
+      } else {
+        session = harness.session()
+      }
+      const result = await session.run(prompt)
+      if (this.cancelledAssignments.has(assignmentId)) return
       this.sessionByTicket.set(ticket.id, result.sessionId)
-      this.options.onReport(reportOf(ticket, assignmentId, 'ready', summarize(result), this.options.clock.now()))
+      this.persistSessions()
+      this.options.onReport(reportOf(ticket, assignmentId, statusFor(result), summarize(result, this.options.maxSummaryChars), this.options.clock.now()))
     } catch (error) {
-      this.options.onReport(reportOf(ticket, assignmentId, 'failed', String(error).slice(0, 400), this.options.clock.now()))
+      if (this.cancelledAssignments.has(assignmentId)) return
+      this.options.onReport(reportOf(ticket, assignmentId, 'failed', String(error).slice(0, 800), this.options.clock.now()))
     } finally {
+      if (this.cancelledAssignments.has(assignmentId)) {
+        this.running.delete(ticket.id)
+        this.queuedInputs.delete(ticket.id)
+        return
+      }
       this.running.delete(ticket.id)
       const pending = this.queuedInputs.get(ticket.id)
       if (pending && pending.length > 0) {
@@ -184,6 +236,33 @@ export class SdkDshExecutor implements Executor {
         // 回合结束立即处理积压输入：前台在后台工作期间始终可接受新指令。
         void this.runTurn(assignmentId, ticket, pending.join('\n\n'))
       }
+    }
+  }
+
+  private loadSessions(): void {
+    const path = this.options.sessionStorePath
+    if (!path || !existsSync(path)) return
+    try {
+      const payload = JSON.parse(readFileSync(path, 'utf8')) as { sessions?: unknown }
+      if (!payload.sessions || typeof payload.sessions !== 'object') return
+      for (const [ticketId, sessionId] of Object.entries(payload.sessions)) {
+        if (typeof sessionId === 'string' && sessionId) this.sessionByTicket.set(ticketId, sessionId)
+      }
+    } catch {
+      // 损坏的会话索引不应阻止 host 启动；下一次成功回合会重建。
+    }
+  }
+
+  private persistSessions(): void {
+    const path = this.options.sessionStorePath
+    if (!path) return
+    try {
+      mkdirSync(dirname(path), { recursive: true })
+      const temp = `${path}.tmp`
+      writeFileSync(temp, JSON.stringify({ version: 1, sessions: Object.fromEntries(this.sessionByTicket) }), 'utf8')
+      renameSync(temp, path)
+    } catch {
+      // 持久化失败只影响重启后的上下文复用，不影响当前回合。
     }
   }
 }
@@ -204,7 +283,7 @@ export function workerPrompt(
     `你是 Super-agent 的 worker，工单 ${ticket.shortName}（${ticket.id}）。`,
     `授权范围：${ticket.mandate.scope}；强度：${ticket.mandate.strength}。`,
     '在当前工作目录内完成任务；不要与人对齐，不要请求确认。',
-    '完成后用一段话给出结论（做了什么、产物在哪里、是否成功）。',
+    '只做任务所需的最小操作；不要无目的地浏览仓库或重复尝试；完成后直接给出结论。',
   ]
   if (ticketDir) lines.splice(2, 0, `工作目录（产物写在这里）：${ticketDir}`)
   if (recallIndexPath) {
@@ -219,8 +298,15 @@ export function workerPrompt(
   return lines.join('\n')
 }
 
-function summarize(result: RunResult): string {
+function summarize(result: RunResult, maxChars = 20_000): string {
   const text = result.finalResponse.trim()
-  const bounded = text.length > 600 ? `${text.slice(0, 600)}…` : text
-  return bounded || `done (finishReason=${String(result.finishReason)})`
+  if (!text) return `worker ended without final text (finishReason=${String(result.finishReason)})`
+  return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text
+}
+
+function statusFor(result: RunResult): ReportStatus {
+  const reason = String(result.finishReason ?? '').toLowerCase()
+  if (reason.includes('error') || reason.includes('abort') || reason.includes('max')) return 'failed'
+  if (reason.includes('question') || reason.includes('input') || reason.includes('pause')) return 'blocked'
+  return 'ready'
 }

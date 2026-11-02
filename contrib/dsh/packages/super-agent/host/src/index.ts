@@ -41,7 +41,7 @@ import {
   type WatchdogReport,
 } from '@deepseek-ai/dsh-super-agent-core'
 import { SdkDshExecutor } from './executor.ts'
-export { spillInstruction, workerPrompt } from './executor.ts'
+export { SdkDshExecutor, spillInstruction, workerPrompt } from './executor.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
 export { RouterSession, createRouterClient } from './router_session.ts'
 import { LlmWatchdogAdvisor, LlmWatchdogJudge, Speculator, workerBaseEnv } from '@deepseek-ai/dsh-super-agent-core'
@@ -211,7 +211,7 @@ export class SuperAgentHost extends Service {
     watchdogSeconds: z.number().step(1).min(0).max(3600).default(60),
     staleSeconds: z.number().step(1).min(1).max(86400).default(1800),
     channelsEnabled: z.boolean().default(true),
-    dshPermissionMode: z.string().default('danger-full-access'),
+    dshPermissionMode: z.string().default('workspace-write'),
     assessorMode: z.string().default('llm'),
     routerMode: z.string().default('llm'),
     routerHistoryMessages: z.number().step(1).min(2).max(200).default(20),
@@ -315,6 +315,7 @@ export class SuperAgentHost extends Service {
     if (config.dshBin && config.dshHome) {
       this.sdk = new SdkDshExecutor({
         clock,
+        sessionStorePath: `${this.dbPath}.dsh-sessions.json`,
         onPrompt: (ticketId, prompt) => {
           this.lastPrompts.set(ticketId, prompt)
           if (this.lastPrompts.size > 50) {

@@ -9,7 +9,7 @@ Super-agent 内核（TypeScript，零第三方依赖）：常驻 Router + 并发
 要求 Node.js >= 22.18（自带 TypeScript 类型擦除与 `node:sqlite`）。
 
 ```bash
-node --test "tests/*.test.ts"  # 全量测试（245 例，零网络）
+node --test "tests/*.test.ts"  # 全量测试（246 例，零网络）
 npx tsc -p tsconfig.json # 类型检查（需 TypeScript；不进入运行时依赖）
 node --no-warnings scripts/demo-article.mjs  # 逐条现场验证文章能力（21 项）
 node --test tests/app_e2e.test.ts   # 端到端：受理 -> 工单 -> 派工 -> 报告 -> 对外回复
