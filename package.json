@@ -1,0 +1,16 @@
+{
+  "name": "seed-superagent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Super-agent kernel: Router/Worker, event-driven, unidirectional state, testable by construction.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "demo": "node --no-warnings scripts/demo-article.mjs",
+    "panel": "node --no-warnings src/cli.ts panel"
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "generatedAt": "2026-11-02T00:51:27.538Z",
+  "env": {
+    "threads": 4,
+    "modelDelayMs": 40,
+    "workerMs": 500,
+    "slots": 2
+  },
+  "batching": {
+    "threads": 4,
+    "batched": {
+      "modelCalls": 1,
+      "wallMs": 41,
+      "batchSizes": [
+        4
+      ]
+    },
+    "serial": {
+      "modelCalls": 4,
+      "wallMs": 186
+    },
+    "speedup": 4.54
+  },
+  "ablation": {
+    "baselineSingleSession": {
+      "wallMs": 100820,
+      "modelCalls": 4,
+      "contextIsolation": false
+    },
+    "superAgent": {
+      "wallMs": 50041,
+      "routerCalls": 1,
+      "workerParallelism": 2,
+      "contextIsolation": true,
+      "decisions": 4
+    },
+    "noDirectPass": {
+      "wallMs": 50041,
+      "decisions": 6,
+      "tokenRatio": 1.37
+    },
+    "singleSessionNeutral": {
+      "p50": 39200,
+      "p95": 73400,
+      "delegated": 0,
+      "delegateRate": 0
+    },
+    "singleSessionDelegate": {
+      "p50": 5000,
+      "p95": 10800,
+      "delegated": 16,
+      "delegateRate": 0.8
+    },
+    "speedup": 2.01
+  },
+  "real": null
+}

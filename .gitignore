@@ -1,0 +1,63 @@
+# 运行期
+node_modules/
+dist/
+build/
+out/
+
+# 本地状态与数据
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+.seed/
+data/
+
+# 日志与临时
+*.log
+logs/
+tmp/
+temp/
+.cache/
+coverage/
+*.tsbuildinfo
+
+# 编辑器 / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.swp
+*~
+
+# 环境与密钥
+.env
+seed.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+secrets/
+seed.config.json
+inbox.jsonl
+_rec.*
+_*.mjs
+_*.py
+_sample*
+/dsh/
+
+# DSH upstream fork (vendor checkout; sync via scripts/sync-dsh.ps1, patches via contrib/dsh)
+/dsh/
+
+/dist/
+
+# 本地打包测试产物（Electron 解包/安装包，含 >100MB 单文件，GitHub 会拒绝）
+dist-test*/
+dist-*/
+*.asar
+*.asar.unpacked/

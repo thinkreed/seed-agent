@@ -1,0 +1,26 @@
+{
+  "dbPath": "seed.db",
+  "workRoot": ".seed/work",
+  "slots": 2,
+  "intervalMs": 1000,
+  "staleSeconds": 1800,
+  "routerMode": "llm",
+  "model": {
+    "baseUrl": "https://api.deepseek.com",
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "name": "deepseek-chat",
+    "temperature": 0
+  },
+  "sources": {
+    "local": { "inbox": "inbox.jsonl" },
+    "github": { "reasons": ["review_requested", "mention"] }
+  },
+  "policy": {
+    "acceptMode": "auto",
+    "allowedSenders": [["local", "*"], ["github", "*"]],
+    "rules": [
+      { "source": "local", "actor": "*", "allow": true, "strength": "explicit", "note": "local-explicit" },
+      { "source": "github", "actor": "*", "allow": true, "strength": "inferred", "note": "repo-watcher" }
+    ]
+  }
+}

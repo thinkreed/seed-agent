@@ -1,0 +1,30 @@
+{
+    "name":  "@deepseek-ai/dsh-super-agent-daemon",
+    "description":  "Stateless edge daemon: executes commands and reads files on the user\u0027s machine for the Super-agent host",
+    "version":  "0.2.2-alpha.2",
+    "type":  "module",
+    "main":  "lib/index.js",
+    "types":  "lib/types/index.d.ts",
+    "exports":  {
+                    ".":  {
+                              "types":  "./lib/types/index.d.ts",
+                              "default":  "./lib/index.js"
+                          },
+                    "./package.json":  "./package.json"
+                },
+    "license":  "MIT",
+    "scripts":  {
+                    "build":  "tsc -b tsconfig.json \u0026\u0026 tsdown"
+                },
+    "peerDependencies":  {
+                             "@deepseek-ai/cordis":  "workspace:~"
+                         },
+    "devDependencies":  {
+                            "@deepseek-ai/cordis":  "workspace:~"
+                        },
+    "files":  [
+                  "lib/**/*.js",
+                  "lib/**/*.d.ts",
+                  "lib/**/*.json"
+              ]
+}

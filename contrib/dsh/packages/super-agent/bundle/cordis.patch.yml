@@ -1,0 +1,13 @@
+# Super-agent bundle patch: mounts the Router/Worker host plugin and the workbench UI.
+# Applied after the base and web-app bundles, before the user's profile patch.
+- insert:
+    - id: super-agent-host
+      name: '@deepseek-ai/dsh-super-agent-host'
+      config:
+        slots: 2
+        bundleDefaults: true
+        dshProvider: bailian
+        dshModel: deepseek-v4.1-flash
+        sourcesEnabled: false
+    - id: super-agent-ui
+      name: '@deepseek-ai/dsh-client-ui-super-agent'
