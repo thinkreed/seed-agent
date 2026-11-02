@@ -23,7 +23,16 @@ FEISHU_APP_ID=cli_...
 FEISHU_APP_SECRET=...
 ```
 
-百炼配置已内置为 [config/bailian.patch.yml](config/bailian.patch.yml)（provider `bailian`、模型 `deepseek-v4.1-flash`、`apiKeyEnv=BAILIAN_API_KEY`）。启动带 Super-agent 的 Web Harness：
+百炼配置已内置为 [config/bailian.patch.yml](config/bailian.patch.yml)（provider `bailian`、模型 `deepseek-v4.1-flash`、`apiKeyEnv=BAILIAN_API_KEY`）。DSH 与内核使用同一组值：
+
+```text
+baseURL    https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1
+model      deepseek-v4.1-flash
+apiKeyEnv  BAILIAN_API_KEY
+maxTokens  8192
+```
+
+启动带 Super-agent 的 Web Harness：
 
 ```powershell
 powershell -File scripts/run-web-super-agent.ps1 -Port 4780
