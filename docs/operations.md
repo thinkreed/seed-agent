@@ -113,11 +113,16 @@ node src/cli.ts desktop seed.config.json --no-browser # 只起服务
 
 ## 7. 常驻部署
 
-Windows 计划任务（登录时启动）：
+Windows：注册登录启动的计划任务，并由监督循环在 node 退出后 5 秒重启 Web Harness。
 
 ```powershell
-schtasks /create /tn "seed-superagent" /tr "node E:\projects\reed-dev\seed-agent\src\cli.ts run E:\projects\reed-dev\seed-agent\seed.config.json" /sc onlogon
+powershell -File scripts/install-service.ps1 -Port 4780
+# 任务名: seed-agent-superagent；日志: runtime/service.log
+Get-ScheduledTask -TaskName seed-agent-superagent
 ```
+
+注意：`src/cli.ts daemon` 是**执行侧 daemon**（BYOM/远程工具，无会话状态），不是进程守护；
+它不会替你把 Web Harness 拉起来。进程保活依赖计划任务/systemd/Docker。
 
 Linux systemd：
 
