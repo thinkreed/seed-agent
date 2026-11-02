@@ -18,10 +18,28 @@ export interface OpenAIClientOptions {
 interface ChatCompletionResponse {
   readonly choices?: readonly { readonly message?: { readonly content?: string | null } }[];
   readonly error?: { readonly message?: string };
+  readonly usage?: {
+    readonly prompt_tokens?: number;
+    readonly prompt_cache_hit_tokens?: number;
+    readonly prompt_cache_miss_tokens?: number;
+    readonly prompt_tokens_details?: { readonly cached_tokens?: number };
+  };
+}
+
+export interface OpenAICacheStats {
+  readonly requests: number;
+  readonly promptTokens: number;
+  readonly cachedTokens: number;
+  readonly uncachedTokens: number;
+  readonly hitRate: number;
 }
 
 export class OpenAIClient implements ModelClient {
   private readonly options: OpenAIClientOptions;
+  private requests = 0;
+  private promptTokens = 0;
+  private cachedTokens = 0;
+  private uncachedTokens = 0;
 
   constructor(options: OpenAIClientOptions) {
     this.options = options;
@@ -45,6 +63,29 @@ export class OpenAIClient implements ModelClient {
       await sleep(result.retryAfterMs ?? 500 * (attempt + 1));
     }
     throw new Error(`model request failed: ${lastError}`);
+  }
+
+  /** 最近一次请求以来的 provider 缓存统计（DeepSeek/Bailian 返回 usage 时可用）。 */
+  cacheStats(): OpenAICacheStats {
+    const total = this.cachedTokens + this.uncachedTokens;
+    return {
+      requests: this.requests,
+      promptTokens: this.promptTokens,
+      cachedTokens: this.cachedTokens,
+      uncachedTokens: this.uncachedTokens,
+      hitRate: total === 0 ? 0 : this.cachedTokens / total,
+    };
+  }
+
+  private recordUsage(usage: ChatCompletionResponse["usage"]): void {
+    this.requests += 1;
+    if (!usage) return;
+    const prompt = usage.prompt_tokens ?? 0;
+    const cached = usage.prompt_cache_hit_tokens ?? usage.prompt_tokens_details?.cached_tokens ?? 0;
+    const uncached = usage.prompt_cache_miss_tokens ?? Math.max(0, prompt - cached);
+    this.promptTokens += prompt;
+    this.cachedTokens += cached;
+    this.uncachedTokens += uncached;
   }
 
   private async once(
@@ -75,6 +116,7 @@ export class OpenAIClient implements ModelClient {
         };
       }
       const payload = (await response.json()) as ChatCompletionResponse;
+      this.recordUsage(payload.usage);
       const content = payload.choices?.[0]?.message?.content;
       if (typeof content !== "string") {
         return { ok: false, error: "response has no message content", retryable: false };

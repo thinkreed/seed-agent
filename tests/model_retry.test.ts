@@ -68,6 +68,27 @@ test("模型错误信息会脱敏 sk-/Bearer", async () => {
   );
 });
 
+test("解析 provider 缓存命中统计", async () => {
+  await withServer(
+    (_request, response) => {
+      response.end(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" } }],
+          usage: { prompt_tokens: 100, prompt_cache_hit_tokens: 90, prompt_cache_miss_tokens: 10 },
+        }),
+      );
+    },
+    async (baseUrl) => {
+      const client = new OpenAIClient({ baseUrl, apiKey: "k", model: "m" });
+      assert.equal(await client.complete([{ role: "user", content: "hi" }]), "ok");
+      const stats = client.cacheStats();
+      assert.equal(stats.cachedTokens, 90);
+      assert.equal(stats.uncachedTokens, 10);
+      assert.equal(stats.hitRate, 0.9);
+    },
+  );
+});
+
 test("模型超时会失败而不是永久挂起", async () => {
   await withServer(
     () => {

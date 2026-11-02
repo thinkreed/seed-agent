@@ -96,10 +96,10 @@ export class RouterSession implements Assessor {
     const messages: ModelMessage[] = [
       {
         role: "system",
-        content: `${routerSystemPrompt()}\n\n${CHAT_RULES}\n\n${channelChatRules(channel)}\n\nMemory:\n${this.memory || "(empty)"}`,
+        content: `${routerSystemPrompt()}\n\n${CHAT_RULES}\n\n${channelChatRules(channel)}`,
       },
       ...this.history.slice(-this.historyMessages),
-      { role: "user", content: JSON.stringify({ chat: text, tickets }) },
+      { role: "user", content: JSON.stringify({ memory: this.memory || "(empty)", chat: text, tickets }) },
     ];
     const raw = await this.client.complete(messages);
     const result = parseChatResult(raw);
@@ -157,12 +157,13 @@ export class RouterSession implements Assessor {
     const messages: ModelMessage[] = [
       {
         role: "system",
-        content: `${routerSystemPrompt()}\n\n${ACCEPT_RULES}\n\nMemory:\n${this.memory || "(empty)"}`,
+        content: `${routerSystemPrompt()}\n\n${ACCEPT_RULES}`,
       },
       ...this.history.slice(-this.historyMessages),
       {
         role: "user",
         content: JSON.stringify({
+          memory: this.memory || "(empty)",
           threads: views.map((view) => ({
             view,
             assessment: assessmentSystemPrompt(),

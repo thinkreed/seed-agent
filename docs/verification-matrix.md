@@ -2,7 +2,7 @@
 
 > 文章：《Super-agent 设计探索：迈向更自主的 Agent 系统》（DeepSeek Harness 团队，2026-10-31）
 > 仓库基线：`seed-agent`（TypeScript，零第三方依赖；`src/` 内核 + `contrib/dsh/**` DSH 变种）
-> 验证命令：`node --test "tests/*.test.ts"`（246 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
+> 验证命令：`node --test "tests/*.test.ts"`（247 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
 > 状态：✅ 已实现且可验证　⚠️ 已实现但有明确边界　❌ 未实现
 
 ## 1. 四个基础特征（文章 §1）
@@ -138,5 +138,5 @@
 | 3 | `danger-full-access` | host 默认与示例配置改为 `workspace-write`；worker 实机写文件通过 | 真机 `tk-000009` 产物 `risk-check-2.txt=ok` |
 | 4 | sessionId 仅内存 Map | 持久化到 `<dbPath>.dsh-sessions.json`；用 `resumeSession()` 恢复，失效则回退新 session | `executor-contract.mjs` 跨实例复用；实机文件已生成 |
 | 5 | SdkDshExecutor 无离线契约 | fake harness 注入 `harnessFactory`，覆盖报告/复用/stop | `tests/sdk_executor_contract.mjs`、`dsh/.../host/tests/executor-contract.mjs` |
-| 6 | 裸 `node --test` 扫 dsh vitest | AGENTS/文档统一为 `node --test "tests/*.test.ts"`；package 脚本已限定 | `npm test` 246 通过 |
+| 6 | 裸 `node --test` 扫 dsh vitest | AGENTS/文档统一为 `node --test "tests/*.test.ts"`；package 脚本已限定 | `npm test` 247 通过 |
 | 7 | retry 与运行回合竞态 | `Actions.report` 只接受 running assignment；executor 取消后不再回报 | `tests/late_report.test.ts`、`executor-contract.mjs` |
