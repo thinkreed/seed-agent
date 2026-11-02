@@ -2,7 +2,7 @@
 
 > 文章：《Super-agent 设计探索：迈向更自主的 Agent 系统》（DeepSeek Harness 团队，2026-10-31）
 > 仓库基线：`seed-agent`（TypeScript，零第三方依赖；`src/` 内核 + `contrib/dsh/**` DSH 变种）
-> 验证命令：`node --test "tests/*.test.ts"`（240 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
+> 验证命令：`node --test "tests/*.test.ts"`（242 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
 > 状态：✅ 已实现且可验证　⚠️ 已实现但有明确边界　❌ 未实现
 
 ## 1. 四个基础特征（文章 §1）
@@ -121,6 +121,7 @@
 | 吞吐/soak | WAL + `synchronous=NORMAL`；5000 事件/20012 events/≈1600 events/s | `tests/soak.test.ts`、`scripts/soak-super-agent.mjs` | ✅ |
 | 长跑 soak | 持续追加 + 重复投递 + 周期性重启 + 重放校验，可断点续跑 | `scripts/soak-long-super-agent.mjs`（`LONG SOAK OK`） | ✅ |
 | 模型重试/超时/脱敏 | 5xx/429 按 Retry-After 退避、超时中断、错误里 `sk-`/Bearer 脱敏 | `tests/model_retry.test.ts` | ✅ |
+| 故障注入 | 模型 5xx/429/超时、daemon 坏 JSON 仍健康、磁盘/DB 路径错误启动失败、source/daemon 离线恢复、重复事件幂等 | `tests/model_retry.test.ts`、`tests/faults.test.ts`、`tests/source_health.test.ts`、`tests/soak.test.ts` | ✅ |
 | daemon 指标 | `/metrics` Prometheus 文本（请求/错误/事件缓冲/uptime） | `tests/remote_http.test.ts` | ✅ |
 | daemon TLS | 内置 `tls:{cert,key}` HTTPS；也支持反向代理终止 TLS | `tests/remote_http.test.ts`（证书缺失拒绝启动） | ✅ |
 | 部署资产 | Dockerfile、systemd 加固单元、生产部署手册 | `deploy/` | ✅ |
