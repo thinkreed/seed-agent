@@ -64,7 +64,11 @@ export class MultiChannelWriter implements ChannelWriter {
       this.record(address, messageId)
       return
     }
-    const feishuChat = address.startsWith('feishu:') ? address.slice(7) : address
+    const feishuChat = address.startsWith('feishu:')
+      ? address.slice(7)
+      : address.startsWith('fs:')
+        ? address.slice(3).split(':')[0] ?? ''
+        : address
     if (this.settings.feishu && feishuChat.startsWith('oc_')) {
       const messageId = await this.sendFeishu(feishuChat, text)
       this.record(address, messageId)

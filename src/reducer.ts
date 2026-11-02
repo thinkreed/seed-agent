@@ -81,6 +81,8 @@ export function apply(state: State, event: AnyEvent): State {
       const stopped = ticket.stopped || event.data.outcome === "stopped";
       return patch(state, {
         tickets: { ...state.tickets, [ticket.id]: { ...ticket, state: "ended", stopped } },
+        // 结束的工单不再接收该 Thread 的新输入；后续消息重新评估/开新工单。
+        subscriptions: state.subscriptions.filter((item) => item.ticketId !== ticket.id),
       });
     }
     case "ticket.resumed": {

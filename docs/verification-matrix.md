@@ -2,7 +2,7 @@
 
 > 文章：《Super-agent 设计探索：迈向更自主的 Agent 系统》（DeepSeek Harness 团队，2026-10-31）
 > 仓库基线：`seed-agent`（TypeScript，零第三方依赖；`src/` 内核 + `contrib/dsh/**` DSH 变种）
-> 验证命令：`node --test "tests/*.test.ts"`（244 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
+> 验证命令：`node --test "tests/*.test.ts"`（245 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
 > 状态：✅ 已实现且可验证　⚠️ 已实现但有明确边界　❌ 未实现
 
 ## 1. 四个基础特征（文章 §1）
@@ -39,6 +39,7 @@
 | 2.2.4 | 同层 Worker 不直接通信 | 无点对点通道，只靠共享 Thread 扇出 | 同上 | ✅ |
 | 2.2.5 | Worker 可再创建 Subagent | 内核 `spawn_subagent`；host 由 DSH runtime 提供 | `tests/subagent_tool.test.ts` | ✅ |
 | 2.2.6 | 交回 Router / 取消订阅 | `engine.handback()` / `unsubscribe()`；worker 控制工具 | host `HANDBACK SMOKE OK`、`tests/engine.test.ts` | ✅ |
+| 2.2.7 | 工单结束后释放 Thread 订阅 | `ticket.ended` 时 reducer 移除该 Ticket 的 subscriptions；后续消息重新评估/开新单 | `tests/subscription_end.test.ts`、真机飞书复问开新单 | ✅ |
 
 ## 3. 事件驱动（文章 §3）
 
@@ -66,7 +67,7 @@
 | 4.1.4 | 全双工：步级处理新输入 | `ReactLoop.nextInputs` 每步注入；WorkerSession 自动排空 | `tests/react_inputs.test.ts` | ✅ |
 | 4.2.1 | IM 低打扰 ≤100 字 | `format.compactForIm`；`chat(channel="im")` 规范 | `tests/channels_outbox.test.ts`、`router_session.test.ts` | ✅ |
 | 4.2.2 | GitHub/邮件/文档结构化 | `structureForAsync` + `ChannelFormattingWriter`；`.md`/`.eml` 草稿 | `tests/channels_outbox.test.ts`、`CHANNEL FORMAT LIVE OK`（飞书 + GitHub 真发） | ✅ |
-| 4.2.3 | IM 真机送达 | 飞书 `im/v1/messages`；`CHANNELS SMOKE OK` | 群消息 id `om_x100b61bcf475f0acdf704d1264b1e7c` | ✅ |
+| 4.2.3 | IM 真机送达 | 飞书 `im/v1/messages`；`fs:` / `feishu:` 地址均路由到飞书；`CHANNELS SMOKE OK` | 群消息 id `om_x100b61bcf475f0acdf704d1264b1e7c`、`om_x100b61bef1ae3ca0c0e01a05dfb38b3` | ✅ |
 
 ## 5. 计算、状态与环境分离（文章 §5）
 
