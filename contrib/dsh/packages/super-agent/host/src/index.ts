@@ -1006,14 +1006,23 @@ export class SuperAgentHost extends Service {
         if (!this.routerSession) throw new Error('router session not enabled (routerMode=off)')
         const result = await this.routerSession.chatResult(input.text)
         reply = result.reply
-        if (result.work) {
-          // Router 决定把对话升级为工单：用 local source 走正常 Gate/评估/派工。
+        // 模型偶尔会“声称开单”却没给 work；这种回复必须落成真实工单，
+        // 否则面板会出现“说已建单但列表没有”的不一致。
+        const claimsTicket = /(ticket|工单|查询单|reopen)/i.test(result.reply)
+        const imperative = /^(please\s+)?(create|check|verify|fix|run|build|investigate|look|find|update|write|make|open|review|test|deploy|implement|add|remove|帮我|请|检查|创建|修复|跑|查|处理|实现|看看|看下)/i.test(
+          input.text.trim(),
+        )
+        const work = result.work ?? (claimsTicket || imperative ? input.text : undefined)
+        if (work) {
+          // Router 决定把对话升级为工单：每次派工用独立 Thread，避免被已结束
+          // 工单的订阅吞掉；同一工单的后续输入由 Engine 自己维护。
+          const triggerId = `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
           this.ingest({
-            id: `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+            id: triggerId,
             source: 'local',
             actor: 'panel',
-            text: result.work,
-            threadIds: ['panel:chat'],
+            text: work,
+            threadIds: [`panel:chat:${triggerId}`],
             channelIds: [],
             at: Math.floor(Date.now() / 1000),
           })
