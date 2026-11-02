@@ -125,3 +125,37 @@ node scripts/live_watchdog.ts   # 真机：卡死 worker -> 模型判定 -> 重�
 node scripts/live_recovery.ts   # 真机：重启恢复（resume 输入 + 重新派工）
 node scripts/live_github_comment.ts <owner/repo> <number> "文本"   # 真机：GitHub 评论回写并读回校验
 ```
+
+## 9. 备份、恢复与 soak
+
+在线备份（SQLite `VACUUM INTO`，不需要停服）：
+
+```bash
+node scripts/backup-super-agent.mjs seed.db backups/seed-$(date +%F).db
+```
+
+恢复：停服务 → 用备份替换 `dbPath` → 启动；不要直接复制正在写入的 `.db`（WAL 尚未合并）。
+
+soak：
+
+```bash
+node --no-warnings scripts/soak-super-agent.mjs 5000
+# 参考：events≈20012, delivered=5000, replayOk=true, ≈1600 events/s
+```
+
+## 10. 生产安全边界
+
+- **Worker 环境最小化**：worker 只拿 `PATH/TEMP/HOME` 等基础变量和模型 key；飞书/GitHub 凭据不会进入 worker。
+- **daemon 鉴权**：监听非 loopback 时必须设置 `SA_DAEMON_TOKEN`，否则拒绝启动；生产建议只监听 `127.0.0.1`，通过 SSH 隧道/反向代理加 TLS。
+- **模型凭据**：只放宿主 `seed.env`/systemd `EnvironmentFile`，权限 600。
+- **shell 工具**：worker 在宿主执行命令，隔离到工单目录但不是容器；高风险租户需容器/受限用户。
+
+## 11. 上线检查单
+
+- [ ] `node --test "tests/*.test.ts"` 全绿
+- [ ] `node scripts/soak-super-agent.mjs 5000` → `SOAK OK`
+- [ ] 备份脚本跑通且回放哈希一致
+- [ ] Feishu/GitHub 出站真机各一条
+- [ ] daemon 非 loopback 强制 token，前置 TLS
+- [ ] 日志中无 `sk-`、app secret、daemon token
+- [ ] 守护进程 `Restart=always` / 计划任务

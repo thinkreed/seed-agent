@@ -2,7 +2,7 @@
 
 > 文章：《Super-agent 设计探索：迈向更自主的 Agent 系统》（DeepSeek Harness 团队，2026-10-31）
 > 仓库基线：`seed-agent`（TypeScript，零第三方依赖；`src/` 内核 + `contrib/dsh/**` DSH 变种）
-> 验证命令：`node --test "tests/*.test.ts"`（230 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
+> 验证命令：`node --test "tests/*.test.ts"`（235 例，零网络）＋ `node scripts/demo-article.mjs`（22 项现场检查）＋ `node scripts/bench-super-agent.mjs`
 > 状态：✅ 已实现且可验证　⚠️ 已实现但有明确边界　❌ 未实现
 
 ## 1. 四个基础特征（文章 §1）
@@ -110,3 +110,14 @@
 - HTTP daemon 为明文 HTTP + Bearer token，默认 `127.0.0.1`。
 - 邮件/文档为草稿语义，不直连 SMTP/在线文档 API。
 - Correlation 需 Trigger 显式携带多个 Thread；未做语义自动关联。
+
+## 10. 生产就绪增量（2026-11-02）
+
+| 项 | 实现 | 验证 | 状态 |
+|---|---|---|---|
+| Worker 环境最小化 | 只透传基础变量 + 模型 key；飞书/GitHub 等凭据不进 worker | `tests/worker_env.test.ts` | ✅ |
+| daemon 非本机鉴权 | 非 loopback 监听必须 `SA_DAEMON_TOKEN`，否则拒绝启动 | `tests/remote_http.test.ts` | ✅ |
+| SQLite 备份/恢复 | `VACUUM INTO` 一致快照 + 回放哈希校验 | `tests/backup.test.ts`、`scripts/backup-super-agent.mjs` | ✅ |
+| 吞吐/soak | WAL + `synchronous=NORMAL`；5000 事件/20012 events/≈1600 events/s | `tests/soak.test.ts`、`scripts/soak-super-agent.mjs` | ✅ |
+| daemon TLS | 未内置，要求反向代理/SSH 隧道 | 文档 | ⚠️ |
+| worker 容器隔离 | 仍为宿主 shell + 工单目录 | 文档 | ⚠️ |
