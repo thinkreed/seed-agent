@@ -3,6 +3,7 @@ node_modules/
 dist/
 build/
 out/
+contrib/dsh/packages/super-agent/core/lib/
 
 # 本地状态与数据
 *.db
