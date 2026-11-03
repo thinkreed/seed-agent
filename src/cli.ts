@@ -6,6 +6,7 @@ import { App } from "./app.ts";
 import { SystemClock } from "./clock.ts";
 import { loadConfig } from "./config.ts";
 import { startHttpDaemon } from "./daemon/http.ts";
+import { watchdogServe } from "./watchdog_process.ts";
 import { loadDefaultEnv, loadEnvFile } from "./env.ts";
 import { read as feishuRead, say as feishuSay } from "./feishu_cli.ts";
 import { createCheckers, formatChecks, runChecks } from "./health.ts";
@@ -139,7 +140,9 @@ const exitCode =
                 ? await daemonCommand(process.argv.slice(3))
                 : command === "watchdog" && arg === "ask"
                   ? await watchdogAskCommand([flag ?? "seed.config.json", ...process.argv.slice(4)])
-                  : command === "policy" && arg === "apply"
+                  : command === "watchdog" && arg === "serve"
+                    ? await watchdogServe(flag ?? "seed.config.json")
+                    : command === "policy" && arg === "apply"
                     ? policyApplyCommand([flag ?? "seed.config.json", ...process.argv.slice(4)])
                     : 2;
 if (exitCode === 2) {

@@ -42,6 +42,7 @@ export function parseConfig(raw: unknown): SeedConfig {
     staleSeconds: positiveInt(source.staleSeconds, defaults.staleSeconds, "staleSeconds"),
     workRoot: stringOr(source.workRoot, defaults.workRoot, "workRoot"),
     routerMode: routerModeOr(source.routerMode),
+    ...(source.watchdogMode === undefined ? {} : { watchdogMode: watchdogModeOr(source.watchdogMode) }),
     policy: source.policy === undefined ? defaults.policy : parsePolicy(source.policy),
     ...(source.model === undefined ? {} : { model: parseModel(source.model) }),
     ...(source.routerModel === undefined ? {} : { routerModel: parseModel(source.routerModel) }),
@@ -184,6 +185,12 @@ function positiveInt(value: unknown, fallback: number, field: string): number {
     throw new Error(`${field} must be a positive integer`);
   }
   return value;
+}
+
+function watchdogModeOr(value: unknown): "inline" | "external" {
+  if (value === undefined) return "inline";
+  if (value === "inline" || value === "external") return value;
+  throw new Error("watchdogMode must be inline|external");
 }
 
 function routerModeOr(value: unknown): "llm" | "off" {

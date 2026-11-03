@@ -3,12 +3,16 @@
  * 规则简单到可以测试：停滞 -> 重试；投递失败 -> 重投（同样走 retry）。
  */
 
-import type { Engine } from "./engine.ts";
 import type { Policy } from "./domain.ts";
 import type { AnyEvent } from "./events.ts";
 import type { WatchdogFinding, WatchdogReport } from "./watchdog.ts";
 
-export type ControlAction = "retry" | "none";
+export type ControlAction = "retry" | "policy" | "none";
+
+export interface WatchdogTarget {
+  retry(ticketId: string): AnyEvent[];
+  setPolicy(policy: Policy): AnyEvent[];
+}
 
 export interface AppliedAction {
   readonly ticketId: string;
@@ -20,12 +24,13 @@ export interface WatchdogOutcome {
   readonly findings: readonly WatchdogFinding[];
   readonly verdict: WatchdogReport["verdict"];
   readonly applied: readonly AppliedAction[];
+  readonly policyApplied: boolean;
 }
 
 export class WatchdogController {
-  private readonly engine: Engine;
+  private readonly engine: WatchdogTarget;
 
-  constructor(engine: Engine) {
+  constructor(engine: WatchdogTarget) {
     this.engine = engine;
   }
 
@@ -37,7 +42,12 @@ export class WatchdogController {
   /** 处理一次 Watchdog 报告：判据决定动作，真正的写入都经引擎。 */
   apply(report: WatchdogReport): WatchdogOutcome {
     const applied: AppliedAction[] = [];
-    if (report.verdict.action !== "intervene") return { ...report, applied };
+    let policyApplied = false;
+    if (report.verdict.action !== "intervene") return { ...report, applied, policyApplied };
+    if (report.verdict.policy) {
+      this.applyPolicy(report.verdict.policy);
+      policyApplied = true;
+    }
 
     const handled = new Set<string>();
     for (const finding of report.findings) {
@@ -51,6 +61,6 @@ export class WatchdogController {
         applied.push({ ticketId: finding.ticketId, kind: finding.kind, action: "none" });
       }
     }
-    return { ...report, applied };
+    return { ...report, applied, policyApplied };
   }
 }

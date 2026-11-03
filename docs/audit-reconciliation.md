@@ -8,6 +8,8 @@
 | 投机执行内核未接线 | ✅ 已接线（opt-in） | `src/app_speculation.ts`；`SourceRunner.onIngested`；配置 `speculationSources`；`tests/speculation_app.test.ts` |
 | 内核 Worker 无链式召回 | ✅ 已补 | `src/recall_index.ts` 写 `recall-index.json`；worker 新增 `recall` 工具；`tests/recall_index.test.ts` |
 | Watchdog advisor 未注入 | ✅ 已注入 | `App` 构造 `LlmWatchdogAdvisor`；自然语言问诊可用 |
+| Watchdog 同进程巡检 | ✅ 支持独立进程 | `watchdogMode: external` + `watchdog serve`；App 不再注册 inline 巡检 |
+| `applyPolicy` 不自动 | ✅ 已自动 | `WatchdogVerdict.policy` → `WatchdogController.apply()` 自动应用；`tests/watchdog_policy.test.ts` |
 | 双份内核分叉 | ✅ 已消除 | `contrib/.../core/src` 已删除；core 的 `build.mjs` 直接编译仓库根 `src/**`，不再存在第二份内核源码 |
 | `onReconnect` 未接线 | ✅ 已接线 | `AppExecutor` 远端路径：`HttpTransport.onReconnect → RemoteExecutor.recover()`；`remote` 配置解析 + `closeAll` |
 | §5 云端无状态计算 | ⚠️ 架构边界 | 当前是单机事件溯源 + SQLite；云端拆分未实现 |

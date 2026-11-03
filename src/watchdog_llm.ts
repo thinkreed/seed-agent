@@ -49,8 +49,17 @@ export class LlmWatchdogJudge implements WatchdogJudge {
     const parsed = extractJsonObject(raw);
     const action = parsed?.action === "intervene" ? "intervene" : "ok";
     const reason = typeof parsed?.reason === "string" ? parsed.reason.slice(0, 300) : "model-judged";
-    return { action, reason };
+    const policy = asPolicy(parsed?.policy);
+    return { action, reason, ...(policy ? { policy } : {}) };
   }
+}
+
+function asPolicy(value: unknown): import("./domain.ts").Policy | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const policy = value as Record<string, unknown>;
+  if (typeof policy.version !== "string" || !Array.isArray(policy.rules)) return undefined;
+  if (policy.acceptMode !== "auto" && policy.acceptMode !== "record") return undefined;
+  return policy as unknown as import("./domain.ts").Policy;
 }
 
 /** 自然语言运维问答：同一个外部控制回路，回答"为什么卡住/该做什么"。 */

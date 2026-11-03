@@ -6,6 +6,7 @@
   "staleSeconds": 1800,
   "speculationSources": ["github"],
   "routerMode": "llm",
+  "watchdogMode": "external",
   "model": {
     "baseUrl": "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1",
     "apiKeyEnv": "BAILIAN_API_KEY",

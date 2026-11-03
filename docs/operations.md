@@ -124,6 +124,17 @@ Get-ScheduledTask -TaskName seed-agent-superagent
 注意：`src/cli.ts daemon` 是**执行侧 daemon**（BYOM/远程工具，无会话状态），不是进程守护；
 它不会替你把 Web Harness 拉起来。进程保活依赖计划任务/systemd/Docker。
 
+内核 Watchdog 独立进程（`watchdogMode: external` 时）：
+
+```powershell
+node src/cli.ts watchdog serve seed.config.json
+node src/cli.ts watchdog ask seed.config.json "为什么工单卡住？"
+node src/cli.ts policy apply seed.config.json policy.json
+```
+
+`watchdog serve` 直接读同一事件库，使用独立模型会话；`Verdict.policy` 会经
+`WatchdogController` 自动应用，不再需要手工调用 `applyPolicy()`。
+
 Linux systemd：
 
 ```ini

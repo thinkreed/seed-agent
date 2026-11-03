@@ -159,7 +159,9 @@ export class App {
       store: runtime.store,
       clock,
       intervalMs: config.intervalMs,
-      watchdog: { check: (state) => watchdog.check(state), apply: (report) => controller.apply(report) },
+      ...(config.watchdogMode === "external"
+        ? {}
+        : { watchdog: { check: (state: import("./domain.ts").State) => watchdog.check(state), apply: (report: import("./watchdog.ts").WatchdogReport) => controller.apply(report) } }),
       afterRound: async () => {
         drainWorkerControls(runtime.engine, controlPath);
         writeRecallIndex(runtime.engine.state, recallPath, clock.now());

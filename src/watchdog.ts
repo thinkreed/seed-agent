@@ -4,7 +4,7 @@
  */
 
 import type { Clock } from "./clock.ts";
-import type { State } from "./domain.ts";
+import type { Policy, State } from "./domain.ts";
 
 export type FindingKind = "stalled" | "undelivered" | "source";
 
@@ -17,6 +17,8 @@ export interface WatchdogFinding {
 export interface WatchdogVerdict {
   readonly action: "ok" | "intervene";
   readonly reason: string;
+  /** intervene 时可选的新策略；由 WatchdogController 自动应用。 */
+  readonly policy?: Policy;
 }
 
 export interface WatchdogJudge {

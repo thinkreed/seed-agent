@@ -50,6 +50,8 @@ export interface SeedConfig {
   readonly policy: Policy;
   /** Router 形态：llm = 常驻 Router Session（批处理/记忆）；off = 单次评估器。 */
   readonly routerMode?: "llm" | "off";
+  /** inline = App 同进程定时巡检；external = 独立 watchdog serve 进程。 */
+  readonly watchdogMode?: "inline" | "external";
   /** Router 专用模型（轻量）；缺省复用 model。 */
   readonly routerModel?: ModelConfig;
   readonly model?: ModelConfig;
