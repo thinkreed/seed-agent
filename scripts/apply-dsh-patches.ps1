@@ -1,4 +1,4 @@
-﻿# 把 contrib/dsh 的改动应用到 vendor checkout（dsh/）。
+# 把 contrib/dsh 的改动应用到 vendor checkout（dsh/）。
 param([string]$Repo)
 
 $here = $PSScriptRoot
@@ -58,6 +58,19 @@ if (Test-Path $src) {
     Copy-Item $_.FullName $target -Recurse -Force
     Write-Host "copied package: $relative"
   }
+}
+
+# 4b) core 没有独立 src：从仓库根 src 生成 lib，供 DSH host 解析。
+$coreDir = Join-Path $dsh 'packages\super-agent\core'
+if (Test-Path (Join-Path $coreDir 'build.mjs')) {
+  Push-Location $coreDir
+  try {
+    & node build.mjs
+    if ($LASTEXITCODE -ne 0) { throw "core build failed" }
+  } finally {
+    Pop-Location
+  }
+  Write-Host "built core from canonical src"
 }
 
 # 4) 应用 *.patch（可选）
