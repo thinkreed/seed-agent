@@ -15,6 +15,8 @@ export type DaemonRequest =
       readonly scope: string;
       readonly worker: WorkerSpec;
       readonly prepare?: WorkerSpec;
+      /** 计算侧导出的 recall 索引内容；daemon 落盘后通过环境变量交给 worker。 */
+      readonly recallIndex?: string;
     }
   | {
       readonly id: string;

@@ -21,6 +21,7 @@ import { WatchdogController } from "./control.ts";
 import { Daemon } from "./daemon.ts";
 import { buildAppExecutor } from "./app_executor.ts";
 import { buildAssessor } from "./assessor_router.ts";
+import { drainWorkerControls } from "./control_dir.ts";
 import { writeRecallIndex } from "./recall_index.ts";
 import { createModelClient } from "./model_client.ts";
 import { Router, TemplateComposer } from "./router.ts";
@@ -50,12 +51,24 @@ export class App {
   readonly router: Router;
   private readonly executor: Executor;
   private readonly closeExecutor: () => void;
-  private constructor(runtime: Runtime, daemon: Daemon, router: Router, executor: Executor, closeExecutor: () => void) {
+  private readonly watchdog: Watchdog;
+  private readonly controller: WatchdogController;
+  private constructor(
+    runtime: Runtime,
+    daemon: Daemon,
+    router: Router,
+    executor: Executor,
+    closeExecutor: () => void,
+    watchdog: Watchdog,
+    controller: WatchdogController,
+  ) {
     this.runtime = runtime;
     this.daemon = daemon;
     this.router = router;
     this.executor = executor;
     this.closeExecutor = closeExecutor;
+    this.watchdog = watchdog;
+    this.controller = controller;
   }
   static create(options: AppOptions): App {
     const env = mergeEnv(options.env, options.envFile ?? process.env.SEED_ENV_FILE);
@@ -66,6 +79,7 @@ export class App {
 
     const clock = new SystemClock();
     const recallPath = join(dirname(resolve(config.dbPath)), "recall-index.json");
+    const controlPath = join(dirname(resolve(config.dbPath)), "control");
     const routerConfig = config.routerModel ?? config.model;
     const routerKey = env[routerConfig.apiKeyEnv] ?? apiKey;
     const modelClient = createModelClient(routerConfig, routerKey);
@@ -119,6 +133,7 @@ export class App {
       runtime: () => runtime,
       apiKey,
       recallPath,
+      controlPath,
       env,
     });
 
@@ -146,13 +161,24 @@ export class App {
       intervalMs: config.intervalMs,
       watchdog: { check: (state) => watchdog.check(state), apply: (report) => controller.apply(report) },
       afterRound: async () => {
+        drainWorkerControls(runtime.engine, controlPath);
         writeRecallIndex(runtime.engine.state, recallPath, clock.now());
         router.queueReplies();
         await runtime.engine.tick();
       },
     });
 
-    return new App(runtime, daemon, router, executor, closeExecutor);
+    return new App(runtime, daemon, router, executor, closeExecutor, watchdog, controller);
+  }
+
+  /** Watchdog 自然语言问诊入口（内核 CLI / 桌面可调用）。 */
+  askWatchdog(question: string): Promise<string> {
+    return this.watchdog.ask(question, this.runtime.engine.state);
+  }
+
+  /** 在线应用策略；下一次 Gate 立即使用新规则。 */
+  applyPolicy(policy: import("./domain.ts").Policy): import("./events.ts").AnyEvent[] {
+    return this.controller.applyPolicy(policy);
   }
 
   /** 跑一轮并等到系统收敛（单次模式/验证用）。 */

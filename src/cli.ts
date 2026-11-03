@@ -1,5 +1,7 @@
 /** 命令行入口：run（真实运行） / panel（只读面板）。 */
 
+import { readFileSync } from "node:fs";
+
 import { App } from "./app.ts";
 import { SystemClock } from "./clock.ts";
 import { loadConfig } from "./config.ts";
@@ -25,6 +27,42 @@ export async function runApp(configPath: string | undefined, once: boolean): Pro
   process.on("SIGTERM", () => app.stop());
   await app.run();
   return 0;
+}
+
+/** 内核 Watchdog 问诊：独立于 run 循环的 CLI 入口。 */
+export async function watchdogAskCommand(argv: string[]): Promise<number> {
+  const configPath = argv[0] ?? "seed.config.json";
+  const question = argv.slice(1).join(" ").trim();
+  if (!question) {
+    console.error("usage: cli.ts watchdog ask <config.json> <question>");
+    return 2;
+  }
+  const app = App.create({ config: loadConfig(configPath) });
+  try {
+    console.log(await app.askWatchdog(question));
+    return 0;
+  } finally {
+    app.stop();
+  }
+}
+
+/** 在线改策略：policy apply <config.json> <policy.json>。 */
+export function policyApplyCommand(argv: string[]): number {
+  const configPath = argv[0] ?? "seed.config.json";
+  const policyPath = argv[1];
+  if (!policyPath) {
+    console.error("usage: cli.ts policy apply <config.json> <policy.json>");
+    return 2;
+  }
+  const app = App.create({ config: loadConfig(configPath) });
+  try {
+    const policy = JSON.parse(readFileSync(policyPath, "utf8")) as import("./domain.ts").Policy;
+    app.applyPolicy(policy);
+    console.log(JSON.stringify({ ok: true, version: policy.version }));
+    return 0;
+  } finally {
+    app.stop();
+  }
 }
 
 /** 端侧 daemon：只执行、不存会话状态（BYOM / 跨设备）。 */
@@ -99,7 +137,11 @@ const exitCode =
               ? await desktopCommand(arg, process.argv.slice(4))
               : command === "daemon"
                 ? await daemonCommand(process.argv.slice(3))
-                : 2;
+                : command === "watchdog" && arg === "ask"
+                  ? await watchdogAskCommand([flag ?? "seed.config.json", ...process.argv.slice(4)])
+                  : command === "policy" && arg === "apply"
+                    ? policyApplyCommand([flag ?? "seed.config.json", ...process.argv.slice(4)])
+                    : 2;
 if (exitCode === 2) {
   console.error(
     "usage: cli.ts run <config.json> [--once] | desktop <config.json> [--port 4780] [--no-browser] | daemon [root] [--port 4781] [--host 127.0.0.1] | doctor <config.json> | panel <db> [--json] | say <chat_id> <text> | read <chat_id>",

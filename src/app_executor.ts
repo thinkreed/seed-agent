@@ -18,6 +18,7 @@ export interface AppExecutorOptions {
   readonly runtime: () => Runtime;
   readonly apiKey: string;
   readonly recallPath: string;
+  readonly controlPath: string;
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 
@@ -46,6 +47,7 @@ export function buildAppExecutor(options: AppExecutorOptions): AppExecutor {
       report: (report) => options.runtime().engine.report(report),
       worker: config.worker ?? worker,
       ...(config.prepare ? { prepare: config.prepare } : {}),
+      recallIndexPath: options.recallPath,
     });
     return { executor: remote, close: () => remote.closeAll() };
   }
@@ -80,6 +82,7 @@ export function buildAppExecutor(options: AppExecutorOptions): AppExecutor {
         SEED_WORKER_ASSIGNMENT: assignment.id,
         SEED_WORKER_INPUT: JSON.stringify(initial),
         SEED_RECALL_INDEX: options.recallPath,
+        SEED_CONTROL_DIR: options.controlPath,
         SEED_MODEL_BASE_URL: config.model?.baseUrl ?? "",
         SEED_MODEL_API_KEY: options.apiKey,
         SEED_MODEL_NAME: config.model?.name ?? "",

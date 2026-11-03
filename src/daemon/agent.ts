@@ -3,6 +3,9 @@
  * 自己不持有会话状态（无状态可随时重启），状态都在计算侧的 Store。
  */
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import type { Clock } from "../clock.ts";
 import type { Assignment, Input, Report, Ticket } from "../domain.ts";
 import { LocalExecutor } from "../executor/local.ts";
@@ -39,6 +42,14 @@ export class DaemonAgent {
     }
   }
 
+  private writeRecall(ticketId: string, content: string): string {
+    const dir = join(this.options.root, ".seed", "recall");
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `${ticketId}.json`);
+    writeFileSync(path, content, "utf8");
+    return path;
+  }
+
   private async launch(request: Extract<DaemonRequest, { cmd: "launch" }>): Promise<DaemonResponse> {
     // 设备重连后会重发 launch：先收口同工单的旧执行器，避免重复占用。
     const existing = this.workers.get(request.ticketId);
@@ -69,12 +80,16 @@ export class DaemonAgent {
       executorRef: "local-daemon",
       createdAt: clock.now(),
     };
+    const env = {
+      ...(this.options.env ?? {}),
+      ...(request.recallIndex ? { SEED_RECALL_INDEX: this.writeRecall(request.ticketId, request.recallIndex) } : {}),
+    };
     const executor = new LocalExecutor({
       root: this.options.root,
       worker: request.worker,
       ...(request.prepare ? { prepare: request.prepare } : {}),
       clock,
-      ...(this.options.env ? { env: this.options.env } : {}),
+      ...(Object.keys(env).length > 0 ? { env } : {}),
       report: (report: Report) => {
         this.options.emit({
           type: "report",

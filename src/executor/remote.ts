@@ -6,6 +6,8 @@
  * recover() 重新拉起仍在跑的 Assignment 并补投未确认输入。
  */
 
+import { existsSync, readFileSync } from "node:fs";
+
 import type { Clock } from "../clock.ts";
 import type { Assignment, Input, Report, ReportStatus, Ticket } from "../domain.ts";
 import type { Executor } from "../ports.ts";
@@ -26,6 +28,8 @@ export interface RemoteExecutorOptions {
   readonly report: (report: Report) => void;
   readonly worker: WorkerSpec;
   readonly prepare?: WorkerSpec;
+  /** 本机 recall 索引；launch 时把内容发给远端 daemon。 */
+  readonly recallIndexPath?: string;
 }
 
 interface TrackedLaunch {
@@ -103,6 +107,9 @@ export class RemoteExecutor implements Executor {
       scope: ticket.mandate.scope,
       worker: this.options.worker,
       ...(this.options.prepare ? { prepare: this.options.prepare } : {}),
+      ...(this.options.recallIndexPath && existsSync(this.options.recallIndexPath)
+        ? { recallIndex: readFileSync(this.options.recallIndexPath, "utf8") }
+        : {}),
     };
   }
 

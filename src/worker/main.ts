@@ -17,7 +17,8 @@
  */
 
 import { createInterface } from "node:readline";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { SystemClock } from "../clock.ts";
 import type { Ticket, Trigger } from "../domain.ts";
@@ -79,6 +80,24 @@ const model = new OpenAIClient({
   apiKey: required("SEED_MODEL_API_KEY"),
   model: required("SEED_MODEL_NAME"),
 });
+function controlTool(action: "handback" | "unsubscribe") {
+  return {
+    description: action === "handback" ? "Return this ticket to the Router (reason)." : "Stop routing thread events here.",
+    async run(args: Record<string, unknown>): Promise<unknown> {
+      const dir = env("SEED_CONTROL_DIR");
+      if (!dir) throw new Error("SEED_CONTROL_DIR is not configured");
+      mkdirSync(dir, { recursive: true });
+      const request = {
+        action,
+        ticketId: ticket.id,
+        ...(typeof args.threadId === "string" ? { threadId: args.threadId } : {}),
+        ...(typeof args.reason === "string" ? { reason: args.reason } : {}),
+      };
+      writeFileSync(join(dir, `${action}-${ticket.id}-${process.pid}-${Date.now()}.json`), JSON.stringify(request));
+      return { ok: true, action };
+    },
+  };
+}
 const baseTools = {
   ...fileTools(root),
   run_shell: shellTool({ root }),
@@ -102,6 +121,12 @@ const baseTools = {
         },
       }
     : {}),
+  ...(env("SEED_CONTROL_DIR")
+    ? {
+        handback: controlTool("handback"),
+        unsubscribe: controlTool("unsubscribe"),
+      }
+    : {}),
 };
 const tools = {
   ...baseTools,
@@ -114,6 +139,8 @@ const descriptions: Record<string, string> = {
   list_files: "List entries of a directory inside the workspace (path).",
   run_shell: "Run one shell command in the workspace (command). Prefer start() for long commands.",
   recall: "Read a trigger/thread/ticket by id for chained recall (kind, id).",
+  handback: "Return this ticket to the Router (reason); Router decides what happens next.",
+  unsubscribe: "Stop routing future thread events to this ticket (optional threadId).",
   spawn_subagent: "Run a focused subtask in an isolated subagent context (task); returns {status, summary}.",
 };
 for (const [name, tool] of Object.entries(tools)) {
