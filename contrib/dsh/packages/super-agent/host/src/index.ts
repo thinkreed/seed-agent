@@ -480,7 +480,8 @@ export class SuperAgentHost extends Service {
     const before = this.runtime.store.lastSeq()
     this.drainControl()
     await this.runtime.tickUntilIdle()
-    new Router({ store: this.runtime.store, clock: this.clock, effects: this.runtime.engine.effects }).queueReplies()
+    new Router({ store: this.runtime.store, clock: this.runtime.clock, effects: this.runtime.engine.effects }).queueReplies()
+    await this.runtime.tickUntilIdle()
     this.writeRecallIndex()
     return this.runtime.store.lastSeq() > before
   }
