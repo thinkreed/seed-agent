@@ -15,6 +15,9 @@ $supervisor = Join-Path $here 'supervise-web-super-agent.ps1'
 if (-not (Test-Path $supervisor)) { throw "supervisor missing: $supervisor" }
 
 # Remove any previous instance/task so this is idempotent.
+Get-CimInstance Win32_Process |
+  Where-Object { $_.CommandLine -match 'supervise-web-super-agent\.ps1' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
   Where-Object { $_.CommandLine -match 'seed-agent-superagent.*bin\.js.*--profile web' } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
