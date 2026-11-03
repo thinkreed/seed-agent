@@ -88,6 +88,10 @@ export class RemoteExecutor implements Executor {
     return { relaunched, redelivered };
   }
 
+  closeAll(): void {
+    this.options.transport.close();
+  }
+
   private launchRequest(assignment: Assignment, ticket: Ticket): DaemonRequest {
     this.counter += 1;
     return {

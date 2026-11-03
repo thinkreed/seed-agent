@@ -26,6 +26,7 @@ export class SourceRunner {
   private readonly clock: Clock;
   private readonly failed = new Set<string>();
   private readonly onTrigger: ((trigger: import("./domain.ts").Trigger) => void) | undefined;
+  private readonly onIngested: ((trigger: import("./domain.ts").Trigger) => void) | undefined;
 
   constructor(options: {
     sources: readonly Source[];
@@ -34,12 +35,15 @@ export class SourceRunner {
     clock: Clock;
     /** 观测回调：Router 用它看到所有事件（含随后直通 Worker 的）。 */
     onTrigger?: (trigger: import("./domain.ts").Trigger) => void;
+    /** 新事件完成入账后的回调（投机执行只对真正的新事件触发一次）。 */
+    onIngested?: (trigger: import("./domain.ts").Trigger) => void;
   }) {
     this.sources = [...options.sources];
     this.engine = options.engine;
     this.store = options.store;
     this.clock = options.clock;
     this.onTrigger = options.onTrigger;
+    this.onIngested = options.onIngested;
   }
 
   /** 轮询所有 Source：各自独立容错。 */
@@ -58,6 +62,7 @@ export class SourceRunner {
           if (produced.length === 0) continue; // 已入账过的 Trigger 不算新事件
           ingested += 1;
           this.store.cursorSet(source.name, trigger.id, this.clock.now());
+          this.onIngested?.(trigger);
         }
       } catch (error) {
         failures.push({ source: source.name, error: String(error) });

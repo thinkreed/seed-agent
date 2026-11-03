@@ -33,6 +33,14 @@ test("parseConfig：覆盖字段并派生 Policy 版本", () => {
   assert.equal(config.worker?.file, "node");
 });
 
+test("parseConfig：remote daemon 配置", () => {
+  const config = parseConfig({
+    dbPath: ":memory:",
+    remote: { url: "http://127.0.0.1:4781", tokenEnv: "SA_TOKEN" },
+  });
+  assert.deepEqual(config.remote, { url: "http://127.0.0.1:4781", tokenEnv: "SA_TOKEN" });
+});
+
 test("parseConfig：非法类型给出明确错误", () => {
   assert.throws(() => parseConfig([]), /must be a JSON object/);
   assert.throws(() => parseConfig({ slots: 0 }), /slots must be a positive integer/);

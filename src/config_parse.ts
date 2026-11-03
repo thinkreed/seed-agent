@@ -11,6 +11,7 @@ import type {
   SourcesConfig,
 } from "./config_types.ts";
 import { buildPolicy } from "./policy.ts";
+import { parseRemote } from "./config_parse_remote.ts";
 
 export function defaultConfig(): SeedConfig {
   return {
@@ -50,6 +51,7 @@ export function parseConfig(raw: unknown): SeedConfig {
       : { speculationSources: stringArray(source.speculationSources, "speculationSources") }),
     ...(source.worker === undefined ? {} : { worker: parseWorker(source.worker, "worker") }),
     ...(source.prepare === undefined ? {} : { prepare: parseWorker(source.prepare, "prepare") }),
+    ...(source.remote === undefined ? {} : { remote: parseRemote(source.remote) }),
   };
 }
 

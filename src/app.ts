@@ -16,9 +16,10 @@ import { EmailDraftChannel } from "./channels/email.ts";
 import { SystemClock } from "./clock.ts";
 import type { SeedConfig } from "./config.ts";
 import { mergeEnv } from "./env.ts";
+import type { Executor } from "./ports.ts";
 import { WatchdogController } from "./control.ts";
 import { Daemon } from "./daemon.ts";
-import { LocalExecutor } from "./executor/local.ts";
+import { buildAppExecutor } from "./app_executor.ts";
 import { buildAssessor } from "./assessor_router.ts";
 import { writeRecallIndex } from "./recall_index.ts";
 import { createModelClient } from "./model_client.ts";
@@ -47,12 +48,14 @@ export class App {
   readonly runtime: Runtime;
   readonly daemon: Daemon;
   readonly router: Router;
-  private readonly executor: LocalExecutor;
-  private constructor(runtime: Runtime, daemon: Daemon, router: Router, executor: LocalExecutor) {
+  private readonly executor: Executor;
+  private readonly closeExecutor: () => void;
+  private constructor(runtime: Runtime, daemon: Daemon, router: Router, executor: Executor, closeExecutor: () => void) {
     this.runtime = runtime;
     this.daemon = daemon;
     this.router = router;
     this.executor = executor;
+    this.closeExecutor = closeExecutor;
   }
   static create(options: AppOptions): App {
     const env = mergeEnv(options.env, options.envFile ?? process.env.SEED_ENV_FILE);
@@ -109,46 +112,14 @@ export class App {
     const channels = new CompositeChannel(routes);
     const speculation = buildAppSpeculation({ model: modelClient, channels, clock, root: join(resolve(config.workRoot), "_speculation"), sources: config.speculationSources ?? [] });
     let runtime: Runtime;
-    const worker = options.workerCommand ?? {
-      file: process.execPath,
-      args: [join(import.meta.dirname, "worker", "main.ts")],
-    };
-    const executor = new LocalExecutor({
-      root: resolve(config.workRoot),
-      worker,
+    const { executor, close: closeExecutor } = buildAppExecutor({
+      config,
+      ...(options.workerCommand ? { workerCommand: options.workerCommand } : {}),
       clock,
-      inheritEnv: false,
-      report: (report) => runtime.engine.report(report),
-      envFor: (assignment, ticket, dir) => {
-        const state = runtime.store.state();
-        const origin = state.triggers[ticket.mandate.triggerId];
-        const inputs = Object.values(state.inputs)
-          .filter((input) => input.ticketId === ticket.id)
-          .map((input) => ({
-            id: input.id,
-            source: "router",
-            actor: "router",
-            text: input.ref,
-            threadIds: [],
-            channelIds: [],
-            at: input.at,
-          }));
-        const initial = origin
-          ? [{ ...origin, threadIds: [...origin.threadIds], channelIds: [...origin.channelIds] }]
-          : inputs;
-        return {
-          SEED_WORKER_ROOT: dir,
-          SEED_WORKER_TICKET: ticket.id,
-          SEED_WORKER_SHORT_NAME: ticket.shortName,
-          SEED_WORKER_SCOPE: ticket.mandate.scope,
-          SEED_WORKER_ASSIGNMENT: assignment.id,
-          SEED_WORKER_INPUT: JSON.stringify(initial),
-          SEED_RECALL_INDEX: recallPath,
-          SEED_MODEL_BASE_URL: config.model?.baseUrl ?? "",
-          SEED_MODEL_API_KEY: apiKey,
-          SEED_MODEL_NAME: config.model?.name ?? "",
-        };
-      },
+      runtime: () => runtime,
+      apiKey,
+      recallPath,
+      env,
     });
 
     runtime = Runtime.build({
@@ -181,7 +152,7 @@ export class App {
       },
     });
 
-    return new App(runtime, daemon, router, executor);
+    return new App(runtime, daemon, router, executor, closeExecutor);
   }
 
   /** 跑一轮并等到系统收敛（单次模式/验证用）。 */
@@ -204,7 +175,7 @@ export class App {
 
   stop(): void {
     this.daemon.stop();
-    this.executor.closeAll();
+    this.closeExecutor();
     this.runtime.close();
   }
 }

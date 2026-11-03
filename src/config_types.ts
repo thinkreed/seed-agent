@@ -35,6 +35,12 @@ export interface SourcesConfig {
   readonly local?: LocalSourceConfig;
 }
 
+export interface RemoteConfig {
+  readonly url: string;
+  /** 读取 daemon token 的环境变量名。 */
+  readonly tokenEnv?: string;
+}
+
 export interface SeedConfig {
   readonly dbPath: string;
   readonly slots: number;
@@ -52,4 +58,6 @@ export interface SeedConfig {
   readonly speculationSources?: readonly string[];
   readonly worker?: WorkerSpec;
   readonly prepare?: WorkerSpec;
+  /** BYOM/跨设备：把执行交给远端 daemon。 */
+  readonly remote?: RemoteConfig;
 }

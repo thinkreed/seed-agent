@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-03T00:19:23.025Z",
+  "model": "deepseek-v4.1-flash",
+  "threads": 4,
+  "batch": {
+    "calls": 1,
+    "latencyMs": 2086,
+    "cache": {
+      "requests": 1,
+      "promptTokens": 1423,
+      "cachedTokens": 0,
+      "uncachedTokens": 1423,
+      "hitRate": 0
+    },
+    "replyChars": 356
+  },
+  "single": {
+    "calls": 4,
+    "latencyMs": 4932,
+    "cache": {
+      "requests": 4,
+      "promptTokens": 5494,
+      "cachedTokens": 5120,
+      "uncachedTokens": 374,
+      "hitRate": 0.9319257371678195
+    },
+    "replyChars": 410
+  },
+  "speedup": 2.36
+}
