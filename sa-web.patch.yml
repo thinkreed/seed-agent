@@ -13,6 +13,7 @@
         dshPatch: E:/project/reed-dev/seed-agent-superagent/config/bailian.patch.yml
         workspace: E:/project/reed-dev/seed-agent-superagent
         dshPermissionMode: workspace-write
+        watchdogMode: session
         sourcesEnabled: true
         sourceFeishuChatIds: oc_93f1a464c8258f572ff133db799a2546
         sourceGithubRepos: thinkreed/seed-agent-e2e
