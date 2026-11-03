@@ -1,9 +1,4 @@
 /**
- * 应用装配：把真实组件接成可运行系统（无 fake）。
- * 需要真实凭证：
- *   - 模型：环境变量（默认 DEEPSEEK_API_KEY）
- *   - GitHub：`gh auth login` 已完成
- *   - 飞书：FEISHU_APP_ID / FEISHU_APP_SECRET（配置里可改名）
  */
 
 import { dirname, join, resolve } from "node:path";
@@ -26,6 +21,7 @@ import { writeRecallIndex } from "./recall_index.ts";
 import { createModelClient } from "./model_client.ts";
 import { Router, TemplateComposer } from "./router.ts";
 import { Runtime } from "./runtime.ts";
+import { acquireRuntimeLock, type RuntimeLock } from "./runtime_lock.ts";
 import { SourceRunner } from "./runner.ts";
 import { FeishuChannel, FeishuSource } from "./sources/feishu.ts";
 import { FeishuHttpClient } from "./sources/feishu_http.ts";
@@ -53,6 +49,7 @@ export class App {
   private readonly closeExecutor: () => void;
   private readonly watchdog: Watchdog;
   private readonly controller: WatchdogController;
+  private readonly lock: RuntimeLock;
   private constructor(
     runtime: Runtime,
     daemon: Daemon,
@@ -61,6 +58,7 @@ export class App {
     closeExecutor: () => void,
     watchdog: Watchdog,
     controller: WatchdogController,
+    lock: RuntimeLock,
   ) {
     this.runtime = runtime;
     this.daemon = daemon;
@@ -69,6 +67,7 @@ export class App {
     this.closeExecutor = closeExecutor;
     this.watchdog = watchdog;
     this.controller = controller;
+    this.lock = lock;
   }
   static create(options: AppOptions): App {
     const env = mergeEnv(options.env, options.envFile ?? process.env.SEED_ENV_FILE);
@@ -137,6 +136,7 @@ export class App {
       env,
     });
 
+    const lock = acquireRuntimeLock(resolve(config.dbPath));
     runtime = Runtime.build({
       assessor: assessorBundle.assessor,
       executor,
@@ -170,7 +170,7 @@ export class App {
       },
     });
 
-    return new App(runtime, daemon, router, executor, closeExecutor, watchdog, controller);
+    return new App(runtime, daemon, router, executor, closeExecutor, watchdog, controller, lock);
   }
 
   /** Watchdog 自然语言问诊入口（内核 CLI / 桌面可调用）。 */
@@ -205,5 +205,6 @@ export class App {
     this.daemon.stop();
     this.closeExecutor();
     this.runtime.close();
+    this.lock.release();
   }
 }

@@ -12,6 +12,7 @@
 | `applyPolicy` 不自动 | ✅ 已自动 | `WatchdogVerdict.policy` → `WatchdogController.apply()` 自动应用；`tests/watchdog_policy.test.ts` |
 | 双份内核分叉 | ✅ 已消除 | `contrib/.../core/src` 已删除；core 的 `build.mjs` 直接编译仓库根 `src/**`，不再存在第二份内核源码 |
 | `onReconnect` 未接线 | ✅ 已接线 | `AppExecutor` 远端路径：`HttpTransport.onReconnect → RemoteExecutor.recover()`；`remote` 配置解析 + `closeAll` |
+| 双 Runtime / 双 Engine | ✅ 收敛为单库单 Engine | CLI 与 host 共用 `runtime/web-agent.db`；`runtime_lock` 拒绝第二个 Engine；`tests/runtime_lock.test.ts` |
 | §5 云端无状态计算 | ⚠️ 架构边界 | 当前是单机事件溯源 + SQLite；云端拆分未实现 |
 | §7 真实模型批处理实验 | ✅ 已跑 | `scripts/experiment-real-batch.mjs`：4 线程，1 次批量 2.09s vs 逐条 4.93s，2.36x；逐条缓存命中 93.2%，见 `docs/experiment-batch-real.json` |
 | 飞书回复被压缩 | ✅ 已修 | host 本地 `format.ts` 对 `fs:`/`feishu:` 不压缩；API 读回 258 字节完整 |

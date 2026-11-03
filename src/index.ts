@@ -24,6 +24,7 @@ export * from "./clock.ts";
 export * from "./ids.ts";
 export * from "./state_ids.ts";
 export * from "./runtime.ts";
+export * from "./runtime_lock.ts";
 export * from "./runner.ts";
 export * from "./router.ts";
 export * from "./panel.ts";

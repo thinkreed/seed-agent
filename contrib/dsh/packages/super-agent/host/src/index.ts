@@ -47,6 +47,7 @@ export { DshRouterClient } from './router_dsh.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
 export { RouterSession, createRouterClient } from './router_session.ts'
 import { LlmWatchdogAdvisor, LlmWatchdogJudge, Router, Speculator, workerBaseEnv, type ModelClient } from '@deepseek-ai/dsh-super-agent-core'
+import { acquireRuntimeLock } from '@deepseek-ai/dsh-super-agent-core'
 import { DshWatchdogAdvisor, DshWatchdogJudge } from './watchdog_session.ts'
 import { recordSourceFailure, recordSourceRecovery } from '@deepseek-ai/dsh-super-agent-core'
 import { FeishuHttpClient } from './sources/feishu_http.ts'
@@ -281,6 +282,7 @@ export class SuperAgentHost extends Service {
     if (config.bundleDefaults) config = { ...config, ...resolveBundleDefaults(config) }
     this.dbPath = resolve(config.dbPath)
     mkdirSync(dirname(this.dbPath), { recursive: true })
+    const runtimeLock = acquireRuntimeLock(this.dbPath)
     this.channelsEnabled = config.channelsEnabled
     this.speculationEnabled = config.speculationEnabled
     this.watchdogMode = config.watchdogMode
@@ -385,6 +387,7 @@ export class SuperAgentHost extends Service {
     ctx.effect(() => async () => {
       await this.sdk?.close()
       this.runtime.close()
+      runtimeLock.release()
     })
 
     // 入站 Source：轮询群消息/通知/JSONL，产生 Trigger（主动性的入口）。
