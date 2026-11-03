@@ -1,9 +1,9 @@
-/** 引擎：唯一的状态机驱动者。 */
 
 import type { Clock } from "./clock.ts";
 import { Actions } from "./actions.ts";
 import { ev } from "./builders.ts";
 import type { Eval, Input, Policy, Report, State, Ticket, Trigger } from "./domain.ts";
+import { handBack, unsubscribeFrom } from "./engine_control.ts";
 import { subscribedTickets } from "./domain.ts";
 import { Effects } from "./effects.ts";
 import { EvalRunner } from "./eval_runner.ts";
@@ -71,7 +71,6 @@ export class Engine {
     return this.store.state();
   }
 
-  // ---------- 摄入 ----------
 
   ingest(trigger: Trigger): AnyEvent[] {
     const now = this.clock.now();
@@ -131,7 +130,6 @@ export class Engine {
       (item) => item.threadId === threadId && item.state === "queued",
     );
     if (queued) {
-      // 批处理：上一轮推理期间积压的 Trigger 合并进同一批
       produced.push(ev.evalQueued({ ...queued, triggerIds: [...queued.triggerIds, trigger.id] }, now));
     } else {
       const evaluation: Eval = {
@@ -155,12 +153,10 @@ export class Engine {
       .sort();
   }
 
-  // ---------- 驱动 ----------
 
   async tick(): Promise<AnyEvent[]> {
     if (this.paused) return [];
     const produced: AnyEvent[] = [];
-    // 同一 tick 内所有 queued Eval 并发交给评估器：Router 才能把它们合并成一次模型调用。
     const queued = Object.values(this.state.evals).filter((item) => item.state === "queued");
     if (queued.length > 0) {
       const batches = await Promise.all(queued.map((evaluation) => this.evalRunner.run(evaluation)));
@@ -172,34 +168,39 @@ export class Engine {
     return produced;
   }
 
-  // ---------- 输入 ----------
 
   personMessage(ticketId: string, text: string): AnyEvent[] {
     return this.actions.personMessage(ticketId, text, this.effects);
   }
 
-  /** Watchdog/运维：暂停处理（Source 仍可继续记录事件）。 */
   pause(): void { this.paused = true; }
 
   resume(): void { this.paused = false; }
 
   get isPaused(): boolean { return this.paused; }
 
-  /** 在线更新策略（Watchdog/维护者）；只追加 policy.changed，Gate 立即生效。 */
   setPolicy(policy: Policy): AnyEvent[] { return this.actions.setPolicy(policy); }
 
-  /** 重试：结束当前 assignment 并投递一条 retry 输入，让工单重新排到执行器。 */
   retry(ticketId: string): AnyEvent[] {
     return this.actions.retry(ticketId, this.effects);
   }
 
-  /** 进程重启后：把 running 的 assignment 收口，并给执行器留下恢复注记。 */
   recoverAfterRestart(): AnyEvent[] {
     return this.actions.recoverAfterRestart(this.effects);
   }
 
   report(report: Report): AnyEvent[] {
     return this.actions.report(report);
+  }
+
+  /** Worker 取消订阅：之后同一 Thread 的事件不再直通该工单（回到 Router 评估）。 */
+  unsubscribe(ticketId: string, threadId?: string): AnyEvent[] {
+    return unsubscribeFrom(this.state, this.clock, (events) => this.append(events), ticketId, threadId);
+  }
+
+  /** Worker 交回 Router：取消订阅并把最新事件重新入评估队列（文章 §3.2）。 */
+  handback(ticketId: string, _reason = ""): AnyEvent[] {
+    return handBack(this.state, this.clock, this.ids, (events) => this.append(events), ticketId);
   }
 
   private append(events: readonly AnyEvent[]): AnyEvent[] {

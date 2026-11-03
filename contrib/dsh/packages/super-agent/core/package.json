@@ -4,18 +4,17 @@
     "version":  "0.2.2-alpha.2",
     "type":  "module",
     "main":  "lib/index.js",
-    "types":  "lib/types/index.d.ts",
+    "types":  "lib/index.d.ts",
     "exports":  {
                     ".":  {
-                              "types":  "./lib/types/index.d.ts",
+                              "types":  "./lib/index.d.ts",
                               "default":  "./lib/index.js"
                           },
-                    "./src/*":  "./src/*",
                     "./package.json":  "./package.json"
                 },
     "license":  "MIT",
     "scripts":  {
-                    "build":  "tsc -b tsconfig.json \u0026\u0026 tsdown"
+                    "build":  "node build.mjs"
                 },
     "dsh":  {
                 "plugin":  {

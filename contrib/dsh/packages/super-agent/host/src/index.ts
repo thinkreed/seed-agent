@@ -46,7 +46,7 @@ export { SdkDshExecutor, spillInstruction, workerPrompt } from './executor.ts'
 export { DshRouterClient } from './router_dsh.ts'
 import { RouterSession, createRouterClient, type RouterBatch } from './router_session.ts'
 export { RouterSession, createRouterClient } from './router_session.ts'
-import { LlmWatchdogAdvisor, LlmWatchdogJudge, Speculator, workerBaseEnv, type ModelClient } from '@deepseek-ai/dsh-super-agent-core'
+import { LlmWatchdogAdvisor, LlmWatchdogJudge, Router, Speculator, workerBaseEnv, type ModelClient } from '@deepseek-ai/dsh-super-agent-core'
 import { DshWatchdogAdvisor, DshWatchdogJudge } from './watchdog_session.ts'
 import { recordSourceFailure, recordSourceRecovery } from '@deepseek-ai/dsh-super-agent-core'
 import { FeishuHttpClient } from './sources/feishu_http.ts'
@@ -480,6 +480,7 @@ export class SuperAgentHost extends Service {
     const before = this.runtime.store.lastSeq()
     this.drainControl()
     await this.runtime.tickUntilIdle()
+    new Router({ store: this.runtime.store, clock: this.clock, effects: this.runtime.engine.effects }).queueReplies()
     this.writeRecallIndex()
     return this.runtime.store.lastSeq() > before
   }

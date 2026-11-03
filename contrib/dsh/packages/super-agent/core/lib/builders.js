@@ -1,0 +1,31 @@
+/** 事件构造器：集中一处，引擎只调用这里。 */
+import { makeEvent } from "./events.js";
+export const ev = {
+    triggerRecorded: (trigger, at) => makeEvent("trigger.recorded", { trigger }, at),
+    threadDeclared: (thread, at) => makeEvent("thread.declared", { thread }, at),
+    triggerFiltered: (triggerId, layer, reason, at) => makeEvent("trigger.filtered", { triggerId, layer, reason }, at),
+    dispositionRecorded: (triggerId, disposition, at) => makeEvent("disposition.recorded", { triggerId, disposition }, at),
+    evalQueued: (evaluation, at) => makeEvent("eval.queued", { eval: evaluation }, at),
+    evalStarted: (evalId, at) => makeEvent("eval.started", { evalId }, at),
+    evalDecided: (evalId, decision, at) => makeEvent("eval.decided", { evalId, decision }, at),
+    ticketOpened: (ticket, at) => makeEvent("ticket.opened", { ticket }, at),
+    ticketEnded: (ticketId, outcome, reason, at) => makeEvent("ticket.ended", { ticketId, outcome, reason }, at),
+    ticketResumed: (ticketId, at) => makeEvent("ticket.resumed", { ticketId }, at),
+    subscriptionAdded: (subscription, at) => makeEvent("subscription.added", { subscription }, at),
+    subscriptionRemoved: (ticketId, threadId, at) => makeEvent("subscription.removed", { ticketId, threadId }, at),
+    assignmentCreated: (assignment, at) => makeEvent("assignment.created", { assignment }, at),
+    assignmentStarted: (assignmentId, at) => makeEvent("assignment.started", { assignmentId }, at),
+    assignmentEnded: (assignmentId, outcome, at) => makeEvent("assignment.ended", { assignmentId, outcome }, at),
+    inputFannedOut: (input, at) => makeEvent("input.fanned_out", { input }, at),
+    inputDelivered: (inputId, at) => makeEvent("input.delivered", { inputId }, at),
+    inputUndelivered: (inputId, reason, at) => makeEvent("input.undelivered", { inputId, reason }, at),
+    reportRecorded: (report, at) => makeEvent("report.recorded", { report }, at),
+    attentionOpened: (attention, at) => makeEvent("attention.opened", { attention }, at),
+    messageQueued: (message, at) => makeEvent("message.queued", { message }, at),
+    messageSent: (messageId, at) => makeEvent("message.sent", { messageId }, at),
+    messageFailed: (messageId, reason, at) => makeEvent("message.failed", { messageId, reason }, at),
+    sourceFailed: (source, error, at) => makeEvent("source.failed", { source, error }, at),
+    sourceRecovered: (source, at) => makeEvent("source.recovered", { source }, at),
+    policyChanged: (policy, at) => makeEvent("policy.changed", { policy }, at),
+};
+//# sourceMappingURL=builders.js.map
