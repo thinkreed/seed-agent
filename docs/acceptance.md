@@ -138,4 +138,4 @@ pwsh -File scripts/verify-super-agent.ps1 -Network     # 追加飞书/GitHub 真
 node scripts/bench-super-agent.mjs --real              # §7 实验（真实模型可选）
 ```
 
-证据索引：`docs/dsh-desktop-*.png`、`docs/bench-super-agent.md`、host `tests/*-smoke.mjs`、内核 `node --test "tests/*.test.ts"`（248 例）＋ `scripts/demo-article.mjs`（22 项现场检查）＋ `tests/reply.test.ts`（Router 直接回信道）。
+证据索引：`docs/dsh-desktop-*.png`、`docs/bench-super-agent.md`、host `tests/*-smoke.mjs`、内核 `node --test "tests/*.test.ts"`（251 例）＋ `scripts/demo-article.mjs`（22 项现场检查）＋ `tests/reply.test.ts`（Router 直接回信道）。

@@ -4,6 +4,7 @@
   "slots": 2,
   "intervalMs": 1000,
   "staleSeconds": 1800,
+  "speculationSources": ["github"],
   "routerMode": "llm",
   "model": {
     "baseUrl": "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1",

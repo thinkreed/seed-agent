@@ -263,13 +263,13 @@ CREATE TABLE cursors   (source TEXT PRIMARY KEY, position TEXT NOT NULL, updated
 | **P7 Watchdog** | ✅ | `watchdog`（停滞/投递失败/Source 故障判据 + 模型裁定 + `ask()` 自然语言问答）、`source_health`（失败/恢复事件）、`control`（verdict → 引擎 retry、`applyPolicy()` 在线换规则）、引擎 `setPolicy/pause/resume/retry/recoverAfterRestart`、daemon 每轮巡检接线 |
 | **P8 面板部署** | ✅ | `config`（JSON + 校验 + 默认值、`routerMode`）、`panel`（文本 / `--json`）、`daemon` 常驻主循环、CLI `run` / `desktop` / `daemon` / `panel` |
 
-当前全量测试：**248 例全部通过，约 2.5s（含子进程 / HTTP daemon / 后台任务 / soak / 重试 / 故障注入 / Router 历史/建单/订阅/迟到报告/缓存统计/标题用例），零网络、零 sleep 依赖**。
+当前全量测试：**251 例全部通过，约 2.5s（含子进程 / HTTP daemon / 后台任务 / soak / 重试 / 故障注入 / Router 历史/建单/订阅/迟到报告/缓存统计/标题/即时确认/投机/召回用例），零网络、零 sleep 依赖**。
 
 ## 15. 1.0 验收清单
 
 ```bash
 cd seed-agent
-node --test "tests/*.test.ts"   # 期望：248 pass / 0 fail
+node --test "tests/*.test.ts"   # 期望：251 pass / 0 fail
 node --test tests/app_e2e.test.ts   # 受理→工单→派工→报告→回复
 node --test tests/remote.test.ts    # 计算/执行分离、离线→recover
 node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出空表）
@@ -312,7 +312,7 @@ node src/cli.ts panel seed.db --json   # 期望：JSON 面板（无库时输出�
 
 | 检查项 | 状态 | 证据 |
 |---|---|---|
-| `node --test "tests/*.test.ts"` | ✅ | 248 例全绿 |
+| `node --test "tests/*.test.ts"` | ✅ | 251 例全绿 |
 | `pnpm run build`（dsh/） | ✅ | 10/10 gates、368 client artifacts |
 | core / host smoke | ✅ | `CORE SMOKE OK`、`HOST SMOKE OK` |
 | 骨架无 fake | ✅ | 产品源码不含假实现（替身仅在 `tests/`） |

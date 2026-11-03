@@ -102,7 +102,7 @@ test("App 真实链路：JSONL 事件 -> 真实模型 HTTP -> worker 进程写�
     const workDir = join(dir.root, "work", ticket.shortName);
     assert.ok(existsSync(join(workDir, "result.txt")), "worker should write into its ticket directory");
     assert.match(readFileSync(join(workDir, "result.txt"), "utf8"), /真实 worker/);
-    assert.equal(app.runtime.engine.state.sentMessages.size, 1, "ready 报告应触发一条对外回复");
+    assert.equal(app.runtime.engine.state.sentMessages.size, 2, "应先发即时确认，再发 ready 报告");
   } finally {
     app.stop();
     mock.close();

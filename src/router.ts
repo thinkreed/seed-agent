@@ -55,10 +55,24 @@ export class Router {
     const produced: AnyEvent[] = [];
     for (const ticket of Object.values(state.tickets).sort((a, b) => a.id.localeCompare(b.id))) {
       if (ticket.stopped) continue;
-      const report = ticketReport(state, ticket.id);
-      if (!report || !NOTIFY_STATUSES.has(report.status)) continue;
       const address = ticket.channelIds[0];
       if (!address) continue;
+      // 即时确认：工单刚受理、还没有任何报告时，先回一条“已在处理”。
+      const ackId = `ack:${ticket.id}`;
+      if (!state.messages[ackId] && !ticketReport(state, ticket.id)) {
+        const ack: OutboundMessage = {
+          id: ackId,
+          ticketId: ticket.id,
+          channelId: address,
+          address,
+          text: formatForChannel(address, `已收到，正在处理：${ticket.title || ticket.shortName}。完成后回报。`),
+          at: this.clock.now(),
+        };
+        produced.push(ev.messageQueued(ack, this.clock.now()));
+        this.effects.enqueue(`eff:${ackId}`, "send", { messageId: ackId }, this.clock.now());
+      }
+      const report = ticketReport(state, ticket.id);
+      if (!report || !NOTIFY_STATUSES.has(report.status)) continue;
       const messageId = `msg:${ticket.id}:${report.at}`;
       if (state.messages[messageId]) continue;
       const message: OutboundMessage = {

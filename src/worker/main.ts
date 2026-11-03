@@ -17,6 +17,7 @@
  */
 
 import { createInterface } from "node:readline";
+import { readFileSync } from "node:fs";
 
 import { SystemClock } from "../clock.ts";
 import type { Ticket, Trigger } from "../domain.ts";
@@ -81,6 +82,26 @@ const model = new OpenAIClient({
 const baseTools = {
   ...fileTools(root),
   run_shell: shellTool({ root }),
+  ...(env("SEED_RECALL_INDEX")
+    ? {
+        recall: {
+          description: "Read a trigger/thread/ticket by id for chained recall (kind, id).",
+          async run(args: Record<string, unknown>): Promise<unknown> {
+            const data = JSON.parse(readFileSync(required("SEED_RECALL_INDEX"), "utf8")) as Record<
+              string,
+              Record<string, unknown>
+            >;
+            const kind = String(args.kind ?? "trigger");
+            const id = String(args.id ?? "");
+            const section = data[kind];
+            if (!section) throw new Error(`unknown recall kind: ${kind}`);
+            const item = section[id];
+            if (!item) throw new Error(`unknown ${kind}: ${id}`);
+            return item;
+          },
+        },
+      }
+    : {}),
 };
 const tools = {
   ...baseTools,
@@ -92,6 +113,7 @@ const descriptions: Record<string, string> = {
   edit_file: "Replace exact text in a file (path, old, new, optional all=true).",
   list_files: "List entries of a directory inside the workspace (path).",
   run_shell: "Run one shell command in the workspace (command). Prefer start() for long commands.",
+  recall: "Read a trigger/thread/ticket by id for chained recall (kind, id).",
   spawn_subagent: "Run a focused subtask in an isolated subagent context (task); returns {status, summary}.",
 };
 for (const [name, tool] of Object.entries(tools)) {

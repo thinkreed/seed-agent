@@ -6,8 +6,9 @@
  *   - 飞书：FEISHU_APP_ID / FEISHU_APP_SECRET（配置里可改名）
  */
 
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { AppError } from "./app_error.ts";
+import { buildAppSpeculation } from "./app_speculation.ts";
 import { ConsoleChannel } from "./channels/console.ts";
 import { CompositeChannel } from "./channels/composite.ts";
 import { DocsChannel } from "./channels/docs.ts";
@@ -19,6 +20,7 @@ import { WatchdogController } from "./control.ts";
 import { Daemon } from "./daemon.ts";
 import { LocalExecutor } from "./executor/local.ts";
 import { buildAssessor } from "./assessor_router.ts";
+import { writeRecallIndex } from "./recall_index.ts";
 import { createModelClient } from "./model_client.ts";
 import { Router, TemplateComposer } from "./router.ts";
 import { Runtime } from "./runtime.ts";
@@ -29,7 +31,7 @@ import { GitHubChannel, GitHubSource } from "./sources/github.ts";
 import { GhCliClient } from "./sources/github_cli.ts";
 import { JsonlInboxSource } from "./sources/jsonl.ts";
 import { Watchdog } from "./watchdog.ts";
-import { LlmWatchdogJudge } from "./watchdog_llm.ts";
+import { LlmWatchdogAdvisor, LlmWatchdogJudge } from "./watchdog_llm.ts";
 
 export { AppError } from "./app_error.ts";
 export interface AppOptions {
@@ -41,7 +43,6 @@ export interface AppOptions {
   /** 额外 env 文件（默认依次读 seed.env、.env）。 */
   readonly envFile?: string;
 }
-
 export class App {
   readonly runtime: Runtime;
   readonly daemon: Daemon;
@@ -53,7 +54,6 @@ export class App {
     this.router = router;
     this.executor = executor;
   }
-
   static create(options: AppOptions): App {
     const env = mergeEnv(options.env, options.envFile ?? process.env.SEED_ENV_FILE);
     const config = options.config;
@@ -62,6 +62,7 @@ export class App {
     if (!apiKey) throw new AppError(`missing env ${config.model.apiKeyEnv} for model access`);
 
     const clock = new SystemClock();
+    const recallPath = join(dirname(resolve(config.dbPath)), "recall-index.json");
     const routerConfig = config.routerModel ?? config.model;
     const routerKey = env[routerConfig.apiKeyEnv] ?? apiKey;
     const modelClient = createModelClient(routerConfig, routerKey);
@@ -106,6 +107,7 @@ export class App {
     if (sources.length === 0) throw new AppError("config.sources is empty: configure local/github/feishu");
 
     const channels = new CompositeChannel(routes);
+    const speculation = buildAppSpeculation({ model: modelClient, channels, clock, root: join(resolve(config.workRoot), "_speculation"), sources: config.speculationSources ?? [] });
     let runtime: Runtime;
     const worker = options.workerCommand ?? {
       file: process.execPath,
@@ -141,6 +143,7 @@ export class App {
           SEED_WORKER_SCOPE: ticket.mandate.scope,
           SEED_WORKER_ASSIGNMENT: assignment.id,
           SEED_WORKER_INPUT: JSON.stringify(initial),
+          SEED_RECALL_INDEX: recallPath,
           SEED_MODEL_BASE_URL: config.model?.baseUrl ?? "",
           SEED_MODEL_API_KEY: apiKey,
           SEED_MODEL_NAME: config.model?.name ?? "",
@@ -161,9 +164,9 @@ export class App {
     });
 
     const router = new Router({ store: runtime.store, clock, effects: runtime.engine.effects, composer: new TemplateComposer() });
-    const watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds, judge: new LlmWatchdogJudge(modelClient) });
+    const watchdog = new Watchdog({ clock, staleSeconds: config.staleSeconds, judge: new LlmWatchdogJudge(modelClient), advisor: new LlmWatchdogAdvisor(modelClient) });
     const controller = new WatchdogController(runtime.engine);
-    const runner = new SourceRunner({ sources, engine: runtime.engine, store: runtime.store, clock, onTrigger: (trigger) => assessorBundle.router?.observe(trigger) });
+    const runner = new SourceRunner({ sources, engine: runtime.engine, store: runtime.store, clock, onTrigger: (trigger) => assessorBundle.router?.observe(trigger), onIngested: speculation?.onTrigger });
     const daemon = new Daemon({
       runner,
       engine: runtime.engine,
@@ -172,6 +175,7 @@ export class App {
       intervalMs: config.intervalMs,
       watchdog: { check: (state) => watchdog.check(state), apply: (report) => controller.apply(report) },
       afterRound: async () => {
+        writeRecallIndex(runtime.engine.state, recallPath, clock.now());
         router.queueReplies();
         await runtime.engine.tick();
       },

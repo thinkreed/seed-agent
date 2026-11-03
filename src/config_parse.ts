@@ -45,6 +45,9 @@ export function parseConfig(raw: unknown): SeedConfig {
     ...(source.model === undefined ? {} : { model: parseModel(source.model) }),
     ...(source.routerModel === undefined ? {} : { routerModel: parseModel(source.routerModel) }),
     ...(source.sources === undefined ? {} : { sources: parseSources(source.sources) }),
+    ...(source.speculationSources === undefined
+      ? {}
+      : { speculationSources: stringArray(source.speculationSources, "speculationSources") }),
     ...(source.worker === undefined ? {} : { worker: parseWorker(source.worker, "worker") }),
     ...(source.prepare === undefined ? {} : { prepare: parseWorker(source.prepare, "prepare") }),
   };

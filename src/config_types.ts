@@ -48,6 +48,8 @@ export interface SeedConfig {
   readonly routerModel?: ModelConfig;
   readonly model?: ModelConfig;
   readonly sources?: SourcesConfig;
+  /** 启用投机执行的 Source 白名单（空/缺省 = 关闭）。 */
+  readonly speculationSources?: readonly string[];
   readonly worker?: WorkerSpec;
   readonly prepare?: WorkerSpec;
 }
