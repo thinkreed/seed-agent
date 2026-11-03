@@ -61,7 +61,43 @@ export class EvalRunner {
       produced.push(ev.dispositionRecorded(triggerId, "evaluated", now));
     }
     produced.push(...this.apply(evaluation, decision, now));
+    produced.push(...this.replyToDuplicate(evaluation, decision, now));
     return this.store.appendAll(produced);
+  }
+
+  /** 重复的人消息不能被静默 ignore：把上一张已结束工单的结论回给提问者。 */
+  private replyToDuplicate(evaluation: Eval, decision: Decision, now: number): AnyEvent[] {
+    if (decision.kind !== "ignore") return [];
+    const state = this.store.state();
+    const trigger = evaluation.triggerIds
+      .map((id) => state.triggers[id])
+      .find((item) => item !== undefined);
+    if (!trigger || !trigger.channelIds[0]) return [];
+    const text = trigger.text.replace(/\s+/g, " ").trim();
+    const previous = Object.values(state.tickets)
+      .filter((ticket) => ticket.state === "ended" && ticket.threadIds.includes(evaluation.threadId))
+      .find((ticket) => state.triggers[ticket.mandate.triggerId]?.text.replace(/\s+/g, " ").trim() === text);
+    if (!previous) return [];
+    const report = state.reports[previous.id]?.at(-1);
+    if (!report) return [];
+    return this.queueReply(
+      trigger.channelIds[0],
+      `这个请求已经处理过：${previous.title || previous.shortName}。上次结果：${report.summary.slice(0, 1500)}\n\n如果要重新执行，请回复“重新执行”。`,
+      now,
+    );
+  }
+
+  private queueReply(address: string, text: string, now: number): AnyEvent[] {
+    const message: OutboundMessage = {
+      id: this.ids.next("msg"),
+      ticketId: "",
+      channelId: address,
+      address,
+      text: text.slice(0, 2000),
+      at: now,
+    };
+    this.effects?.enqueue(this.ids.next("eff"), "send", { messageId: message.id }, now);
+    return [ev.messageQueued(message, now)];
   }
 
   private apply(evaluation: Eval, decision: Decision, now: number): AnyEvent[] {
